@@ -286,6 +286,9 @@ do finally
         values ?? ImmutableArray'SyntaxId()
 
 .. state-trigger SyntaxId ~
+    ~ // "whenever" // watched \bulleted-expression
+        tree.append(ASTStateTrigger(location, .state-trigger-whenever, tree.store-child(closure)))
+            .. closure = make-closure(tree, location, false, null, watched)
     ~ // "for" // pattern \structure-pattern // "on" // stream \bulleted-expression guard \state-when-guard?
         |? guard
             tree.append(ASTStateTrigger(location, .state-trigger-for-on-when, children))
@@ -1454,7 +1457,7 @@ do finally
     ~ \pattern-primitive-match
 
 .. pattern-identifier SyntaxId ~
-    ~ !(\keyword (// | \open | \nl)) id \identifier
+    ~ !(\keyword (// | \open | \nl)) !(("true" | "false") !([-a-z0-9])) id \identifier
         id
 
 .. pattern-binding-right SyntaxId ~
@@ -1511,6 +1514,8 @@ do finally
         tree.append(ASTTypeEquality(location, it, false))
     ~ \string
         tree.append(ASTTypeEquality(location, it, false))
+    ~ &(("true" | "false") !([-a-z0-9])) value \bool
+        tree.append(ASTTypeEquality(location, value, false))
 
 .. pattern-predicate SyntaxId ~
     ~ "{" / expr \inline-expression / "}"
@@ -1931,9 +1936,33 @@ do finally
         tree.append(ASTMarkupSlotForward(location, name, outlet))
             .. outlet = tree.append
                 - ASTSlotOutlet(location, name, 0, 0, RowRange'SyntaxId(), RowRange'SyntaxId(), 0)
-    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? tags \theme-tag-bindings? body \block?
+    ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? tags \theme-tag-bindings? \markup-misplaced? body \block?
         tree.append(ASTMarkup(location, t, markup-id, slot-binding, tree.syntax-or-invalid(param), tree.store-optional-children(args), tree.store-optional-children(rules), theme-tag-body(tree, location, t, tags, body)))
             .. markup-id, slot-binding = markup-head-values(tree, head)
+
+.. markup-misplaced SyntaxId ~
+    ~ // part \markup-misplaced-part
+        part
+
+.. markup-misplaced-part SyntaxId ~
+    ~ &(\markup-late-part (// \markup-late-part)* / (\nl | &\close)) \markup-late-part
+        reject-syntax(tree, MatchLocation(location.begin, location.begin), "This part of the element's header is out of order. After the type come its name, then (slot), - parameter, = value or \"text\", • style rules, and for tags, as in \"<Text title(heading) \"Hi\" • bold for dark\"")
+
+.. markup-late-part Bool ~
+    ~ "•" // head \applied-style-rule tail (// !\theme-tag-keyword \applied-style-rule)*
+        true
+    ~ \theme-tag-keyword // head \theme-tag-binding tail (/ "," // \theme-tag-binding)*
+        true
+    ~ "=" // value \inline-expression-no-prep
+        true
+    ~ "-" // name \identifier type (// \type)?
+        true
+    ~ "(" name \identifier ")"
+        true
+    ~ text \string
+        true
+    ~ !(\keyword (// | \open | \nl)) name \identifier
+        true
 
 .. markup-head SyntaxId ~
     ~ // !\theme-tag-keyword id \identifier slot-binding \markup-slot-binding-after-id?
@@ -2044,12 +2073,22 @@ do finally
                 expr
 
 .. call-right SyntaxPartial ~
+    ~ // "<->" // place \bind-place
+        .assign-partial(.bind-op, false, place)
     ~ // op \assign-operator is-optional "?"? right \block-or-expression
         .assign-partial(op, !!is-optional, right)
     ~ params \type-argument* args \call-tail-arguments
         .call-partial(params, args, false, location)
     ~ / body \block
         .call-partial(ImmutableArray'SyntaxId(), sequence-singleton(tree, body), false, location)
+
+.. bind-place SyntaxId ~
+    ~ head \bind-head ("." tail \name)*
+        member-place(tree, location, head, tail)
+
+.. bind-head SyntaxId ~
+    ~ n \name
+        tree.append(ASTIdentifier(location, n, false))
 
 .. call-tail-arguments ImmutableArray'SyntaxId ~
     ~ (...args \inline-call-argument)* (...args \block-call-argument)?
@@ -2093,6 +2132,10 @@ do finally
         make-closure(tree, location, body[1], null, body[0])
     ~ "if" // test \coalesce-expression // "then" // value \coalesce-expression // "else" // otherwise \closure-expression
         make-conditional-value(tree, location, test, value, otherwise)
+    ~ "if" // \coalesce-expression // "then" // rejected \inline-markup-error
+        rejected
+    ~ "if" // \coalesce-expression // "then" // \coalesce-expression // "else" // rejected \inline-markup-error
+        rejected
     ~ \coalesce-expression
 
 .. closure-expression-no-prep SyntaxId ~
@@ -2102,6 +2145,10 @@ do finally
         make-closure(tree, location, body[1], null, body[0])
     ~ "if" // test \coalesce-expression-no-prep // "then" // value \coalesce-expression-no-prep // "else" // otherwise \closure-expression-no-prep
         make-conditional-value(tree, location, test, value, otherwise)
+    ~ "if" // \coalesce-expression-no-prep // "then" // rejected \inline-markup-error
+        rejected
+    ~ "if" // \coalesce-expression-no-prep // "then" // \coalesce-expression-no-prep // "else" // rejected \inline-markup-error
+        rejected
     ~ \coalesce-expression-no-prep
 
 .. closure-expression-body (SyntaxId?, Bool) ~
@@ -2624,8 +2671,16 @@ do finally
 .. call-argument-list ~
     ~ "..."
         .args-partial(ImmutableArray'SyntaxId(), true)
-    ~ items \delimited(",", ~ \inline-expression-no-comma) is-curried ("," // "...")?
+    ~ items \delimited(",", ~ \inline-item) is-curried ("," // "...")?
         .args-partial(arguments-from-expressions(tree, location, items), !!is-curried)
+
+.. inline-item SyntaxId ~
+    ~ \inline-expression-no-comma
+    ~ \inline-markup-error
+
+.. inline-markup-error SyntaxId ~
+    ~ "<" [A-Z]
+        reject-syntax(tree, MatchLocation(location.begin, location.begin), "Markup cannot be written inside an expression. Give it as a row: an argument row, as in \"- <Text\", a named argument, as in \"• title <Text\", or a bullet, as in \"* <Text\"; or name it first, as in \". label = <Text\"")
 
 .. primitive SyntaxId ~
     ~ \paren-expression
@@ -2648,6 +2703,8 @@ do finally
 .. paren-expression SyntaxId ~
     ~ "(" / pairs \inline-expression / ")"
         pairs
+    ~ "(" / rejected \inline-markup-error
+        rejected
 
 .. list-expression SyntaxId ~
     ~ "[]"
@@ -2656,7 +2713,7 @@ do finally
         tree.append(ASTList(location, tree.store-children(pairs ?? ImmutableArray'SyntaxId())))
 
 .. list-items ~
-    ~ values \delimited(",", ~ \inline-expression-no-comma)
+    ~ values \delimited(",", ~ \inline-item)
         values
 
 .. iterable-expression SyntaxId ~

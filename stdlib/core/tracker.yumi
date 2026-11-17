@@ -1,3 +1,4 @@
+./channel
 ./collection
 ./core
 ./error
@@ -725,6 +726,67 @@ next += CollectionTracker(collection)
 
 =? if !tracker-action-next
 track-collection-dependency(tracker-action-previous!, tracker-action-next!, target)
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-active-property
+    - name String
+    - property-id Size
+    - subscribers [PropertySubscriber]
+    - owner Pointer
+
+=? if !tracker-action-next
+. previous = tracker-action-previous!
+. next = tracker-action-next!
+do track-property-key(previous, next, name, property-id, subscribers, owner, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ watch-changes'Value Broadcastable'Value
+    - read () Value
+
+ChangeSource'Value(read)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChangeSource'Value
+    is Usable'Void
+
+_ read () Value
+_ action LiveAction?
+_ held = List'Value()
+
+as Broadcastable'Value for
+_ channel := AsyncOnDemandChannel'Value(this)
+
+────────────────────
++ This
+    - read () Value
+
+────────────────────
++ do begin-using
+
+held.clear()
+. callback SubscriberCallback = => do
+    changed()
+. made = LiveAction(List'Tracker(), callback)
+action = made
+made.run-now()
+
+────────────────────
++ do end-using
+
+action?.close()
+action = null
+
+────────────────────
+_ do changed
+
+. value = read()
+if !held
+    held += value
+    =
+. prior = held[0]
+held[0] = value
+if value-changed(prior, value)
+    channel <- value
 
 ━━━━━━━━━━━━━━━━━━━━
 + do live-enter

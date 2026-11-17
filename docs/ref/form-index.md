@@ -376,9 +376,10 @@ kept for a meaning to come.
 
 | Head | Shape | Meaning | See |
 | --- | --- | --- | --- |
-| `<>` | `(<> type:Type attr:Attr* use:Use* row:Child*)` | An element: its type, its attributes, the style rules it uses, then its properties and children. | [Markup: Elements](markup.md#elements) |
+| `<>` | `(<> type:Type attr:Attr* use:Use* tag:Tag* row:Child*)` | An element: its type, its attributes, the style rules it uses, its theme tags, then its properties and children. | [Markup: Elements](markup.md#elements) |
 | `+<>` | `(+<> type:Type attr:Attr* use:Use* row:Child*)` | Declares a slot: a named place in a component that a caller fills with an element of this type. Its rows give the default content and the properties applied to what fills it. | [Markup: Slots](markup.md#slots) |
 | `<+` | `(<+ name:Name)` | Passes the content the caller gave for the named slot on to the element this row is inside. | [Markup: Repeated slots and passing slots on](markup.md#repeated-slots-and-passing-slots-on) |
+| `<->` | `(<-> property:Name place:Target)` | Binds a property of the element to a place both ways: the element takes the place's value and follows it, and stores its own back as it changes. | [Markup: Bindings](markup.md#bindings) |
 | `id:` | `(id: name:Name)` | The name the element is known by. | [Markup: Names](markup.md#names) |
 | `slot:` | `(slot: name:Name)` | The slot the element fills. | [Markup: Slots](markup.md#slots) |
 | `param:` | `(param: name:Name type:Type?)` | A value the slot passes in. | [Markup: Repeated slots and passing slots on](markup.md#repeated-slots-and-passing-slots-on) |

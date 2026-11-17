@@ -1250,6 +1250,8 @@ _ unasked-message String
 
 |? !known(diagnostic.from) || !known(diagnostic.to)
     base
+|? binds
+    "\"<->\" needs each side to become the other on its own, and ${type-source(types, diagnostic.from)} becomes $target only when asked; bind a place of the property's type"
 ??
     match diagnostic.kind
         |= .unasked-unwrap
@@ -1263,6 +1265,21 @@ _ unasked-message String
 
 .. target = type-source(types, diagnostic.to)
 .. lead = "Expected $target here, but this is ${type-source(types, diagnostic.from)}"
+.. binds = binding-site(program.modules[diagnostic.module].tree, diagnostic.syntax)
+
+────────────────────
+_ do binding-site Bool
+    - tree AST
+    - syntax SyntaxId
+
+do match? tree.nodes[syntax]
+    | .node-assign(row)
+        = row.op == .bind-op
+    | .node-identifier
+        do match? tree.nodes[tree.holder-of(syntax)]
+            | .node-assign(row)
+                = row.op == .bind-op && row.lhs == syntax
+= false
 
 ────────────────────
 _ imperative-message String

@@ -1431,12 +1431,9 @@ else
     expression(items[1], brix-level-primary, false)
 . origin Size = 2
 . has-id = false
-. tags [ImmutableTableRow'SourceNode]
 while origin < items.length
     . fields = store.items(items[origin])
     do match fields
-        | [.atom(_, "for:"), ...]
-            tags += items[origin]
         | [.atom(_, "id:"), name, ...]
             put(" ")
             tagged(store.text(name), .binder)
@@ -1458,9 +1455,12 @@ while origin < items.length
             break
     origin += 1
 origin = rules(items, origin)
-for position in 0 .. < tags.length
-    . binding = store.items(tags[position])
-    put(if position == 0 then " for " else ", ")
+. tag-start = origin
+while origin < items.length && store.is-form(items[origin], "for:")
+    origin += 1
+for position in tag-start .. < origin
+    . binding = store.items(items[position])
+    put(if position == tag-start then " for " else ", ")
     put(if binding.length > 1 then store.text(binding[1]) else "")
     if binding.length > 2
         put(" = ")
@@ -2315,7 +2315,7 @@ match head
 ??
     20
 
-.. is-assign = is-update || is-guarded || head == "=" || head == "++=" || head == "<-*"
+.. is-assign = is-update || is-guarded || head == "=" || head == "++=" || head == "<-*" || head == "<->"
     .. is-update = head == "+=" || head == "-=" || head == "*=" || head == "/=" || is-modulo
     .. is-modulo = head == "%=" || head == "%%="
     .. is-guarded = is-guarded-update || head == "=?" || head == "++=?" || head == "<-*?"

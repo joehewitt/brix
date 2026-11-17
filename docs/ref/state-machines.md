@@ -104,6 +104,7 @@ A case is also called a state, as the `state` form and the compiler's messages c
 | `(then cooling (trigger on readings (> each 30)))`{.brix} | On each value that passes the guard. `each` is the value. |
 | `(then cooling (trigger when-on (> each 30) readings))`{.brix} | The same, with the guard written first. |
 | `(then (call placed item count) (trigger for (call .place item count) requests))`{.brix} | On each value that fits the pattern, which names its parts. A guard may follow the source. |
+| `(then loading (trigger whenever #feed))`{.brix} | Each time what the value reads with `#` changes, while the case is active. |
 | `(then hunting (trigger if ready))`{.brix} | When the case is entered, if the condition holds. |
 | `(then (call valid n) (trigger if-match (call .valid n) login))`{.brix} | When the case is entered, if `login` fits the pattern. |
 | `(then stopped)`{.brix} | When the case is entered, always. |
@@ -163,9 +164,14 @@ A case is also called a state, as the `state` form and the compiler's messages c
 - **Re-entry.** A transition to the active case, or to a case that holds it, leaves that case and
   enters it again, running both its exit and entry rows. A move between branches leaves the cases
   up to the one both share, and enters down from it.
+- **Changes.** A `whenever` trigger follows the reads its value makes with `#`, as a derived
+  property does, while its case is active. The value is read as the case is entered, which moves
+  nothing, and each change after that moves the machine. A change while another case is active is
+  dropped. A value that reads nothing with `#` is an error: `A "whenever" trigger fires as what it
+  reads with "#" changes, and this one reads nothing with "#", so it would never fire; …`.
 - **Decisions on entry.** A transition with `if`, `if-match` or no trigger is decided when its case
-  is entered, in the order written, and is not tried again when what it reads changes. Decisions
-  that would enter a case again without a trigger are an error:
+  is entered, in the order written, and is not tried again when what it reads changes; use
+  `whenever` for that. Decisions that would enter a case again without a trigger are an error:
 
 ```brix compile-error
 (prop + ready _ (= false))

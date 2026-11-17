@@ -152,6 +152,11 @@ for each arm, so `adopt` gives an `Animal` and `adopt-kept` gives a `Dog | Cat`.
 `(match? subject (case pattern value))`{.brix} gives `null` where no arm is taken, so its type is
 an optional, and it needs no arm for every value.
 
+- **An arm for every value.** A `(default value)`{.brix} arm, or a `(throw error)`{.brix} arm with
+  no condition, is taken wherever no arm before it is, so a `match?` with one would never differ
+  from a `match`. It is an error that names the fix: `"match?" differs from "match" only where no
+  arm is taken, and this default arm is taken wherever no arm before it is; write "match"`.
+
 ### Matches as steps
 
 In a step body, `(do (inline (match subject (case pattern body))))`{.brix} runs the arm that is

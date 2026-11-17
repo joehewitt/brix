@@ -2916,3 +2916,78 @@ log += "$double:${cause-name(current-markup-cause())}"
 4:write|6:scoped|8:none
 write
 ;====
+:====
+# A binding gives the element the place's value as it is made and follows the place, and stores
+# what the element holds back in the place as it changes: under a batch root, at the checkpoint, as
+# the batch runs every action it holds.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BindRoot root
+. panel = BindPanel()
+markup-adopt(panel, null, root)
+-- state(panel, "adopted")
+root.markup-batch-queue.checkpoint()
+-- state(panel, "checkpoint")
+panel.knob.turn(3)
+-- state(panel, "turned 3")
+root.markup-batch-queue.checkpoint()
+-- state(panel, "checkpoint")
+panel.level = 2
+-- state(panel, "model 2")
+root.markup-batch-queue.checkpoint()
+-- state(panel, "checkpoint")
+
+━━━━━━━━━━━━━━━━━━━━
++ do state String
+    - panel BindPanel
+    - step String
+
+= "$step: level ${panel.level} knob ${panel.knob.value}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BindRoot is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
+
+────────────────────
++ This
+
+markup-mount-root(this, this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob is Box
+
++ value = 0
+
+────────────────────
++ do turn
+    - next Int
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ BindPanel is Box
+
++ level = 5
+
+────────────────────
+
+<This
+    <Knob knob
+        value <-> level
+:----
+
+adopted: level 5 knob 5
+checkpoint: level 5 knob 5
+turned 3: level 5 knob 3
+checkpoint: level 3 knob 3
+model 2: level 2 knob 3
+checkpoint: level 2 knob 2
+;====

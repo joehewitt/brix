@@ -98,6 +98,499 @@ Exception: A lazy property is worked out once, when it is first read, so it cann
                ^^
 ;====
 :====
+# A tracked read of each item of a pipeline that a call in a derived value works out is followed:
+# the value runs again as an item changes and as items are added and removed, and no longer for an
+# item removed.
+
+. b = Box()
+-- b.waiting
+b.items[0].is-pending = false
+-- b.waiting
+. added = Item()
+b.items += added
+-- b.waiting
+added.is-pending = false
+-- b.waiting
+. removed = b.items[1]
+b.items.remove(1)
+-- b.waiting
+removed.is-pending = false
+-- b.waiting
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ items = [Item(), Item(), Item()]
++ waiting = noted(tally(each in #items when each.#is-pending))
+
+━━━━━━━━━━━━━━━━━━━━
++ do noted Int
+    - n Int
+
+-- "ran $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+:----
+
+ran 3
+3
+ran 2
+2
+ran 3
+3
+ran 2
+2
+ran 1
+1
+1
+;====
+:====
+# The items a pipeline reads in the value of an object made while another value runs are followed
+# by that object's value alone: the other value runs again only for what it reads itself.
+
+. o = Outer()
+-- o.made.waiting
+o.made.items[0].is-pending = false
+-- o.made.waiting
+o.flag = true
+-- o.made.waiting
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ items = [Item(), Item()]
++ waiting = noted("box", tally(each in #items when each.#is-pending))
+
+━━━━━━━━━━━━━━━━━━━━
++ Outer
+
++ flag = false
++ made = built(#flag)
+
+━━━━━━━━━━━━━━━━━━━━
++ do built Box
+    - flag Bool
+
+-- "outer ran $flag"
+= Box()
+
+━━━━━━━━━━━━━━━━━━━━
++ do noted Int
+    - what String
+    - n Int
+
+-- "$what ran $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+:----
+
+outer ran false
+box ran 2
+2
+box ran 1
+1
+outer ran true
+box ran 2
+2
+;====
+:====
+# A tracked read of a list for each item of a pipeline follows the changes made to each list in
+# place.
+
+. b = Box()
+-- b.filled
+b.groups[1].members += 3
+-- b.filled
+b.groups[1].members.clear()
+-- b.filled
+
+━━━━━━━━━━━━━━━━━━━━
++ Group
+
++ members = List'Int()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ groups = [Group(), Group()]
++ filled = tally(each in #groups when each.#members.length > 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+:----
+
+0
+1
+0
+;====
+:====
+# A rule that works out a pipeline follows a tracked read of each item, running as the count of
+# them changes.
+
+. b = Box()
+b.items[0].is-pending = false
+b.items[1].is-pending = false
+b.items[0].is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ items = [Item(), Item()]
+
+────────────────────
+whenever tally(each in #items when each.#is-pending)
+
+-- "waiting $waiting"
+
+.. waiting = tally(each in items when each.is-pending)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+:----
+
+waiting 1
+waiting 0
+waiting 1
+;====
+:====
+# A tracked read of each item of a pipeline that is the whole value is reported: the pipeline is
+# worked out after the value, where nothing follows it.
+
+. b = Box()
+-- b.waiting
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ items = [Item()]
++ waiting = (each in #items when each.#is-pending)
+
+:----
+%crash
+
+Exception: "#is-pending" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, as in count(each in #items when each.#is-done); write "is-pending" to read it plainly
+<no file:14>
+    + waiting = (each in #items when each.#is-pending)
+                                     ^^^^^^^^^^^^^^^^
+;====
+:====
+# A pipeline given to a function that hands it back, as a generator does, is followed where what
+# it hands back is given to a function that works it through in the same value: the reads happen
+# in that call. One whose loop works it through follows it directly.
+
+. b = Bag()
+-- "${b.latest} ${b.counted}"
+b.items[1].n = 7
+-- "${b.latest} ${b.counted}"
+b.items[0].n = 0
+-- "${b.latest} ${b.counted}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag
+
++ items = [Item(), Item()]
++ latest = last-of(pass(each.n in #items when each.#n > 1)) ?? 0
++ counted = tally(later(each in #items when each.#n > 1))
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ n = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do last-of'T T?
+    - stream <T>
+
+. found T?
+for item in stream
+    found = item
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do pass'T
+    - stream <T>
+
+for item in stream
+    <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do later'T
+    - stream <T>
+
+= stream
+
+━━━━━━━━━━━━━━━━━━━━
++ do hold
+    - sink [Generator'Int]
+    - stream Generator'Int
+
+sink += stream
+= 0
+:----
+
+2 2
+7 2
+7 1
+;====
+:====
+# A pipeline given to a function that keeps it, rather than working it through as it is called, is
+# reported where it reads an item with "#".
+
+. b = Bag()
+-- b.kept
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag
+
++ items = [Item(), Item()]
++ sink [Generator'Int]
++ kept = hold(sink, each.n in #items when each.#n > 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ n = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do last-of'T T?
+    - stream <T>
+
+. found T?
+for item in stream
+    found = item
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do pass'T
+    - stream <T>
+
+for item in stream
+    <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do later'T
+    - stream <T>
+
+= stream
+
+━━━━━━━━━━━━━━━━━━━━
++ do hold
+    - sink [Generator'Int]
+    - stream Generator'Int
+
+sink += stream
+= 0
+:----
+%crash
+
+Exception: "#n" is read for each item of a pipeline that "hold" keeps rather than working through as it is called, so the read would not be followed; give the pipeline to a function that works it through, as count does, or write "n" to read it plainly
+<no file:10>
+    + kept = hold(sink, each.n in #items when each.#n > 1)
+                                              ^^^^^^^
+;====
+:====
+# A pipeline that a function hands back is reported where nothing in the value works through what
+# it hands back. A pipeline with no "#" read may be given to any function.
+
+. b = Bag()
+-- b.kept
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag
+
++ items = [Item(), Item()]
++ sink [Generator'Int]
++ plain = hold(sink, each.n in items when each.n > 1)
++ kept = later(each.n in #items when each.#n > 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ n = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do tally'T
+    - stream <T>
+
+. total = 0
+for item in stream
+    total += 1
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do last-of'T T?
+    - stream <T>
+
+. found T?
+for item in stream
+    found = item
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do pass'T
+    - stream <T>
+
+for item in stream
+    <= item
+
+━━━━━━━━━━━━━━━━━━━━
++ do later'T
+    - stream <T>
+
+= stream
+
+━━━━━━━━━━━━━━━━━━━━
++ do hold
+    - sink [Generator'Int]
+    - stream Generator'Int
+
+sink += stream
+= 0
+:----
+%crash
+
+Exception: "#n" is read for each item of a pipeline that "later" hands back without working it through, and nothing works through what it hands back as the value is made; give that to a function that works it through, as count does, or write "n" to read it plainly
+<no file:11>
+    + kept = later(each.n in #items when each.#n > 1)
+                                         ^^^^^^^
+;====
+:====
+# A pipeline given to a method, or by name, or piped with "|>", is followed by the parameter it
+# fills, wherever that parameter is in the list.
+
+. b = Bag()
+-- "${b.by-method} ${b.by-default} ${b.by-pipe} ${b.by-named}"
+b.items[0].n = 0
+-- "${b.by-method} ${b.by-default} ${b.by-pipe} ${b.by-named}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag
+
++ items = [Item(), Item()]
++ counter = Counter()
++ by-method = counter.tally(10, each.n in #items when each.#n > 1)
++ by-default = scaled(0, each.n in #items when each.#n > 1)
++ by-pipe = (each.n in #items when each.#n > 1) |> piped(100)
++ by-named = scaled(0)
+    • scale 3
+    • stream each.n in #items when each.#n > 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ n = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ base = 1
+
+────────────────────
++ do tally Int
+    - scale Int
+    - stream Generator'Int
+
+. total = base
+for item in stream
+    total += scale
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled Int
+    - base Int
+    - stream Generator'Int
+    - scale Int = 2
+
+. total = base
+for item in stream
+    total += scale
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do piped Int
+    - scale Int
+    - stream Generator'Int
+
+. total = 0
+for item in stream
+    total += scale
+= total
+:----
+
+21 4 200 6
+11 2 100 3
+;====
+:====
 
 . foo = Foo()
 -- foo.foo
@@ -987,7 +1480,7 @@ property-dependency-identity-ok
 . trackers [Tracker] = List'Tracker()
 trackers += FirstRefreshTracker() as Tracker
 . callback SubscriberCallback = => do
-    do owner.#value
+    do owner.value
 . action = LiveAction(trackers, callback)
 action()
 action.close()
@@ -2153,6 +2646,7 @@ panel.reveal(2)
 
 + id U64
 + is-revealed = false
++ is-shown = #is-revealed
 
 ────────────────────
 + This
@@ -2179,7 +2673,7 @@ for step in steps
 ────────────────────
 + describe String
 
-"${steps[0].#is-revealed} ${steps[1].#is-revealed}"
+"${steps[0].is-revealed} ${steps[1].is-revealed}"
 
 :----
 
@@ -2448,7 +2942,7 @@ _ do reopen
     - entry Closed
     - doc Doc
 
-. wanted = doc.#wants
+. wanted = doc.wants
 if entry.jump
     doc.wants = !wanted
     doc.jump = entry.jump
@@ -2466,6 +2960,7 @@ _ Closed is (index Int, jump Jump?)
 + Doc
 
 + wants = false
++ is-wanting = #wants
 + jump Jump?
 
 :----

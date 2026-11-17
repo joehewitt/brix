@@ -70,6 +70,68 @@ Exception: Syntax error
 ;====
 :====
 
+<Foo
+    a <-> b
+    c <-> d.e.f
+
+:----
+%brix
+(main
+  (<> Foo
+    (<-> a b)
+    (<-> c (. d e f))
+  )
+)
+:----
+
+<Markup>
+    <TypeId name="Foo"/>
+    <Block>
+        <AssignmentExpression op="<->">
+            <Id name="a"/>
+            <Id name="b" tracked="true"/>
+        </AssignmentExpression>
+        <AssignmentExpression op="<->">
+            <Id name="c"/>
+            <Get name="f" tracked="true">
+                <Get name="e">
+                    <Id name="d"/>
+                </Get>
+            </Get>
+        </AssignmentExpression>
+    </Block>
+</Markup>
+;====
+:====
+
+<Foo
+    a <-> #b
+
+:----
+%crash
+
+Exception: The place of "<->" is a name or a chain of members, written without "#", as in "value <-> settings.volume"
+<no file:3>
+        a <-> #b
+              ^
+;====
+:====
+:----
+%brix
+(main
+  (<> Foo
+    (<-> a (. b #c))
+  )
+)
+:----
+
+Exception: The place of “<->” is a name or a chain of members, written without “#”, as in “(<-> value (. settings volume))”
+<no file:4>
+        (<-> a (. b #c))
+               ^^^^^^^
+;====
+:====
+
 <Foo "text"
 
 :----
@@ -552,4 +614,43 @@ foo • with <Foo
         </Markup>
     </Block>
 </Markup>
+;====
+:====
+# Markup inside an expression is refused with the forms it can take.
+
+. label = show(<Text "x")
+
+:----
+%crash
+
+Exception: Markup cannot be written inside an expression. Give it as a row: an argument row, as in "- <Text", a named argument, as in "• title <Text", or a bullet, as in "* <Text"; or name it first, as in ". label = <Text"
+<no file:2>
+    . label = show(<Text "x")
+                   ^
+;====
+:====
+# A header part after one that follows it is out of order.
+
+<Text "hi" stage
+
+:----
+%crash
+
+Exception: This part of the element's header is out of order. After the type come its name, then (slot), - parameter, = value or "text", • style rules, and for tags, as in "<Text title(heading) "Hi" • bold for dark"
+<no file:2>
+    <Text "hi" stage
+               ^
+;====
+:====
+# Style rules come before theme tags.
+
+<Box for night • page
+
+:----
+%crash
+
+Exception: This part of the element's header is out of order. After the type come its name, then (slot), - parameter, = value or "text", • style rules, and for tags, as in "<Text title(heading) "Hi" • bold for dark"
+<no file:2>
+    <Box for night • page
+                   ^
 ;====

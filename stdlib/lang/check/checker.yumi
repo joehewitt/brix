@@ -101,6 +101,8 @@ _ arming = Arming()
 _ raised-arms [SyntaxId]
 _ matching = Matching()
 _ tested-match SyntaxId = 0
+_ standing SyntaxId = 0
+_ standing-type TypeId = no-type
 _ last-unit InstanceId = no-instance
 _ unit-styling = UnitStyling()
 _ theme-made TypeId = no-type
@@ -256,6 +258,15 @@ _ slot-root SlotId = no-slot
 _ outlet-classes [TypeId]
 _ unbuilt [SlotId]
 _ awaited [SyntaxId]
+_ foreseen [SlotId]
+_ foreseen-types [TypeId]
+_ given-nodes [SyntaxId]
+_ given-calls [SyntaxId]
+_ given-callees [InstanceId]
+_ given-positions [U32]
+_ pulled-pipelines [SyntaxId]
+_ pulled-reads [SyntaxId]
+_ pulled-names [Atom]
 _ held [SlotId]
 _ building SlotId = no-slot
 
@@ -391,6 +402,15 @@ _ building SlotId = no-slot
 .. outlet-classes = parts.outlet-classes
 .. unbuilt = parts.unbuilt
 .. awaited = parts.awaited
+.. foreseen = parts.foreseen
+.. foreseen-types = parts.foreseen-types
+.. given-nodes = parts.given-nodes
+.. given-calls = parts.given-calls
+.. given-callees = parts.given-callees
+.. given-positions = parts.given-positions
+.. pulled-pipelines = parts.pulled-pipelines
+.. pulled-reads = parts.pulled-reads
+.. pulled-names = parts.pulled-names
 .. held = parts.held
 parts.empty()
 frame.begin(checked)
@@ -851,6 +871,7 @@ scratch.runners += this
 scratch.running += instance
 check-instance()
 calls.report-unsettled-cases()
+settle-generators()
 instances.finish-body(instance)
 scratch.runners.pop()
 scratch.running.pop()
@@ -1765,6 +1786,14 @@ if element != 0
     finish-errors(frame)
     close()
     =
+. bound = bound-attribute(statement)
+if bound != 0
+    if !bind-again(statement, bound)
+        decline(statement)
+    hand-off-outgoing(statement)
+    finish-errors(frame)
+    close()
+    =
 if tree.attribute-element(statement) != 0
     . resolution = bindings.resolution-of(frame.binding, statement)
     . made = if resolution.kind == .resolve-slot then frame.slot-type(resolution.slot) else no-type
@@ -1797,7 +1826,7 @@ if facts.rule-update-of(instances.rows[instance].enclosing, statement)
     finish-errors(frame)
     close()
     =
-do match? tree.nodes[statement]
+do match tree.nodes[statement]
     | .node-declare(declaration)
         . slot = declaring-slot(declaration.left)
         . value = if slot then infer-declared(declaration.left, declaration.right) else invalid-type
@@ -1813,6 +1842,83 @@ do match? tree.nodes[statement]
 hand-off-outgoing(statement)
 finish-errors(frame)
 close()
+
+────────────────────
+_ do bound-attribute SyntaxId
+    - anchor SyntaxId
+
+. holder = tree.holder-of(anchor)
+do match? tree.nodes[holder]
+    | .node-assign(row)
+        if row.op == .bind-op && row.lhs == anchor && tree.attribute-element(holder) != 0
+            = holder
+= 0
+
+────────────────────
+_ do bind-again Bool
+    - anchor SyntaxId
+    - statement SyntaxId
+
+. resolution = bindings.resolution-of(frame.binding, statement)
+. made = if resolution.kind == .resolve-slot then frame.slot-type(resolution.slot) else no-type
+. name = identifier-name(tree, anchor)
+=? false if made == no-type || !name
+. found = property-named(made, name)
+=? false if !found || types.properties[found].storage-kind != .storage-eager
+. property = types.properties[found]
+. declared = if property.type != no-type then property.type else demand-member(property, made, name)
+=? false if declared == no-type || declared == invalid-type
+. ref = class-ref(types, types.tracked-root(property.owner, name))
+facts.note-tracked(ref.module, ref.decl, name)
+instances.mark-may-panic(instance)
+demand-live-runtime()
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        standing = anchor
+        standing-type = declared
+        . stored = infer-assign(anchor, .eq-op, row.rhs, anchor, Want())
+        standing = 0
+        standing-type = no-type
+        =? false if stored == invalid-type || stored == no-type
+        . held = place-type(row.rhs)
+        if held != declared && held != no-type && held != invalid-type && writes-back(declared)
+            =? false if conversions.convert(statement, row.rhs, held, declared, .reason-assignment) == invalid-type
+        = true
+= false
+
+────────────────────
+_ do place-type TypeId
+    - place SyntaxId
+
+do match? tree.nodes[place]
+    | .node-identifier(row)
+        . resolution = bindings.resolution-of(frame.binding, place)
+        if resolution.kind == .resolve-slot
+            = frame.slot-type(resolution.slot)
+        if resolution.kind == .resolve-member
+            = member-type(frame.self-type, row.name)
+    | .node-get-expression(row)
+        = member-type(facts.node-type(instance, row.object), row.name)
+= no-type
+
+────────────────────
+_ do member-type TypeId
+    - owner TypeId
+    - name Atom
+
+=? no-type if owner == no-type || owner == invalid-type
+. found = property-named(owner, name)
+=? no-type if !found
+. property = types.properties[found]
+= if property.type != no-type then property.type else demand-member(property, owner, name)
+
+────────────────────
+_ writes-back Bool
+    - type TypeId
+
+intrinsic-is-numeric(intrinsic) || intrinsic == .bool
+
+.. intrinsic = types.intrinsic-of(type)
 
 ────────────────────
 _ do check-gate-test
@@ -2048,7 +2154,9 @@ if above
 if beside != 0 && (defaulted || (body == 0 && given))
     decline(site)
 if body != 0 || (beside != 0 && !defaulted && !given)
-    if dropped != 0
+    if dropped != 0 && binds-line(dropped)
+        misplaced-binding(dropped)
+    else if dropped != 0
         decline(dropped)
     else if defaulted
         do match? tree.nodes[body]
@@ -2058,7 +2166,10 @@ if body != 0 || (beside != 0 && !defaulted && !given)
                         facts.note-content-link
                             - ContentLink(instance, statement, receiver, no-type, no-fact)
     else if given || !is-plain-body(body, rooted, ruled)
-        decline(body)
+        if binding-line(body) != 0
+            misplaced-binding(binding-line(body))
+        else
+            decline(body)
     else
         . bodied = body != 0 && (rooted || lines.length != 0)
         content-blocks += body
@@ -2194,6 +2305,33 @@ do match? tree.nodes[body]
             if tree.nodes[statement] is .node-assign
                 = statement
 = 0
+
+────────────────────
+_ binds-line Bool
+    - line SyntaxId
+
+match tree.nodes[line]
+    | .node-assign(row)
+        row.op == .bind-op
+    ??
+        false
+
+────────────────────
+_ do binding-line SyntaxId
+    - body SyntaxId
+
+for node in tree.subtree-start(body) .. body
+    if binds-line(node)
+        = node
+= 0
+
+────────────────────
+_ do misplaced-binding
+    - line SyntaxId
+
+. outlet = tree.nodes[tree.attribute-element(line)] is .node-slot-outlet
+. message = if outlet then "A slot outlet cannot bind with \"<->\", since what fills the slot is made elsewhere; bind the property in the element that fills it" else "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\""
+frame.diagnose(line, .stated, program.store-atom(message))
 
 ────────────────────
 _ do demand-filler
@@ -3326,7 +3464,7 @@ _ do query-type TypeId
 ` The type a class writes for a property where it queries the markup an object is in,
 ` `Ancestor'T` or `Descendants'T` of the markup runtime with one argument, or no type: for the
 ` parameters a `level` of the class with type parameters gives it, where one is given.
-do match? program.modules[ref.module].tree.nodes[written]
+do match program.modules[ref.module].tree.nodes[written]
     | .node-type-arguments
     ??
         = no-type
@@ -6491,10 +6629,7 @@ do match? tree.nodes[body]
                     . (index, position) = find-style-property(styles, name!, statement)
                     if position == U32.max
                         if index == U32.max
-                            frame.diagnose
-                                - attribute.lhs
-                                - .stated
-                                - program.store-atom("Property not found")
+                            attribute-not-found(attribute.lhs, name!)
                         = false
                     . property = facts.style-properties[position]
                     if is-inherit(attribute.rhs)
@@ -7482,7 +7617,7 @@ if !conditioned || body == 0
 . row = instances.rows[unit]
 . written = program.modules[row.module].tree
 . lines [SyntaxId]
-do match? written.nodes[body]
+do match written.nodes[body]
     | .node-block(block)
         for line in written.children[block.body]
             lines += line
@@ -9340,7 +9475,7 @@ _ do nested-decl DeclId
 . decls = program.modules[owner].decls
 . index = outer + 1
 while index < decls.length
-    do match? decls[index]
+    do match decls[index]
         | .decl-style-rule(rule)
             if rule.outer == 0
                 = 0
@@ -10439,7 +10574,7 @@ _ do when-lines [SyntaxId]
 . lines [SyntaxId]
 do match? written.nodes[branch]
     | .node-style-when(row)
-        do match? written.nodes[row.body]
+        do match written.nodes[row.body]
             | .node-block(block)
                 for line in written.children[block.body]
                     lines += line
@@ -10937,7 +11072,7 @@ do match? tree.nodes[syntax]
         . named = if element != no-type then element else receiver
         . order U32
         . marks-up = marks-up-class(syntax)
-        do match? tree.nodes[rule.body]
+        do match tree.nodes[rule.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     do match? tree.nodes[statement]
@@ -11765,7 +11900,7 @@ _ do share-written-values
 
 . fixed = true
 . static = true
-do match? written.nodes[facts.style-applications[index].written]
+do match written.nodes[facts.style-applications[index].written]
     | .node-style-rule-application(applied)
         for value in written.children[applied.args]
             for node in written.subtree-start(value) .. value
@@ -15684,6 +15819,10 @@ do match? tree.nodes[root]
                     do match? tree.nodes[statement]
                         | .node-assign(attribute)
                             . name = style-name(tree, attribute.lhs)
+                            if attribute.op == .bind-op
+                                . message = "A root <This> cannot bind with \"<->\", since its attributes give the object's own properties their first values; bind the property where the object is made"
+                                frame.diagnose(statement, .stated, program.store-atom(message))
+                                =
                             if !name || attribute.op != .eq-op
                                 decline(statement)
                                 =
@@ -16642,7 +16781,7 @@ if !is-sheet-decl(ref.module, ref.decl)
         - program.store-atom("StyleSheet extension target \"${name.text}\" is not a StyleSheet")
     =
 for member in tree.children[row.body]
-    do match? tree.nodes[member]
+    do match tree.nodes[member]
         | .node-property-syntax
             frame.diagnose
                 - member
@@ -19162,8 +19301,7 @@ _ awaits-element Bool
     - slot SlotId
 
 ` Whether a local an enclosing function declares is the name of a markup element it has not
-` made yet. A closure made before then that reads it is declined: the reference reads the
-` receiver's property of the name when the closure runs.
+` made yet. A closure made before then reads it when it runs (`read-later-element`).
 |? outer && frame.is-captured(slot)
     outer.awaits-element(slot)
 ??
@@ -19172,15 +19310,51 @@ _ awaits-element Bool
 .. waited = unbuilt.find(slot)
 
 ────────────────────
-_ constructs-element Bool
+_ do starts-task Bool
     - slot SlotId
 
-` Whether a local an enclosing function declares is the name of a markup element whose object
-` that function is making.
-|? outer && frame.is-captured(slot)
-    outer.constructs-element(slot)
-??
-    slot == building || held.find(slot) != null
+. enclosing = outer
+if !enclosing || !frame.is-captured(slot)
+    = false
+= enclosing.starts-task(slot) || (frame.declaration.kind == .task-decl && !enclosing.frame.is-captured(slot))
+
+────────────────────
+_ do foresee-element TypeId
+    - slot SlotId
+
+if outer && frame.is-captured(slot)
+    = outer.foresee-element(slot)
+. known = foreseen.find(slot)
+if known != null
+    = foreseen-types[known]
+. waited = unbuilt.find(slot)
+if waited == null || awaited[waited] == 0
+    = no-type
+do match? tree.nodes[awaited[waited]]
+    | .node-markup(row)
+        types.clear-fault()
+        . class = types.evaluate-type(module, tree, row.type-id, frame.env)
+        types.clear-fault()
+        if class != invalid-type
+            foreseen += slot
+            foreseen-types += class
+        = class
+= no-type
+
+────────────────────
+_ do assign-element
+    - slot SlotId
+    - made TypeId
+    - element SyntaxId
+
+frame.assign(slot, made)
+. known = foreseen.find(slot)
+if known == null || made == invalid-type || foreseen-types[known] == made
+    =
+. name = bindings.slots[slot].name
+. read = type-source(types, foreseen-types[known])
+. message = "Named markup element \"${name.text}\" is read in a closure made before its markup constructs it, as $read, but its markup makes ${type-source(types, made)}; write its type in full"
+frame.diagnose(element, .stated, program.store-atom(message))
 
 ────────────────────
 _ assigns-early Bool
@@ -20461,7 +20635,8 @@ _ do found-node Found
 
 ` What typing a node finds, of the nodes that may find more than their type: names, reads of
 ` members, indexes and calls, which may be links of an optional chain or name events. Any other
-` node finds its type alone.
+` node finds its type alone. A node that stands for a value already typed (`standing`) finds that.
+=? Found(standing-type) if id == standing && standing != 0
 do match? tree.nodes[id]
     | .node-identifier(row)
         note-plain(id, row.name)
@@ -20477,7 +20652,8 @@ do match? tree.nodes[id]
             plan-array-field(id, row.object, row.name)
         if row.is-tracked && got.type != invalid-type
             note-collection-read(id, got.type, want)
-            track-root(row.object)
+            if !pulled-root(id, row.object)
+                track-root(row.object)
             . held = facts.node-type(instance, row.object)
             track-read
                 - id
@@ -21343,6 +21519,24 @@ do match? tree.nodes[body]
                     - owned
                     - !styled && owned != no-instance && owns-batch(made)
                 break
+            settle-binding(statement)
+
+────────────────────
+_ do settle-binding
+    - statement SyntaxId
+
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        if row.op != .bind-op
+            =
+        . given = facts.live-statement-of(instance, statement)
+        if !given || given.rerun == no-instance
+            =
+        . rerun = demand-lambda(intern-nested(nested-decl-of(row.lhs)), scratch.no-types)
+        if rerun == no-instance || instances.signatures[rerun].errors.count != 0
+            decline(statement)
+            =
+        facts.live-statements += LiveStatement(instance, row.lhs, rerun, 0, U32.max, given.owned, given.rooted)
 
 ────────────────────
 _ do settle-content
@@ -21804,6 +21998,11 @@ _ do setter-attribute Bool
 ` with an assigning operator, and one of a class with type variables are declined.
 . name = identifier-name(tree, target)
 . found = attribute-accessor(class, name!)
+if op == .bind-op
+    . shown = type-short-name(types, class)
+    . message = "\"<->\" binds a property the element stores, and $shown answers \"${name!.text}\" with a getter or a setter, which a binding cannot follow; bind a property $shown stores"
+    frame.diagnose(target, .stated, program.store-atom(message))
+    = false
 if op != .eq-op || !found || types.completions[class].has-variables || is-hidden(types.properties[found], name!, .setter-decl)
     decline(statement)
     = false
@@ -21851,6 +22050,14 @@ for interface in types.interfaces-of(type)
 = null
 
 ────────────────────
+_ do attribute-not-found
+    - target SyntaxId
+    - name Atom
+
+. message = "Property \"${name.text}\" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: \"do ${name.text} = …\""
+frame.diagnose(target, .stated, program.store-atom(message))
+
+────────────────────
 _ do attribute-type TypeId
     - statement SyntaxId
     - op Operator
@@ -21866,16 +22073,22 @@ _ do attribute-type TypeId
 ` array and one written with an assigning operator are declined. An event written is wanted as
 ` the property's type, as `use-event` says.
 . name = identifier-name(tree, target)
-if op != .eq-op || !name || types.intrinsic-of(class) != .class || generic
+if (op != .eq-op && op != .bind-op) || !name || types.intrinsic-of(class) != .class || generic
     decline(statement)
     = invalid-type
 .. generic = types.completions[class].has-variables
 . place = property-named(class, name)
+if op == .bind-op && (!place || is-hidden(types.properties[place], name, .setter-decl))
+    . message = "\"<->\" binds a property of the element, and ${type-short-name(types, class)} has no property \"${name.text}\""
+    frame.diagnose(target, .stated, program.store-atom(message))
+    = invalid-type
 if !place || is-hidden(types.properties[place], name, .setter-decl)
     if program.module-by-name("core/style")
         decline(statement)
-    else
+    else if place
         frame.diagnose(target, .stated, program.store-atom("Property not found"))
+    else
+        attribute-not-found(target, name)
     = invalid-type
 . property = types.properties[place]
 if property.storage-kind == .storage-getter
@@ -21946,9 +22159,11 @@ do match? tree.nodes[body]
                                     .. in-fills = parameter < call.fills.count
                                     .. kept = facts.call-fills[call.fills.start + parameter] as U32
                                 if fill < args.count + given
-                                    . message = program.store-atom
-                                        - "Redefining variable in same scope"
-                                    frame.diagnose(statement, .stated, message)
+                                    . shown = "Parameter \"${name!.text}\" is given twice"
+                                    . text = if fill < args.count then from-header else from-above
+                                        .. from-header = "$shown, by the element's header and by this attribute; give it once"
+                                        .. from-above = "$shown, by an attribute above and by this one; remove one"
+                                    frame.diagnose(statement, .stated, program.store-atom(text))
                                     = false
                                 if fill != args.count + given
                                     = false
@@ -22059,7 +22274,7 @@ do match? tree.nodes[element]
             building = slot
             . made = make-element(element, row)
             building = around
-            frame.assign(slot, made)
+            assign-element(slot, made, element)
             . waited = unbuilt.find(slot)
             if waited != null
                 unbuilt[waited] = no-slot
@@ -22729,7 +22944,7 @@ for line in lines
             - .stated
             - program.store-atom("Repeated default slot content requires a slot binding")
         = false
-    do match? tree.nodes[parameter]
+    do match tree.nodes[parameter]
         | .node-markup-slot-parameter(written)
             if item == no-type
                 frame.diagnose
@@ -23478,7 +23693,7 @@ else if lines.length > 1 || is-control-line(lines[0])
         = invalid-type
 else
     fallback = lines[0]
-    do match? tree.nodes[fallback]
+    do match tree.nodes[fallback]
         | .node-markup(element)
             if element.slot-binding != 0
                 decline(fallback)
@@ -23511,6 +23726,9 @@ do match? tree.nodes[row.body]
         for statement in tree.children[block.body]
             do match? tree.nodes[statement]
                 | .node-assign(attribute)
+                    if attribute.op == .bind-op
+                        misplaced-binding(statement)
+                        = invalid-type
                     if styles-attribute(attribute.op, content, style-name(tree, attribute.lhs))
                         continue
                     if attribute-type(statement, attribute.op, attribute.lhs, attribute.rhs, content) == invalid-type
@@ -24712,7 +24930,7 @@ if resolution.kind != .resolve-slot || content == no-type || item == no-type
     =
 instances.set-returns(instance, content, content, .return-declared)
 . lines [SyntaxId]
-do match? tree.nodes[body]
+do match tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             lines += statement
@@ -26677,6 +26895,11 @@ _ do type-group
 ` to one, as `type-iterated-group` says, as the reference tries them in that order.
 . trigger = tree.group-trigger(head)
 . written = tree.group-stream(head)
+if tree.trigger-kind(trigger) == StateTriggerKind.state-trigger-whenever
+    . watched = watched-stream(trigger, written)
+    if watched != no-type
+        subscribe-group(owner, head, watched)
+    =
 . found = infer-found(written, Want().adding(.want-event))
 . given = found.type
 if found.event != U32.max
@@ -26700,6 +26923,14 @@ if stream == no-type
     =
 conversions.convert(trigger, written, given, stream, .reason-argument)
 facts.set-node-type(instance, trigger, stream)
+subscribe-group(owner, head, stream)
+
+────────────────────
+_ do subscribe-group
+    - owner SyntaxId
+    - head SyntaxId
+    - stream TypeId
+
 . item = first-arg(stream)
 . subscriber = types.well-known-type-of("core/stream", "Subscriber", item)
 if item == no-type || subscriber == invalid-type
@@ -26739,6 +26970,43 @@ if enqueue == no-instance
     - false
     - enqueue
 machining.groups-found += group
+
+────────────────────
+_ do watched-stream TypeId
+    - trigger SyntaxId
+    - written SyntaxId
+
+if !tracks-reads(tree, written)
+    . message = "A \"whenever\" trigger fires as what it reads with \"#\" changes, and this one reads nothing with \"#\", so it would never fire; write \"#\" before what it follows, as in \"whenever #feed\""
+    frame.diagnose(trigger, .stated, program.store-atom(message))
+    = no-type
+if types.live-action-type == invalid-type
+    decline(trigger)
+    = no-type
+. given = infer(written)
+if given == invalid-type || given == no-type
+    = no-type
+. read = demand-lambda(given, scratch.no-types)
+if read == no-instance
+    decline(trigger)
+    = no-type
+. value = instances.signatures[read].returns
+if value == invalid-type || value == no-type
+    = no-type
+. module = class-ref(types, types.live-action-type).module
+. mark = scratch.types.mark
+scratch.types.push(value)
+scratch.types.push(given)
+. watch = calls.demand-runtime-call(module, no-type, program.store-atom("watch-changes"), mark, 1)
+scratch.types.rewind(mark)
+if watch == no-instance
+    decline(trigger)
+    = no-type
+conversions.convert(trigger, written, given, instances.argument-type(watch, 0), .reason-argument)
+do facts.record-call(instance, trigger, watch, .call-function, scratch.no-fills, false)
+. stream = instances.signatures[watch].returns
+facts.set-node-type(instance, trigger, stream)
+= stream
 
 ────────────────────
 _ do machine-enqueue InstanceId
@@ -32301,21 +32569,43 @@ _ do read-unmade TypeId
 
 ` The name of a markup element of a class's markup read in a closure the markup makes before
 ` the element is made: the reference reads the receiver's property of the name when the
-` closure runs (`plan-element-property`). Where the class declares no such property, or the
-` closure has no receiver, it has no shape here, except that a closure the element's own markup
-` makes is the reference's error.
+` closure runs (`plan-element-property`). In a function's markup, the closure reads the local
+` that keeps the element when it runs (`read-later-element`), as it does the element it is an
+` attribute of.
 . self = frame.self-type
 if self != no-type && self != invalid-type && !lacks-self() && types.intrinsic-of(self) == .class
     . place = property-named(self, name)
     if place && names-element(types, types.properties[place])
+        instances.mark-may-panic(instance)
         facts.set-plan(instance, id, .plan-element-property)
         = read-property(id, id, self, name).type
-if constructs-element(slot) && !is-placed(slot)
-    . message = "Named markup element \"${name.text}\" can only be read from within its own markup in class content"
-    frame.diagnose(id, .stated, program.store-atom(message))
-    = invalid-type
+if outer && frame.is-captured(slot) && awaits-element(slot)
+    = read-later-element(id, name, slot)
 decline(id)
 = invalid-type
+
+────────────────────
+_ do read-later-element TypeId
+    - id SyntaxId
+    - name Atom
+    - slot SlotId
+
+if starts-task(slot)
+    . message = "Named markup element \"${name.text}\" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+. class = foresee-element(slot)
+if class == invalid-type || class == no-type
+    decline(id)
+    = invalid-type
+if types.completions[class].has-variables
+    . written = class-name-of(class-ref(types, class))
+    . message = "Named markup element \"${name.text}\" is read in a closure made before its markup constructs it, so it needs its type arguments written after \"$written\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+instances.mark-may-panic(instance)
+facts.set-plan(instance, id, .plan-guarded-read)
+= class
 
 ────────────────────
 _ received-parent TypeId
@@ -32538,6 +32828,29 @@ facts.collection-reads += CollectionRead(instance, id)
 = read
 
 ────────────────────
+_ do demand-track-active Bool
+
+demand-live-runtime()
+. live = instances.live
+. tracker = types.well-known-type("core/tracker", "PropertyTracker")
+if live.track-active == no-instance && live.subscribers != no-instance && tracker != invalid-type
+    . module = class-ref(types, types.live-action-type).module
+    . mark = scratch.types.mark
+    scratch.types.push(types.string-type)
+    scratch.types.push(tracker-field(tracker, "property-id"))
+    scratch.types.push(tracker-field(tracker, "subscribers"))
+    scratch.types.push(tracker-field(tracker, "owner"))
+    . active = program.store-atom("track-active-property")
+    live.track-active = calls.demand-runtime-call(module, no-type, active, mark)
+    scratch.types.rewind(mark)
+    scratch.types.push(types.well-known-type("core", "Pointer"))
+    . dependency = program.store-atom("track-active-dependency")
+    live.track-active-collection = calls.demand-runtime-call(module, no-type, dependency, mark)
+    scratch.types.rewind(mark)
+    instances.live = live
+= live.track-active != no-instance && live.track-active-collection != no-instance
+
+────────────────────
 _ do demand-track-collection Bool
 
 demand-live-runtime()
@@ -32583,7 +32896,7 @@ do match? tree.nodes[element]
         . made = make-element(element, row)
         building = around
         held.pop()
-        frame.assign(slot, made)
+        assign-element(slot, made, element)
         unbuilt[waited] = no-slot
         awaited[waited] = 0
         facts.note-raised(instance, 0, element, read)
@@ -32717,6 +33030,18 @@ do match? tree.nodes[object]
         .. not-this = bindings.slots[resolution.slot].kind != .slot-this
 
 ────────────────────
+_ do pulled-root Bool
+    - id SyntaxId
+    - object SyntaxId
+
+=? false if pipeline-of(id) == 0 && !watched(id)
+do match? tree.nodes[object]
+    | .node-identifier(row)
+        =? false if row.is-tracked
+        = bindings.resolution-of(frame.binding, object).kind == .resolve-slot
+= false
+
+────────────────────
 _ is-trackable Bool
     - slot SlotId
 
@@ -32762,7 +33087,12 @@ if !hold-subscribers(id, subscribers)
     decline(id)
     =
 . context = live-context(read-site(id))
-if context == .live-none || context == .live-whenever || regional
+if context == .live-none
+    . name = identifier-name(tree, id)
+    if name
+        untracked(id, name)
+    =
+if context == .live-whenever || regional
     =
 .. regional = context == .live-region || context == .live-gate
 if context == .live-statement
@@ -32926,7 +33256,13 @@ demand-live-runtime()
 if unit-styling.styling != 0 && tree.subtree-start(unit-styling.styling) <= id && id <= unit-styling.styling
     =
 . context = live-context(read-site(id))
+if watched(id) && demand-track-active()
+    facts.note-pulled(instance, id)
+    =
 if context == .live-none
+    untracked(id, name)
+    =
+if pulled(id, name)
     =
 if context == .live-value && is-eager-value()
     instances.mark-live(instance)
@@ -32946,6 +33282,298 @@ if context == .live-whenever
 if context == .live-region || context == .live-gate
     =
 decline(id)
+
+────────────────────
+_ do untracked
+    - id SyntaxId
+    - name Atom
+
+do match? tree.nodes[id]
+    | .node-identifier(row)
+        =? if !row.is-tracked
+=? if in-applied-value(id) || reads-slot-scope(id)
+. shown = name.text
+. message = "\"#$shown\" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write \"$shown\" to read it plainly, or read \"#$shown\" in the live value and pass it in as an argument"
+frame.diagnose(id, .stated, program.store-atom(message))
+
+────────────────────
+_ do reads-slot-scope Bool
+    - id SyntaxId
+
+. object SyntaxId = 0
+do match? tree.nodes[id]
+    | .node-get-expression(row)
+        object = row.object
+=? false if object == 0
+. scope = identifier-name(tree, object)
+=? false if !scope
+for node in id + 1 .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) <= id
+        do match? tree.nodes[node]
+            | .node-markup(row)
+                do match? tree.nodes[row.slot-parameter]
+                    | .node-markup-slot-parameter(written)
+                        =? true if identifier-name(tree, written.name) == scope
+= false
+
+────────────────────
+_ do in-applied-value Bool
+    - id SyntaxId
+
+for node in id + 1 .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) <= id && tree.nodes[node] is .node-style-rule-application
+        = true
+= false
+
+────────────────────
+_ do pipeline-of SyntaxId
+    - id SyntaxId
+
+for node in id + 1 .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) > id
+        continue
+    do match? tree.nodes[node]
+        | .node-iterator-expression(row)
+            do match? tree.nodes[row.loop]
+                | .node-loop-syntax(loop)
+                    if tree.subtree-start(loop.container) > id || id > loop.container
+                        = node
+= 0
+
+────────────────────
+_ do pulled Bool
+    - id SyntaxId
+    - name Atom
+
+. pipeline = pipeline-of(id)
+=? false if pipeline == 0
+. enclosing = outer
+if enclosing && enclosing.nested-decl-of(pipeline) == instances.rows[instance].decl
+    if enclosing.pulls-live(pipeline, id, name) && demand-track-active()
+        facts.note-pulled(instance, id)
+        = true
+unfollowed(id, name)
+= true
+
+────────────────────
+_ do watched Bool
+    - id SyntaxId
+
+. function SyntaxId = 0
+for node in id + 1 .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) <= id
+        do match? tree.nodes[node]
+            | .node-function-syntax
+                if function == 0
+                    function = node
+            | .node-state-trigger(row)
+                =? false if row.kind != .state-trigger-whenever || function == 0
+                = tree.trigger-item(node, 0) == function
+= false
+
+────────────────────
+_ do pulls-live Bool
+    - pipeline SyntaxId
+    - read SyntaxId
+    - name Atom
+
+demand-live-runtime()
+. live = instances.live
+=? false if live.enter == no-instance || live.leave == no-instance
+. context = live-context(read-site(pipeline))
+if context == .live-value && is-eager-value()
+    instances.mark-live(instance)
+else if context == .live-rule && is-rule-unit()
+    instances.mark-live(instance)
+else if context == .live-statement
+    note-live-statement(read-site(pipeline))
+else if context != .live-region && context != .live-gate
+    = false
+if pulled-pipelines.find(pipeline) == null
+    pulled-pipelines += pipeline
+    pulled-reads += read
+    pulled-names += name
+= true
+
+────────────────────
+_ do unfollowed
+    - id SyntaxId
+    - name Atom
+
+. shown = name.text
+. message = "\"#$shown\" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, as in count(each in #items when each.#is-done); write \"$shown\" to read it plainly"
+frame.diagnose(id, .stated, program.store-atom(message))
+
+────────────────────
++ do note-given
+    - call SyntaxId
+    - given SyntaxId
+    - callee InstanceId
+    - position U32
+
+if callee == no-instance || !takes-generator(instances.argument-type(callee, position))
+    =
+given-nodes += given
+given-calls += call
+given-callees += callee
+given-positions += position
+
+────────────────────
+_ takes-generator Bool
+    - type TypeId
+
+type != no-type && type != invalid-type && (same-decl(ref, types.generator-decl) || same-decl(ref, types.iterable-decl))
+
+.. ref = class-ref(types, type)
+
+────────────────────
+_ do given-index Size?
+    - node SyntaxId
+
+. index = given-nodes.length
+while index != 0
+    index -= 1
+    if given-nodes[index] == node
+        = index
+= null
+
+────────────────────
+_ do callee-use GeneratorUse
+    - callee InstanceId
+    - position U32
+
+if position >= 64
+    = .generator-kept
+demand-body(callee)
+if instances.rows[callee].state != .instance-done
+    = .generator-kept
+. bit = 1u64 /lshift/ (position as U64)
+if (instances.rows[callee].consumes /and/ bit) != 0
+    = .generator-consumed
+if (instances.rows[callee].hands-back /and/ bit) != 0
+    = .generator-returned
+= .generator-kept
+
+────────────────────
+_ do generator-use GeneratorUse
+    - node SyntaxId
+
+. given = given-index(node)
+if given != null
+    . use = callee-use(given-callees[given], given-positions[given])
+    if use == .generator-returned
+        = generator-use(given-calls[given])
+    = use
+. range = instances.rows[instance].subtree
+for id in range.start .. < range.start + range.count
+    do match? tree.nodes[id]
+        | .node-for-block(row)
+            do match? tree.nodes[row.loop]
+                | .node-loop-syntax(loop)
+                    if loop.container == node
+                        = .generator-consumed
+        | .node-unary-expression(row)
+            if row.op == .read-op && row.operand == node
+                = .generator-consumed
+        | .node-return(row)
+            if row.expr == node
+                = .generator-returned
+        | .node-yield(row)
+            if row.expr == node && row.does-yield-all
+                = .generator-returned
+        | .node-argument-decl(row)
+            if tree.subtree-start(row.pattern) <= node && node <= row.pattern
+                = .generator-consumed
+= .generator-kept
+
+────────────────────
+_ do parameter-use GeneratorUse
+    - slot SlotId
+
+. held = SlotFlag.slot-captured /or/ SlotFlag.slot-address-taken
+if (bindings.slots[slot].flags /and/ held) != 0
+    = .generator-kept
+. range = instances.rows[instance].subtree
+. use GeneratorUse = .generator-consumed
+for id in range.start .. < range.start + range.count
+    if tree.nodes[id] is .node-identifier
+        . resolution = bindings.resolution-of(frame.binding, id)
+        if resolution.kind == .resolve-slot && resolution.slot == slot
+            . found = generator-use(id)
+            if found == .generator-kept
+                = .generator-kept
+            if found == .generator-returned
+                use = .generator-returned
+if instances.rows[instance].is-generator
+    = .generator-returned
+= use
+
+────────────────────
+_ do settle-generators
+
+for index in 0 .. < pulled-pipelines.length
+    follow-pipeline(pulled-pipelines[index], pulled-reads[index], pulled-names[index])
+. consumes U64 = 0
+. hands-back U64 = 0
+. position = 0u32
+for offset in 0 .. < frame.slots.count
+    . slot = frame.slots.start + offset
+    . row = bindings.slots[slot]
+    if outer && row.scope != frame.nested-scope
+        continue
+    if row.kind != .slot-argument
+        continue
+    if position < 64 && takes-generator(instances.argument-type(instance, position))
+        . use = parameter-use(slot)
+        . bit = 1u64 /lshift/ (position as U64)
+        if use == .generator-consumed
+            consumes = consumes /or/ bit
+        else if use == .generator-returned
+            hands-back = hands-back /or/ bit
+    position += 1
+instances.rows[instance].consumes = consumes
+instances.rows[instance].hands-back = hands-back
+
+────────────────────
+_ do follow-pipeline
+    - pipeline SyntaxId
+    - read SyntaxId
+    - name Atom
+
+. node = pipeline
+. handed = no-instance
+. shown = name.text
+while true
+    . given = given-index(node)
+    if given == null && handed == no-instance
+        unfollowed(read, name)
+        =
+    if given == null
+        . message = "\"#$shown\" is read for each item of a pipeline that \"${callee-text(handed)}\" hands back without working it through, and nothing works through what it hands back as the value is made; give that to a function that works it through, as count does, or write \"$shown\" to read it plainly"
+        frame.diagnose(read, .stated, program.store-atom(message))
+        =
+    . use = callee-use(given-callees[given], given-positions[given])
+    if use == .generator-consumed
+        facts.note-pulled(instance, given-calls[given])
+        =
+    if use == .generator-kept
+        . message = "\"#$shown\" is read for each item of a pipeline that \"${callee-text(given-callees[given])}\" keeps rather than working through as it is called, so the read would not be followed; give the pipeline to a function that works it through, as count does, or write \"$shown\" to read it plainly"
+        frame.diagnose(read, .stated, program.store-atom(message))
+        =
+    handed = given-callees[given]
+    node = given-calls[given]
+
+────────────────────
+_ callee-text String
+    - callee InstanceId
+
+match program.modules[row.module].decls[row.decl]
+    | .decl-function(function)
+        function.name?.text ?? "the function"
+    ??
+        "the function"
+
+.. row = instances.rows[callee]
 
 ────────────────────
 _ read-site SyntaxId
@@ -33425,7 +34053,8 @@ while position != 0
     instances.mark-may-panic(instance)
     facts.live-statements[position] = LiveStatement(instance, id, rerun)
     = channel
-decline(id)
+. message = "A stream of a value is made only by a statement in a function's body, as in \". values = <c.#count>\"; make it there, move a machine as a value changes with a \"whenever\" trigger, as in \"then loading whenever #feed\", or publish an event from a \"whenever\" rule and loop on it"
+frame.diagnose(id, .stated, program.store-atom(message))
 = invalid-type
 
 ────────────────────
@@ -33484,14 +34113,14 @@ while position != 0
     if !declares && written != stored-value(rhs, written)
         decline(id)
         =
-    do match? tree.nodes[lhs]
+    do match tree.nodes[lhs]
         | .node-identifier
         | .node-type-capture
             if !declares
                 decline(id)
                 =
         | .node-get-expression(get)
-            do match? tree.nodes[get.object]
+            do match tree.nodes[get.object]
                 | .node-identifier
                     . owner = facts.node-type(instance, get.object)
                     if types.intrinsic-of(owner) == .class && !owns-plain-actions(owner)
@@ -35718,7 +36347,7 @@ while id >= start
         | .node-function-syntax
             nested = true
         | .node-assign
-            do match? tree.nodes[tree.holder-of(id)]
+            do match tree.nodes[tree.holder-of(id)]
                 | .node-block
                     key = U32.max
                 ??
@@ -42736,7 +43365,7 @@ if relations.reads-text-as-number(given, result) && !acts(id)
     if relation-legal(read)
         conversions.record-conversion(id, read, .reason-join, false, no-type, id)
         =
-. written = match? tree.nodes[id]
+. written = match tree.nodes[id]
     | .node-stream-transform(row)
         row.right != 0 && conversions.fitting-literal(arm-value(row.right), result)
     ??
@@ -49192,6 +49821,10 @@ _ do infer-assign TypeId
     - rhs SyntaxId
     - want Want
 
+if op == .bind-op
+    . message = "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\""
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
 do match? tree.nodes[lhs]
     | .node-tuple-syntax(row)
         if op == .eq-op
@@ -51162,6 +51795,15 @@ _ CheckerKit
 + outlet-classes [TypeId]
 + unbuilt [SlotId]
 + awaited [SyntaxId]
++ foreseen [SlotId]
++ foreseen-types [TypeId]
++ given-nodes [SyntaxId]
++ given-calls [SyntaxId]
++ given-callees [InstanceId]
++ given-positions [U32]
++ pulled-pipelines [SyntaxId]
++ pulled-reads [SyntaxId]
++ pulled-names [Atom]
 + held [SlotId]
 
 ────────────────────
@@ -51283,6 +51925,15 @@ slot-styles.clear()
 outlet-classes.clear()
 unbuilt.clear()
 awaited.clear()
+foreseen.clear()
+foreseen-types.clear()
+given-nodes.clear()
+given-calls.clear()
+given-callees.clear()
+given-positions.clear()
+pulled-pipelines.clear()
+pulled-reads.clear()
+pulled-names.clear()
 held.clear()
 
 ━━━━━━━━━━━━━━━━━━━━

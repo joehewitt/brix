@@ -1361,6 +1361,9 @@ for reverse in 1 .. < tree.root
                     - 0
                     - named
         | .node-assign(row)
+            if !defaults[id] && row.op == .bind-op && attributes[id]
+                nested = add-live(tree, id, owner, named)
+                do add-live(tree, row.lhs, owner, named, id)
             if !defaults[id] && row.op == .eq-op && (is-tracked-value || is-styled-value)
                 nested = add-live(tree, id, owner, named)
             .. is-tracked-value = reads-tracked(tree, row.rhs, row-names)
@@ -1837,11 +1840,14 @@ _ do add-live DeclId
     - id SyntaxId
     - owner DeclId
     - named SyntaxId
+    - whole SyntaxId = 0
 
 ` The function that runs a statement, an argument of a markup element, or the value of a stream
 ` of a value as it changes, again when what it read tracked changes. Its subtree is the node's,
-` whose first run is the enclosing function's.
-. start = tree.subtree-start(id)
+` whose first run is the enclosing function's, or that of the `whole` statement it is written in,
+` as for the function that stores back what a binding's element holds.
+. covered = if whole != 0 then whole else id
+. start = tree.subtree-start(covered)
 . fn = FunctionDecl
     - id
     - null
@@ -1855,7 +1861,7 @@ _ do add-live DeclId
     - CompilationEffect.none
     - false
     - 0
-    - SyntaxRange(start, id - start + 1)
+    - SyntaxRange(start, covered - start + 1)
     - RowRange'SyntaxId()
     - RowRange'SyntaxId()
     - RowRange'SyntaxId()

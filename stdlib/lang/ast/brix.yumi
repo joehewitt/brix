@@ -1246,15 +1246,18 @@ if item < close && head(item) == .param-label-head
 if item < close && (head(item) == .value-label-head || head(item) == .text-label-head)
     args = sequence-singleton(tree, multi(item + 2))
     item = tape.after(item)
+. rules-end = style-applications-end(item, close)
+. rules = style-applications(item, rules-end)
+item = rules-end
 . tag-start = item
 . tag-count Size = 0
 while item < close && head(item) == .for-label-head
     tag-count += 1
     item = tape.after(item)
-. rules-end = style-applications-end(item, close)
-. rules = style-applications(item, rules-end)
+?! attribute-order-error(item) if item < close && (is-attribute-head(head(item)) || is-late-rule)
+.. is-late-rule = tag-count != 0 && head(item) == .style-apply-head
 . tags = theme-tag-bindings(tag-start, tag-count)
-. body = optional-block(begin, index, rules-end, close)
+. body = optional-block(begin, index, item, close)
 . loc = located(begin, index)
 = tree.append
     - ASTMarkup
@@ -1266,6 +1269,22 @@ while item < close && head(item) == .for-label-head
         - tree.store-optional-children(args)
         - tree.store-optional-children(rules)
         - theme-tag-body(tree, loc, type, tags, body)
+
+────────────────────
+_ is-attribute-head Bool
+    - kind BrixHead
+
+is-named || is-valued || kind == .for-label-head
+.. is-named = kind == .id-label-head || kind == .slot-label-head || kind == .param-label-head
+.. is-valued = kind == .value-label-head || kind == .text-label-head
+
+────────────────────
+_ attribute-order-error YumiSyntaxError
+    - index Index
+
+YumiSyntaxError(MatchLocation(place, place), "(${tape.atom-text(index + 1)} …) is out of order. An element's attributes follow its type in this order: (id: …), (slot: …), (param: …), (value: …) or (text: …), then its (• …) rules, then (for: …).")
+
+.. place = tape.token-location(index)
 
 ────────────────────
 _ do theme-tag-bindings ImmutableArray'SyntaxId? ?! YumiSyntaxError
@@ -1479,6 +1498,9 @@ if atom-is(kind, "if-match")
             - .state-trigger-if-match
             - tree.store-child(tree.append(ASTStateMatchExpression(loc, subject, matched)))
 =? tree.append(ASTStateTrigger(loc, .state-trigger-if, tree.store-child(expression(first)))) if atom-is(kind, "if")
+if atom-is(kind, "whenever")
+    . closure = make-closure(tree, loc, false, null, expression(first))
+    = tree.append(ASTStateTrigger(loc, .state-trigger-whenever, tree.store-child(closure)))
 = tree.append(ASTStateTrigger(loc, .state-trigger-when-stream, tree.store-child(expression(first))))
 
 ────────────────────
@@ -3170,6 +3192,8 @@ do match? kind
 if assign-op != .no-op && tape.after(first) < close
     . left = expression(first)
     . right = multi(tape.after(first))
+    if assign-op == .bind-op && !is-place(right)
+        ?! YumiSyntaxError(tree.location(right), "The place of “<->” is a name or a chain of members, written without “#”, as in “(<-> value (. settings volume))”")
     = make-assignment(tree, located(begin, index), assign-op, left, right, is-optional(index))
 = expression-from(index, kind, begin)
 
@@ -3310,6 +3334,8 @@ do match? kind
         =? prefix(index, begin, .negative-op) if tape.after(first) >= close
     |= .subtract-assign-head
         =? prefix(index, begin, .delete-op) if tape.after(first) >= close
+    |= .markup-head
+        ?! inline-markup-error(index)
 . assign-op = brix-assign-operator(kind)
 if assign-op != .no-op && tape.after(first) < close
     . left = expression(first)
@@ -4069,6 +4095,8 @@ if lead == 46
 =? tree.append(ASTTypeEquality(loc, tree.append(ASTIdentifier(loc, tree.atom-bytes(bytes, first + 1, last), false)), false)) if lead == 36
 if lead == 39 && !(last - first > 2 && bytes[first + 1] == 39)
     = tree.append(ASTTypeEquality(loc, atom-expression(index), false))
+=? tree.append(ASTTypeEquality(loc, identifier(index), false)) if is-bool
+.. is-bool = atom-is(index, "true") || atom-is(index, "false")
 =? reduce-type(index) if is-type-name(index)
 = tree.append(ASTTypeCapture(loc, identifier(index), 0))
 
@@ -4339,6 +4367,25 @@ MatchLocation(begin, TokenLocation(end.line, end.column - 1))
 .. end = tape.token-end-location(index)
 
 ────────────────────
+_ inline-markup-error YumiSyntaxError
+    - index Index
+
+YumiSyntaxError(MatchLocation(place, place), "(<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or a bullet, as in (bullet (<> …)); or name it with (let name (<> …)) first.")
+
+.. place = tape.token-location(index)
+
+────────────────────
+_ do is-place Bool
+    - node SyntaxId
+
+do match? tree.nodes[node]
+    | .node-identifier(row)
+        = !row.is-tracked
+    | .node-get-expression(row)
+        = !row.is-tracked && !row.is-optional && !row.is-loop && is-place(row.object)
+= false
+
+────────────────────
 _ unsupported-error YumiSyntaxError
     - index Index
 
@@ -4408,6 +4455,8 @@ match kind
         .concat-eq-op
     |= .write-all-head
         .write-all-op
+    |= .bind-head
+        .bind-op
     ??
         .no-op
 

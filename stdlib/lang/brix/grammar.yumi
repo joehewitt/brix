@@ -284,6 +284,8 @@
         bx.many(values)
 
 .. state-trigger ImmutableTableRow'SourceNode ~
+    ~ // "whenever" // watched \bulleted-expression
+        bx.form(location, "trigger", bx.atom(location, "whenever"), watched)
     ~ // "for" // pattern \structure-pattern // "on" // stream \bulleted-expression guard \state-when-guard?
         bx.form(location, "trigger", bx.atom(location, "for"), pattern, stream, guard)
     ~ // "when" // guard \state-guard-expression // "on" // stream \bulleted-expression
@@ -1707,7 +1709,7 @@
     ~ "<+" // "(" name \identifier ")"
         bx.form(location, "<+", name)
     ~ "<" t \type-arguments head \markup-head? param \markup-slot-content-parameter? args \markup-args? rules \style-rule-applications? tags \theme-tag-bindings? body \block?
-        bx.form(location, "<>", t, head, param, args, tags, rules, bx.body(body))
+        bx.form(location, "<>", t, head, param, args, rules, tags, bx.body(body))
 
 .. markup-head ImmutableTableRow'SourceNode ~
     ~ // !\theme-tag-keyword id \identifier slot-binding \markup-slot-binding-after-id?
@@ -1785,12 +1787,22 @@
         bx.completed(location, expr, call)
 
 .. call-right ImmutableTableRow'SourceNode ~
+    ~ // "<->" // place \bind-place
+        bx.pair(location, "<->", place)
     ~ // op \assign-operator is-optional "?"? right \block-or-expression
         bx.pair(location, if is-optional then "$op?" else op, right)
     ~ params \type-argument* args \call-tail-arguments
         bx.partial(location, bx.many(params), args)
     ~ / body \block
         bx.partial(location, null, body)
+
+.. bind-place ImmutableTableRow'SourceNode ~
+    ~ first \identifier links \bind-link*
+        bx.access(location, first, links)
+
+.. bind-link ImmutableTableRow'SourceNode ~
+    ~ "." n \name
+        bx.pair(location, ".", bx.atom(location, n))
 
 .. call-tail-arguments ImmutableTableRow'SourceNode ~
     ~ leading \inline-call-argument* trailing \block-call-argument?

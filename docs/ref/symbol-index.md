@@ -30,6 +30,7 @@ are given.
 | `<-` | `(<- target value)`, `(<- source)` | Sends a value to a stream or channel, and reads one. | [Targets](streams.md#targets), [Channels](concurrency.md#channels) |
 | `?<-` | `(?<- target value)` | Sends to a channel that may be `null`. | [Channels](concurrency.md#channels) |
 | `<-*` | `(<-* target values)` | Sends every value of a stream. | [Targets](streams.md#targets) |
+| `<->` | `(<-> property place)` | Binds a property of a markup element to a place both ways. | [Bindings](markup.md#bindings) |
 | `..`, `..<` | `(.. a b)`, `(..< a b)` | Ranges, through and up to the end. | [Ranges](control-flow.md#ranges), [Ranges as values](collections.md#ranges-as-values) |
 | `...` | `(... a)` | A range with no end. | [Ranges](literals.md#ranges) |
 | `.` | `(. object name)` | A member. | [Using members](types.md#using-members) |

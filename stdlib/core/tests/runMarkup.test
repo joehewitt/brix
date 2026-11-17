@@ -449,7 +449,7 @@ Exception: Content not accepted
 :----
 %crash
 
-Exception: Property "b" not found
+Exception: Property "b" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: "do b = …"
 <no file:3>
         b = 10
         ^
@@ -471,7 +471,7 @@ Exception: Property "b" not found
 :----
 %crash
 
-Exception: Redefining variable in same scope
+Exception: Parameter "text" is given twice, by the element's header and by this attribute; give it once
 <no file:3>
         text = "x"
         ^^^^^^^^^^
@@ -495,7 +495,7 @@ Exception: Redefining variable in same scope
 :----
 %crash
 
-Exception: Redefining variable in same scope
+Exception: Parameter "text" is given twice, by an attribute above and by this one; remove one
 <no file:4>
         text = "y"
         ^^^^^^^^^^
@@ -3360,7 +3360,8 @@ markup-mount-root(this, this)
 2
 ;====
 :====
-# A closure an attribute gives reads a tracked property plainly when it runs.
+# A tracked read in a closure an attribute gives is an error, as the closure runs outside the
+# attribute's live value.
 
 /core/tests/support/markup-fixtures
 
@@ -3406,10 +3407,12 @@ if callback
 seen = text
 
 :----
+%crash
 
-count 1
-count 4
-count 6
+Exception: "#count" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write "count" to read it plainly, or read "#count" in the live value and pass it in as an argument
+<no file:37>
+            run = => do note("count ${#count}")
+                                      ^^^^^^
 ;====
 :====
 # An attribute a setter answers is given again when the tracked state its value reads changes.
@@ -3916,7 +3919,7 @@ Exception: Markup element <Row gives no value for "index", which the constructor
 ━━━━━━━━━━━━━━━━━━━━
 + Demo is Box
 
-+ count => pane.#value
++ count => pane.value
 
 ────────────────────
 
@@ -4087,4 +4090,672 @@ demo.markup-batch-queue.checkpoint()
 loose 3
 held 0
 held 3
+;====
+:====
+# A tracked read of each item of a pipeline that a call in an attribute works out is followed: the
+# attribute is given again as an item changes.
+
+/core/tests/support/markup-fixtures
+/stream/aggregate
+
+. source = Source()
+<Counter c
+    value = count(each in source.#items when each.#is-pending)
+
+-- c.value
+source.items[0].is-pending = false
+-- c.value
+source.items[1].is-pending = false
+-- c.value
+. added = Item()
+source.items += added
+-- c.value
+added.is-pending = false
+-- c.value
+source.items[0].is-pending = true
+-- c.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Item
+
++ is-pending = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ items = [Item(), Item()]
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter is Box
+
++ value = 0
+
+:----
+
+2
+1
+0
+1
+0
+1
+;====
+:====
+# A closure in a function's markup reads a named element the function makes after it, a child of
+# its own element included, when it runs. So does a task the closure starts.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+<Box tool
+    run = => do -- "tool reads ${seed.text}"
+    <Box seed
+        text = "seed"
+    <Box go
+        run = => do
+            do new
+                -- "task reads ${note.text}"
+    <Box note
+        text = "note"
+tool.fire()
+go.fire()
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+:----
+
+tool reads seed
+task reads note
+;====
+:====
+# Two closures in a function's markup read each other's elements, and a closure reads the element
+# it is an attribute of.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+<Box
+    <Box yes
+        text = "yes"
+        run = => do -- "yes reads ${no.text}"
+    <Box no
+        text = "no"
+        run = => do -- "no reads ${yes.text} and ${no.text}"
+yes.fire()
+no.fire()
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+:----
+
+yes reads no
+no reads yes and no
+;====
+:====
+# A closure in a function's markup that runs before the element it reads is made panics.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+<Box
+    <Box first
+        run = => do -- "first reads ${second.text}"
+    <Box middle
+        text = call-first(first)
+    <Box second
+        text = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-first String
+    - box Box
+
+box.fire()
+= "middle"
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+:----
+%crash-stderr
+
+Unhandled panic: Named markup element "second" is read before its markup constructs it
+<no file:9>
+
+Task 1
+
+Stack trace:
+  0  __source__:run no file:9:39
+  1  __source__:runCasting no file:9:9
+  2  __source__:Box:fire no file:35:5
+  3  __source__:call-first no file:19:1
+  4  __source__:run no file:11:16
+  5  __source__:main no file:2:1
+  6  __source__:init.__source__ no file
+  7  __source__:yumi.main no file
+;====
+:====
+# A closure in class content that runs before the element it reads is made panics.
+
+. panel = Panel()
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <Box first
+        run = => do -- "first reads ${second.text}"
+    <Box middle
+        text = call-first(first)
+    <Box second
+        text = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-first String
+    - box Box
+
+box.fire()
+= "middle"
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+:----
+%crash-stderr
+
+Unhandled panic: Named markup element "second" is read before its markup constructs it
+<no file:11>
+
+Task 1
+
+Stack trace:
+  0  __source__:run no file:11:39
+  1  __source__:runCasting no file:11:9
+  2  __source__:Box:fire no file:37:5
+  3  __source__:call-first no file:21:1
+  4  __source__:content no file:13:16
+  5  __source__:Panel:Panel no file:5:1
+  6  __source__:main no file:2:11
+  7  __source__:init.__source__ no file
+  8  __source__:yumi.main no file
+;====
+:====
+# A task a function starts before its markup cannot read an element the markup makes, as the task
+# keeps what it reads when it starts.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+do new
+    -- note.text
+<Box
+    <Box note
+        text = "note"
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+:----
+%compile-error
+
+Exception: Named markup element "note" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup
+<no file:8>
+        -- note.text
+           ^^^^
+;====
+:====
+# A closure that reads an element made after it needs the element's type arguments written.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+<Box
+    <Box go
+        run = => do -- "go reads ${held.value}"
+    <Holder held = 3
+go.fire()
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ run Doer?
++ text = "box"
+
+────────────────────
++ do this += child Box
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'T is Box
+
++ value T
+
+────────────────────
++ This
+    - value T
+
+:----
+%compile-error
+
+Exception: Named markup element "held" is read in a closure made before its markup constructs it, so it needs its type arguments written after "Holder"
+<no file:9>
+            run = => do -- "go reads ${held.value}"
+                                       ^^^^
+;====
+:====
+# A binding with no batch root stores back as the element changes, before the statement that
+# changed it goes on. Its place may be a local.
+
+. level = 5
+<Knob knob
+    value <-> level
+-- "${level} ${knob.value}"
+knob.turn(3)
+-- "${level} ${knob.value}"
+level = 7
+-- "${level} ${knob.value}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob
+
++ value = 0
+
+────────────────────
++ do turn
+    - next Int
+
+value = next
+:----
+
+5 5
+3 3
+7 7
+;====
+:====
+# A binding's place may be a member of another object. A binding converts each way, and where the
+# element holds a number the conversion loses something of, the element is given back what the
+# place holds.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. settings = Settings()
+. panel = Panel(settings)
+-- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
+panel.dial.turn(3)
+panel.knob.turn(2.6)
+-- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
+panel.knob.turn(2.2)
+-- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
+settings.volume = 9
+-- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Settings
+
++ volume = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ Steps is (n Int)
+
+────────────────────
++ to F64
+
+n as F64
+
+────────────────────
++ from value F64
+
+Steps(value as Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Dial is Box
+
++ value = 0
+
+────────────────────
++ do turn
+    - next Int
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob is Box
+
++ value = 0.0
+
+────────────────────
++ do turn
+    - next F64
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ settings Settings
++ steps = Steps(1)
+
+────────────────────
++ This
+    - settings
+
+────────────────────
+
+<This
+    <Dial dial
+        value <-> settings.volume
+    <Knob knob
+        value <-> steps
+:----
+
+5 5 1 1
+3 3 2 2
+3 3 2 2
+9 9 2 2
+;====
+:====
+# A binding in a row of a keyed loop binds that row's item, also after the rows move.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. list = Mixer()
+-- list.state()
+list.knob(1).turn(9)
+-- list.state()
+list.tracks = list.tracks.reversed()
+-- list.state()
+list.knob(0).turn(4)
+-- list.state()
+list.tracks[1].level = 6
+-- list.state()
+
+━━━━━━━━━━━━━━━━━━━━
++ Track
+
++ name String
++ level = 0
+
+────────────────────
++ This
+    - name
+    - level
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob is Box
+
++ value = 0
+
+────────────────────
++ do turn
+    - next Int
+
+value = next
+
+━━━━━━━━━━━━━━━━━━━━
++ Mixer is Box
+
++ tracks = [Track("a", 1), Track("b", 2)]
+
+────────────────────
++ do knob Knob
+    - index Int
+
+= (%first-child!.child-at(index))! as Knob
+
+────────────────────
++ do state String
+
+. parts [String]
+for track in tracks
+    parts += "${track.name}=${track.level}"
+for index in 0 .. < 2
+    parts += "k${knob(index).value}"
+= " ".join(parts)
+
+────────────────────
+
+<This
+    for track in #tracks keyed by track.name
+        <Knob
+            value <-> track.level
+:----
+
+a=1 b=2 k1 k2
+a=1 b=9 k1 k9
+b=9 a=1 k9 k1
+b=4 a=1 k4 k1
+b=4 a=6 k4 k6
+;====
+:====
+# A binding written outside a markup element's body is reported.
+
+. a = 1
+. b = 2
+a <-> b
+-- a
+:----
+%crash
+
+Exception: "<->" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write "="
+<no file:4>
+    a <-> b
+    ^^^^^^^
+;====
+:====
+# A root <This> cannot bind, since its attributes give the object's own properties their first
+# values.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. p = Panel()
+-- p.level
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ level = 1
++ other = 2
+
+────────────────────
+
+<This
+    level <-> other
+:----
+%crash
+
+Exception: A root <This> cannot bind with "<->", since its attributes give the object's own properties their first values; bind the property where the object is made
+<no file:17>
+        level <-> other
+        ^^^^^^^^^^^^^^^
+;====
+:====
+# A binding follows a property the element stores, so one a getter answers is reported, and so is
+# a name of no property, as a parameter of the constructor alone is.
+
+. level = 1
+<Knob knob
+    shown <-> level
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob
+
++ stored = 0
+
+────────────────────
++ get shown Int
+
+stored
+:----
+%crash
+
+Exception: "<->" binds a property the element stores, and Knob answers "shown" with a getter or a setter, which a binding cannot follow; bind a property Knob stores
+<no file:4>
+        shown <-> level
+        ^^^^^
+;====
+:====
+
+. level = 1
+<Knob knob
+    start <-> level
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob
+
++ value = 0
+
+────────────────────
++ This
+    - start Int
+
+value = start
+:----
+%crash
+
+Exception: "<->" binds a property of the element, and Knob has no property "start"
+<no file:4>
+        start <-> level
+        ^^^^^
+;====
+:====
+# A binding converts each way on its own, and a value that converts only when asked is reported
+# where the binding is written, or where it names the property for the way back.
+
+. level = 1
+<Knob knob
+    value <-> level
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob
+
++ value = 0.0
+:----
+%crash
+
+Exception: "<->" needs each side to become the other on its own, and I64 becomes F64 only when asked; bind a place of the property's type
+<no file:4>
+        value <-> level
+        ^^^^^^^^^^^^^^^
+;====
+:====
+
+. level = 1i32
+<Knob knob
+    value <-> level
+
+━━━━━━━━━━━━━━━━━━━━
++ Knob
+
++ value = 0
+:----
+%crash
+
+Exception: "<->" needs each side to become the other on its own, and I64 becomes I32 only when asked; bind a place of the property's type
+<no file:4>
+        value <-> level
+        ^^^^^
+;====
+:====
+# A slot outlet cannot bind, since what fills the slot is made elsewhere.
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+. p = Panel()
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ caption = "a"
+
+────────────────────
++ <TextBox footer
+    text <-> caption
+:----
+%crash
+
+Exception: A slot outlet cannot bind with "<->", since what fills the slot is made elsewhere; bind the property in the element that fills it
+<no file:14>
+        text <-> caption
+        ^^^^^^^^^^^^^^^^
 ;====

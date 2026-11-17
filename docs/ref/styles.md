@@ -220,7 +220,7 @@ A rule's rows are assignments, `(= property value)`, nested rules, states and ge
   `Style property "pad" is not @inherited, so it cannot be assigned "inherit"`.
 - **Properties a rule may set** are those of the styles the element's class uses and those the
   visible sheets use. Setting any other name in a sheet rule is `Not supported`; in markup it is
-  `Property "colour" not found`.
+  `Property "colour" not found; …`, which says how to assign a local instead.
 
 ## Which value wins
 
@@ -474,7 +474,7 @@ elements it makes.
   (let late false)
   (<> Page (id: page)
     (<> Line (text: "day"))
-    (<> Line (text: "night") (for: dark) (• loud))
+    (<> Line (text: "night") (• loud) (for: dark))
     (<> Line (text: "dusk") (for: dark #late))
   )
   (call (. page show))
@@ -951,7 +951,7 @@ defines. Its `motion` builds a `Motion` that can be sampled at a time:
 ## How styles reach elements
 
 - **Using.** A class takes a style's properties with `using`. Without it, setting the property is
-  `Property "tone" not found` and reading it `Style property "tone" not found`. `using` names a
+  `Property "tone" not found; …` and reading it `Style property "tone" not found`. `using` names a
   style or a sheet; anything else is `Using target must be a Style or StyleSheet`. An interface can
   name styles with `using`, and a class that implements it must use them:
   `Chip must use TintStyle to implement Tinted`.

@@ -883,3 +883,61 @@ Exception: This match on Bag does not handle .many; add a case for it, or "??" f
         | .none
         ^^^^^^
 ;====
+:====
+# `true` and `false` in a pattern are literals, so they match an equal value, as `|= true` does.
+
+. flag = false
+. result = match flag
+    | true
+        "yes"
+    | false
+        "no"
+-- result
+-- classify(false, true)
+-- classify(true, false)
+-- classify(true, true)
+-- named(3)
+
+━━━━━━━━━━━━━━━━━━━━
+_ classify String
+    - valid Bool
+    - many Bool
+
+match valid, many
+    | false, _
+        "invalid"
+    | _, false
+        "few"
+    ??
+        "many"
+
+━━━━━━━━━━━━━━━━━━━━
+_ named String
+    - true-count Int
+
+match true-count
+    | falsey
+        "n=$falsey"
+
+:----
+
+no
+invalid
+few
+many
+n=3
+;====
+:====
+
+do match true
+    | true
+        -- "true"
+
+:----
+%crash
+
+Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
+<no file:3>
+        | true
+        ^^^^^
+;====

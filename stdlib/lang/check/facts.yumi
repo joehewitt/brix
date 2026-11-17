@@ -571,10 +571,11 @@ form != .call-truth && form != .call-operand-truth && !made && !listed
 `   type have `plan-unlike`. The `==` the type of such values declares is recorded at the
 `   node, as the reference records it, and is never called.
 ` - `plan-guarded-read`: the node reads a global that may have no value yet where the read
-`   stands, or the property a markup element written in an `if` or a `match` of a class's
-`   markup declares, which holds nothing until a branch makes the element: the read is
-`   checked, and panics when it has none. An assigning operator has this plan at the place it
-`   assigns.
+`   stands, the property a markup element written in an `if` or a `match` of a class's
+`   markup declares, which holds nothing until a branch makes the element, or the local of a
+`   markup element of a function's markup that a closure made before the element reads: the
+`   read is checked, and panics when it has none. An assigning operator has this plan at the
+`   place it assigns.
 ` - `plan-type-base`: the node reads the base of a type given as a value: its answer is the
 `   type the node has.
 ` - `plan-concrete-name`, `plan-concrete-key`: the node reads the name or the key of the
@@ -606,7 +607,7 @@ form != .call-truth && form != .call-operand-truth && !made && !listed
 `   which runs its body as content as a `for` does.
 ` - `plan-element-property`: the node names a markup element of a class's markup, read in a
 `   closure the markup makes before the element is made: the receiver's property of the name
-`   is read when the closure runs, as the reference reads it.
+`   is read when the closure runs, as the reference reads it, and panics where it holds nothing.
 ` - `plan-builder-append`, `plan-builder-reserve`: the node calls `append` of an item or
 `   `reserve` of a builder an arena backs, which the compiler answers where it is called, as
 `   TypeScript does: the storage grows in the arena, with the panics of its growth, and its
@@ -2410,6 +2411,12 @@ plan == .plan-store-untraced || plan == .plan-table || relates || sides || objec
 + site SyntaxId
 
 ━━━━━━━━━━━━━━━━━━━━
++ PulledSite is Struct
+
++ instance InstanceId
++ site SyntaxId
+
+━━━━━━━━━━━━━━━━━━━━
 + TrackedLocals is Struct
 
 ` The first node of an instance that reads one of its locals tracked, where the reference
@@ -2817,6 +2824,7 @@ _ deferred-rows Map'Size'U32'ArenaBacking
 + live-statements List'LiveStatement'ArenaBacking
 + tracked-locals List'TrackedLocals'ArenaBacking
 + collection-reads List'CollectionRead'ArenaBacking
++ pulled-sites List'PulledSite'ArenaBacking
 + event-uses List'EventUse'ArenaBacking
 + markup-reads List'MarkupRead'ArenaBacking
 + element-roots List'ElementRoot'ArenaBacking
@@ -3065,6 +3073,7 @@ _ const-array-keys IdMap
 .. live-statements = List'LiveStatement(arena)
 .. tracked-locals = List'TrackedLocals(arena)
 .. collection-reads = List'CollectionRead(arena)
+.. pulled-sites = List'PulledSite(arena)
 .. event-uses = List'EventUse(arena)
 .. markup-reads = List'MarkupRead(arena)
 .. element-roots = List'ElementRoot(arena)
@@ -4806,6 +4815,24 @@ for row in collection-reads
     if row.instance == instance && row.site == site
         = true
 = false
+
+────────────────────
++ do pulls Bool
+    - instance InstanceId
+    - site SyntaxId
+
+for row in pulled-sites
+    if row.instance == instance && row.site == site
+        = true
+= false
+
+────────────────────
++ do note-pulled
+    - instance InstanceId
+    - site SyntaxId
+
+=? if pulls(instance, site)
+pulled-sites += PulledSite(instance, site)
 
 ────────────────────
 + do tracked-locals-from SyntaxId
@@ -6595,6 +6622,9 @@ for position in 0 .. < tracked-locals.length
 for position in 0 .. < collection-reads.length
     if held-by(retired, collection-reads[position].instance)
         collection-reads[position].instance = dead
+for position in 0 .. < pulled-sites.length
+    if held-by(retired, pulled-sites[position].instance)
+        pulled-sites[position].instance = dead
 for position in 0 .. < event-uses.length
     if held-by(retired, event-uses[position].instance)
         event-uses[position].instance = dead
@@ -7346,6 +7376,7 @@ markup += region-roots.length + whenever-calls.length + query-targets.length
 markup += markup-queries.length + query-registrations.length + markup-rules.length
 . tracked = live-statements.length + subscriptions + tracked-locals.length + latest-reads.length
     .. subscriptions = owned-subscriptions.length
+tracked += pulled-sites.length
 . events = event-uses.length + event-closers.length
 events += (if event-close != no-instance then 1u32 else 0u32) + (if event-register != no-instance then 1u32 else 0u32)
 events += if event-register-arrival != no-instance then 1u32 else 0u32
@@ -7409,7 +7440,7 @@ markup += whenever-call-count + raised-elements.length + named-stores.length + e
     .. whenever-call-count = whenever-calls.length
 markup += deferred-values.length
 . tracked = change-tests.length + owned-subscriptions.length + latest-reads.length
-tracked += live-statements.length + tracked-locals.length
+tracked += live-statements.length + tracked-locals.length + pulled-sites.length
 . styles = style-declarations.length + style-authors.length + style-writes.length
 styles += style-static-values.length + scope-cells.length + scope-values.length
 styles += carried-values.length + carried-cells.length + outlet-cells.length + slot-forwards.length
@@ -8939,6 +8970,9 @@ for row in peer.row-item-reads
 for row in peer.collection-reads
     if ids.owns(row.instance)
         collection-reads += CollectionRead(ids.instance(row.instance), row.site)
+for row in peer.pulled-sites
+    if ids.owns(row.instance)
+        pulled-sites += PulledSite(ids.instance(row.instance), row.site)
 for row in peer.event-uses
     if ids.owns(row.instance)
         . fact = row as EventUse

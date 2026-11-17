@@ -4114,7 +4114,7 @@ do new
 ────────────────────
 + summary String
 
-"${shown.text}:${#is-busy}"
+"${shown.text}:${is-busy}"
 
 ────────────────────
 
@@ -5831,4 +5831,124 @@ Exception: Case ".valid" not found: I64 has no cases
 <no file:6>
         ~> b for .valid(x) on nums
                  ^^^^^^^^^
+;====
+:====
+# A whenever trigger moves a machine as what its value reads with "#" changes, while its case is
+# active. Entering the case, storing the value a property already holds, or a change that leaves the
+# value as it was moves nothing, and a change while another case is active is dropped. The value is
+# read only while its case is active.
+
+. w = Watcher()
+w.feed = 5
+w.go <- true
+do new
+    -- "entered ${w.flow is .watching}"
+    w.feed = 5
+    do new
+        -- "same value ${w.flow is .watching}"
+        w.feed = 4
+        do new
+            -- "same result ${w.flow is .watching}"
+            w.extra = 3
+            do new
+                -- "changed ${w.flow is .idle}"
+                w.feed = 9
+                do new
+                    -- "while idle ${w.flow is .idle}"
+                    w.go <- true
+                    do new
+                        -- "entered again ${w.flow is .watching}"
+                        w.feed = 1
+                        do new
+                            -- "again ${w.flow is .idle}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Watcher
+
++ event go Bool
++ feed = 1
++ extra = 0
+
+────────────────────
++ flow ~>
+
+~> idle
+~> watching on go
+    then idle whenever noted(#feed + #extra) > 6
+
+━━━━━━━━━━━━━━━━━━━━
++ do noted Int
+    - n Int
+
+-- "read $n"
+= n
+
+:----
+
+read 5
+entered true
+same value true
+read 4
+same result true
+read 7
+changed true
+while idle true
+read 12
+entered again true
+read 4
+again true
+;====
+:====
+# A whenever trigger in a machine a function holds in a local follows another object's property.
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+. box = Box()
+. flow ~>
+    ~> watching
+        then done whenever box.#feed
+    ~> done
+        do
+            -- "done"
+-- flow is .watching
+do new
+    box.feed = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ feed = 1
+
+:----
+
+true
+done
+;====
+:====
+# A whenever trigger that reads nothing with "#" is reported, as it would never fire.
+
+. w = Watcher()
+
+━━━━━━━━━━━━━━━━━━━━
++ Watcher
+
++ feed = 1
+
+────────────────────
++ flow ~>
+
+~> idle
+~> watching
+    then idle whenever feed
+
+:----
+%crash
+
+Exception: A "whenever" trigger fires as what it reads with "#" changes, and this one reads nothing with "#", so it would never fire; write "#" before what it follows, as in "whenever #feed"
+<no file:14>
+        then idle whenever feed
+                 ^^^^^^^^^^^^^^
 ;====

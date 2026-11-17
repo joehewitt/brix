@@ -114,6 +114,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - **Child**: A row inside markup. Includes Step and Row and Value.
 - **Attr**: An attribute of a markup element.
 - **Use**: A style rule applied to an element or inside a rule.
+- **Tag**: A theme tag of a markup element.
 - **Style**: A row of a style sheet or style rule.
 - **State**: A row of a state machine.
 - **Trigger**: What moves a state machine or a rule.
@@ -480,7 +481,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 
 ### Markup
 
-- `(<> type:Type attr:Attr* use:Use* row:Child*)` is Step, Value, Expr, Child, Style. An element: its type, its attributes, the style rules it uses, then its properties and children.
+- `(<> type:Type attr:Attr* use:Use* tag:Tag* row:Child*)` is Step, Value, Expr, Child, Style. An element: its type, its attributes, the style rules it uses, its theme tags, then its properties and children.
 - `(+<> type:Type attr:Attr* use:Use* row:Child*)` is Step, Child. Declares a slot: a named place in a component that a caller fills with an element of this type. Its rows give the default content and the properties applied to what fills it.
 - `(<+ name:Name)` is Step, Child. Passes the content the caller gave for the named slot on to the element this row is inside.
 - `(id: name:Name)` is Attr. The name the element is known by.
@@ -488,7 +489,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(param: name:Name type:Type?)` is Attr. A value the slot passes in.
 - `(value: value:Expr)` is Attr. The element's main value.
 - `(text: part:Any+)` is Attr, Arg. The element's text.
-- `(for: tag:Name value:Expr?)` is Attr. A theme tag the element sets for itself and what is beneath it: on, or as the value says, which may read tracked state. A null value inherits the tag.
+- `(for: tag:Name value:Expr?)` is Tag. A theme tag the element sets for itself and what is beneath it: on, or as the value says, which may read tracked state. A null value inherits the tag.
 - `(• name:Name argument:Expr* guard:UseIf?)` is Use, Style, Child. Use a style rule.
 - `(if: condition:Expr)` is UseIf. Use the rule only when the condition holds.
 - `(:label value:Expr/Block?)` is Child. A property set by name.

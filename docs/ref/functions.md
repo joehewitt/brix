@@ -952,6 +952,6 @@ After its annotations, a function's header can take a `(without …)` part and `
   around it would, the first outermost, so a later value can read an earlier one. It needs a
   `fn-do`.
 - **Blocks.** A `(do …)` takes the same parts after its annotations, as in
-  `(do (without gc) (with depth 3) …)`{.brix}. There `(without cancel)` is also accepted, and
+  `(do (without gc) (with depth 3) …)`. There `(without cancel)` is also accepted, and
   changes nothing yet. A `(do …)` kept from anything but `gc` runs in place: the functions it
   calls are kept from the same, and its loops poll only as far as that allows.

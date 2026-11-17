@@ -1493,6 +1493,13 @@ if gives
         .. prior = Slot(.slot-local, previous-name, statement, current-scope, decl, 0, replaced)
 note-reads(statement, slots, gives)
 capture-in(statement, slots)
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        if row.op == .bind-op && nested-decl-for(row.lhs) != 0
+            . written = bindings.resolution-of(binding, row.rhs)
+            if written.kind == .resolve-slot
+                bindings.mark-slot(written.slot, SlotFlag.slot-assigned)
+            capture-in(row.lhs, slots)
 
 ────────────────────
 _ do keep-received Void

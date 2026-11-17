@@ -73,8 +73,8 @@ Lunch
 ```
 
 An element is `(<> Type …)`, in rows `<Type`{.rows}. After the type come, in this order, the
-element's name, the slot it fills, a parameter, its value, theme tags, style rules, and then its
-rows.
+element's name, the slot it fills, a parameter, its value, style rules, theme tags, and then its
+rows. Rows write them in the same order.
 
 | Form | Rows | Gives the element |
 | --- | --- | --- |
@@ -83,8 +83,8 @@ rows.
 | `(param: who)` | `<Text (row) - who`{.rows} | The name of a value a repeated slot passes it. |
 | `(value: 3)` | `<Count = 3`{.rows} | Its constructor's first argument. |
 | `(text: "Lunch")` | `<Menu "Lunch"`{.rows} | The same, for a text. |
-| `(for: dark)` | | A theme tag; see Styles. |
 | `(• loud)` | `<Card • loud`{.rows} | A style rule it uses; see Styles. |
+| `(for: dark)` | `<Card • loud for dark`{.rows} | A theme tag; see Styles. |
 
 - **Making.** An element calls a constructor of its class. Its value and its attributes fill the
   constructor's parameters by position and by name, and parameters with defaults may be left out.
@@ -102,16 +102,29 @@ rows.
 
 ### Where elements go
 
-An element is a value. It can be a row of a body, the value of a `let`, `lazy`, `=` or `return`,
-the body of a `fn-expr`, or an attribute's value. It cannot yet be written among a call's arguments,
-a list's items or the operands of an `if-expr`: `Brix form “(<> …)” is not supported yet`. Name it
-or bind it with `let` first.
+An element is a value. It can be written wherever a row can:
+
+- a row of a body, or the body of a `fn-expr`;
+- the value of a `let`, `lazy`, `=`, `return` or attribute;
+- a positional argument written as a row, `(call show (block (arg (<> Text))))`{.brix}, in rows
+  `- <Text`{.rows} below the call;
+- a named argument, `(call show (:t (<> Text)))`{.brix}, in rows `show • t <Text`{.rows};
+- an item of a list built from bullets, `(bullet (<> Text))`{.brix}, in rows `* <Text`{.rows};
+- the value of a `match` arm.
+
+It cannot be written inside an expression: among the arguments in `(call …)`, the items of
+`(list …)`, or the operands of `if-expr`. There it is `(<> …) cannot be written inside an
+expression`, with the rows above as the way to write it. To choose between two elements, assign
+one in each arm of an `if`.
 
 ### Names
 
 `(id: lunch)` names the element. The name is a local of the block the element is written in, and
 can be read after the element and by the element's own rows. A statement above the element that
-reads the name makes the element there, once. In a component's content, the name is a private
+reads the name makes the element there, once. A function written above the element, or as one of
+its own attributes, reads the name when it runs, and panics if it runs before the element is made;
+the element's type arguments must then be written. A task started above the element cannot read
+it, as a task keeps what it reads when it starts. In a component's content, the name is a private
 property of the class; see [Components](#components).
 
 ## Attributes
@@ -127,13 +140,16 @@ A row `(= price 4)`{.brix} in an element's body is an attribute: it sets the ele
 - **Setters** run as for any assignment.
 - **Defaults.** A property no attribute sets keeps its declared value.
 - **Always an attribute.** `(= name value)` in an element's body sets the element's property, even
-  where a local of that name exists: `Property "count" not found`. To assign a local, write the
-  assignment in a `(do …)` row.
+  where a local of that name exists. To assign a local, write the assignment in a `(do …)` row,
+  as the error says: `Property "count" not found; an assignment in an element's body sets the
+  element's property. To assign a local, put it in a do row: "do count = …"`.
 - **Private properties** can be set from markup in their own module only.
-- **Messages.** An unknown property gives `Property "pages" not found`, a value of the wrong type
-  `Expected I64 here, but this is String, and there is no conversion between them`, and a required
-  constructor parameter left out `Markup element <Book gives no value for "title", which the
-  constructor of Book requires`.
+- **Messages.** An unknown property gives `Property "pages" not found; …`, as above, a value of the
+  wrong type `Expected I64 here, but this is String, and there is no conversion between them`, a
+  required constructor parameter left out `Markup element <Book gives no value for "title", which
+  the constructor of Book requires`, and an attribute for a parameter the element's header already
+  gives `Parameter "title" is given twice, by the element's header and by this attribute; give it
+  once`.
 
 ## Children
 
@@ -321,6 +337,66 @@ Markup that makes tracked reads, `#players` here, follows the values it reads; s
 - **Errors** raised while an attribute is set again go to `unhandled-error`, and the element keeps
   its old value.
 
+### Bindings
+
+```brix
+(main
+  (let mixer (call Mixer))
+  (<> Dial (id: dial)
+    (<-> level (. mixer volume))
+  )
+  (print (str (. mixer volume) " " (. dial level)))
+  (call (. dial turn) 7)
+  (print (str (. mixer volume) " " (. dial level)))
+  (= (. mixer volume) 3)
+  (print (str (. mixer volume) " " (. dial level)))
+)
+
+(type + Mixer
+  (prop + volume _ (= 5))
+)
+
+(type + Dial
+  (prop + level _ (= 0))
+  (fn-do + turn _
+    (param next Int)
+    (= level next)
+  )
+)
+```
+
+```output
+5 5
+7 7
+3 3
+```
+
+`(<-> level (. mixer volume))`{.brix} binds the element's `level` to the place `(. mixer volume)`
+both ways. The element takes the place's value as it is made and follows it, as
+`(= level (. mixer #volume))`{.brix} would. Each time the element's `level` changes, it is stored
+back in the place.
+
+- **The place keeps its value** as the element is made: only a later change of the element is
+  stored back.
+- **The place** is a name or a chain of members, written without `#`; the binding follows its last
+  member. Anything else is an error: `The place of “<->” is a name or a chain of members, written
+  without “#”, as in “(<-> value (. settings volume))”`.
+- **The property** is one the element stores. One a getter or a setter answers is an error, and so
+  is a name of no property, as a parameter of the constructor alone is.
+- **Conversions.** Each side becomes the other on its own, as an assignment converts it, or the
+  binding is an error: `"<->" needs each side to become the other on its own, and I64 becomes F64
+  only when asked; bind a place of the property's type`. Where the property holds a number or a
+  `Bool` and the place another type, the element is given back what the place holds after each
+  store, so a conversion that loses something shows what was kept.
+- **When.** Without a batch root, a change of the element is stored back before the statement that
+  made it goes on. Under a batch root it is stored back when the batch runs, as other actions are,
+  so a handler of an event the element publishes as it changes still sees the place's old value.
+- **Where.** A binding is written in an element's body. Anywhere else, in a root `<This`, or in the
+  body of a slot outlet it is an error, as in `"<->" binds a property of a markup element to a
+  place, so it is written in the element's body; to store a value here, write "="`.
+- **Events** remain for what a binding does not do: cancelling a change, and telling a change in
+  progress from a finished one.
+
 ### Batches
 
 ```brix
@@ -368,7 +444,8 @@ Ending in doc
 
 Under a `MarkupRoot`, changes to the tree wait and are made together: when the program next waits,
 or at `(call (. doc settle))`. So `summary` still counts 2 headings after the third chapter is added,
-until the root settles.
+until the root settles. What a [binding](#bindings) stores back
+waits for the root too.
 
 - **Queries.** A property of type `(of Ancestor Outline)` holds the nearest `Outline` above the
   element, and one of type `(of Descendants Heading)` the `Heading`s below it. Both follow the tree

@@ -736,7 +736,7 @@ count += 1
 match "z"
     with journal
     ~ \touch-empty(journal) "z"
-        journal.count
+        journal.count as I32
     ?! Panic("inner pattern did not parse")
 
 :----
@@ -7117,7 +7117,7 @@ LOUD
 
 match "z"
     ~ "z"
-        n
+        n as I32
     ?! Panic("x")
 
 :----
@@ -11105,7 +11105,7 @@ match text
     ~ part \part ")"
         match part
             | .many(args)
-                args[0].length
+                args[0].length as U32
             ??
                 0
 
@@ -12846,6 +12846,39 @@ Exception: Expected I32 here, but this is String, and there is no conversion bet
 <no file:8>
     ~ [0-9]
     ^^^^^^
+;====
+:====
+# An action converts to the type its rule states only as a value converts unasked, not as one
+# written with "as" does: a case of a union is not read as the integer a local rule states.
+
+for value in "x" ~> \count
+    -- value
+
+━━━━━━━━━━━━━━━━━━━━
++ Part is Union
+
+| digits(length Int)
+| other
+
+━━━━━━━━━━━━━━━━━━━━
++ count ~ Char Int
+
+~ n \letters
+    n
+
+.. letters Int ~
+    ~ [0-9]+
+        it.length
+    ~ [a-z]+
+        Part.other
+
+:----
+%compile-error
+
+Exception: Expected I64 here, but this is Part, which is not always I64; match it with "| name I64", or write "as I64"
+<no file:20>
+        ~ [a-z]+
+        ^^^^^^^
 ;====
 :====
 # A stream constructor's own class constructed with values it does not take is reported by its

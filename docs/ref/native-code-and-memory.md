@@ -520,8 +520,8 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
 `@no-gc`, on a function or on a `(do @no-gc …)` block, makes code that never meets the collector:
 it allocates nothing the collector manages, never pauses for it, and never suspends its task. The
 core library's arrays, tables and arenas use it for their inner loops. Each restriction can also be written as
-a `(without …)` part after the annotations, as in `(do (without gc) …)`{.brix} or
-`(fn-do + mean F64 (without heap suspend) …)`{.brix}; see Functions.
+a `(without …)` part after the annotations, as in `(do (without gc) …)` or
+`(fn-do + mean F64 (without heap suspend) …)`; see Functions.
 
 | Annotation | Refuses |
 | --- | --- |

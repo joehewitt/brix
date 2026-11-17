@@ -394,7 +394,7 @@ for char in chars
 . has-expression = false
 . has-text = false
 for part in parts
-    do match? tree.nodes[part]
+    do match tree.nodes[part]
         | .node-string-syntax(row)
             has-text = has-text || row.text.length > 0
         ??
@@ -1763,7 +1763,8 @@ match tree.nodes[body]
     | .node-block(block)
         make-match-block-from-body(tree, loc, subject, block.loc, block.body, is-optional)
     ??
-        tree.append(ASTMatchExpression(loc, subject, rooted-stream-match(tree, body), is-optional))
+        tree.append(ASTMatchExpression(loc, subject, rooted-stream-match(tree, arm), is-optional))
+            .. arm = checked-arm(tree, body, is-optional)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do rooted-stream-match SyntaxId
@@ -1774,6 +1775,78 @@ do match? tree.nodes[id]
     | .node-stream-match(row)
         tree.nodes[id] = ASTStreamMatch(row.loc, row.pattern, true)
 = id
+
+━━━━━━━━━━━━━━━━━━━━
+_ do checked-arm SyntaxId ?! YumiSyntaxError
+    - tree ASTBuilder
+    - arm SyntaxId
+    - is-optional Bool
+
+=? arm if !is-optional
+. alternative = match tree.nodes[arm]
+    | .node-structure-match(row)
+        row.pattern
+    | .node-stream-match(row)
+        row.pattern
+    ??
+        arm
+while alternative != 0
+    . next SyntaxId = 0
+    . last = alternative
+    do match? tree.nodes[alternative]
+        | .node-type-or(row)
+            next = row.left
+            last = row.right
+        | .node-stream-or(row)
+            next = row.left
+            last = row.right
+    . covering = covering-arm(tree, last)
+    if covering
+        ?! YumiSyntaxError(tree.location(last), covering, tree.source, tree.source-path)
+    alternative = next
+= arm
+
+━━━━━━━━━━━━━━━━━━━━
+_ do covering-arm String?
+    - tree ASTBuilder
+    - alternative SyntaxId
+
+. pattern = match tree.nodes[alternative]
+    | .node-type-transform(row)
+        row.pattern
+    | .node-stream-transform(row)
+        row.pattern
+    | .node-assertion-syntax(row)
+        row.condition
+    | .node-type-panic(row)
+        unless-pattern(tree, row.pattern)
+    | .node-stream-panic(row)
+        unless-pattern(tree, row.pattern)
+    ??
+        U32.max
+=? null if pattern != 0
+= match tree.nodes[alternative]
+    | .node-type-transform
+        defaulted
+    | .node-stream-transform
+        defaulted
+    ??
+        raised
+.. defaulted = "\"match?\" differs from \"match\" only where no arm is taken, and this default arm is taken wherever no arm before it is; write \"match\""
+.. raised = "\"match?\" differs from \"match\" only where no arm is taken, and this arm raises wherever no arm before it is taken; write \"match\""
+
+━━━━━━━━━━━━━━━━━━━━
+_ unless-pattern SyntaxId
+    - tree ASTBuilder
+    - transform SyntaxId
+
+match tree.nodes[transform]
+    | .node-type-transform(row)
+        row.pattern
+    | .node-stream-transform(row)
+        row.pattern
+    ??
+        U32.max
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do make-match-block-from-body SyntaxId ?! YumiSyntaxError
@@ -1787,7 +1860,7 @@ _ do make-match-block-from-body SyntaxId ?! YumiSyntaxError
 . helper SyntaxId = 0
 . has-stream-match = false
 for offset in 0 .. < block-body.count
-    . statement = tree.children[block-body.start + offset]
+    . statement = checked-arm(tree, tree.children[block-body.start + offset], is-optional)
     if tree.nodes[statement] is .node-pattern-helper-syntax
         . row = match tree.nodes[statement]
             | .node-pattern-helper-syntax(value)
@@ -2093,10 +2166,36 @@ do match? tree.nodes[left]
         = tree.append(ASTMatchExpression(loc, rhs, rooted-stream-match(tree, left), false))
 if op == .write-all-op
     = make-write-all(tree, loc, left, rhs)
+if op == .bind-op
+    track-place(tree, rhs)
 do match? tree.nodes[left]
     | .node-identifier(identifier)
         assign-anonymous-case-owner-tree(tree, rhs, identifier.name)
 = tree.append(ASTAssign(loc, op, left, rhs))
+
+━━━━━━━━━━━━━━━━━━━━
++ do member-place SyntaxId
+    - tree ASTBuilder
+    - loc MatchLocation
+    - head SyntaxId
+    - tail ImmutableArray'Atom?
+
+. names = tail ?? ImmutableArray'Atom()
+. place = head
+for name in names
+    place = optional-get(tree, place, name, false, false, false)
+= relocated-get(tree, loc, place)
+
+━━━━━━━━━━━━━━━━━━━━
++ do track-place
+    - tree ASTBuilder
+    - place SyntaxId
+
+do match? tree.nodes[place]
+    | .node-identifier(row)
+        tree.nodes[place] = ASTIdentifier(tree.location(place), row.name, true)
+    | .node-get-expression(row)
+        tree.nodes[place] = ASTGetExpression(tree.location(place), row.object, row.name, true, row.is-optional, row.is-loop)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do make-iterator-line SyntaxId

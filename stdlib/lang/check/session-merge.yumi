@@ -303,6 +303,8 @@ for id in 0 .. < given.rows.length
     instances.rows[instance].carries-mark = row.carries-mark
     instances.rows[instance].unretirable = row.unretirable
     instances.rows[instance].is-live = row.is-live
+    instances.rows[instance].consumes = row.consumes
+    instances.rows[instance].hands-back = row.hands-back
     instances.rows[instance].typed-defaults = row.typed-defaults
     instances.rows[instance].retyped = retyped
     if row.step-errors.count != 0
@@ -396,9 +398,10 @@ _ do absorb-live
     - peer Session
     - ids PeerIds
 
-` Takes in the functions a peer typed for tracked values, where this pass has none yet, and the one
-` that follows the read of a collection where this pass has not typed it, which a pass types only
-` as it first notes such a read (`note-collection-read`). They are left to be demanded here again
+` Takes in the functions a peer typed for tracked values, where this pass has none yet, and the ones
+` that follow the read of a collection or a read in a pipeline a live value pulls where this pass
+` has not typed them, which a pass types only as it first notes such a read
+` (`note-collection-read`, `pulled`). They are left to be demanded here again
 ` where this pass types a tracked read, as what such a read reads of them is settled by demanding
 ` them (`demand-live-runtime`).
 . given = peer.instances.live
@@ -406,6 +409,11 @@ if !given.demanded
     =
 if session.instances.live.track-collection == no-instance
     session.instances.live.track-collection = ids.instance(given.track-collection)
+if session.instances.live.track-active == no-instance
+    session.instances.live.track-active = ids.instance(given.track-active)
+if session.instances.live.track-active-collection == no-instance
+    . active = ids.instance(given.track-active-collection)
+    session.instances.live.track-active-collection = active
 if session.instances.live.trackers != no-instance
     =
 . live = LiveRuntime()
@@ -417,6 +425,8 @@ live.add-action = ids.instance(given.add-action)
 live.add-tracker = ids.instance(given.add-tracker)
 live.track = ids.instance(given.track)
 live.track-collection = ids.instance(given.track-collection)
+live.track-active = ids.instance(given.track-active)
+live.track-active-collection = ids.instance(given.track-active-collection)
 live.dispatch = ids.instance(given.dispatch)
 live.memo-action = ids.instance(given.memo-action)
 live.memo-settle = ids.instance(given.memo-settle)

@@ -15,7 +15,9 @@ that follows state is in Markup.
 `#name` reads a property, a local or a parameter and tracks it, and `(. object #name)`{.brix} does
 so for another object's property. A tracked read gives the same value as a plain one. Where it is
 written in a value that follows state, such as a property's value, a rule's test or a live
-statement, the value follows what it read. Anywhere else it is a plain read.
+statement, the value follows what it read. Anywhere else nothing would follow it, so it is an
+error: `"#count" tracks nothing here: a read is followed only where it is written directly in a live
+value, …`. Write `count` there to read it plainly.
 
 | Read | Tracked |
 | --- | --- |
@@ -26,10 +28,15 @@ statement, the value follows what it read. Anywhere else it is a plain read.
 | A getter, or a property computed each time it is read | No: `Tracked getters are not supported; track concrete state instead`. |
 | A property of a struct | No: `"#x" reads a field of Point, whose values are copied, so it cannot be tracked; track a property of a class`. |
 | A method call: `(call (. c #size))`{.brix} | No: `"size" is a method, so "#" before it tracks nothing; track the properties it reads instead`. |
+| An item of a pipeline given to a call: `(call count (in each #items (when (. each #done))))`{.brix} | Yes, while a function works the pipeline through as it is called, so the value runs again as an item changes. The compiler reads the function's body: it works the pipeline through where it only loops over it, pulls from it with `<-`, or gives it to another function that does. A function that hands it back, as a generator such as `scan` does, passes that on to the call that takes what it hands back, as in `(call last (call scan 0 (in each #items)))`{.brix}. One that keeps the pipeline any other way, such as by storing it, is reported where the item is read, and so is a pipeline given to no call, such as one that is the whole value: `"#done" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, …`. |
 
-- **Only reads written in the value.** A tracked read inside a function the value calls is not
-  followed. Pass the tracked read to the function as an argument instead, as in
-  `(call noted (. source #count))`{.brix}.
+- **Only reads written in the value.** A tracked read inside a function the value calls is an
+  error, as nothing follows it there. Pass the tracked read to the function as an argument instead,
+  as in `(call noted (. source #count))`{.brix}. The same holds for a closure that is the whole
+  value of an attribute, which runs once the attribute is given, and for the `keyed-by` clause of a
+  markup loop.
+- **Values given to rules.** A value an element gives a rule it applies may make tracked reads: the
+  rule's declarations that read the value follow them.
 - **Chains.** Each `#` in a chain is followed: `(. v #source #count)`{.brix} follows a change to
   `count` and a new `source`. A chain that starts at a local, a parameter or a property of the
   object itself, as `(. source #count)`{.brix} does in a class, follows that name too.
@@ -221,6 +228,12 @@ value each time it changes. Its type is `AsyncBufferedChannel`, so a reader that
 the values in order later, and `close` ends it. Storing the same value sends nothing. The value must
 make a tracked read: `A stream of a value follows the reads written with "#", and this one has none,
 so it would never change; write "#" before what it follows, as in "<c.#count>"`.
+Only a statement in a function's body makes the stream, as the `let` above does. Anywhere else,
+such as in a closure, a property's value, a rule or a trigger, it is an error: `A stream of a value
+is made only by a statement in a function's body, …`. To move a machine as a value changes, use a
+`whenever` trigger, as in `(then loading (trigger whenever #feed))`{.brix}; see
+[State machines](state-machines.md#transitions). To follow changes in a property's value or a rule,
+publish an event from a `whenever-rule`.
 
 `(## readings)`{.brix} is the latest value a stream has sent, and a value that reads it follows the
 stream. Before the stream sends anything, it is the type's empty value, such as 0. Named with a

@@ -4259,11 +4259,39 @@ for position in lively .. < attribute-trackers.length
     give-again(attribute-trackers[position].member, attribute-trackers[position].trackers, made.operand, type)
 for position in arguing .. < argument-trackers.length
     give-again(argument-trackers[position].member, argument-trackers[position].trackers, made.operand, type)
+follow-bound(id, made.operand, type)
 while attribute-trackers.length > lively
     attribute-trackers.pop()
 while argument-trackers.length > arguing
     argument-trackers.pop()
 = Typed(made.operand, type)
+
+────────────────────
+_ do follow-bound
+    - id SyntaxId
+    - made Operand
+    - type TypeId
+
+` Gives each binding of a markup element the action that stores back what the element holds as
+` it changes: its first run only notes the read of the element's property, so that the place
+` keeps the value it gave the element.
+do match? tree.nodes[id]
+    | .node-markup(element)
+        do match? tree.nodes[element.body]
+            | .node-block(block)
+                for statement in tree.children[block.body]
+                    do match? tree.nodes[statement]
+                        | .node-assign(attribute)
+                            if attribute.op == .bind-op
+                                . name = identifier-name(tree, attribute.lhs)
+                                if !name
+                                    refuse(.refused-statement, statement)
+                                    =
+                                . trackers = open-trackers(attribute.lhs)
+                                live-actions += LiveTrackers(trackers, trackers)
+                                track(attribute.lhs, made, name)
+                                live-actions.pop()
+                                give-again(statement, trackers, made, type, attribute.lhs)
 
 ────────────────────
 _ do set-attribute
@@ -4905,7 +4933,7 @@ _ do when-lines [SyntaxId]
 . lines [SyntaxId]
 do match? tree.nodes[branch]
     | .node-style-when(row)
-        do match? tree.nodes[row.body]
+        do match tree.nodes[row.body]
             | .node-block(block)
                 for line in tree.children[block.body]
                     lines += line
@@ -7108,6 +7136,7 @@ _ do give-again
     - trackers LocalId
     - made Operand
     - type TypeId
+    - site SyntaxId = 0
 
 ` The live action of an attribute whose value read something tracked: the element's object
 ` is kept in the local no name reaches declared at the attribute, and the action, with the
@@ -7117,24 +7146,27 @@ _ do give-again
 ` host is made by the markup runtime, given the element as its host, or where the type pass
 ` made it with a batch, given the element where it is the batch and else the one in force. That
 ` of a line of the element's body that gives content is made as an attribute's is, and that of a
-` line of an arm's body is given what the arm's function is given, converted at the line.
-. row = tables.live-statement-of(unit.reading, statement)
+` line of an arm's body is given what the arm's function is given, converted at the line. The
+` action that stores back what a binding's element holds is made at the `site` it is written at.
+. at = if site != 0 then site else statement
+. row = tables.live-statement-of(unit.reading, at)
 . element = tree.argument-element(statement)
 . slot = if element != 0 then channel-slot(element) else line-keeper(statement)
 . code = if row && row.rerun != no-instance then tables.instance-functions[row.rerun] else no-function
 if code == no-function || slot == no-slot
-    refuse(.refused-statement, statement)
+    refuse(.refused-statement, at)
     =
-keep-captured(slot, made, type, statement)
+if site == 0
+    keep-captured(slot, made, type, statement)
 if row!.owned == no-instance
     . action = make-action
-        - load-local(trackers, statement)
+        - load-local(trackers, at)
         - tables.live-adapter-of(code)
-        - written-environment(statement)
-        - statement
-    attach-action(made, action.operand, statement)
+        - written-environment(at)
+        - at
+    attach-action(made, action.operand, at)
     =
-. callback = make-callback(tables.live-adapter-of(code), written-environment(statement), statement)
+. callback = make-callback(tables.live-adapter-of(code), written-environment(at), at)
 . written = if element != 0 then element else tree.attribute-element(statement)
 if written == 0
     written = tree.content-element(statement)
@@ -7156,11 +7188,11 @@ if row!.rooted
 else
     owner = convert(type-id, .reason-markup-host, Typed(made, type)).operand
 . mark = pending.length
-pending += load-local(trackers, statement)
+pending += load-local(trackers, at)
 pending += callback
 pending += owner
-. action = raising-call(statement, row!.owned, mark)
-attach-action(made, action.operand, statement)
+. action = raising-call(at, row!.owned, mark)
+attach-action(made, action.operand, at)
 
 ────────────────────
 _ do emit-attributes
@@ -20100,11 +20132,12 @@ _ do read-unmade Typed
     - name Atom
 
 ` The name of a markup element of a class's markup read in a closure the markup makes before
-` the element is made: the receiver's property of the name, as the reference reads it.
+` the element is made: the receiver's property of the name, as the reference reads it, which
+` panics where the closure runs before the element is made.
 if !unit.has-self
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
-= load-property(id, unit.self, unit.owner-type, name)
+= guard-element(id, load-property(id, unit.self, unit.owner-type, name), name)
 
 ────────────────────
 _ do keep-element
@@ -20367,6 +20400,8 @@ else if tree.content-line(statement)
         replace-again(statement)
     else
         absorb-again(statement)
+else if bound-attribute(statement) != 0
+    store-back(statement, bound-attribute(statement))
 else
     do match tree.nodes[statement]
         | .node-assign(row)
@@ -20496,6 +20531,62 @@ put-property
     - U32.max
     - false
     - memo-flag-of(type, property)
+
+────────────────────
+_ do bound-attribute SyntaxId
+    - anchor SyntaxId
+
+. holder = tree.holder-of(anchor)
+do match? tree.nodes[holder]
+    | .node-assign(row)
+        if row.op == .bind-op && row.lhs == anchor && tree.attribute-element(holder) != 0
+            = holder
+= 0
+
+────────────────────
+_ do store-back
+    - anchor SyntaxId
+    - statement SyntaxId
+
+` A binding's element given again to its place, as its property changes: the property is read
+` from the element's object, kept where the element was made, in the action's trackers, and
+` stored in the place as an assignment to it stores. Where the type pass recorded a conversion
+` back, the value stored is given back to the element, which then shows what the place holds.
+. slot = channel-slot(statement)
+. name = identifier-name(tree, anchor)
+if slot == no-slot || !name
+    refuse(.refused-statement, statement)
+    =
+. type = find-captured(slot, anchor).type
+. place = types.property-named(type, name)
+. held = if tables.is-class(type) then tables.layouts.objects[type] else no-layout
+if !place || held == no-layout || types.properties[place].storage-kind != .storage-eager
+    refuse(.refused-statement, statement)
+    =
+. property = types.properties[place]
+. object = read-captured(slot, anchor, type)
+track(anchor, object.operand, name)
+. value = load-property(anchor, object.operand, type, name)
+. tracking = live-actions.pop()
+. mark = pins.length
+pin(anchor, value.operand, value.type)
+do match? tree.nodes[statement]
+    | .node-assign(row)
+        . assignment = emit-assign(anchor, .eq-op, row.rhs, anchor)
+        unpin(mark)
+        if assignment.stored.type != no-type && assignment.stored.type != property.type
+            . back = convert(statement, .reason-assignment, assignment.stored)
+            if back.type == property.type
+                put-property
+                    - object.operand
+                    - tables.layouts.field(held, object-header-fields + property.slot)
+                    - property
+                    - back.operand
+                    - statement
+                    - U32.max
+                    - false
+                    - memo-flag-of(type, property)
+live-actions += tracking
 
 ────────────────────
 _ do set-again
@@ -22565,7 +22656,7 @@ _ do retest-site SyntaxId
 . loop = tree.clause-loop(clause)
 for node in loop + 1 .. < (tree.nodes.length as SyntaxId)
     if tree.subtree-start(node) <= loop
-        do match? tree.nodes[node]
+        do match tree.nodes[node]
             | .node-for-block(block)
                 if block.loop != loop
                     = loop
@@ -22696,7 +22787,8 @@ _ do track
 ` Notes a read of a property of an object in the trackers of the live action open, with the
 ` object's list of subscribers, as `track-in` does.
 . live = instances.live
-if live.track == no-instance || live.subscribers == no-instance || live-actions.length == 0
+. active = live-actions.length == 0 && facts.pulls(unit.reading, id)
+if live.track == no-instance || live.subscribers == no-instance || (live-actions.length == 0 && !active)
     refuse(.refused-expression, id)
     =
 . subscribers = side-list(id, object, 0, live.subscribers)
@@ -22713,7 +22805,11 @@ _ do track-collection
 if !facts.reads-collection(unit.reading, id)
     =
 . live = instances.live
-if live.track-collection == no-instance || live-actions.length == 0
+. active = live-actions.length == 0 && facts.pulls(unit.reading, id)
+if active && live.track-active-collection == no-instance
+    refuse(.refused-expression, id)
+    =
+if !active && (live.track-collection == no-instance || live-actions.length == 0)
     refuse(.refused-expression, id)
     =
 . held = value.type
@@ -22726,10 +22822,14 @@ if types.is-optional(held)
     ir.start-block(filled)
     tracked = payload(id, Typed(value.operand, held))
 . mark = pending.length
-pending += load-local(live-actions[live-actions.length - 1].previous, id)
-pending += load-local(live-actions[live-actions.length - 1].next, id)
-pending += num-cast(id, tracked.operand, managed-layout, pointer-layout)
-do call-instance(live.track-collection, id, mark)
+if active
+    pending += num-cast(id, tracked.operand, managed-layout, pointer-layout)
+    do call-instance(live.track-active-collection, id, mark)
+else
+    pending += load-local(live-actions[live-actions.length - 1].previous, id)
+    pending += load-local(live-actions[live-actions.length - 1].next, id)
+    pending += num-cast(id, tracked.operand, managed-layout, pointer-layout)
+    do call-instance(live.track-collection, id, mark)
 if done != no-block
     jump(done)
     ir.start-block(done)
@@ -22745,6 +22845,14 @@ _ do track-in
 ` `track-property-dependency` does: with the trackers the action had and those it gathers now,
 ` the name and a number for it, and the list of subscribers with its owner.
 . live = instances.live
+if live-actions.length == 0 && facts.pulls(unit.reading, id) && live.track-active != no-instance
+    . start = pending.length
+    pending += make-operand(.operand-constant, ir.add-string(name.text))
+    pending += integer(.machine-u64, program.atom-ordinal(name) as U64)
+    pending += subscribers
+    pending += num-cast(id, owner, managed-layout, pointer-layout)
+    do call-instance(live.track-active, id, start)
+    =
 if live.track == no-instance || live-actions.length == 0
     refuse(.refused-expression, id)
     =
@@ -22951,7 +23059,7 @@ if owner == no-type || owner == invalid-type || !tables.is-class(owner) || plann
 if root && !pin-of(object)
     track(object, unit.self, root)
 . local = if !pin-of(object) then tracked-root-local(object) else no-slot
-if local != no-slot && !settles-once(local)
+if local != no-slot && !settles-once(local) && live-actions.length != 0
     . list = local-subscribers(local, object)
     track-in(object, list, list, bindings.slots[local].name)
 . base = emit-expression(object)
@@ -29105,11 +29213,12 @@ do match tree.nodes[id]
         else if plan == .plan-enum-value
             value = read-enum(id).operand
         else
-            if row.is-tracked && live-actions.length != 0
+            . tracking = row.is-tracked && (live-actions.length != 0 || facts.pulls(unit.reading, id))
+            if tracking
                 track-name(id, row.name)
             . named = emit-identifier(id, row.name)
             value = named.operand
-            if row.is-tracked && live-actions.length != 0
+            if tracking
                 track-collection(id, Typed(value, named.type))
     | .node-binary-expression(row)
         . binary = emit-binary(id, row.op, row.lhs, row.rhs)
@@ -29220,7 +29329,7 @@ do match tree.nodes[id]
     | .node-get-expression(row)
         if is-link(id) && !is-pinned(row.object)
             value = emit-chained(id).operand
-        else if row.is-tracked && live-actions.length != 0
+        else if row.is-tracked && (live-actions.length != 0 || facts.pulls(unit.reading, id))
             value = emit-tracked-get(id, row.object, row.name).operand
         else
             value = emit-get(id, row.object, row.name).operand
@@ -29595,7 +29704,7 @@ _ do emit-link Typed
 do match? tree.nodes[id]
     | .node-get-expression(row)
         . plan = facts.plan-of(unit.reading, id)
-        if row.is-tracked && live-actions.length != 0
+        if row.is-tracked && (live-actions.length != 0 || facts.pulls(unit.reading, id))
             = emit-tracked-get(id, row.object, row.name)
         if plan == .plan-none || plan == .plan-field || plan == .plan-guarded-read || address-plan
             = emit-get(id, row.object, row.name)
@@ -32472,6 +32581,8 @@ if binding != no-binding && unit.reading == unit.lender && unit.lender != unit.i
     . lent = bindings.resolution-of(binding, id)
     if lent.kind == .resolve-slot && is-captured(lent.slot)
         . kind = bindings.slots[lent.slot].kind
+        if kind == .slot-local && facts.plan-of(unit.reading, id) == .plan-guarded-read
+            = guard-element(id, read-captured(lent.slot, id, type), name)
         if kind == .slot-local || kind == .slot-argument || kind == .slot-pattern
             = read-captured(lent.slot, id, type)
         if kind == .slot-loop-item || kind == .slot-each || kind == .slot-it
@@ -32505,6 +32616,9 @@ if binding != no-binding && unit.reading == unit.instance
             .. bare-pattern = kind == .slot-pattern && !holds-capture(resolution.slot)
         if given-slots && kept && is-bound(resolution.slot)
             = read-bound(resolution.slot, id, type)
+        if is-captured(resolution.slot) && kind == .slot-local && guarded
+            = guard-element(id, read-captured(resolution.slot, id, type), name)
+        .. guarded = facts.plan-of(unit.reading, id) == .plan-guarded-read
         if is-captured(resolution.slot) && kept
             = read-captured(resolution.slot, id, type)
         if is-turned(resolution.slot) && turned-kind
@@ -33199,7 +33313,7 @@ if wavers
     shared-depth += 1
 lazy-open += slot
 . value = make-operand(.operand-void, 0)
-do match? tree.nodes[group]
+do match tree.nodes[group]
     | .node-declare(declaration)
         . name = declaration.left
         . annotation SyntaxId = 0
@@ -33315,7 +33429,7 @@ if wavers
 sharing += 1
 lazy-open += slot
 . initial = nothing
-do match? row
+do match row
     | .node-declare(declaration)
         . name = declaration.left
         . annotation SyntaxId = 0
@@ -33549,7 +33663,7 @@ if bindings.lazy-together(slot)
                 lazy-open.pop()
             =
 lazy-open += slot
-do match? tree.nodes[group]
+do match tree.nodes[group]
     | .node-declare(row)
         . name = row.left
         . annotation SyntaxId = 0
@@ -46060,7 +46174,8 @@ _ do emit-call-at Typed
     - operands RowRange'SyntaxId
     - piped SyntaxId = 0
 
-=? emit-call(id, callable, operands, piped) if facts.plan-of(unit.reading, id) != .plan-live-call
+. pulled = facts.pulls(unit.reading, id)
+=? emit-call(id, callable, operands, piped) if facts.plan-of(unit.reading, id) != .plan-live-call && !pulled
 . live = instances.live
 if live.enter == no-instance || live.leave == no-instance || live-actions.length == 0
     refuse(.refused-expression, id)
@@ -49863,7 +49978,7 @@ else if binds-object(type)
     if holds-callee(type)
         value = emit-callee(callable)
     else
-        do match? tree.nodes[callable]
+        do match tree.nodes[callable]
             | .node-get-expression(get)
                 value = emit-expression(get.object)
             | .node-identifier

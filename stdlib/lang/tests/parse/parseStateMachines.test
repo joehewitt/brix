@@ -390,6 +390,43 @@ State machines
 </Property>
 ;====
 :====
+# Parses whenever as a trigger whose value the machine follows, read in a closure of its own.
+
++ flow ~>
+    ~> idle
+    ~> watching
+        then idle whenever #feed
+
+:----
+%brix
+(prop + flow _
+  (machine
+    (state idle)
+    (state watching
+      (then idle (trigger whenever #feed))
+    )
+  )
+)
+:----
+<Property access="public-access">
+    <TypeCapture>
+        <Id name="flow"/>
+    </TypeCapture>
+    <StateMachine>
+        <StateCase name="idle"/>
+        <StateCase name="watching">
+            <StateContinuation name="idle">
+                <StateTrigger kind="whenever">
+                    <Function names="(closure)" access="private-access">
+                        <Id name="feed" tracked="true"/>
+                    </Function>
+                </StateTrigger>
+            </StateContinuation>
+        </StateCase>
+    </StateMachine>
+</Property>
+;====
+:====
 # Parses immediate boolean if transitions.
 
 + auth ~>
