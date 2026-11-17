@@ -3319,6 +3319,151 @@ for child in box.children
 [[[a off]],[[b on]]]
 ;====
 :====
+# A named element in an arm of an if that is a line of a keyed row is made by the arm.
+
+/core/tests/support/markup-fixtures
+
+. places = List'Place([Place("a", true), Place("b", false)])
+
+<Box root
+    for place in #places keyed by place.name
+        if place.flag
+            <TextBox on = "${place.name} on"
+        else
+            <TextBox off = "${place.name} off"
+
+-- dump(root)
+places = List'Place([Place("a", false), Place("b", true)])
+-- dump(root)
+places += Place("c", true)
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String
++ flag Bool
+
+────────────────────
++ This
+    - name
+    - flag
+
+:----
+
+[[[a on]],[[b off]]]
+[[[a off]],[[b on]]]
+[[[a off]],[[b on]],[[c on]]]
+;====
+:====
+# A row that is a region makes the elements it names where it starts, so a later line reads them.
+
+/core/tests/support/markup-fixtures
+
+. places = List'Place([Place("a", true), Place("b", false)])
+
+<Box root
+    for place in #places keyed by place.name
+        <TextBox first = place.name
+        <TextBox = "${first.text}!"
+        if place.flag
+            <TextBox inner = "on"
+
+-- dump(root)
+places += Place("c", true)
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String
++ flag Bool
+
+────────────────────
++ This
+    - name
+    - flag
+
+:----
+
+[[a,a!,[on]],[b,b!,[]]]
+[[a,a!,[on]],[b,b!,[]],[c,c!,[on]]]
+;====
+:====
+# So does a row of a loop in a function's markup, with named elements in the arms of a plain if.
+
+/core/tests/support/markup-fixtures
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+. places = List'Place([Place("a", true), Place("b", false)])
+<Box root
+    for place in #places
+        if place.flag
+            <TextBox on = "${place.name} on"
+        else
+            <TextBox off = "${place.name} off"
+        <TextBox = "|"
+-- dump(root)
+places += Place("c", false)
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String
++ flag Bool
+
+────────────────────
++ This
+    - name
+    - flag
+
+:----
+
+[[a on,|],[b off,|]]
+[[a on,|],[b off,|],[c off,|]]
+;====
+:====
 # A row may hold a match, and a live match selects its arm again in each row.
 
 /core/markup

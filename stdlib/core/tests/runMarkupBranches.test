@@ -1990,3 +1990,141 @@ super.close()
 :----
 closed false
 ;====
+:====
+# A named element in an arm of a match that is a region is made by the arm, so a later line of the
+# arm reads it.
+
+/core/tests/support/markup-fixtures
+
+. model = Model()
+
+<Box root
+    match model.#name
+        | name String
+            <TextBox first = name
+            <TextBox = "${first.text}!"
+        | _
+            <TextBox none = "none"
+            <TextBox = "${none.text}?"
+
+-- dump(root)
+model.name = null
+-- dump(root)
+model.name = "back"
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Model
+
++ name String? = "on"
+
+:----
+[on,on!]
+[none,none?]
+[back,back!]
+;====
+:====
+# A handler in a named element of an arm of a match in a keyed row reads the element by its name.
+
+/core/tests/support/markup-fixtures
+
+. heard = List'String()
+. places = List'Place([Place("a"), Place(null)])
+
+<Box root
+    for place in #places keyed by place
+        match place.name
+            | name String
+                <Pinger named
+                    label = name
+                    for event on pinged
+                        heard += "named ${named.label}"
+            | _
+                <Pinger plain
+                    label = "plain"
+                    for event on pinged
+                        heard += "plain ${plain.label}"
+
+ping(root)
+-- ",".join(heard)
+
+━━━━━━━━━━━━━━━━━━━━
++ do ping
+    - box Box
+
+for child in box.children
+    if child is Pinger
+        (child as Pinger).pinged <- 1
+    ping(child)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ label = ""
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String?
+
+────────────────────
++ This
+    - name
+
+:----
+named a,plain plain
+;====
+:====
+# A named element an arm of a match in a class's markup makes is given to the class's property of
+# that name each time the arm makes it.
+
+/core/tests/support/markup-fixtures
+
+. section = Section()
+-- section.header.title
+section.title = "B"
+-- section.header.title
+section.title = null
+-- section.header.title
+section.title = "C"
+-- section.header.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Titled is Box
+
++ title = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Section is Box
+
++ title String? = "A"
+
+────────────────────
+
+<This
+    match #title
+        | text String
+            <Titled header
+                title = text
+        | _
+            <Box
+
+:----
+A
+B
+B
+C
+;====

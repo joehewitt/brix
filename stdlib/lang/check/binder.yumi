@@ -1627,7 +1627,9 @@ _ do note-content Void
 ` line runs its bodies as content of the same element, which declare no name for an element,
 ` and a `for`, or a loop written with `in` that is no function of its own, runs its body as
 ` content each turn, which declares those of its own. The body of a markup loop region builds a
-` row, which is no content.
+` row, which is no content, but where the row is a region of its own (`row-region`), whose
+` function runs the body as content each turn. So does the function that builds an arm of a
+` markup match region.
 for statement in tree.children[statements]
     note-content-line(statement)
 
@@ -1645,8 +1647,12 @@ do match? tree.nodes[statement]
                     content-bodies += tree.arm-body(branch)
                     next = row.next
             branch = next
+    | .node-match-expression
+        if is-branch(statement)
+            for arm in tree.region-arms(statement)
+                content-turns += tree.region-arm-body(arm)
     | .node-for-block(row)
-        if !is-loop-region(statement)
+        if !is-loop-region(statement) || tree.row-region(row.body)
             content-turns += row.body
     | .node-iterator-expression(row)
         if nested-decl-for(statement) == 0

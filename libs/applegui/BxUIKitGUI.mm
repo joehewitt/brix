@@ -1469,6 +1469,7 @@ extern "C" void brixGuiWindowSetAppearance(void* window, uint32_t appearance) {}
 extern "C" void brixGuiWindowSetChrome(void* window, bool titlebarVisible, bool hasStoplightOffset, double x, double y, double zoom) {}
 extern "C" double brixGuiWindowGetStoplightEdge(void* window) { return 0; }
 extern "C" void brixGuiWindowSetKind(void* window, uint32_t kind) {}
+extern "C" void brixGuiWindowSetAllowsZoom(void* window, bool allowsZoom) {}
 extern "C" bool brixGuiWindowRequestDrag(void* window, uint64_t token) { return false; }
 extern "C" void brixGuiWindowPerformTitlebarDoubleClick(void* window) {}
 extern "C" void brixGuiWindowSetContentSize(void* window, double width, double height) {}
