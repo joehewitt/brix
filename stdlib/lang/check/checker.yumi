@@ -32644,10 +32644,7 @@ _ do refuse-event-value
     - owner TypeId
     - name Atom
 
-` Reports a node that names an event used as a value, where it hides a local as `hidden-member`
-` says, and else as an event, which is no value.
-if hidden-member(id, owner, name, "an event")
-    =
+` Reports a node that names an event used as a value, which an event is not.
 . message = "\"${name.text}\" is an event of ${owner-name}; it cannot be used as a value"
     .. owner-name = type-short-name(types, owner)
 frame.diagnose(id, .stated, program.store-atom(message))
@@ -32713,42 +32710,6 @@ if kept || target != endpoint
     = false
 escape-event(rhs, event, endpoint, rhs)
 = true
-
-────────────────────
-_ do hidden-member Bool
-    - id SyntaxId
-    - owner TypeId
-    - name Atom
-    - member String
-
-` Whether a name read by its name alone in the body of a markup element, where a read of the
-` element's member fails, hides a local of the name declared outside the element, as the binder
-` found: reported at the name, which the author may have meant for the local.
-if (bindings.resolution-of(frame.binding, id).flags /and/ ResolutionFlag.resolution-hides) == 0
-    = false
-. shown = type-short-name(types, owner)
-. message = "\"${name.text}\" names $member of $shown here, not the local \"${name.text}\"; rename one of them"
-frame.diagnose(id, .stated, program.store-atom(message))
-= true
-
-────────────────────
-_ do hidden-property Bool
-    - id SyntaxId
-    - object-syntax SyntaxId
-
-` Whether the object of a property read that finds nothing is a property of a markup element
-` read by its name alone that hides a local, which is reported as `hidden-member` says.
-if object-syntax == 0 || object-syntax == id
-    = false
-do match? tree.nodes[object-syntax]
-    | .node-identifier(row)
-        if (object-flags /and/ ResolutionFlag.resolution-received) == 0
-            = false
-        .. object-flags = bindings.resolution-of(frame.binding, object-syntax).flags
-        . owner = received-parent(object-syntax, row.name)
-        if owner != no-type && property-named(owner, row.name)
-            = hidden-member(object-syntax, owner, row.name, "a property")
-= false
 
 ────────────────────
 _ do read-unmade TypeId
@@ -35405,8 +35366,6 @@ if is-batch-flush(receiver)
         = Found(flush-flag(id, domain))
 if names-unmodeled-style(receiver, name, id)
     decline(id)
-    = Found(invalid-type)
-if hidden-property(id, object-syntax)
     = Found(invalid-type)
 frame.diagnose(id, .property-not-found, name)
 = Found(invalid-type)
@@ -50139,8 +50098,6 @@ do match? tree.nodes[lhs]
         if resolution.kind == .resolve-function
             frame.diagnose(id, .stated, program.store-atom("Function \"${row.name.text}\" cannot be assigned"))
             = invalid-type
-        if (resolution.flags /and/ ResolutionFlag.resolution-received) != 0
-            = infer-received-assign(id, lhs, op, row.name, rhs, want)
         if resolution.kind == .resolve-unresolved && styled
             = infer-self-style-assign(id, lhs, op, row.name, rhs)
         .. styled = (resolution.flags /and/ ResolutionFlag.resolution-styled) != 0
@@ -50196,26 +50153,6 @@ if slot
 if withheld && op == .eq-op
     = infer(lhs)
 = result
-
-────────────────────
-_ do infer-received-assign TypeId
-    - id SyntaxId
-    - lhs SyntaxId
-    - op Operator
-    - name Atom
-    - rhs SyntaxId
-    - want Want
-
-` An assignment to a member of a markup element, or of an element it is in, by its name alone,
-` as the binder found it: the reference assigns the property of that element's object
-` (`received-parent`). A member that is no stored property, or one assigned where no element is
-` being built, has no shape here.
-. parent = received-parent(lhs, name)
-. place = property-named(parent, name) if parent != no-type
-if !place || types.properties[place].storage-kind == .storage-getter
-    decline(id)
-    = invalid-type
-= infer-property-assign(id, lhs, op, 0, name, rhs, false, parent, want)
 
 ────────────────────
 _ do infer-module-setter-assign TypeId

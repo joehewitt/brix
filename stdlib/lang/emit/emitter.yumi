@@ -8376,10 +8376,6 @@ do match? tree.nodes[lhs]
         if styled
             emit-style-assign(id, 0, rhs, styled)
             = Assignment()
-        . binding = instances.rows[unit.reading].binding
-        if binding != no-binding && (resolution-flags /and/ ResolutionFlag.resolution-received) != 0
-            = emit-received-assign(id, op, lhs, rhs)
-        .. resolution-flags = bindings.resolution-of(binding, lhs).flags
         if is-own-field(lhs) || is-case-member(lhs)
             = emit-field-assign(id, op, lhs, 0, rhs)
         . setter = own-call(lhs)
@@ -20480,28 +20476,6 @@ if !position
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
 = content-hosts[position]
-
-────────────────────
-_ do emit-received-assign Assignment
-    - id SyntaxId
-    - op Operator
-    - lhs SyntaxId
-    - rhs SyntaxId
-
-` An assignment to a member of a markup element being built by its name alone: the property of
-` the element `received-object` finds is assigned, as the reference assigns it.
-. name = member-name(lhs)!
-. kept = received-kept(lhs)
-. position = received-position(name) if kept == no-slot
-. owner = no-type
-if kept != no-slot
-    owner = find-captured(kept, lhs).type
-else if position
-    owner = content-hosts[position].type
-if owner == no-type
-    refuse(.refused-statement, id)
-    = Assignment()
-= emit-property-assign(id, op, lhs, 0, rhs, owner, true)
 
 ────────────────────
 _ do read-unmade Typed
