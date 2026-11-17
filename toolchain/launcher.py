@@ -26,6 +26,7 @@ VERSION_PATTERN = re.compile(r'\d{4}\.\d{2}\.\d{2}-\d+')
 FILE_PATTERN = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*')
 PART_OVERRIDES = ('BRIXPATH', 'BRIX_BUILD_PATH')
 CHUNK_SIZE = 1 << 20
+RELEASES_SITE = 'https://brix-lang.com'
 RELEASES_BUCKET = 'joehewitt-brix-releases'
 RELEASES_REGION = 'us-west-2'
 RELEASES_PREFIX = 'releases'
@@ -46,10 +47,14 @@ class LaunchError(Exception):
     pass
 
 
-class S3Error(LaunchError):
+class DownloadError(LaunchError):
     def __init__(self, message, status=None):
         LaunchError.__init__(self, message)
         self.status = status
+
+
+class S3Error(DownloadError):
+    pass
 
 
 def main(arguments):
@@ -329,10 +334,10 @@ def fetch_kit(file, expected=None):
 
 def fetch_object(key, path=None):
     if not RELEASES_MIRROR:
-        return s3_download(key, path)
+        return site_download(key, path)
     source = os.path.join(RELEASES_MIRROR, key)
     if not os.path.isfile(source):
-        raise S3Error('%s is not in the mirror %s' % (key, RELEASES_MIRROR), 404)
+        raise DownloadError('%s is not in the mirror %s' % (key, RELEASES_MIRROR), 404)
     with open(source, 'rb') as file:
         digest = stream_digest(file)
     if path:
@@ -501,17 +506,35 @@ def fetch_release(version, expected):
         publish(staged, destination)
 
 
+def site_download(key, path=None):
+    url = '%s/%s' % (RELEASES_SITE, urllib.parse.quote(key, safe='/-_.~'))
+    try:
+        response = urllib.request.urlopen(url, timeout=HTTP_TIMEOUT)
+    except urllib.error.HTTPError as error:
+        if error.code in (403, 404):
+            raise DownloadError('%s does not offer %s' % (RELEASES_SITE, key), error.code)
+        raise DownloadError('Downloading %s failed: %d %s' % (url, error.code, error.reason), error.code)
+    except urllib.error.URLError as error:
+        raise DownloadError('Cannot reach %s for %s: %s' % (RELEASES_SITE, key, error.reason))
+    with response:
+        return saved_response(response, path)
+
+
 def s3_download(key, path=None):
+    with s3_request('GET', key) as response:
+        return saved_response(response, path)
+
+
+def saved_response(response, path):
     digest = hashlib.sha256()
     size = 0
     output = open(path, 'wb') if path else None
     try:
-        with s3_request('GET', key) as response:
-            for chunk in iter(lambda: response.read(CHUNK_SIZE), b''):
-                digest.update(chunk)
-                size += len(chunk)
-                if output:
-                    output.write(chunk)
+        for chunk in iter(lambda: response.read(CHUNK_SIZE), b''):
+            digest.update(chunk)
+            size += len(chunk)
+            if output:
+                output.write(chunk)
     finally:
         if output:
             output.close()
