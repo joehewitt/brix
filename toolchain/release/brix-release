@@ -108,6 +108,7 @@ SUITES = (
 )
 MODULE_SUITES = (('stdlib', 'stdlib'),)
 DENIED_SYSTEM_PATHS = ('/opt/homebrew', '/usr/local')
+RUNTIME_BUILD_LEFT_OUT = ('.o', '.d', '.cmd')
 FAILING_STATUSES = ('failed', 'crashed', 'killed')
 PROGRAM_TIMEOUT = 120
 
@@ -714,6 +715,7 @@ def write_xz(path, package):
 def toolchain_files(config, host, binary, tools):
     root = host_build(config, host)
     files = {
+        'LICENSE': os.path.join(ROOT, 'LICENSE'),
         'bin/brix': binary,
         'libs/build.json': RUNTIME_CONFIG,
     }
@@ -874,16 +876,16 @@ def write_tar(path, files, mtime):
 
 
 def denied_paths():
-    paths = [ROOT, BRIX_HOME, os.path.realpath(os.path.expanduser('~'))]
-    paths += [path for path in DENIED_SYSTEM_PATHS if os.path.exists(path)]
-    return [os.path.realpath(path) for path in paths]
+    places = {'checkout': ROOT, 'brix home': BRIX_HOME, 'home': os.path.expanduser('~')}
+    places.update((path, path) for path in DENIED_SYSTEM_PATHS if os.path.exists(path))
+    return {name: os.path.realpath(path) for name, path in places.items()}
 
 
 def sandbox_profile(denied, room):
-    for path in denied:
+    for path in denied.values():
         if is_within(room, path):
             raise Failure('The clean room %s is inside %s, which it must not read' % (room, path))
-    paths = ' '.join('(subpath %s)' % json.dumps(path) for path in denied)
+    paths = ' '.join('(subpath %s)' % json.dumps(path) for path in denied.values())
     return '(version 1)\n(allow default)\n(deny file-read* file-write* %s)\n' % paths
 
 
@@ -919,7 +921,7 @@ def check_clean_room(toolchain, kits, denied, logs):
                 raise Failure('Clean room: %s printed\n%s\ninstead of\n%s' % (program, actual, expected))
         check_tools(sandbox + [os.path.join(root, 'bin', 'brix')], root, sources, environment, logs, room)
         examples = build_examples(sandbox + [os.path.join(root, 'bin', 'brix')], root, environment, logs, room)
-    return {'programs': programs, 'tools': list(TOOLS), 'examples': len(examples), 'denied': denied}
+    return {'programs': programs, 'tools': list(TOOLS), 'examples': len(examples), 'denied': list(denied)}
 
 
 def build_examples(brix, root, environment, logs, room):
