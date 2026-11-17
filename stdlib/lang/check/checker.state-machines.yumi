@@ -1,0 +1,1930 @@
+./binding
+./calls
+./checker
+./conversions
+./coverage
+./dispatch
+./error-sets
+./facts
+./frame
+./header
+./instances
+./narrowing
+./narrowing-key
+./numeric
+./panics
+./pattern-helper
+./portable
+./probe-casts
+./session
+./signature
+./table-rows
+./type-env
+./type-relation
+./type-signature
+./type-store
+./type-text
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/facets
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/ast/viability
+/lang/constants
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ StateMachines is facet of Checker
+
+_ machine-handed = false
+
+────────────────────
++ do check-machine-site TypeId
+    - id SyntaxId
+
+` A state machine where it is written: its own function, typed once, is called there to start
+` it, recorded at the machine, and answers the value it starts in, of the machine's union. The
+` errors that leave its start leave the function there (see `check-machine`). A machine the
+` binder bound no function for has no shape here.
+. decl = nested-decl-of(id)
+if decl == 0
+    decline(id)
+    = invalid-type
+. callee = demand-nested(decl, no-type)
+do facts.record-call(instance, id, callee, .call-function, scratch.no-fills, false)
+note-unit-errors(callee, id)
+. machine = facts.machine-of(callee)
+= if machine then facts.root-machine(machine).union else invalid-type
+
+────────────────────
++ do check-machine
+    - id SyntaxId
+
+` The function of a state machine, typed as one body though the emitter makes several functions
+` of it: the one that starts it, and for each group of event transitions the one its
+` subscriber runs. Its shape is checked first (`machine-shape`), then each part is typed once,
+` in an order where what it reads is known (`type-machine`). It answers its union where it
+` starts. One that refines the machine of a property of its class's base answers nothing: that
+` machine starts after it, and keeps the value (`inherited-machine`).
+prepare()
+. items = tree.state-items(tree.state-body(id))
+. row = bindings.machine-slots(module, id)
+. store = machine-placement(id, row) if row
+. union = no-type
+machine-handed = false
+machining = machining.outer-starts = true
+machining = machining.refined = no-instance
+. refined = inherited-machine(id, items, store) if row && store
+if !row || !store
+    decline(id)
+else if refined && machine-shape(id, items, store)
+    machining = machining.refined = refined
+    union = type-machine(id, items, row, store)
+. answered = if union != no-type && machining.refined == no-instance then union else types.void-type
+instances.set-returns(instance, answered, answered, .return-declared)
+finish-errors(frame)
+close()
+
+────────────────────
+_ do inherited-machine InstanceId?
+    - id SyntaxId
+    - items [SyntaxId]
+    - store MachineStore
+
+` The machine a property's machine refines, as the reference merges them: that of the property
+` of the same name of the base of the class, through the instance that types the base's value
+` for the class that declares it, as the class the machine is typed for holds it, which every
+` class below shares, where the base has one; no instance where it has none, or the machine
+` is no property's. A
+` property of that name that holds no machine is the reference's error, as is a refinement that
+` changes what the reference forbids (`refines-shaped`). One a class's markup writes refines that
+` of the markup of a class above (`inherited-content-machine`).
+if store == .store-content
+    = inherited-content-machine(id, items)
+if store != .store-member
+    = no-instance
+. property = machine-property(id)
+. decls = program.modules[module].decls
+. name Atom? = null
+. owner-decl DeclId = 0
+. site = id
+do match? decls[property]
+    | .decl-property(found)
+        name = found.name
+        owner-decl = found.owner
+        site = found.syntax
+if !name || owner-decl == 0
+    = no-instance
+. mark = scratch.types.mark
+. owner = types.class-pattern-with-args(module, owner-decl, mark)
+if owner == invalid-type
+    = no-instance
+types.complete(owner)
+. base = types.base-of(owner) ?? no-type
+. place = property-named(base, name) if base != no-type
+if !place
+    = no-instance
+. level = types.properties[place].owner
+. ref = class-ref(types, level)
+. inherited = class-property(ref, name)
+. value = declared-value(ref.module, inherited)
+. machine = program.modules[ref.module].tree.declared-machine(value)
+if machine == 0
+    . message = "Inherited property '${name.text}' is not a state machine"
+    frame.diagnose(site, .stated, program.store-atom(message))
+    = null
+. enclosing = instances.rows[instance].enclosing
+. receiver = if enclosing != no-instance then holding-type(enclosing-self, ref) else level
+    .. enclosing-self = instances.rows[enclosing].self-type
+. unit = instances.intern-initializer(ref.module, inherited, receiver)
+if instances.rows[unit].state == .instance-in-progress
+    decline(id)
+    = null
+demand-own-body(unit)
+for found in facts.machines
+    . same = found.module == ref.module && found.syntax == machine && found.outer == 0
+    if same && instances.rows[found.instance].enclosing == unit
+        . names [Atom]
+        . parents [U32]
+        inherited-cases(found, names, parents)
+        if !refines-shaped(items, U32.max, names, parents)
+            = null
+        = found.instance
+decline(id)
+= null
+
+────────────────────
+_ do inherited-content-machine InstanceId?
+    - id SyntaxId
+    - items [SyntaxId]
+
+` The machine a machine written as a line of a class's markup refines, as a property's machine
+` refines its base's: the first machine of the markup of a class above, from the nearest up,
+` that has a case at its root of a name one of this machine's cases at its root has, through
+` the function that fills the object with that class's markup, which the function this machine
+` is written in runs; no instance where none has. A refinement that changes what the reference
+` forbids is its error (`refines-shaped`).
+. roots [Atom]
+for item in items
+    if tree.nodes[item] is .node-state-case
+        roots += tree.state-name(item)!
+. fill = instances.rows[instance].enclosing
+while fill != no-instance
+    . call = facts.filler-of(fill)
+    if call == no-fact
+        = no-instance
+    fill = facts.calls[call].callee
+    . level = instances.rows[fill].self-type
+    if level == no-type || level == invalid-type
+        = no-instance
+    . ref = class-ref(types, level)
+    . owner = program.modules[ref.module].tree
+    . content SyntaxId = 0
+    do match? program.modules[ref.module].decls[ref.decl]
+        | .decl-class(class)
+            content = class.content
+    for machine in owner.content-machines(content)
+        if names-root(owner, machine, roots)
+            if instances.rows[fill].state == .instance-in-progress
+                decline(id)
+                = null
+            demand-own-body(fill)
+            for found in facts.machines
+                . same = found.module == ref.module && found.syntax == machine && found.outer == 0
+                if same && instances.rows[found.instance].enclosing == fill
+                    . names [Atom]
+                    . parents [U32]
+                    inherited-cases(found, names, parents)
+                    if !refines-shaped(items, U32.max, names, parents)
+                        = null
+                    = found.instance
+            decline(id)
+            = null
+= no-instance
+
+────────────────────
+_ do names-root Bool
+    - owner AST
+    - machine SyntaxId
+    - roots [Atom]
+
+` Whether a machine has a case at its root of one of some names.
+for item in owner.state-items(owner.state-body(machine))
+    if owner.nodes[item] is .node-state-case && roots.find(owner.state-name(item)!) != null
+        = true
+= false
+
+────────────────────
+_ do inherited-cases
+    - machine MachineFact
+    - names [Atom]
+    - parents [U32]
+
+` The cases a machine has, each with the place of the case it is written in, or none at the
+` root: those written in it, and where it refines another machine, those of that machine with
+` the ones it adds.
+. owner = program.modules[machine.module].tree
+. items = owner.state-items(owner.state-body(machine.syntax))
+if machine.refined == no-instance
+    written-cases(owner, items, U32.max, names, parents)
+    =
+. above = facts.machine-of(machine.refined)
+if !above
+    =
+inherited-cases(above, names, parents)
+added-cases(owner, items, U32.max, names, parents)
+
+────────────────────
+_ do written-cases
+    - owner AST
+    - items [SyntaxId]
+    - parent U32
+    - names [Atom]
+    - parents [U32]
+
+` Each case written in a body and in theirs, under the case at a place.
+for item in items
+    if owner.nodes[item] is .node-state-case
+        . place = names.length as U32
+        names += owner.state-name(item)!
+        parents += parent
+        written-cases(owner, owner.state-items(owner.state-body(item)), place, names, parents)
+
+────────────────────
+_ do added-cases
+    - owner AST
+    - items [SyntaxId]
+    - parent U32
+    - names [Atom]
+    - parents [U32]
+
+` The cases a refinement's body adds under the case at a place: one it names again is refined,
+` and adds those of its own body; any other is added with each case written in it.
+for item in items
+    if owner.nodes[item] is .node-state-case
+        . found = case-under(owner.state-name(item)!, parent, names, parents)
+        if found != U32.max
+            added-cases(owner, owner.state-items(owner.state-body(item)), found, names, parents)
+        else
+            . place = names.length as U32
+            names += owner.state-name(item)!
+            parents += parent
+            written-cases(owner, owner.state-items(owner.state-body(item)), place, names, parents)
+
+────────────────────
+_ do case-under U32
+    - name Atom
+    - parent U32
+    - names [Atom]
+    - parents [U32]
+
+` The place of the case of a name written under the case at a place, or none.
+for place in 0 .. < names.length
+    if names[place] == name && parents[place] == parent
+        = place as U32
+= U32.max
+
+────────────────────
+_ do refines-shaped Bool
+    - items [SyntaxId]
+    - parent U32
+    - names [Atom]
+    - parents [U32]
+
+` Whether a refinement's body changes only what the reference lets it, under the case of the
+` inherited machine at a place: each case it names again keeps that case's trigger and what it
+` holds, and each case it adds is written under a case, with a name the inherited machine does
+` not use. Anything but a case written at the root has no shape here yet.
+for item in items
+    if !(tree.nodes[item] is .node-state-case)
+        if parent == U32.max
+            decline(item)
+            = false
+        continue
+    . name = tree.state-name(item)!
+    . found = case-under(name, parent, names, parents)
+    if found == U32.max
+        if names.find(name) != null
+            . message = "State case '${name.text}' is declared elsewhere in the inherited machine"
+            frame.diagnose(item, .stated, program.store-atom(message))
+            = false
+        if parent == U32.max
+            . message = "Refinement cannot add top-level state case '${name.text}'"
+            frame.diagnose(item, .stated, program.store-atom(message))
+            = false
+        continue
+    if tree.state-targets(item).count != 0 || tree.state-trigger(item) != 0
+        . message = "Refined state case '${name.text}' cannot change its trigger or payload"
+        frame.diagnose(item, .stated, program.store-atom(message))
+        = false
+    if !refines-shaped(tree.state-items(tree.state-body(item)), found, names, parents)
+        = false
+= true
+
+────────────────────
+_ do machine-placement MachineStore?
+    - id SyntaxId
+    - row MachineSlots
+
+` Where a machine keeps its value: in the local or the lazy local it is declared into, which
+` starts it where it is first read, in the global of the module or the property of the class it
+` is the value of, in the flags of the object whose markup it is a line of, or nowhere, written
+` as a statement of a function that is no markup of a class. One written in the markup of a
+` class otherwise has no shape here yet.
+if row.bound != no-slot
+    . kind = bindings.slots[row.bound].kind
+    = .store-local if kind == .slot-local || kind == .slot-lazy
+. property = machine-property(id)
+if property != 0
+    do match? program.modules[module].decls[property]
+        | .decl-property(found)
+            = if found.owner == 0 then .store-global else .store-member
+    = null
+. owner = frame.outer
+if owner && owner.declaration.is-content
+    = .store-content if tree.content-machines(owner.declaration.syntax).find(id) != null
+= .store-none
+
+────────────────────
+_ do machine-property DeclId
+    - id SyntaxId
+
+` The property of the module whose value a machine is, or none.
+. decls = program.modules[module].decls
+for position in 0 .. < decls.length
+    do match? decls[position]
+        | .decl-property(property)
+            if property.value == id
+                = position as DeclId
+= 0
+
+────────────────────
+_ do machine-shape Bool
+    - id SyntaxId
+    - items [SyntaxId]
+    - store MachineStore
+
+` Whether a machine is one the reference builds: no case is written twice, each fallback
+` follows a group of transitions, each handler is on one source with at most a `when`, no
+` decision made on entry enters a case again (`entries-settle`), and one a local, a global or a
+` property names starts in a case. Each is the reference's error. A
+` fallback that names values, and a case of a machine of a class's markup whose name the class
+` declares otherwise, have no shape here yet.
+. redefined = tree.redefined-case(items)
+if redefined != 0
+    . name = tree.state-name(redefined)!
+    frame.diagnose
+        - redefined
+        - .stated
+        - program.store-atom("Redefinition of state case '${name.text}'")
+    = false
+. misplaced = tree.misplaced-fallback(items)
+if misplaced != 0
+    frame.diagnose(misplaced, .stated, program.store-atom("State fallback has no transition group"))
+    = false
+if !handlers-shaped(items) || !entries-settle(items)
+    = false
+if stored-machine && tree.initial-case(items) == 0 && items.length != 0
+    frame.diagnose(items[0], .stated, program.store-atom("State machine has no initial state"))
+    = false
+.. stored-machine = store != .store-none && store != .store-content
+if store == .store-content
+    for node in tree.machine-cases(items)
+        if !flagged(node)
+            . name = tree.state-name(node)
+            . shown = if name then name.text else ""
+            . message = "A case of a machine in a class's markup is read as a property of its name, and the class declares \"$shown\" already; rename the case or the property"
+            frame.diagnose(node, .stated, program.store-atom(message))
+            = false
+. unbuilt = unbuilt-part(items)
+if unbuilt != 0
+    decline(unbuilt)
+    = false
+= true
+
+────────────────────
+_ do entries-settle Bool
+    - items [SyntaxId]
+
+` Whether the decisions made where a machine's cases are entered, with no trigger, never enter a
+` case again, as the reference checks them from its first case and from each case written in
+` it. Where one does, it is the reference's error at the decision.
+. roots [SyntaxId]
+. initial = tree.initial-case(items)
+if initial != 0
+    roots += initial
+for node in tree.explicit-cases(items)
+    roots += node
+for root in roots
+    . entering [SyntaxId]
+    entering += root
+    if !case-entries-settle(items, entering, root, 0)
+        = false
+= true
+
+────────────────────
+_ do case-entries-settle Bool
+    - items [SyntaxId]
+    - entering [SyntaxId]
+    - node SyntaxId
+    - decision SyntaxId
+
+` Whether the decisions made where a case is entered, past the cases already `entering`, enter
+` none of them again: each immediate transition of its body, up to one with no trigger, which
+` always passes, and its first case, entered by the decision that led to the case.
+. body = tree.state-items(tree.state-body(node))
+for transition in tree.immediate-transitions(body)
+    if !enter-decided(items, entering, tree.immediate-path(items, node, transition), transition)
+        = false
+    if tree.state-trigger(transition) == 0
+        = true
+. initial = tree.initial-case(body)
+if initial == 0
+    = true
+. path [SyntaxId]
+path += initial
+= enter-decided(items, entering, path, decision)
+
+────────────────────
+_ do enter-decided Bool
+    - items [SyntaxId]
+    - entering [SyntaxId]
+    - path [SyntaxId]
+    - decision SyntaxId
+
+` Whether entering the cases of a path by a decision enters none of the cases already
+` `entering`, nor do the decisions made where its last case is entered.
+. depth = entering.length
+for node in path
+    if entering.find(node) != null
+        . name = tree.state-name(node)!
+        . message = "Entry decisions loop back to '${name.text}' without a trigger"
+        frame.diagnose
+            - if decision != 0 then decision else node
+            - .stated
+            - program.store-atom(message)
+        = false
+    entering += node
+. settled = case-entries-settle(items, entering, path[path.length - 1], decision)
+while entering.length > depth
+    entering.pop()
+= settled
+
+────────────────────
+_ do handlers-shaped Bool
+    - items [SyntaxId]
+
+` Whether each handler of a machine's bodies is one the reference builds: on a single source,
+` with no clause but one `when`. Each other is the reference's error.
+for item in items
+    if tree.is-transition(item) && !handlers-shaped(tree.state-items(tree.state-body(item)))
+        = false
+    if !tree.is-state-handler(item)
+        continue
+    do match? tree.nodes[item]
+        | .node-for-block(row)
+            do match? tree.nodes[row.loop]
+                | .node-loop-syntax(loop)
+                    if loop.next != 0 || row.next != 0
+                        . message = "A state handler subscribes to a single source"
+                        frame.diagnose(item, .stated, program.store-atom(message))
+                        = false
+                    do match? tree.nodes[loop.clause]
+                        | .node-clause(clause)
+                            if !(clause.op is .when-clause) || clause.next != 0
+                                . message = "A state handler accepts only a when clause"
+                                frame.diagnose(loop.clause, .stated, program.store-atom(message))
+                                = false
+= true
+
+────────────────────
++ do flagged Bool
+    - node SyntaxId
+
+` Whether the class declares the flag of a case of a machine its markup writes, or its projection.
+for decl in program.modules[module].decls
+    do match? decl
+        | .decl-property(row)
+            if row.flag == node || row.projection == node
+                = true
+= false
+
+────────────────────
+_ do unbuilt-part SyntaxId
+    - items [SyntaxId]
+
+` The first part of a machine's bodies that has no shape here yet: a fallback that names values.
+for item in items
+    if tree.nodes[item] is .node-state-fallback && tree.state-targets(item).count != 0
+        = item
+    if tree.is-transition(item)
+        . inner = unbuilt-part(tree.state-items(tree.state-body(item)))
+        if inner != 0
+            = inner
+= 0
+
+────────────────────
+_ do type-machine TypeId
+    - id SyntaxId
+    - items [SyntaxId]
+    - row MachineSlots
+    - store MachineStore
+    - outer SyntaxId = 0
+    - parent SyntaxId = 0
+
+` Types a machine's parts, the root first, then each case and continuation once what its
+` activation sees is known (`activation-known`); one that never is has no shape here. What each
+` activation sees is foreseen first where it can be (`foresee-activations`), so that the parts
+` can read the machine by its name (`early-union`). Then the machine's union is made, of each
+` case it names with what that case holds, and what it keeps is typed, and each projection of a
+` machine written as a statement: a case's flag, or its payload where it is active. What each
+` transition gives is converted to what its case holds, and the machine is recorded, with the
+` machine around it and the case it is written in where it is a named machine written in a case
+` of another.
+machining = machining.store = store
+machining = machining.syntax = id
+machining = machining.items = items
+machining = machining.cases = tree.machine-cases(items)
+machining = machining.kept = tree.machine-captures(items, machining.cases)
+machining.payloads.clear()
+machining.kept-types.clear()
+machining.starts.clear()
+machining.typed.clear()
+machining.waiting.clear()
+machining.groups-found.clear()
+for position in 0 .. < machining.cases.length
+    machining.payloads += fixed-payload(position as U32)
+    . unknown [TypeId]
+    for _ in machining.kept[position]
+        unknown += no-type
+    machining.kept-types += unknown
+do foresee-activations()
+early-union(id, row, store)
+note-starts(items)
+type-machine-body(0, items)
+. progress = true
+while progress
+    progress = false
+    for position in 0 .. < machining.waiting.length
+        . node = machining.waiting[position]
+        if node != 0 && activation-known(node)
+            machining.waiting[position] = 0
+            type-machine-body(node, tree.state-items(tree.state-body(node)))
+            progress = true
+    if !progress
+        progress = foresee-activations()
+for node in machining.waiting
+    if node != 0
+        decline(node)
+        = no-type
+for payload in machining.payloads
+    if payload == no-type || payload == invalid-type
+        decline(id)
+        = no-type
+. union = machine-union(id, row)
+type-machine-slots(row, union)
+type-projections(id, store)
+convert-targets()
+. start = facts.machine-groups.length
+for group in machining.groups-found
+    facts.machine-groups.append(group)
+. groups = RowRange'MachineGroup(start as U32, (facts.machine-groups.length - start) as U32)
+. property = if store == .store-global || store == .store-member then machine-property(id) else 0
+. fact = MachineFact
+    - instance
+    - id
+    - union
+    - store
+    - module
+    - property
+    - groups
+    - outer
+    - parent
+    - machining.refined
+facts.machines.append(fact)
+if (store == .store-member || store == .store-content) && outer == 0 && machining.refined == no-instance
+    demand-machine-stops()
+= union
+
+────────────────────
+_ do demand-task-owner
+
+` The constructor of the `TaskOwner` a case makes as it is entered, where its activation owns
+` the tasks spawned for it.
+if facts.task-owner-make != no-instance || types.task-owner-type == invalid-type
+    =
+facts.task-owner-make = calls.demand-constructor(types.task-owner-type, scratch.types.mark)
+
+────────────────────
+_ do demand-machine-stops
+
+` The event runtime's `event-own-machine`, which a machine a class's property holds or its markup
+` writes gives what stops it as it starts, its `event-stop-machines`, which runs those of an
+` object as the `close` of its class starts, and its `event-close-stopped`, which closes the
+` object's events as that `close` leaves.
+if facts.machine-stop != no-instance || types.event-endpoint-decl.module == 0
+    =
+. pointer = pointer-to(types.type-row(.uint8))
+. mark = scratch.types.mark
+scratch.types.push(pointer)
+. none = scratch.types.mark
+scratch.types.push(types.intern-function(types.void-type, false, none, none))
+facts.machine-own = calls.demand-runtime-call
+    - types.event-endpoint-decl.module
+    - no-type
+    - program.store-atom("event-own-machine")
+    - mark
+scratch.types.rewind(mark)
+scratch.types.push(pointer)
+facts.machine-stop = calls.demand-runtime-call
+    - types.event-endpoint-decl.module
+    - no-type
+    - program.store-atom("event-stop-machines")
+    - mark
+facts.machine-close = calls.demand-runtime-call
+    - types.event-endpoint-decl.module
+    - no-type
+    - program.store-atom("event-close-stopped")
+    - mark
+scratch.types.rewind(mark)
+
+────────────────────
+_ do early-union
+    - id SyntaxId
+    - row MachineSlots
+    - store MachineStore
+
+` Where what every case holds is fixed or foreseen before anything is typed, the machine's union
+` is made first, so that its cases can read the machine by its name: the local or the lazy local
+` it is kept in, the module's or the class's property it is, or the name a named machine written
+` in a case of another declares. Elsewhere such a read waits for the union and has no shape here.
+` A machine that refines another is read as the union of the machine none refines, made already.
+if machining.refined != no-instance
+    . above = facts.machine-of(machining.refined)
+    if above
+        facts.early-unions.append(EarlyUnion(instance, module, id, facts.root-machine(above).union))
+    =
+for payload in machining.payloads
+    if payload == no-type
+        =
+. union = machine-union(id, row)
+if row.bound != no-slot && store == .store-local && frame.outer
+    frame.outer.assign(row.bound, union)
+else if row.bound != no-slot && store == .store-nested
+    frame.assign(row.bound, union)
+else if store == .store-global || store == .store-member
+    facts.early-unions.append(EarlyUnion(instance, module, id, union))
+
+────────────────────
+_ fixed-payload TypeId
+    - position U32
+
+` What a case holds where that is known before anything is typed: nothing where nothing names
+` it with values; `U8` where the source of its payload gives none (`gives-nothing`), as the
+` reference falls back to. Otherwise no type, until its source is typed (`settle-payload`), with
+` or without a trigger.
+|? !source
+    types.void-type
+|? gives-nothing(source)
+    types.type-row(.uint8)
+??
+    no-type
+
+.. source = tree.payload-source(machining.items, tree.state-name(machining.cases[position])!)
+
+────────────────────
++ do gives-nothing Bool
+    - source StateSource
+
+` Whether a source of a case's payload gives no value, as the reference finds none there: a
+` case one of whose names neither its trigger, if it has one, nor its owner's trigger captures.
+if !(tree.nodes[source.node] is .node-state-case)
+    = false
+. trigger = tree.state-trigger(source.node)
+. captures [Atom]
+if trigger != 0
+    tree.pattern-names(tree.trigger-pattern(trigger), captures)
+if source.owner != 0
+    tree.pattern-names(tree.trigger-pattern(tree.state-trigger(source.owner)), captures)
+for target in tree.children[tree.state-targets(source.node)]
+    do match? tree.nodes[target]
+        | .node-identifier(named)
+            if captures.find(named.name) == null
+                = true
+= false
+
+────────────────────
+_ do foresee-activations Bool
+
+` Settles what the activation of each case sees before the machine's parts are typed, and
+` again where no case or continuation waiting is known, as the reference infers it apart from
+` where anything fires: what each case holds, from the source of its payload that nothing has
+` typed, and each name it keeps, from each transition that enters it, each transition typed on
+` trial (`foresee-in`), until nothing more settles. Whether anything is settled so.
+. sources [SyntaxId]
+. unsettled = false
+for position in 0 .. < machining.cases.length
+    . source SyntaxId = 0
+    if machining.payloads[position] == no-type
+        . found = tree.payload-source(machining.items, tree.state-name(machining.cases[position])!)
+        if found && machining.typed.find(found.node) == null
+            source = found.node
+    sources += source
+    if source != 0 || machining.kept-types[position].find(no-type) != null
+        unsettled = true
+if !unsettled
+    = false
+. settled = false
+. chain [SyntaxId]
+while foresee-in(machining.items, chain, sources)
+    settled = true
+= settled
+
+────────────────────
+_ do foresee-in Bool
+    - items [SyntaxId]
+    - chain [SyntaxId]
+    - sources [SyntaxId]
+
+` The transitions written among a body's items and in their bodies, each with the cases and
+` continuations whose bodies it is written in, outermost first (`foresee-entry`). Whether
+` anything is settled so.
+. settled = false
+for item in items
+    if !tree.is-transition(item)
+        continue
+    if foresee-entry(item, items, chain, sources)
+        settled = true
+    chain += item
+    if foresee-in(tree.state-items(tree.state-body(item)), chain, sources)
+        settled = true
+    chain.pop()
+= settled
+
+────────────────────
+_ do foresee-entry Bool
+    - transition SyntaxId
+    - items [SyntaxId]
+    - chain [SyntaxId]
+    - sources [SyntaxId]
+
+` A transition typed on trial where something of the case it enters is unsettled
+` (`trial-transition`), with the names the activations around it see where they are known
+` (`activation-names`): each name the case keeps that it reads there takes the type it has
+` there, and what the case holds, where the transition is the source of its payload, is what it
+` gives, or a tuple of them. Whether either is settled so.
+. position = tree.case-position(machining.cases, tree.state-name(transition)!)
+if position == null
+    = false
+. sourced = sources[position] == transition && machining.payloads[position] == no-type
+. places [Size]
+. wanted [SlotId]
+if machining.kept-types[position].find(no-type) != null
+    for read in bindings.machine-reads
+        if read.module != module || read.site != transition || read.slot == no-slot
+            continue
+        . place = machining.kept[position].find(read.name)
+        if place != null && machining.kept-types[position][place] == no-type
+            places += place
+            wanted += read.slot
+if wanted.length == 0 && !sourced
+    = false
+. slots [SlotId]
+. given [TypeId]
+for part in chain
+    activation-names(part, slots, given)
+. found [TypeId]
+. targets [TypeId]
+trial-transition(transition, items, slots, given, wanted, found, targets)
+. settled = false
+if found.length == wanted.length
+    for offset in 0 .. < wanted.length
+        if found[offset] != no-type && found[offset] != invalid-type
+            machining.kept-types[position][places[offset]] = found[offset]
+            settled = true
+if !sourced || targets.length == 0
+    = settled
+for target in targets
+    if target == no-type || target == invalid-type
+        = settled
+settle-given(position, targets)
+= true
+
+────────────────────
+_ do note-starts
+    - items [SyntaxId]
+
+` The cases and continuations a body enters as it is entered, and so as the machine starts:
+` its first case and those its immediate transitions enter, and so on in each of theirs.
+. initial = tree.initial-case(items)
+if initial != 0
+    note-start(initial)
+for transition in tree.immediate-transitions(items)
+    note-start(transition)
+
+────────────────────
+_ do note-start
+    - node SyntaxId
+
+if machining.starts.find(node) != null
+    =
+machining.starts += node
+if tree.nodes[node] is .node-state-continuation
+    . target = tree.find-case(machining.items, tree.state-name(node)!)
+    if target != 0
+        note-start(target)
+        =
+note-starts(tree.state-items(tree.state-body(node)))
+
+────────────────────
+_ do activation-known Bool
+    - node SyntaxId
+
+` Whether what the activation of a case or a continuation sees is known: what the case it
+` enters holds and each name it keeps.
+. position = tree.case-position(machining.cases, tree.state-name(node)!)
+if position == null
+    = true
+if machining.payloads[position] == no-type
+    = false
+for type in machining.kept-types[position]
+    if type == no-type
+        = false
+= true
+
+────────────────────
+_ do type-machine-body
+    - owner SyntaxId
+    - items [SyntaxId]
+
+` One body of a machine: the root, a case or a continuation. The names its activation sees take
+` their types (`bind-activation`), its entry statements are typed, then what runs once they
+` have (`type-entered`), the functions of its groups (`type-handlers`), and its `do finally`
+` blocks, each in a region of its own, which no narrowing leaves. Its cases and continuations
+` wait their turn. What leaves a part only a handler runs is no error of the function
+` (`hand-off-since`). A named machine among its entry statements is typed where it is written
+` (`type-nested-machine`).
+. starts = machining.outer-starts && (owner == 0 || machining.starts.find(owner) != null)
+. mark = scratch.outgoing.mark
+. narrowed = scratch.narrowings.mark
+if owner != 0
+    bind-activation(owner)
+    for item in items
+        if tree.nested-machine(item) != 0
+            type-nested-machine(owner, item, starts)
+        else if tree.is-entry-item(item)
+            do check-statement(item)
+type-entered(owner, items)
+end-machine-region(narrowed)
+hand-off-since(mark, starts)
+. handlers = scratch.outgoing.mark
+type-handlers(owner, items)
+end-machine-region(narrowed)
+hand-off-since(handlers, false)
+. exits = scratch.outgoing.mark
+if owner != 0
+    for item in items
+        if tree.nodes[item] is .node-do-finally-block
+            do check-statement(item)
+end-machine-region(narrowed)
+hand-off-since(exits, starts)
+for item in items
+    if tree.is-transition(item)
+        machining.waiting += item
+
+────────────────────
+_ do type-nested-machine
+    - parent SyntaxId
+    - item SyntaxId
+    - starts Bool
+
+` A named machine written in a case of the machine being typed, part of its function, as the
+` reference builds it: typed as a machine is, while what is known of the machine around it is
+` put aside, and recorded with that machine and the case. Its parts start with the machine
+` around it where the case does. It is the reference's error that it has no first case.
+. machine = tree.nested-machine(item)
+. row = bindings.machine-slots(module, machine)
+if !row
+    decline(item)
+    =
+. own = machining
+. fresh-payloads [TypeId]
+. fresh-kept-types [[TypeId]]
+. fresh-starts [SyntaxId]
+. fresh-typed [SyntaxId]
+. fresh-waiting [SyntaxId]
+. fresh-found [MachineGroup]
+machining = Machining
+    - own.syntax
+    - own.store
+    - no-instance
+    - tree.nested-machine-name(item)
+    - starts
+    - own.items
+    - own.cases
+    - own.kept
+    - fresh-payloads
+    - fresh-kept-types
+    - fresh-starts
+    - fresh-typed
+    - fresh-waiting
+    - fresh-found
+. nested = tree.state-items(tree.state-body(machine))
+if machine-shape(machine, nested, .store-nested)
+    do type-machine(machine, nested, row, .store-nested, own.syntax, parent)
+machining = own
+
+────────────────────
+_ do end-machine-region
+    - mark ScratchMark
+
+` Ends a part of a machine, which runs where others may not have: what the flow knew in it
+` holds no longer.
+frame.pop-narrowing(mark)
+frame.doubt-members()
+
+────────────────────
+_ do hand-off-since
+    - mark ScratchMark
+    - starts Bool
+
+` What leaves a part of a machine since a mark. A handler gives each error that leaves it to the
+` global `unhandled-error` (see `hands-off`), typed once for the machine, as the reference's
+` handlers do; the errors of a part only a handler runs then leave nothing, and those of a part
+` that runs as the machine starts leave its function too. A call there whose callee's errors are
+` not yet known lets them out all the same, to where the handler gives them.
+if scratch.outgoing.mark == mark
+    =
+if !machine-handed
+    machine-handed = true
+    if !hands-off(instance)
+        decline(frame.declaration.syntax)
+if !starts
+    for row in scratch.outgoing.since(mark)
+        if row.call != U32.max
+            facts.calls[row.call].propagates = true
+    scratch.outgoing.rewind(mark)
+
+────────────────────
+_ do bind-activation
+    - node SyntaxId
+
+` The names a case's or a continuation's activation sees take their types
+` (`activation-names`).
+. slots [SlotId]
+. given [TypeId]
+activation-names(node, slots, given)
+for offset in 0 .. < slots.length
+    frame.assign(slots[offset], given[offset])
+
+────────────────────
+_ do activation-names
+    - node SyntaxId
+    - slots [SlotId]
+    - given [TypeId]
+
+` The names a case's or a continuation's activation sees, as the reference binds them, each
+` added to `slots` with its type added to `given`: a name among what it gives takes the part of
+` what the case holds in its place, where that is known, and a name the case keeps what it
+` keeps.
+. position = tree.case-position(machining.cases, tree.state-name(node)!)
+if position == null
+    =
+. payload = machining.payloads[position]
+. targets = tree.state-targets(node)
+. offset = 0u32
+for target in tree.children[targets]
+    do match? tree.nodes[target]
+        | .node-identifier(named)
+            . slot = bindings.declared-at(frame.slots, node, named.name)
+            . part = if whole-payload then payload else payload-part(payload, offset)
+                .. whole-payload = targets.count == 1 || payload == no-type
+            if slot != no-slot && part != no-type
+                slots += slot
+                given += part
+    offset += 1
+. kept = machining.kept[position]
+. names [Atom]
+tree.target-names(node, names)
+for place in 0 .. < kept.length
+    . slot = bindings.declared-at(frame.slots, node, kept[place])
+    if slot != no-slot && names.find(kept[place]) == null
+        slots += slot
+        given += machining.kept-types[position][place]
+
+────────────────────
+_ payload-part TypeId
+    - payload TypeId
+    - offset U32
+
+` The part of a case's payload in a place, where it is a tuple.
+match types.rows[payload]
+    | .type-tuple(row)
+        if offset < row.fields.count then types.child-type(row.fields, offset) else no-type
+    ??
+        no-type
+
+────────────────────
+_ do type-entered
+    - owner SyntaxId
+    - items [SyntaxId]
+
+` What runs where a body is entered, once its entry statements have: what its first case is
+` given where it is entered so (`enters-initial`), which a case's never is where one of its
+` immediate transitions always passes (`always-passes`), its immediate transitions, each with
+` its condition, or its subject matched by its pattern, and what it gives, then the stream of
+` each of its groups (`type-group`).
+. initial = if owner == 0 || !tree.always-passes(items) then tree.initial-case(items) else 0
+if initial != 0 && tree.enters-initial(machining.items, owner)
+    type-targets(initial)
+for transition in tree.immediate-transitions(items)
+    . trigger = tree.state-trigger(transition)
+    . subject = tree.trigger-subject(trigger)
+    if trigger == 0
+        type-targets(transition)
+        continue
+    if subject != 0
+        type-trigger-pattern(trigger, infer(subject))
+    else
+        . condition = tree.trigger-condition(trigger)
+        note-truthiness(condition, condition, infer(condition))
+    type-targets(transition)
+for head in tree.group-heads(items)
+    type-group(owner, head)
+
+────────────────────
++ do type-trigger-pattern
+    - trigger SyntaxId
+    - subject TypeId
+
+` A trigger's pattern matched against what it tests: an item of its stream, or the subject of
+` an `if | p = s`.
+. pattern = tree.trigger-pattern(trigger)
+if pattern == 0 || subject == invalid-type || subject == no-type
+    =
+do match? tree.nodes[pattern]
+    | .node-structure-match(row)
+        check-pattern(row.pattern, subject)
+        =
+check-pattern(pattern, subject)
+
+────────────────────
+_ do type-group
+    - owner SyntaxId
+    - head SyntaxId
+
+` A group of event transitions where its owner subscribes it, as the reference makes it: its
+` stream is made a `Broadcastable`, recorded at its first transition's trigger, and the
+` machine's `Subscriber` of its item is given to the broadcaster's `subscribe` and
+` `unsubscribe`, whose errors are given to the global `unhandled-error` (`hands-off-raising`),
+` each call kept with the group. What a call of the
+` subscriber answers is kept for its type. A stream that is neither is the reference's error
+` at the transition. One on an event of an object is typed so too (`type-event-group`), and one
+` on a stream that is iterable and implements no `Broadcastable` itself, though it may convert
+` to one, as `type-iterated-group` says, as the reference tries them in that order.
+. trigger = tree.group-trigger(head)
+. written = tree.group-stream(head)
+if tree.trigger-kind(trigger) == StateTriggerKind.state-trigger-whenever
+    . watched = watched-stream(trigger, written)
+    if watched != no-type
+        subscribe-group(owner, head, watched)
+    =
+. found = infer-found(written, Want().adding(.want-event))
+. given = found.type
+if found.event != U32.max
+    . event = found-events[found.event]
+    type-event-group(owner, head, trigger, written, event, given)
+    =
+if given == invalid-type || given == no-type
+    =
+if types.broadcastable-decl.module == 0
+    decline(head)
+    =
+if interface-of(given, types.broadcastable-decl) == no-type && iterates-as-source(given)
+    type-iterated-group(owner, head, trigger, written, given)
+    =
+. stream = supported(given, types.broadcastable-decl)
+if stream == no-type
+    frame.diagnose
+        - head
+        - .stated
+        - program.store-atom("State trigger source is not broadcastable or iterable")
+    =
+conversions.convert(trigger, written, given, stream, .reason-argument)
+facts.set-node-type(instance, trigger, stream)
+subscribe-group(owner, head, stream)
+
+────────────────────
+_ do subscribe-group
+    - owner SyntaxId
+    - head SyntaxId
+    - stream TypeId
+
+. item = first-arg(stream)
+. subscriber = types.well-known-type-of("core/stream", "Subscriber", item)
+if item == no-type || subscriber == invalid-type
+    decline(head)
+    =
+. subscribing = calls.protocol-call(stream, program.store-atom("subscribe"), head, subscriber, false, no-type, no-type, false)
+if subscribing.answer == invalid-type
+    decline(head)
+    =
+. subscribe = subscribing.fact
+. unsubscribing = calls.protocol-call(stream, program.store-atom("unsubscribe"), head, subscriber, false, no-type, no-type, false)
+if unsubscribing.answer == invalid-type
+    decline(head)
+    =
+. unsubscribe = unsubscribing.fact
+if !hands-off-raising(subscribe) || !hands-off-raising(unsubscribe)
+    decline(head)
+    =
+. carried = carried-result(types, subscriber)
+if carried != no-type
+    types.complete(carried)
+    facts.note-carried(function-row(types, subscriber), carried)
+. enqueue = machine-enqueue(item, subscriber)
+if enqueue == no-instance
+    decline(head)
+    =
+. group = MachineGroup
+    - head
+    - owner
+    - stream
+    - item
+    - subscriber
+    - subscribe
+    - unsubscribe
+    - U32.max
+    - false
+    - false
+    - enqueue
+machining.groups-found += group
+
+────────────────────
+_ do watched-stream TypeId
+    - trigger SyntaxId
+    - written SyntaxId
+
+if !tracks-reads(tree, written)
+    . message = "A \"whenever\" trigger fires as what it reads with \"#\" changes, and this one reads nothing with \"#\", so it would never fire; write \"#\" before what it follows, as in \"whenever #feed\""
+    frame.diagnose(trigger, .stated, program.store-atom(message))
+    = no-type
+if types.live-action-type == invalid-type
+    decline(trigger)
+    = no-type
+. given = infer(written)
+if given == invalid-type || given == no-type
+    = no-type
+. read = demand-lambda(given, scratch.no-types)
+if read == no-instance
+    decline(trigger)
+    = no-type
+. value = instances.signatures[read].returns
+if value == invalid-type || value == no-type
+    = no-type
+. module = class-ref(types, types.live-action-type).module
+. mark = scratch.types.mark
+scratch.types.push(value)
+scratch.types.push(given)
+. watch = calls.demand-runtime-call(module, no-type, program.store-atom("watch-changes"), mark, 1)
+scratch.types.rewind(mark)
+if watch == no-instance
+    decline(trigger)
+    = no-type
+conversions.convert(trigger, written, given, instances.argument-type(watch, 0), .reason-argument)
+do facts.record-call(instance, trigger, watch, .call-function, scratch.no-fills, false)
+. stream = instances.signatures[watch].returns
+facts.set-node-type(instance, trigger, stream)
+= stream
+
+────────────────────
+_ do machine-enqueue InstanceId
+    - item TypeId
+    - subscriber TypeId
+
+` The event runtime's `event-machine-enqueue` of an item, which the reference gives a group's
+` activation, an item and its broadcaster, to run the activation once no event is being
+` published and no other transition runs; or none.
+. broadcaster = types.well-known-type-of("core/stream", "Broadcastable", item)
+if broadcaster == invalid-type || types.event-endpoint-decl.module == 0
+    = no-instance
+. mark = scratch.types.mark
+scratch.types.push(item)
+scratch.types.push(subscriber)
+scratch.types.push(item)
+scratch.types.push(broadcaster)
+. name = program.store-atom("event-machine-enqueue")
+. found = calls.demand-runtime-call(types.event-endpoint-decl.module, no-type, name, mark, 1)
+scratch.types.rewind(mark)
+= found
+
+────────────────────
++ do iterates-as-source Bool
+    - container TypeId
+
+` Whether the reference finds the items of the stream of a group of a machine's event
+` transitions by iterating it: a generator, or a value `supported` as an `Iterable`, an
+` `Indexable` or a `Stream`.
+if same-decl(class-ref(types, container), types.generator-decl)
+    = true
+for decl in [types.iterable-decl, types.indexable-decl, types.stream-decl]
+    if supported(container, decl) != no-type
+        = true
+= false
+
+────────────────────
+_ do type-iterated-group
+    - owner SyntaxId
+    - head SyntaxId
+    - trigger SyntaxId
+    - written SyntaxId
+    - given TypeId
+
+` A group of event transitions on a stream that is only iterable, as the reference makes it
+` where its owner subscribes it: the container is read at once, by its protocol planned at the
+` trigger, which has the slots of a loop, and each item is given to the group's handler with
+` the container. The reference's loop there does not poll.
+. iterated = iteration-container(given, written)
+. item = loop-item-type(iterated, trigger)
+if item == invalid-type || item == no-type
+    decline(head)
+    =
+note-container-iteration(trigger, iterated, false, trigger)
+if is-indexed(iterated, false)
+    facts.set-plan(instance, trigger, .plan-index-loop)
+    if is-array-field(iterated, types.length-atom!)
+        facts.set-constant(instance, trigger, ConstantFact(1, 0, null, false), .plan-index-loop)
+    keep-loop(trigger, iterated, types.size-type, types.size-type)
+keep-loop-item(trigger, item)
+. subscriber = types.well-known-type-of("core/stream", "Subscriber", item)
+if subscriber == invalid-type || facts.plan-of(instance, trigger) == .plan-none
+    decline(head)
+    =
+machining.groups-found += MachineGroup
+    - head
+    - owner
+    - iterated
+    - item
+    - subscriber
+    - no-fact
+    - no-fact
+    - U32.max
+    - false
+    - true
+
+────────────────────
+_ do type-event-group
+    - owner SyntaxId
+    - head SyntaxId
+    - trigger SyntaxId
+    - written SyntaxId
+    - event NamedEvent
+    - stream TypeId
+
+` A group on an event of an object, as the reference subscribes it: the endpoint the event
+` runtime keeps for the object's event is the group's `Broadcastable`, and the machine keeps a
+` port of the event runtime for the group, which queues each item that arrives on the event
+` runtime's machine queue and runs the machine's subscriber with it. The port is made where
+` the group is first subscribed, and attached to the endpoint and detached from it where its
+` owner enters and exits. A group the event runtime runs from the table of a class instead
+` (`lowers-group`) needs `event-register-lowered`, and its port is made where the machine
+` starts and given what the table runs it with. One at the address of a keyed event takes the
+` endpoint there, which the receiver claims, and is never run from the table, as the
+` reference's `keyed-address-required` decides.
+. keyed = event.address != 0
+if (event.key != no-type && !keyed) || stream == invalid-type || stream == no-type
+    decline(head)
+    =
+. endpoint = if keyed then event-call("event-keyed-endpoint", event.payload, no-type, 3) else event-call("event-endpoint", event.payload)
+. item = event.payload
+. subscriber = types.well-known-type-of("core/stream", "Subscriber", item)
+. broadcastable = types.well-known-type-of("core/stream", "Broadcastable", item)
+. port-type = types.well-known-type-of("core/event", "EventMachinePort", item)
+if endpoint == no-instance || subscriber == invalid-type || unportable
+    decline(head)
+    =
+.. unportable = broadcastable != stream || port-type == invalid-type
+if keyed && !claim-endpoint(head, head, event.address, endpoint)
+    =
+conversions.convert
+    - trigger
+    - written
+    - instances.signatures[endpoint].returns
+    - stream
+    - .reason-argument
+facts.set-node-type(instance, trigger, stream)
+. lowered = if keyed then false else lowers-group(owner, written, event)
+if !lowered
+    =
+if lowered! && facts.event-register == no-instance
+    demand-event-register()
+if lowered! && facts.event-register == no-instance
+    decline(head)
+    =
+. carried = carried-result(types, subscriber)
+if carried != no-type
+    types.complete(carried)
+    facts.note-carried(function-row(types, subscriber), carried)
+. held = types.optional-of(port-type)
+. port = if lowered then port-call("event-machine-port", item, subscriber, stream) else no-instance
+. post = if lowered then port-call("event-machine-post", item, port-type, item) else no-instance
+. attach = if lowered then no-instance else port-call("event-machine-attach", item, held, subscriber, stream)
+. detach = if lowered then no-instance else port-call("event-machine-detach", item, held)
+. made = if lowered then port != no-instance && post != no-instance else attachable
+    .. attachable = attach != no-instance && detach != no-instance
+if !made
+    decline(head)
+    =
+. used = facts.event-uses.length as U32
+facts.event-uses += EventUse
+    - instance
+    - head
+    - written
+    - event.owner
+    - event.name
+    - .event-subscribe
+    - endpoint
+    - no-instance
+    - no-instance
+    - event.address
+instances.mark-may-panic(instance)
+. group = MachineGroup
+    - head
+    - owner
+    - stream
+    - item
+    - subscriber
+    - no-fact
+    - no-fact
+    - used
+    - lowered
+    - false
+    - no-instance
+    - port
+    - post
+    - attach
+    - detach
+machining.groups-found += group
+
+────────────────────
+_ do port-call InstanceId
+    - name String
+    - item TypeId
+    - first TypeId
+    - second TypeId = no-type
+    - third TypeId = no-type
+
+` A function of the event runtime that keeps the port of a machine's group on an event of an
+` object, with the group's item as its type argument, given arguments of the types after it.
+. mark = scratch.types.mark
+scratch.types.push(item)
+scratch.types.push(first)
+if second != no-type
+    scratch.types.push(second)
+if third != no-type
+    scratch.types.push(third)
+. called = calls.demand-runtime-call
+    - types.event-endpoint-decl.module
+    - no-type
+    - program.store-atom(name)
+    - mark
+    - 1
+scratch.types.rewind(mark)
+= called
+
+────────────────────
+_ do lowers-group Bool?
+    - owner SyntaxId
+    - written SyntaxId
+    - event NamedEvent
+
+` Whether the event runtime runs a group of a machine's event transitions from the table of the
+` class whose object it is written for, as the reference plans it: a group at the root of a
+` machine a property of the class holds, or of one written in the class's content, as
+` `lowers-for` decides. A group of a case of the same machine on the event is planned first, as
+` the reference compiles the cases a transition enters before the machine's root, and is no such
+` group, which leaves the root's group to the sidecar path the reference then takes.
+. stored = machining.store == .store-member || machining.store == .store-content
+if !stored || owner != 0 || frame.self-type == no-type
+    = false
+. lowered = lowers-for(frame.self-type, module, written, event)
+if lowered == null
+    decline(written)
+= lowered
+
+────────────────────
++ do lowers-for Bool?
+    - receiver TypeId
+    - source ModuleId
+    - written SyntaxId
+    - event NamedEvent
+
+` Whether the event runtime runs a group at the root of a machine, written in a module on a
+` stream, from the table of a class: one on an event of the object itself, its name alone or
+` read from `this`. Where a section of the class or of one above it hears the event too, or a
+` constructor of one of them subscribes to it, the reference subscribes the group itself. Where
+` a group of another of their machines is on it, the reference's choice turns on the order it
+` compiles them in, and the group has no shape here (null).
+. found = own-event(receiver, source, written)
+if !found || found.owner != event.owner || found.name != event.name
+    = false
+. chain [TypeId]
+. level TypeId? = receiver
+while level
+    chain += level
+    level = types.base-of(level)
+. groups = 0u32
+. hearing = 0u32
+for holder in chain
+    . ref = class-ref(types, holder)
+    for part in sheet-parts(ref)
+        . part-module = program.modules[part.module]
+        for member in part-module.member-pool[part-members(part)]
+            do match? part-module.decls[member]
+                | .decl-rule(rule)
+                    . heard = section-event(receiver, part.module, rule.syntax)
+                    if heard && heard.owner == event.owner && heard.name == event.name
+                        = false
+                | .decl-property(property)
+                    . machine = if property.name && !property.is-lazy then machine-node else 0
+                        .. machine-node = part-module.tree.declared-machine(property.value)
+                    if machine != 0
+                        . heard = event-groups
+                            - part-module.tree
+                            - part-module.tree.state-items
+                                - part-module.tree.state-body(machine)
+                            - event.name
+                        groups += heard
+                        hearing += if heard != 0 then 1 else 0
+    . owner-module = program.modules[ref.module]
+    do match? owner-module.decls[ref.decl]
+        | .decl-class(class)
+            for machine in owner-module.tree.content-machines(class.content)
+                . heard = event-groups
+                    - owner-module.tree
+                    - owner-module.tree.state-items(owner-module.tree.state-body(machine))
+                    - event.name
+                groups += heard
+                hearing += if heard != 0 then 1 else 0
+for heard in constructor-events(receiver, chain)
+    if heard.owner == event.owner && heard.name == event.name
+        = false
+if hearing != 1
+    = null
+= groups == 1
+
+────────────────────
+_ do event-groups U32
+    - tree AST
+    - items [SyntaxId]
+    - name Atom
+
+` How many groups of event transitions in a body, and in the bodies of its transitions, are on
+` an event of the object itself of a name, written alone or read from `this`.
+. count = 0u32
+for head in tree.group-heads(items)
+    . stream = tree.group-stream(head)
+    do match? tree.nodes[stream]
+        | .node-identifier(row)
+            if row.name == name
+                count += 1
+        | .node-get-expression(get)
+            if get.name == name
+                do match? tree.nodes[get.object]
+                    | .node-identifier(object)
+                        if object.name.text == "this"
+                            count += 1
+for item in items
+    if tree.is-transition(item)
+        count += event-groups(tree, tree.state-items(tree.state-body(item)), name)
+= count
+
+────────────────────
+_ do group-item TypeId
+    - head SyntaxId
+
+` The item the stream of a group gives, or no type where its group has no shape.
+for group in machining.groups-found
+    if group.head == head
+        = group.item
+= no-type
+
+────────────────────
+_ do type-handlers
+    - owner SyntaxId
+    - items [SyntaxId]
+
+` The function each group of a body's event transitions runs for an item: `each` and `it` are
+` the item, and each transition matches its pattern, tests its guard and gives its targets; a
+` handler runs its loop (`type-state-handler`).
+for head in tree.group-heads(items)
+    . item = group-item(head)
+    if item == no-type
+        continue
+    . each = bindings.declared-kind-at(frame.slots, head, .slot-each)
+    . it = bindings.declared-kind-at(frame.slots, head, .slot-it)
+    if each != no-slot
+        frame.assign(each, item)
+    if it != no-slot
+        frame.assign(it, item)
+    if tree.is-state-handler(head)
+        type-state-handler(head, item)
+        continue
+    for transition in tree.group-transitions(items, head)
+        . trigger = tree.state-trigger(transition)
+        type-trigger-pattern(trigger, item)
+        . guard = tree.trigger-guard(trigger)
+        if guard != 0
+            note-truthiness(guard, guard, infer(guard))
+        type-targets(transition)
+
+────────────────────
+_ do type-state-handler
+    - head SyntaxId
+    - item TypeId
+
+` A handler's loop where an item of its stream arrives, as the reference runs it: its pattern
+` binds the item, its `when` is tested, and then its body runs, as the handler `handling` names.
+do match? tree.nodes[head]
+    | .node-for-block(row)
+        do match? tree.nodes[row.loop]
+            | .node-loop-syntax(loop)
+                if loop.pattern != 0
+                    check-pattern(loop.pattern, item)
+                do match? tree.nodes[loop.clause]
+                    | .node-clause(clause)
+                        note-truthiness(clause.expr, clause.expr, infer(clause.expr))
+                . outer = handling
+                handling = head
+                do check-statement(row.body)
+                handling = outer
+
+────────────────────
+_ do type-targets
+    - transition SyntaxId
+
+` What a transition gives the case it enters, typed where it fires. The source of a case's
+` payload settles what the case holds where nothing did before (`fixed-payload`), and each
+` name the case keeps takes what it reads there, which every transition that enters the case
+` where the name is in reach must agree on, as the reference unifies them. A transition into a
+` case that names what it holds gives one value for each name (`gives-names`).
+for target in tree.children[tree.state-targets(transition)]
+    do infer(target)
+if !gives-names(transition)
+    =
+machining.typed += transition
+. position = tree.case-position(machining.cases, tree.state-name(transition)!)
+if position == null
+    =
+settle-payload(position, transition)
+for read in bindings.machine-reads
+    if read.module != module || read.site != transition
+        continue
+    . place = machining.kept[position].find(read.name)
+    if place == null
+        continue
+    if read.slot == no-slot
+        continue
+    . read-type = frame.slot-type(read.slot)
+    if read-type == no-type || read-type == invalid-type
+        decline(transition)
+        continue
+    . known = machining.kept-types[position][place]
+    if known == no-type
+        machining.kept-types[position][place] = read-type
+    else if known != read-type
+        . joined = relations.unify(known, read-type, module)
+        if relation-legal(joined)
+            machining.kept-types[position][place] = joined.unified
+        else
+            frame.diagnose
+                - transition
+                - .stated
+                - program.store-atom
+                    - "Unable to unify activation capture type for '${read.name.text}'"
+
+────────────────────
+_ do gives-names Bool
+    - transition SyntaxId
+
+` Whether a transition gives a case that names what it holds, written with no trigger of its
+` own, a value for each name, which is reported where it does not.
+. name = tree.state-name(transition)
+. held = if name then tree.find-case(machining.items, name) else 0
+if held == 0 || held == transition || tree.state-trigger(held) != 0
+    = true
+. names = tree.state-targets(held).count
+. given = tree.state-targets(transition).count
+if names == 0 || given == names
+    = true
+. holds = if names == 1 then "one value" else "$names values"
+. gives = if given == 0 then "none" else "$given"
+. message = "Case \"${name!.text}\" holds $holds, and this transition gives $gives; give it $holds"
+frame.diagnose(transition, .stated, program.store-atom(message))
+= false
+
+────────────────────
+_ do settle-payload
+    - position U32
+    - transition SyntaxId
+
+` What a case holds, once the transition that is the source of its payload is typed, from what
+` it gives (`settle-given`).
+if machining.payloads[position] != no-type
+    =
+. source = tree.payload-source(machining.items, tree.state-name(machining.cases[position])!)
+if !source || source.node != transition
+    =
+. given [TypeId]
+for target in tree.children[tree.state-targets(transition)]
+    given += facts.node-type(instance, target)
+settle-given(position, given)
+
+────────────────────
+_ do settle-given
+    - position U32
+    - given [TypeId]
+
+` What a case holds, from what the source of its payload gives: each part joined with what each
+` other transition that gives the case values gives in its place, where that is known
+` (`join-others`), and the one part, or a tuple of them.
+join-others(position, given)
+if given.length == 1
+    machining.payloads[position] = given[0]
+    =
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+for offset in 0 .. < given.length
+    scratch.names.push(types.index-atom(offset as U32))
+    scratch.types.push(given[offset])
+machining.payloads[position] = types.intern-tuple(mark, names-mark)
+
+────────────────────
+_ do join-others
+    - position U32
+    - given [TypeId]
+
+` Joins what the source of a case's payload gives with what each other source that gives values
+` gives in its place, as the reference joins them: what one typed already gives, or what one
+` gives typed on trial apart from where it fires (`source-given`). One whose values are not
+` known so, that gives another number of them, or whose values do not join, is left out, and
+` its values are converted to what the case holds where it fires.
+for type in given
+    if type == no-type || type == invalid-type
+        =
+. name = tree.state-name(machining.cases[position])!
+. best = tree.payload-source(machining.items, name)
+for source in tree.payload-sources(machining.items, name)
+    if (best && source.node == best.node) || gives-nothing(source)
+        continue
+    . other = source-given(source.node)
+    if other.length != given.length
+        continue
+    . joined [TypeId]
+    for offset in 0 .. < given.length
+        . part = join-payload(given[offset], other[offset])
+        if part == no-type || part == invalid-type
+            break
+        joined += part
+    if joined.length == given.length
+        for offset in 0 .. < given.length
+            given[offset] = joined[offset]
+
+────────────────────
+_ do source-given [TypeId]
+    - node SyntaxId
+
+` What a transition that gives a case values gives: the types of its targets where it is typed,
+` or else typed on trial where it is written, with the names the activations around it see
+` (`trial-transition`). None where any is unknown.
+. found [TypeId]
+if machining.typed.find(node) != null
+    for target in tree.children[tree.state-targets(node)]
+        found += facts.node-type(instance, target)
+else
+    . chain [SyntaxId]
+    . items = source-place(machining.items, node, chain)
+    if items.length == 0
+        = found
+    . slots [SlotId]
+    . known [TypeId]
+    for part in chain
+        activation-names(part, slots, known)
+    . wanted [SlotId]
+    . captured [TypeId]
+    trial-transition(node, items, slots, known, wanted, captured, found)
+for type in found
+    if type == no-type || type == invalid-type
+        found.clear()
+        break
+= found
+
+────────────────────
+_ do source-place [SyntaxId]
+    - items [SyntaxId]
+    - node SyntaxId
+    - chain [SyntaxId]
+
+` The items of the body of a machine a node is written among, with the cases and
+` continuations whose bodies hold them added to `chain`, outermost first; none where it is not
+` written there.
+for item in items
+    if item == node
+        = items
+    if tree.is-transition(item)
+        chain += item
+        . inner = source-place(tree.state-items(tree.state-body(item)), node, chain)
+        if inner.length != 0
+            = inner
+        chain.pop()
+. none [SyntaxId]
+= none
+
+────────────────────
+_ do join-payload TypeId
+    - held TypeId
+    - given TypeId
+
+` The type two values a case is given in one place join to, as the reference joins inferred
+` types: an optional of the other where one is `null`, or what they unify to, or invalid.
+if held == given
+    = held
+if held == types.null-type || given == types.null-type
+    . other = if held == types.null-type then given else held
+    = types.optional-of(types.optional-inner(other))
+. relation = relations.unify(held, given, module)
+= if relation-legal(relation) then relation.unified else invalid-type
+
+────────────────────
+_ do machine-union TypeId
+    - id SyntaxId
+    - row MachineSlots
+
+` The union a machine's value is, private to it: a case for each case it names, in the order it
+` names them, holding what that case holds. It is named, as the reference names it, for the
+` local, the global or the property that names the machine, and numbered among the machines of
+` the module, and told apart by that number, which an edit that moves the machine's lines keeps.
+. name = "StateMachine"
+. property = machine-property(id)
+if row.bound != no-slot
+    name = "${state-type-name(bindings.slots[row.bound].name)}State"
+if machining.store == .store-nested && machining.named
+    name = "${state-type-name(machining.named)}State"
+do match? program.modules[module].decls[property]
+    | .decl-property(found)
+        if property != 0 && found.name
+            name = "${state-type-name(found.name)}State"
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+for position in 0 .. < machining.cases.length
+    scratch.names.push(tree.state-name(machining.cases[position])!)
+    scratch.types.push(machining.payloads[position])
+. number = machine-number(id)
+= types.intern-named-union(program.store-atom("$name$number"), mark, names-mark, module, number)
+
+────────────────────
+_ do state-type-name String
+    - name Atom
+
+` A name as the reference writes it in a type's: each part between hyphens with its first
+` letter made upper case, joined.
+. text = ""
+for part in name.text.split("-")
+    if part.length != 0
+        text = "$text${part[0 .. < 1].uppercased}${part[1 ...]}"
+= text
+
+────────────────────
+_ do machine-number U32
+    - id SyntaxId
+
+` The place of a machine among those its module writes, counted from one.
+. count = 0u32
+for row in bindings.machines
+    if row.module == module && row.syntax <= id
+        count += 1
+= count
+
+────────────────────
+_ do type-machine-slots
+    - row MachineSlots
+    - union TypeId
+
+` What a machine keeps, in its own function's environment: its value, and for each case its
+` flag, its generation, what it holds, where it holds anything, and each name it keeps, whose
+` first value is typed where it is a named tuple or struct, which a case keeps where nothing
+` entering it captures the name; for each group the subscriber the machine gave its broadcaster
+` and the broadcaster, while it is subscribed, or for a group on an event the port the machine
+` keeps for it once it is made. A case whose activation owns the tasks spawned for it keeps the
+` `TaskOwner` it makes as it is entered (`demand-task-owner`). Flags declared beside the local a
+` machine is kept in are of the function the machine is written in.
+assign-kept(row, row.syntax, "(value)", union)
+for position in 0 .. < machining.cases.length
+    . node = machining.cases[position]
+    assign-kept(row, node, "(active)", types.bool-type)
+    assign-kept(row, node, "(generation)", types.type-row(.uint32))
+    if bindings.machine-slot(row, node, program.store-atom("(tasks)")) != no-slot
+        demand-task-owner()
+        assign-kept(row, node, "(tasks)", types.optional-of(types.task-owner-type))
+    if machining.payloads[position] != types.void-type
+        assign-kept(row, node, "(payload)", machining.payloads[position])
+    . kept = machining.kept[position]
+    for place in 0 .. < kept.length
+        assign-kept(row, node, "(kept ${kept[place].text})", machining.kept-types[position][place])
+        demand-first-values(machining.kept-types[position][place])
+for group in machining.groups-found
+    . port = if group.port != no-instance then instances.signatures[group.port].returns else no-type
+    . attached = if group.attach != no-instance then attach-type else port
+        .. attach-type = instances.signatures[group.attach].returns
+    . subscriber = if attached != no-type then attached else group.subscriber
+    assign-kept(row, group.head, "(subscriber)", types.optional-of(subscriber))
+    assign-kept(row, group.head, "(source)", types.optional-of(group.stream))
+
+────────────────────
+_ do assign-kept
+    - row MachineSlots
+    - node SyntaxId
+    - name String
+    - type TypeId
+
+. slot = bindings.machine-slot(row, node, program.store-atom(name))
+if slot == no-slot
+    =
+. own = bindings.machine-slot(row, row.syntax, program.store-atom("(value)"))
+if own != no-slot && bindings.slots[slot].scope != bindings.slots[own].scope && frame.outer
+    frame.outer.assign(slot, type)
+else
+    frame.assign(slot, type)
+
+────────────────────
+_ do type-projections
+    - id SyntaxId
+    - store MachineStore
+
+` Each projection of a machine written as a statement, a local of the function it is written in
+` named after a case: the case's flag, or what it holds where it is active.
+if store != .store-none || !frame.outer
+    =
+for position in 0 .. < machining.cases.length
+    . name = tree.state-name(machining.cases[position])!
+    . slot = bindings.declared-at(frame.outer!.slots, id, name)
+    . payload = machining.payloads[position]
+    if slot != no-slot
+        frame.outer!.assign
+            - slot
+            - if payload == types.void-type then types.bool-type else types.optional-of(payload)
+
+────────────────────
+_ do convert-targets
+
+` What each typed transition gives, converted to the part of what its case holds in its place,
+` or to all of it, at each value.
+for transition in machining.typed
+    . position = tree.case-position(machining.cases, tree.state-name(transition)!)
+    if position == null
+        continue
+    . payload = machining.payloads[position]
+    . targets = tree.state-targets(transition)
+    . offset = 0u32
+    for target in tree.children[targets]
+        . part = if targets.count == 1 then payload else payload-part(payload, offset)
+        . given = facts.node-type(instance, target)
+        if part != no-type && given != no-type && given != invalid-type
+            conversions.convert(target, target, given, part, .reason-argument)
+        offset += 1
+
+────────────────────
+_ do trial-transition
+    - transition SyntaxId
+    - items [SyntaxId]
+    - slots [SlotId]
+    - given [TypeId]
+    - wanted [SlotId]
+    - found [TypeId]
+    - targets [TypeId]
+
+` What a transition of a machine, written among a body's items, sees and gives, typed on trial
+` apart from where it fires (`trial-checker`) with the names its activation sees holding the
+` types given, as the reference infers what a case holds and the names it keeps: the type of
+` each slot wanted once its trigger's pattern has matched (`foresee-transition`), added to
+` `found`, and of each of its targets, added to `targets`. None of either where the part that
+` gives them reports anything.
+. checker = trial-checker(transition)
+for offset in 0 .. < slots.length
+    if given[offset] != no-type && given[offset] != invalid-type
+        checker.frame.assign(slots[offset], given[offset])
+. reported = facts.diagnostics.length
+checker.foresee-transition(transition, items, wanted, found, targets)
+facts.diagnostics.truncate(reported)
+checker.close()
+checker.retire()
