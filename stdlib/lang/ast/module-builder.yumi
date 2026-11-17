@@ -1073,6 +1073,7 @@ for _ in 0 .. < tree.root + 1
     gates += false
     ruled += false
 . total = tree.root + 1
+. row-names = RowNames()
 for id in 1u32 .. < total
     . listing = tree.listed-bullets(id)
     if listing != 0
@@ -1082,12 +1083,12 @@ for id in 1u32 .. < total
             if row.next != 0
                 chained[row.next] = true
         | .node-markup(row)
-            mark-content(tree, row.body, content, arms, rows, keys)
+            mark-content(tree, row.body, content, arms, rows, keys, row-names)
         | .node-slot-outlet(row)
-            mark-content(tree, row.body, content, arms, rows, keys)
+            mark-content(tree, row.body, content, arms, rows, keys, row-names)
         | .node-content-block(row)
             if tree.root-this(id) == 0
-                mark-content(tree, row.body, content, arms, rows, keys)
+                mark-content(tree, row.body, content, arms, rows, keys, row-names)
         | .node-class-block(row)
             mark-default(tree, row.base, class-lines(tree, row.members), defaulted)
         | .node-property-syntax(row)
@@ -1095,15 +1096,11 @@ for id in 1u32 .. < total
                 machines[row.value] = true
         | .node-rule-syntax(row)
             mark-rule-lines(tree, row.body, ruled)
-. row-names = RowNames()
 . getters [Bool]
 for _ in 0 .. < total
     getters += false
 for id in 1u32 .. < total
     do match? tree.nodes[id]
-        | .node-for-block(row)
-            if rows[row.body] && tree.keyed-clause(row.loop) != 0
-                row-names.add(tree, row.loop, row.body)
         | .node-block(row)
             if rows[id]
                 for line in tree.children[row.body]
@@ -1298,13 +1295,15 @@ for reverse in 1 .. < tree.root
         | .node-if-block
             if attributes[id] && tree.holds-fills(id)
                 add-selector(tree, id, owner, named)
-            if content[id] && !tree.fills-only(id) && is-branch-region(tree, id)
+            if content[id] && !tree.fills-only(id) && is-branch-region(tree, id, row-line)
                 add-branch(tree, id, owner, named)
+            .. row-line = if rows[tree.holder-of(id)] then row-names else null
         | .node-match-expression
             if attributes[id] && tree.holds-fills(id)
                 add-selector(tree, id, owner, named)
-            if content[id] && !tree.fills-only(id) && is-match-region(tree, id)
+            if content[id] && !tree.fills-only(id) && is-match-region(tree, id, row-line)
                 add-branch(tree, id, owner, named)
+            .. row-line = if rows[tree.holder-of(id)] then row-names else null
         | .node-slot-outlet(row)
             if tree.builds-outlet-alone(id)
                 nested = add-nested-function
@@ -1935,6 +1934,7 @@ _ do mark-content
     - arms [Bool]
     - rows [Bool]
     - keys [Bool]
+    - row-names RowNames
 
 ` Marks the lines of a body that runs as markup content, and those of the bodies its lines run as
 ` content in turn: each arm of an `if` and of a markup match region, and the body of a `for`, or of
@@ -1943,43 +1943,46 @@ _ do mark-content
 ` a markup loop region, which builds each row and is no content, and its `keyed by` clause, which
 ` keys each row. The arms after the first of an `if` follow it in the tree, so they are reached by
 ` their links.
+. row-lines = if rows[body] then row-names else null
 do match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
             content[line] = true
             do match? tree.nodes[line]
                 | .node-if-block
-                    . region = is-branch-region(tree, line) && !tree.fills-only(line)
+                    . region = is-branch-region(tree, line, row-lines) && !tree.fills-only(line)
                     . arm = line
                     while arm != 0
                         . next SyntaxId = 0
                         do match? tree.nodes[arm]
                             | .node-if-block(branch)
                                 arms[tree.arm-body(arm)] = region
-                                mark-content(tree, tree.arm-body(arm), content, arms, rows, keys)
+                                mark-content(tree, tree.arm-body(arm), content, arms, rows, keys, row-names)
                                 next = branch.next
                         arm = next
                 | .node-match-expression
-                    if is-match-region(tree, line) && !tree.fills-only(line)
+                    if is-match-region(tree, line, row-lines) && !tree.fills-only(line)
                         . held [SyntaxId]
                         tree.match-arms(line, held)
                         for arm in held
                             do match? tree.nodes[arm]
                                 | .node-type-transform(transform)
                                     arms[transform.expr] = true
-                                    mark-content(tree, transform.expr, content, arms, rows, keys)
+                                    mark-content(tree, transform.expr, content, arms, rows, keys, row-names)
                 | .node-for-block(row)
                     if is-markup-loop(tree, row.loop)
                         rows[row.body] = true
+                        if tree.keyed-clause(row.loop) != 0
+                            row-names.add(tree, row.loop, row.body)
                         keys[tree.keyed-clause(row.loop)] = true
                         keys[tree.when-clause(row.loop)] = true
                         if tree.row-region(row.body)
-                            mark-content(tree, row.body, content, arms, rows, keys)
+                            mark-content(tree, row.body, content, arms, rows, keys, row-names)
                     else if !is-subscriber-loop(tree, row.loop)
-                        mark-content(tree, row.body, content, arms, rows, keys)
+                        mark-content(tree, row.body, content, arms, rows, keys, row-names)
                 | .node-iterator-expression(row)
                     if is-content-loop(tree, row.loop)
-                        mark-content(tree, row.body, content, arms, rows, keys)
+                        mark-content(tree, row.body, content, arms, rows, keys, row-names)
 
 ────────────────────
 _ do add-branch
@@ -2113,6 +2116,7 @@ while header != 0
 _ do is-branch-region Bool
     - tree AST
     - id SyntaxId
+    - row-names RowNames?
 
 ` Whether an `if` written as a line of markup content is a region whose arm is selected again
 ` when what its conditions read tracked changes, as the reference's `hasDynamicMarkupCondition`
@@ -2134,12 +2138,12 @@ while arm != 0
                     | .node-type-transform(transform)
                         if tracks-subject || (transform.pattern != 0 && tracks-pattern)
                             tracked = true
-                        .. tracks-subject = reads-tracked(tree, subject)
-                        .. tracks-pattern = reads-tracked(tree, transform.pattern)
+                        .. tracks-subject = reads-tracked(tree, subject, row-names)
+                        .. tracks-pattern = reads-tracked(tree, transform.pattern, row-names)
             else if row.condition != 0
                 if !(tree.nodes[row.condition] is .node-type-predicate)
                     = false
-                if reads-tracked(tree, row.condition)
+                if reads-tracked(tree, row.condition, row-names)
                     tracked = true
             next = row.next
     arm = next
@@ -2149,6 +2153,7 @@ while arm != 0
 _ do is-match-region Bool
     - tree AST
     - id SyntaxId
+    - row-names RowNames?
 
 ` Whether a `match` written as a line of markup content is a region whose arm is selected again
 ` when what its subject reads tracked changes, as the reference's `markupMatchBranch` compiles
@@ -2156,7 +2161,7 @@ _ do is-match-region Bool
 ` (`match-arms`). One with a helper is no region here.
 do match? tree.nodes[id]
     | .node-match-expression(row)
-        if row.subject == 0 || row.helper != 0 || !reads-tracked(tree, row.subject)
+        if row.subject == 0 || row.helper != 0 || !reads-tracked(tree, row.subject, row-names)
             = false
         . held [SyntaxId]
         tree.match-arms(id, held)

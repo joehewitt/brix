@@ -3213,6 +3213,112 @@ a, b, done
 a, b
 ;====
 :====
+# An if or a match that is a line of a keyed row reads the row's item tracked, so it selects its
+# arm again when the key comes to hold another item.
+
+/core/tests/support/markup-fixtures
+
+. places = List'Place([Place("a", true), Place("b", false)])
+
+<Box root
+    for place in #places keyed by place.name
+        if place.flag
+            <TextBox = "${place.name} on"
+        else
+            <TextBox = "${place.name} off"
+<Box kinds
+    for place in #places keyed by place.name
+        match place.flag
+            |= true
+                <TextBox = "yes"
+            |= false
+                <TextBox = "no"
+
+-- "${dump(root)} | ${dump(kinds)}"
+places = List'Place([Place("a", false), Place("b", true)])
+-- "${dump(root)} | ${dump(kinds)}"
+places += Place("c", true)
+-- "${dump(root)} | ${dump(kinds)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String
++ flag Bool
+
+────────────────────
++ This
+    - name
+    - flag
+
+:----
+
+[[[a on]],[[b off]]] | [[[yes]],[[no]]]
+[[[a off]],[[b on]]] | [[[no]],[[yes]]]
+[[[a off]],[[b on]],[[c on]]] | [[[no]],[[yes]],[[yes]]]
+;====
+:====
+# So does one in a row of a loop in a function's markup.
+
+/core/tests/support/markup-fixtures
+
+run()
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+
+. places = List'Place([Place("a", true), Place("b", false)])
+<Box root
+    for place in #places keyed by place.name
+        if place.flag
+            <TextBox = "${place.name} on"
+        else
+            <TextBox = "${place.name} off"
+-- dump(root)
+places = List'Place([Place("a", false), Place("b", true)])
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String
++ flag Bool
+
+────────────────────
++ This
+    - name
+    - flag
+
+:----
+
+[[[a on]],[[b off]]]
+[[[a off]],[[b on]]]
+;====
+:====
 # A row may hold a match, and a live match selects its arm again in each row.
 
 /core/markup
