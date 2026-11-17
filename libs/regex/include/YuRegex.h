@@ -19,7 +19,7 @@
 #define YU_REGEX_REPLACE_GLOBAL 1
 #define YU_REGEX_REPLACE_ONLY 2
 
-YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexCompile(
+YU_REGEX_API int32_t yumiRegexCompile(
     const char* pattern,
     uint32_t patternLength,
     uint32_t flags,
@@ -27,7 +27,7 @@ YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexCompile(
     uint32_t* errorOffset
 );
 
-YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexFind(
+YU_REGEX_API int32_t yumiRegexFind(
     const char* pattern,
     uint32_t patternLength,
     uint32_t flags,
@@ -39,7 +39,7 @@ YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexFind(
     uint32_t capacity
 );
 
-YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexGroupNumber(
+YU_REGEX_API int32_t yumiRegexGroupNumber(
     const char* pattern,
     uint32_t patternLength,
     uint32_t flags,
@@ -47,7 +47,7 @@ YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexGroupNumber(
     uint32_t nameLength
 );
 
-YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexReplace(
+YU_REGEX_API int32_t yumiRegexReplace(
     const char* pattern,
     uint32_t patternLength,
     uint32_t flags,
@@ -63,7 +63,7 @@ YU_REGEX_API YUMI_GC_BLOCKING int32_t yumiRegexReplace(
     int32_t* errorOffset
 );
 
-YU_REGEX_API YUMI_GC_LEAF uint32_t yumiRegexErrorMessage(int32_t code, void* buffer, uint32_t capacity);
-YU_REGEX_API YUMI_GC_LEAF bool yumiRegexIsLimitError(int32_t code);
+YU_REGEX_API YUMI_WITHOUT_GC uint32_t yumiRegexErrorMessage(int32_t code, void* buffer, uint32_t capacity);
+YU_REGEX_API YUMI_WITHOUT_GC bool yumiRegexIsLimitError(int32_t code);
 
 #endif

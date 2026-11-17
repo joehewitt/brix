@@ -246,7 +246,7 @@ _ sticky-rows SourceStickyRows?
 _ widest-columns Size
 _ measured-font Font?
 _ is-caret-lit = true
-_ blink-generation U64
+_ blinker Task?
 _ hover-point Point?
 _ hovered-row Size?
 + is-control-hovered = false
@@ -960,6 +960,7 @@ _ do mark-changes
 
 =? if is-marking
 is-marking = true
+do finally is-marking = false
 while marked-stamp != edit-stamp
     . stamp = edit-stamp
     . found = marked-changes()
@@ -969,7 +970,6 @@ while marked-stamp != edit-stamp
         line-changes = found
         marked-stamp = stamp
         show-changes()
-is-marking = false
 
 ────────────────────
 _ do marked-changes [DiffLineChange]?
@@ -1007,19 +1007,18 @@ row-changes = made
 _ do start-blink
 
 is-caret-lit = true
-blink-generation += 1
-. generation = blink-generation
-do new
-    while generation == blink-generation
+blinker?.cancel-later()
+blinker = do new
+    while true
         source-blink-interval.wait()
-        if generation == blink-generation
-            is-caret-lit = !is-caret-lit
-            invalidate-paint()
+        is-caret-lit = !is-caret-lit
+        invalidate-paint()
 
 ────────────────────
 _ do stop-blink
 
-blink-generation += 1
+blinker?.cancel-later()
+blinker = null
 
 ────────────────────
 _ do reveal-caret

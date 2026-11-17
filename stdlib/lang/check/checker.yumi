@@ -816,7 +816,7 @@ while class-cursor < types.class-uses.length
 ────────────────────
 _ get in-zone-body Bool
 
-` Whether the instance is the body of a `do @no-gc` block.
+` Whether the instance is the body of a `do without gc` block.
 frame.declaration.kind == .region-decl
 
 ────────────────────
@@ -1731,7 +1731,7 @@ close()
 ────────────────────
 _ do leave-region
 
-` Keeps what the assignments of the body of a `do @no-gc` block left each local it captures as,
+` Keeps what the assignments of the body of a `do without gc` block left each local it captures as,
 ` for the function around it to take once the body is checked (`check-region`): that holds after
 ` the block as after a plain one.
 for row in frame.assigned-in-frame
@@ -19191,7 +19191,7 @@ _ do wavers Bool
 ` function after a nested function that captures it was typed, or by a nested function at
 ` all, when something assigns it. In a loop the call that types the nested function may be
 ` written after the read and run before it, so there a local a nested function captures
-` wavers wherever something assigns it. The body of a `do @no-gc` block runs where it is
+` wavers wherever something assigns it. The body of a `do without gc` block runs where it is
 ` written, so a local it reads wavers only as the read would in the function around it.
 if outer && frame.is-captured(slot) && in-zone-body
     = outer.wavers(slot)
@@ -19208,7 +19208,7 @@ _ do closes-over Bool
     - slot SlotId
 
 ` Whether a nested function of the binding captures a local, other than the body of a
-` `do @no-gc` block, which runs where it is written.
+` `do without gc` block, which runs where it is written.
 . row = bindings.bindings[frame.binding]
 for offset in 0 .. < row.nested.count
     . nested = bindings.nested[row.nested.start + offset]
@@ -20554,7 +20554,7 @@ _ do note-carried
     - slot SlotId
 
 ` Notes a read of a local that relies on what was known of it before a loop around the read
-` began: nothing in the loop has told more of it since. The body of a `do @no-gc` block notes
+` began: nothing in the loop has told more of it since. The body of a `do without gc` block notes
 ` a read of a local it captures for the function around it, where it runs.
 if outer && frame.is-captured(slot) && in-zone-body
     outer.note-carried(id, slot)
@@ -25735,11 +25735,31 @@ for offset in 0 .. < row.nested.count
         if instances.rows[callee].state == .instance-unstarted
             facts.task-bodies += callee
             run-within(callee, this)
-        if nested.captures.count != 0 || has-handlers(id)
+        . owned = owns-task(id)
+        if nested.captures.count != 0 || has-handlers(id) || owned
             frame.check-allocates(id)
-        facts.record-call(instance, id, callee, .call-task, scratch.no-fills, false)
+        . form CallForm = if owned then .call-owned-task else .call-task
+        facts.record-call(instance, id, callee, form, scratch.no-fills, false)
         demand-panic-report()
         =
+
+────────────────────
+_ do owns-task Bool
+    - task SyntaxId
+
+` Whether the task spawned at a node is owned, cancelled as its owner closes or its case exits:
+` one not marked `@detached`, spawned in markup being built, by its innermost element where that
+` is an object of a class, or else by the activation of a case the binder gave it to
+` (`activation-tasks`), or else where a subscription would be owned (`is-owner`), by the receiver
+` where that is an object of a class.
+do match? tree.nodes[task]
+    | .node-do-task-block(row)
+        =? false if row.detached
+        =? types.intrinsic-of(content-parents[content-parents.length - 1]) == .class if content-parents.length != 0
+        =? true if bindings.activation-tasks(frame.binding, task, program.store-atom("(tasks)")) != no-slot
+        =? false if !is-owner()
+        = types.intrinsic-of(frame.self-type) == .class
+= false
 
 ────────────────────
 _ do has-handlers Bool
@@ -25755,7 +25775,7 @@ _ do check-region
     - id SyntaxId
     - body SyntaxId
 
-` A `do @no-gc` block written where code is outside the zone the collector never sees, as the
+` A `do without gc` block written where code is outside the zone the collector never sees, as the
 ` reference outlines it: a function of its own, typed once, which reaches the locals and
 ` arguments of the function around it where they are kept and is called where the block is.
 ` What the flow knows of those locals holds in the body as in a plain block, and what the body
@@ -25798,7 +25818,7 @@ decline(id)
 _ do forget-assigned
     - nested NestedFunction
 
-` Each local a `do @no-gc` block assigns is known past the block as its own type, until what
+` Each local a `do without gc` block assigns is known past the block as its own type, until what
 ` the body left it as is known again (`leave-region`): a body typed before is not typed again.
 for index in 0 .. < nested.captures.count
     . capture = bindings.captures[nested.captures.start + index]
@@ -26425,6 +26445,15 @@ facts.machines.append(fact)
 if (store == .store-member || store == .store-content) && outer == 0 && machining.refined == no-instance
     demand-machine-stops()
 = union
+
+────────────────────
+_ do demand-task-owner
+
+` The constructor of the `TaskOwner` a case makes as it is entered, where its activation owns
+` the tasks spawned for it.
+if facts.task-owner-make != no-instance || types.task-owner-type == invalid-type
+    =
+facts.task-owner-make = calls.demand-constructor(types.task-owner-type, scratch.types.mark)
 
 ────────────────────
 _ do demand-machine-stops
@@ -27626,13 +27655,17 @@ _ do type-machine-slots
 ` first value is typed where it is a named tuple or struct, which a case keeps where nothing
 ` entering it captures the name; for each group the subscriber the machine gave its broadcaster
 ` and the broadcaster, while it is subscribed, or for a group on an event the port the machine
-` keeps for it once it is made. Flags declared beside the local a machine is kept in are of the
-` function the machine is written in.
+` keeps for it once it is made. A case whose activation owns the tasks spawned for it keeps the
+` `TaskOwner` it makes as it is entered (`demand-task-owner`). Flags declared beside the local a
+` machine is kept in are of the function the machine is written in.
 assign-kept(row, row.syntax, "(value)", union)
 for position in 0 .. < machining.cases.length
     . node = machining.cases[position]
     assign-kept(row, node, "(active)", types.bool-type)
     assign-kept(row, node, "(generation)", types.type-row(.uint32))
+    if bindings.machine-slot(row, node, program.store-atom("(tasks)")) != no-slot
+        demand-task-owner()
+        assign-kept(row, node, "(tasks)", types.optional-of(types.task-owner-type))
     if machining.payloads[position] != types.void-type
         assign-kept(row, node, "(payload)", machining.payloads[position])
     . kept = machining.kept[position]

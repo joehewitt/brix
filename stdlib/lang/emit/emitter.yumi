@@ -1365,7 +1365,7 @@ _ FunctionEmitter
 ` machine's names were bound to anew while the expansion of an exit or an entry that binds them is
 ` emitted, innermost last, each with the local it held before.
 ` `through` is the place of the address of that slot in the capture of the
-` body of a `do @no-gc` block, when the capture refers to it. `builds` says the function returns
+` body of a `do without gc` block, when the capture refers to it. `builds` says the function returns
 ` its receiver, and `initializes` that the function is a constructor run on an object another made.
 ` `filling` is the properties a constructor gives their first values (`Filling`), and `making` the
 ` tuple or struct whose fields are given theirs (`Making`), whose `made` says which fields have
@@ -1567,6 +1567,7 @@ _ subscribing SyntaxId = 0
 _ machining Machining
 _ machine-entering [SyntaxId]
 _ starting-refined = false
+_ stopping-object = false
 _ immediate-passed LocalId = no-local
 _ refined-flag LocalId = no-local
 _ refined-payload LocalId = no-local
@@ -2042,8 +2043,9 @@ _ do share-self
 ` is one number, and a tuple no constructor is making, which nothing changes in place; a
 ` struct, which a member changes where it is kept, has no shape here. A member that yields
 ` keeps its receiver the same way: where it is called it copies it, and each step of its
-` body reads it from there. The body of a spawned task or of a `do @no-gc` block that does not
-` copy it has none.
+` body reads it from there. The body of a spawned task or of a `do without gc` block that does not
+` copy it has none, nor has a function that captures a struct only for the tasks spawned in it,
+` which no value owns.
 . binding = instances.rows[unit.instance].binding
 if binding == no-binding
     =
@@ -2058,6 +2060,8 @@ for offset in 0 .. < unit.slot-count
     whole = whole || !tables.layouts.is-struct(layout-of(held, site))
     whole = whole || layout-of(held, site) == tables.layouts.function-layout
     whole = whole || (intrinsic(held) == .tuple && !builds)
+    if !whole && (bindings.slots[slot].flags /and/ SlotFlag.slot-self-used) == 0
+        continue
     if !whole
         refuse(.refused-function, site)
     else if unit.received || stepping
@@ -2183,7 +2187,7 @@ _ do captured-base Operand
 
 ` The environment `find-captured` found a slot in: that of the turn of a loop, the
 ` function's own, or the one it was given, or one as many links out from that as there
-` are environments between. A slot the capture of a `do @no-gc` block refers to is found
+` are environments between. A slot the capture of a `do without gc` block refers to is found
 ` where the address it holds leads.
 . nothing = make-operand(.operand-void, 0)
 if turn != no-local || turn-place != no-place
@@ -2444,6 +2448,79 @@ do match? tree.nodes[body]
                 if (slot-use /and/ (LazyUseFlag.declared-in-loop)) != 0
                     store-local(unit.lazy-flags[offset], integer(.machine-u8, 0), 0)
                 .. slot-use = bindings.lazy-use-of(unit.slot-start + offset).flags
+
+────────────────────
+_ do emit-do-body
+    - id SyntaxId
+    - body SyntaxId
+    - effects CompilationEffect
+
+` The body of a `do` block. One kept from the collector, written outside the zone, is a region
+` of its own; any other runs in place, kept from what the block names as well.
+if (effects /and/ CompilationEffect.gc-free) != 0 && !in-zone
+    emit-region(id)
+    =
+. outer = block-effects
+block-effects = block-effects /or/ dispatch-effects(effects)
+if !emit-match-statement(body)
+    emit-block(body)
+block-effects = outer
+
+────────────────────
+_ do emit-cancel-held
+    - id SyntaxId
+    - body SyntaxId
+    - effects CompilationEffect
+
+` `do without cancel`: the task holds off its cancellation from where the block begins to where
+` it is left, by any way out, as a cleanup the block opens lets go. In a cleanup being run, the
+` hold is let go where the block ends, by a pad of its own that a check made in it lands on
+` before the cleanup's landing, and where an error or a `break` leaves it (`leave-held`).
+. caught = landing
+if scoping.cleaning && caught == no-block
+    refuse(.refused-statement, id)
+    =
+call-runtime(.runtime-enter-cancel-shield, id, pending.length)
+. mark = open-cleanups.length
+. own-scoping = scoping
+scoping = scoping.block-base = mark
+open-cleanup(id, UseCell(no-local, no-local, no-type))
+if !scoping.cleaning
+    emit-do-body(id, body, effects)
+    close-cleanups(mark)
+    scoping = own-scoping
+    =
+. pad = ir.reserve-block()
+. checks = landings
+landing = pad
+emit-do-body(id, body, effects)
+. landed = landings != checks
+end-in-cleanup(mark, caught)
+if landed
+    . onward = ir.reserve-block()
+    jump(onward)
+    ir.start-block(pad)
+    call-runtime(.runtime-leave-cancel-shield, id, pending.length)
+    jump(caught)
+    ir.start-block(onward)
+scoping = own-scoping
+
+────────────────────
+_ do leave-held Bool
+    - from Size
+    - site SyntaxId
+
+` Where a way out of a cleanup being run leaves what was opened in it from `from` on: each
+` `do without cancel` block's hold is let go, newest first. Anything else opened there has no
+` shape on such a way out, and then nothing is let go.
+for position in from .. < open-cleanups.length
+    . opened = open-cleanups[position]
+    =? false if opened.cell.is-live-call || !(tree.nodes[opened.body] is .node-do-block)
+. position = open-cleanups.length
+while position > from
+    position -= 1
+    call-runtime(.runtime-leave-cancel-shield, site, pending.length)
+= true
 
 ────────────────────
 _ do emit-finally
@@ -3172,15 +3249,10 @@ do match tree.nodes[id]
                 emit-subscriber(row.loop, tested(row.loop, loop.clause), row.body, id)
     | .node-do-block(row)
         . is-off = !tables.compiles-features(row.feature-gate-features)
-        . zoned = (row.compilation-effects /and/ CompilationEffect.gc-free) != 0
-        if zoned && !is-off && !in-zone
-            emit-region(id)
+        if row.holds-cancel && !is-off
+            emit-cancel-held(id, row.body, row.compilation-effects)
         else if !is-off
-            . outer = block-effects
-            block-effects = block-effects /or/ dispatch-effects(row.compilation-effects)
-            if !emit-match-statement(row.body)
-                emit-block(row.body)
-            block-effects = outer
+            emit-do-body(id, row.body, row.compilation-effects)
     | .node-block
         emit-block(id)
     | .node-do-finally-block(row)
@@ -10569,8 +10641,9 @@ _ do stop-nested
     - item SyntaxId
 
 ` A named machine written in a case's body, stopped where the case exits, as the reference
-` stops it: the groups of its root are unsubscribed, then each of its active cases exits. The
-` machine around it is emitted again after.
+` stops it: the groups of its root are unsubscribed, then each of its active cases exits, and
+` the tasks its cases' `TaskOwner`s still hold are cancelled. The machine around it is emitted
+` again after.
 . found = facts.machine-at(machining.fact!.instance, tree.nested-machine(item))
 if !found
     refuse(.refused-statement, item)
@@ -10580,6 +10653,7 @@ if !use-machine(found, item)
     =
 unsubscribe-groups(machining.items)
 exit-all()
+sweep-tasks()
 machining = around
 
 ────────────────────
@@ -10685,8 +10759,10 @@ _ do emit-machine-stop
 ` The function that stops a machine a class's property holds, which the event runtime runs as
 ` the object closes, given the machine's environment, as a named machine written in a case stops
 ` where the case exits (`stop-nested`): the groups of its root are unsubscribed, with those the
-` pieces below it write at their roots, then each of its active cases exits. A group of its root
-` the class's table runs is left to it: the runtime closes the object's events next.
+` pieces below it write at their roots, then each of its active cases exits, and the tasks its
+` cases' `TaskOwner`s still hold are cancelled (`sweep-tasks`), but for the task that runs the
+` `close`, which the object keeps for its next `close` to cancel. A group of its root the class's
+` table runs is left to it: the runtime closes the object's events next.
 . machine = facts.machines[function.place]
 ir.add-argument(managed-layout)
 returns-type = types.void-type
@@ -10703,7 +10779,10 @@ share-self(machine.syntax)
 unsubscribe-groups(machining.items, true)
 if machining.composite && below-adds(U32.max, .part-unsubscribe)
     do call-below(U32.max, .part-unsubscribe, nowhere(), nowhere(), machine.syntax)
+stopping-object = true
 exit-all()
+sweep-tasks()
+stopping-object = false
 return-value(make-operand(.operand-void, 0), machine.syntax)
 
 ────────────────────
@@ -11041,13 +11120,14 @@ _ do relay-own
 
 ` What a part adds, for a case a piece above writes that it names again, or for the root for
 ` none, where the piece above calls it: runs the statements it adds to the case's entry, with the
-` activations of the case and those above it it sees bound; keeps the case active here in a new
+` activations of the case and those above it it sees bound, once the `TaskOwner` it keeps for the
+` tasks it spawns for the case is made, where it keeps one; keeps the case active here in a new
 ` generation and subscribes the groups it adds, or those it writes at the root; tries the
 ` immediate transitions it adds, answering whether one passed; unsubscribes those groups, the
 ` case no longer active here; runs the `do finally` blocks and stops the named machines it adds,
-` last first; exits the active cases it writes below the case, or anywhere, last first; or
-` enters the first case it writes in the case, answering that one was. Immediate transitions it
-` adds to a case where it adds a fallback have no shape here.
+` last first, then cancels those tasks; exits the active cases it writes below the case, or
+` anywhere, last first; or enters the first case it writes in the case, answering that one was.
+` Immediate transitions it adds to a case where it adds a fallback have no shape here.
 if wanted == .part-exit-added
     . cases = machining.composite!.descendants(case)
     . position = cases.length
@@ -11078,6 +11158,7 @@ if wanted == .part-subscribe
     keep(node, "(generation)", add-one(generation.operand, node), node)
 bind-path(node)
 if wanted == .part-entries
+    open-tasks(case-node(node), node)
     emit-entries(node)
 else if wanted == .part-subscribe
     subscribe-groups(items)
@@ -11090,6 +11171,7 @@ else if wanted == .part-unsubscribe
     keep(node, "(active)", integer(.machine-u8, 0), node)
 else
     finish-items(items)
+    close-tasks(case-node(node), node)
 close-turns(turns)
 
 ────────────────────
@@ -11666,7 +11748,7 @@ _ do enter-mark
 ` active first, so that what a store of the machine's value runs finds it so, then the machine's
 ` value is made of what the case is given, by the continuation `via` that led there or else the
 ` case itself, and kept, with what the case holds and the names it keeps; the case is active in
-` a new generation, and projected so.
+` a new generation, with a `TaskOwner` where it keeps one (`open-tasks`), and projected so.
 . activation = if via != 0 then via else node
 . held = case-node(node)
 . position = tree.case-position(machining.cases, tree.state-name(node)!)
@@ -11683,7 +11765,69 @@ if holds
 keep-names(held, activation, position)
 . generation = read-kept(held, "(generation)", activation)
 keep(held, "(generation)", add-one(generation.operand, activation), activation)
+open-tasks(held, activation)
 project(node, true, payload.operand, activation)
+
+────────────────────
+_ do open-tasks
+    - node SyntaxId
+    - site SyntaxId
+
+` Makes the `TaskOwner` a case keeps for the tasks its activations spawn, the first time it is
+` entered: each exit cancels what it holds then, so the next activation's tasks start alone.
+` None is made where the program spawns none so.
+if !keeps-tasks(node) || !makes-task-owners()
+    =
+. making = ir.reserve-block()
+. done = ir.reserve-block()
+branch(present(site, read-kept(node, "(tasks)", site)).operand, done, making)
+ir.start-block(making)
+. made = call-instance(facts.task-owner-make, site, pending.length)
+keep(node, "(tasks)", wrap(site, made, kept-type(node, "(tasks)", site)).operand, site)
+jump(done)
+ir.start-block(done)
+
+────────────────────
+_ do close-tasks
+    - node SyntaxId
+    - site SyntaxId
+
+` Cancels the tasks the activation of a case owns as it exits, without waiting for them or
+` yielding to them. A task that exits its own case, by sending what moves the machine, is not
+` cancelled: the case's `TaskOwner` keeps it, for the case's next exit or the machine's stop to
+` cancel (`sweep-tasks`). Where the object's `close` stops the machine, the task that runs the
+` `close` is not cancelled either, and the object keeps it instead, as it keeps its own.
+if !keeps-tasks(node) || !makes-task-owners()
+    =
+. mark = pending.length
+pending += num-cast(site, read-kept(node, "(tasks)", site).operand, managed-layout, pointer-layout)
+if stopping-object && unit.has-self && tables.is-class(unit.owner-type)
+    pending += num-cast(site, unit.self, managed-layout, pointer-layout)
+    call-runtime(.runtime-cancel-owned-tasks-to, site, mark)
+else
+    call-runtime(.runtime-cancel-owned-tasks, site, mark)
+
+────────────────────
+_ do sweep-tasks
+
+` Cancels what each case's `TaskOwner` still holds as the machine stops: the tasks that exited
+` their own case. A piece of a composite below the one that stops it keeps those of the cases it
+` names again until their next exit.
+for node in machining.cases
+    close-tasks(node, machining.fact!.syntax)
+
+────────────────────
+_ keeps-tasks Bool
+    - node SyntaxId
+
+` Whether the machine keeps a `TaskOwner` for the activations of a case.
+bindings.machine-slot(machining.slots!, node, program.store-atom("(tasks)")) != no-slot
+
+────────────────────
+_ makes-task-owners Bool
+
+` Whether the program spawns a task a case's activation owns, for which it makes `TaskOwner`s.
+facts.task-owner-make != no-instance && tables.instance-functions[facts.task-owner-make] != no-function
 
 ────────────────────
 _ do enter-entry
@@ -11718,8 +11862,9 @@ _ do enter-foreign
 ` did, run here, then what the case runs once entered run there, and settled there where it
 ` `settles`. A case that holds what it is given, or keeps names, has no shape here, as its piece
 ` reads them where it enters it, nor has a continuation that subscribes groups, which its piece
-` does not unsubscribe, nor has one settled whose first case is given what its name is written
-` with only where a path enters it.
+` does not unsubscribe, nor one that spawns a task the case's activation owns, which its piece
+` does not cancel, nor has one settled whose first case is given what its name is written with
+` only where a path enters it.
 . owner = machining.composite!.owners[case]
 . items = if via != 0 then tree.state-items(tree.state-body(via)) else List'SyntaxId()
 . written = machining.composite!.node(case, owner)
@@ -11727,7 +11872,8 @@ _ do enter-foreign
 . owner-tree = program.modules[fact.module].tree
 . whole = owner-tree.state-items(owner-tree.state-body(fact.syntax))
 . unsettled = settles && !owner-tree.enters-initial(whole, written)
-if !markable(owner, written) || tree.group-heads(items).length != 0 || unsettled
+. spawns = via != 0 && tree.spawns-in-body(via)
+if !markable(owner, written) || tree.group-heads(items).length != 0 || unsettled || spawns
     refuse(.refused-statement, site)
     =
 if via == 0
@@ -11803,11 +11949,14 @@ _ do piece-adds Bool
 ` Whether what a piece of a composite writes in the body of a case it names again adds anything
 ` to what `op` runs: entry statements, groups, immediate transitions or `do finally` blocks and
 ` named machines. A named machine also adds to subscribing and unsubscribing, where the piece
-` keeps the case active for the groups of its root to read (`parent-flag`).
+` keeps the case active for the groups of its root to read (`parent-flag`), and a `TaskOwner`
+` the piece keeps for the case adds to entering and exiting it (`piece-keeps-tasks`).
 . owner = program.modules[fact.module].tree
 . items = owner.state-items(owner.state-body(node))
 if op == .part-immediates
     = owner.immediate-transitions(items).length != 0
+if (op == .part-entries || op == .part-finally) && piece-keeps-tasks(fact, node)
+    = true
 if (op == .part-subscribe || op == .part-unsubscribe) && owner.group-heads(items).length != 0
     = true
 for item in items
@@ -11819,6 +11968,19 @@ for item in items
     if op == .part-finally && (nested || owner.nodes[item] is .node-do-finally-block)
         = true
 = false
+
+────────────────────
+_ do piece-keeps-tasks Bool
+    - fact MachineFact
+    - node SyntaxId
+
+` Whether a piece of a composite keeps a `TaskOwner` for the activations of a case it names.
+. owner = program.modules[fact.module].tree
+. cases = owner.machine-cases(owner.state-items(owner.state-body(fact.syntax)))
+. position = owner.case-position(cases, owner.state-name(node)!)
+. row = bindings.machine-slots(fact.module, fact.syntax)
+=? false if position == null || !row
+= bindings.machine-slot(row, cases[position], program.store-atom("(tasks)")) != no-slot
 
 ────────────────────
 _ do call-part Typed
@@ -12447,11 +12609,12 @@ _ do exit-case
 ` Exits a case, as the reference expands its exit: its active cases exit, last first; the
 ` activations of it and the cases above it are bound, its groups are unsubscribed, and those of
 ` each other continuation that enters it, it is no longer active nor projected so, and its
-` `do finally` blocks run and the named machines written in it stop, last first. The turns of
-` the activations it binds end there. Where the machine is a piece of a composite, the cases
-` below it are the composite's (`exit-below`), the pieces below this one that name the case
-` again unsubscribe the groups they add after these, and run what they add to its exit before
-` these, last first; one a piece above writes is exited by that piece.
+` `do finally` blocks run and the named machines written in it stop, last first, and then the
+` tasks its activation owns are cancelled (`close-tasks`). The turns of the activations it binds
+` end there. Where the machine is a piece of a composite, the cases below it are the composite's
+` (`exit-below`), the pieces below this one that name the case again unsubscribe the groups they
+` add after these, and run what they add to its exit before these, last first; one a piece above
+` writes is exited by that piece.
 if foreign-case(node)
     . case = composite-case(node)
     do call-part(machining.composite!.owners[case], case, .part-exit, node)
@@ -12470,6 +12633,7 @@ keep-active(case-node(node), false, node)
 project(node, false, make-operand(.operand-void, 0), node)
 contribute(node, .part-finally)
 finish-items(items)
+close-tasks(case-node(node), node)
 close-turns(turns)
 restore-cells(rebound)
 
@@ -14884,8 +15048,9 @@ _ do run-cleanup
 
 ` One cleanup, emitted where a way out runs it: the body of a `do finally`, for the first
 ` header of a loop that reads a stream, a bullet that gives every item of one, or a pipe
-` whose loop writes each item of one, the calls that end the iteration of its streams, and
-` for a `use` or `do use` the call that ends the use of its object.
+` whose loop writes each item of one, the calls that end the iteration of its streams, for a
+` `use` or `do use` the call that ends the use of its object, and for a `do without cancel`
+` block the call that lets go of its hold on cancellation.
 if cell.is-live-call
     do call-instance(instances.live.leave, body, pending.length)
     =
@@ -14910,6 +15075,9 @@ do match? tree.nodes[body]
         =
     | .node-probe-group
         emit-probe-group-end(body, 1)
+        =
+    | .node-do-block
+        call-runtime(.runtime-leave-cancel-shield, body, pending.length)
         =
 emit-block(body)
 
@@ -15404,15 +15572,19 @@ _ do emit-leave
     - is-break Bool
 
 ` Leaves the innermost loop, or goes on to its next pass, after the cleanups opened in the
-` loop run. What follows is never run. A cleanup that leaves a loop around it has no shape.
+` loop run. What follows is never run. In a cleanup being run, only the holds on cancellation
+` taken in the loop are let go (`leave-held`), and leaving anything else opened there has no
+` shape.
 if loops.length == 0
     refuse(.refused-statement, site)
     =
 . loop = loops[loops.length - 1]
 if scoping.cleaning && loop.cleanups != open-cleanups.length
-    refuse(.refused-statement, site)
-    =
-run-cleanups(loop.cleanups, open-cleanups.length)
+    if !leave-held(loop.cleanups, site)
+        refuse(.refused-statement, site)
+        =
+else
+    run-cleanups(loop.cleanups, open-cleanups.length)
 jump(if is-break then loop.done else loop.step)
 ir.start-block(ir.reserve-block())
 
@@ -16537,11 +16709,13 @@ _ do leave-as
 ` action does with the error such a function gives it. An error of a class above every error
 ` the function raises leaves, once the cleanups open have run, as the case of the most derived
 ` class below it that it is of (`leave-narrowed`). An error a cleanup raises runs only the
-` cleanups open around that one, and one raised in a stream loop of a cleanup has no shape.
+` cleanups open around that one, after the holds on cancellation the cleanup took, and one
+` raised in a stream loop of a cleanup has no shape.
 . open = if scoping.cleaning then scoping.cleaning-open else open-cleanups.length
 if scoping.cleaning && open-cleanups.length != scoping.cleaning-top
-    refuse(.refused-statement, id)
-    =
+    if !leave-held(scoping.cleaning-top, id)
+        refuse(.refused-statement, id)
+        =
 if fusing
     leave-fused(error, type, id, open as U32)
     =
@@ -17897,7 +18071,7 @@ _ do make-capture Operand
     - id SyntaxId
     - callee InstanceId
 
-` The capture the body of a task spawned at a node, or of a `do @no-gc` block, is given: an
+` The capture the body of a task spawned at a node, or of a `do without gc` block, is given: an
 ` object the collector owns that holds the link to the environment in force here where the body
 ` shares a name, each local, argument and receiver the body copies, read here, where a lazy one
 ` is evaluated if it was not, as a lazy one the body shares is, and the state of each global
@@ -17955,7 +18129,7 @@ _ do slot-address Operand
     - slot SlotId
     - site SyntaxId
 
-` The address of a local or an argument of the function that the capture of a `do @no-gc`
+` The address of a local or an argument of the function that the capture of a `do without gc`
 ` block refers to: of its field in the environment that keeps it, of its cell, which stays in
 ` the frame, or of the memory a struct argument with no cell lies in, which the function owns.
 . nothing = make-operand(.operand-void, 0)
@@ -17978,7 +18152,7 @@ refuse(.refused-expression, site)
 _ do emit-region
     - id SyntaxId
 
-` A `do @no-gc` block outlined, as the reference calls it: its body's function is called with
+` A `do without gc` block outlined, as the reference calls it: its body's function is called with
 ` the capture `make-capture` makes, crossing into the zone the collector never sees and back.
 . callee = region-callee(id)
 if callee == no-instance || tables.instance-functions[callee] == no-function
@@ -17993,7 +18167,7 @@ do call-instance(callee, id, mark)
 _ do region-callee InstanceId
     - id SyntaxId
 
-` The body of the `do @no-gc` block at a node, as the type pass recorded it.
+` The body of the `do without gc` block at a node, as the type pass recorded it.
 . fact = facts.first-call(unit.reading, id)
 while fact != no-fact
     if facts.calls[fact].form == .call-function && tables.is-region(facts.calls[fact].callee)
@@ -18004,7 +18178,7 @@ while fact != no-fact
 ────────────────────
 _ do emit-region-body
 
-` The body of a `do @no-gc` block: a function called with the capture made where the block is,
+` The body of a `do without gc` block: a function called with the capture made where the block is,
 ` which returns nothing.
 . row = instances.rows[unit.instance]
 . body SyntaxId = 0
@@ -18070,15 +18244,22 @@ _ do emit-spawn Operand
 ` queue the worker named holds, where there is one, the body and its capture, the size of the
 ` memory a task holds its own globals in, the place the task was spawned at and how to run it.
 ` A `valued` spawn also asks for the record the runtime keeps of how the task ends, which it
-` answers.
+` answers. A task an object owns is started with the object, which keeps it for its `close`
+` to cancel.
 . nothing = make-operand(.operand-void, 0)
 . callee = task-callee(id)
 . body = if callee != no-instance then tables.instance-functions[callee] else no-function
 if body == no-function
     refuse(.refused-statement, id)
     = nothing
+. owned = is-owned-task(id)
+. owner = if owned then task-owner(id) else nothing
+if owned && operand-kind(owner) == .operand-void
+    = nothing
 . capture = make-capture(id, callee)
 . mark = pending.length
+if owned
+    pending += num-cast(id, owner, managed-layout, pointer-layout)
 if worker != 0
     . queue = emit-expression(worker)
     . held = layout-of(queue.type, worker)
@@ -18112,7 +18293,41 @@ if large-stack
 if valued
     options = options /or/ task-start-handle
 pending += integer(.machine-u32, options)
-= call-runtime(.runtime-start-task, id, mark, pointer-layout)
+. start = if owned then RuntimeFunction.runtime-start-owned-task else RuntimeFunction.runtime-start-task
+= call-runtime(start, id, mark, pointer-layout)
+
+────────────────────
+_ do is-owned-task Bool
+    - id SyntaxId
+
+` Whether the type pass found the task spawned at a node owned by an object.
+. fact = facts.first-call(unit.reading, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-owned-task
+        = true
+    fact = facts.calls[fact].next
+= false
+
+────────────────────
+_ do task-owner Operand
+    - site SyntaxId
+
+` The object that owns a task the type pass found owned: the innermost markup element being
+` built, or else the `TaskOwner` of the activation of a case the binder gave it to, or else the
+` receiver, as `own-callback` finds the owner of a live action. An activation that keeps no
+` `TaskOwner` leaves the task owned by nothing.
+. binding = instances.rows[unit.reading].binding
+. tasks = bindings.activation-tasks(binding, site, program.store-atom("(tasks)"))
+if content-hosts.length != 0
+    . host = content-hosts[content-hosts.length - 1]
+    if tables.is-class(host.type)
+        = host.operand
+else if tasks != no-slot
+    = read-captured(tasks, site, find-captured(tasks, site).type).operand
+else if unit.has-self && tables.is-class(unit.owner-type)
+    = unit.self
+refuse(.refused-statement, site)
+= make-operand(.operand-void, 0)
 
 ────────────────────
 _ do capture-value Typed
@@ -18177,7 +18392,7 @@ _ do task-callee InstanceId
 ` The body of the task spawned at a node, as the type pass recorded it.
 . fact = facts.first-call(unit.reading, id)
 while fact != no-fact
-    if facts.calls[fact].form == .call-task
+    if spawns-task(facts.calls[fact].form)
         = facts.calls[fact].callee
     fact = facts.calls[fact].next
 = no-instance
@@ -23292,10 +23507,11 @@ _ do closes-actions Bool
 ` Whether the function is a class's `close` that takes no arguments, which closes the live
 ` actions the object owns, where the program makes any, and stops the machines its properties hold
 ` and its markup writes, where the program starts any, as it starts, and closes the live actions
-` made since and the object's events, where its class has any, as it leaves.
+` made since and the object's events, where its class has any, and cancels the tasks it owns,
+` where the program spawns any an object owns, as it leaves.
 if unit.instance == no-instance || !unit.has-self || function.kind != .instance-body
     = false
-if instances.live.has-actions == no-instance && !closes-events() && !stops-machines()
+if instances.live.has-actions == no-instance && !closes-events() && !stops-machines() && !tables.owns-tasks
     = false
 if !tables.is-class(unit.owner-type)
     = false
@@ -23328,7 +23544,9 @@ _ do close-owned
 
 ` Closes each live action the receiver owns, taking it off the list the receiver keeps in lane 1,
 ` and then clears the lane, as the reference's `close` does as it leaves; then closes the
-` receiver's events, where its class has any, or where `stop-owned` stopped its machines.
+` receiver's events, where its class has any, or where `stop-owned` stopped its machines; then
+` cancels the tasks the receiver owns, where the program spawns any an object owns, without
+` waiting for them or yielding to them. A task that closes its own owner is not cancelled.
 if instances.live.has-actions != no-instance
     close-actions(site, unit.self)
 if closes-events()
@@ -23339,6 +23557,10 @@ else if closes-stopped()
     . mark = pending.length
     pending += num-cast(site, unit.self, managed-layout, pointer-layout)
     do call-instance(facts.machine-close, site, mark)
+if tables.owns-tasks
+    . cancelling = pending.length
+    pending += num-cast(site, unit.self, managed-layout, pointer-layout)
+    call-runtime(.runtime-cancel-owned-tasks, site, cancelling)
 
 ────────────────────
 _ stops-machines Bool
@@ -50893,9 +51115,11 @@ _ do emit-c-call Typed
 ` After a call of the last two kinds the panic signal is read again. In a function the
 ` collector never sees, a call of those two kinds leaves that zone before its first check
 ` and enters it again after its last. One that suspends the task is called as it is, and
-` then the task is checked for being terminated, which raises the termination panic: the
-` function carries the panic signal, though its callers do not check it, as TypeScript's
-` do not. It has no shape where the collector never looks.
+` then, where the function `raises-termination`, the task is checked for being terminated,
+` which raises the termination panic; elsewhere the task runs on until a check finds it, as
+` after a poll, for no caller checks the panic signal of a function that may not panic. One that
+` leaves a termination to what follows, a lock taken or an answer the caller checks, is not
+` followed by the check (`checks-termination`). It has no shape where the collector never looks.
 ` A call the type pass planned to describe the storage it makes is called by the policy of the
 ` runtime's function that describes it, which polls.
 ` A call of a binding gives `bound`, the binding: it is evaluated first, and the arguments it
@@ -50979,10 +51203,11 @@ else
 if suspends
     if !is-unprobed()
         call-probe-thunk(tables.probe-safepoint, id)
-    . resumed = ir.reserve-block()
-    . raised = call-instance(instances.report.termination, id, pending.length)
-    branch(raised.operand, landing-block(id), resumed)
-    ir.start-block(resumed)
+    if raises-termination() && tables.checks-termination(callee)
+        . resumed = ir.reserve-block()
+        . raised = call-instance(instances.report.termination, id, pending.length)
+        branch(raised.operand, landing-block(id), resumed)
+        ir.start-block(resumed)
 if leaf
     = Typed(result, facts.node-type(unit.reading, id))
 if polls

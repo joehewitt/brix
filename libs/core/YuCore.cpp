@@ -689,7 +689,7 @@ yumiArrayViewCreate(char* data, size_t byteSize) {
     return allocation;
 }
 
-extern "C" YUMI_GC_LEAF bool
+extern "C" YUMI_WITHOUT_GC bool
 yumiArrayViewValid(char* allocation) {
     const ArrayViewOwner* owner = reinterpret_cast<const ArrayViewOwner*>(allocation);
     return owner && owner->valid && (!owner->arena ||

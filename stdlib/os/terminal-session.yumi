@@ -35,7 +35,7 @@ _ ends-line = true
 _ is-shell = false
 _ held-since U64?
 _ is-hold-expired = false
-_ is-hold-watched = false
+_ hold-watcher Task?
 
 ────────────────────
 + This
@@ -54,7 +54,7 @@ emulator = TerminalEmulator(columns, rows)
 is-shell = true
 . opened = open(shell, ["-l"], terminal-environment())
 . current = generation
-do new
+do new @detached
     pump(opened, current)
 
 ────────────────────
@@ -215,6 +215,7 @@ _ do pump Int?
     - opened Pty
     - current Size
 
+do finally opened.process.reap()
 while true
     . count = opened.read(buffer.length, buffer)
     if current != generation
@@ -282,9 +283,8 @@ _ do hold-frame
 
 =? if held-since
 held-since = monotonic-time-nanoseconds()
-=? if is-hold-watched
-is-hold-watched = true
-do new
+=? if hold-watcher && !hold-watcher.is-finished
+hold-watcher = do new
     watch-hold()
 
 ────────────────────
@@ -301,7 +301,6 @@ while true
         revision += 1
         break
     ((terminal-sync-limit-ns - elapsed) as Nanoseconds).wait()
-is-hold-watched = false
 
 ────────────────────
 _ do release-hold

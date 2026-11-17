@@ -72,7 +72,9 @@ _ event-count-names [String] = ["publish.attempts", "publish.sites-erased", "pub
 ` tables hold rows of; the tables of its classes; the runtime's symbols; and the backend's manifest,
 ` whose string pool is whole before any worker runs. `instance-functions` gives the function of each
 ` emitted instance, `main-instances` the main of each module, `c-symbols` the symbol of each C
-` function an emitted function calls, `c-suspends` whether that function suspends the task,
+` function an emitted function calls, `c-suspends` whether that function suspends the task (1),
+` or does but leaves a termination to what follows (2, `leaves-termination`), so that the task is
+` not checked for being terminated after it (`checks-termination`),
 ` `c-described` the runtime's function that does the same to storage and takes what describes it,
 ` `table-symbols` the table of each constructed class, and `slots` the place of each instance a
 ` table holds. `rtti-symbols` gives the constant that holds a type's name, key and property table,
@@ -183,6 +185,7 @@ _ event-count-names [String] = ["publish.attempts", "publish.sites-erased", "pub
 + class-rules Table'ClassRule
 + task-local-size I64
 + task-init FunctionId = no-function
++ owns-tasks Bool = false
 + thread-local-size I64
 + thread-init FunctionId = no-function
 + probe-setup FunctionId = no-function
@@ -660,7 +663,7 @@ for owner in place-owners
     - instance InstanceId
     - slot SlotId
 
-` Whether the body of a `do @no-gc` block reaches a local or an argument its capture holds
+` Whether the body of a `do without gc` block reaches a local or an argument its capture holds
 ` (`copies`) through its address, where the function that runs the block keeps it: the block
 ` runs there, before anything after it, so what it assigns is that function's own.
 is-region(instance) && copies(instance, slot) && (kind == .slot-local || kind == .slot-argument)
@@ -720,7 +723,7 @@ for index in 0 .. < captured.count
 
 ` Whether a nested function holds the state of a global `do with` binds where nothing writes
 ` it: one that is neither a lambda, a comprehension nor a spawned task's body, a list of
-` bullets or the right side of a pipe, which has no shape for it. The body of a `do @no-gc`
+` bullets or the right side of a pipe, which has no shape for it. The body of a `do without gc`
 ` block holding one is not built (`lay-capture`).
 if facts.stack-holds.length == 0 || copies-in(instance)
     = false
@@ -1016,7 +1019,7 @@ match tree.nodes[argument]
 + is-region Bool
     - instance InstanceId
 
-` Whether an instance is the body of a `do @no-gc` block.
+` Whether an instance is the body of a `do without gc` block.
 instance < task-count && task-bodies[instance] == 2
 
 ────────────────────
@@ -2080,6 +2083,14 @@ raising[callee] != 0
 types.is-class-type(type)
 
 ────────────────────
++ checks-termination Bool
+    - callee InstanceId
+
+` Whether the task is checked for being terminated after a call of a C function: one that
+` suspends it is, but for one that leaves a termination to what follows (`leaves-termination`).
+c-suspends[callee] == 1
+
+────────────────────
 + do want-type-constant
     - type TypeId
 
@@ -2495,7 +2506,7 @@ _ do mark-copies
     - bound Binding
     - shared CPointer'U8
 
-` Marks the slots of a binding that only the bodies of spawned tasks and of `do @no-gc` blocks
+` Marks the slots of a binding that only the bodies of spawned tasks and of `do without gc` blocks
 ` capture, as a local, an argument, the item of a loop or the receiver. Every nested function
 ` between a reference and the declaration records what it captures, so the outermost task copies the
 ` slot where it is spawned and the tasks inside it share that copy through their links, as the
@@ -2524,7 +2535,7 @@ _ copies-captures Bool
     - decl DeclId
 
 ` Whether a nested function copies what it captures where it is made: the body of a spawned task
-` or of a `do @no-gc` block.
+` or of a `do without gc` block.
 match program.modules[module].decls[decl]
     | .decl-function(fn)
         fn.kind == .task-decl || fn.kind == .region-decl
@@ -2928,7 +2939,7 @@ _ do makes-holders Bool
     - instance InstanceId
 
 ` Whether a function writes a nested function, other than a spawned task's body or that of a
-` `do @no-gc` block, that holds the state of a global `do with` binds.
+` `do without gc` block, that holds the state of a global `do with` binds.
 for hold in facts.stack-holds
     if instances.rows[hold.instance].enclosing == instance && !copies-in(hold.instance) && !fixed
         = true
@@ -2938,7 +2949,7 @@ for hold in facts.stack-holds
 ────────────────────
 _ do lay-captures
 
-` Lays out the capture of the body of each spawned task emitted, and of each `do @no-gc`
+` Lays out the capture of the body of each spawned task emitted, and of each `do without gc`
 ` block: an object the collector owns, made where the task is spawned or the block runs, that
 ` holds each local, item of a loop, argument and receiver the body captures, in the order the
 ` binder recorded them, as the instance that declares it types it. A body that captures nothing
@@ -2979,7 +2990,7 @@ _ do lay-capture LayoutId
 ` A body that shares a name holds first the link to the environment in force where it was
 ` spawned, as a lambda written there is given. Then it holds what it copies, and the state of
 ` each global `do with` binds that the body holds, as it was where the task was spawned. The
-` body of a `do @no-gc` block holds the address of each local and argument it refers to
+` body of a `do without gc` block holds the address of each local and argument it refers to
 ` (`refers`), with the type of the value kept there.
 . stacks = stack-holds(instance)
 if is-region(instance) && stacks.length != 0
@@ -3155,6 +3166,7 @@ step-functions = arena.allocate'U32(instance-count)
 initialized = arena.allocate'Byte(instance-count + 1)
 reach-queue = arena.allocate'U32(instance-count + 1)
 reach-length = 0
+owns-tasks = false
 for position in 0 .. < instance-count
     kinds[position] = Reach.none
     initialized[position] = 0
@@ -3489,7 +3501,7 @@ if suspends
     for position in 0 .. < instance-total + 1
         suspending[position] = 0
     for fact in facts.calls
-        if fact.callee != no-instance && c-suspends[fact.callee] != 0
+        if fact.callee != no-instance && checks-termination(fact.callee)
             suspending[fact.instance] = 1
 for id in 0 .. < functions.length
     . function = functions[id]
@@ -4436,7 +4448,7 @@ _ do number-closures
 ` One written in a function made more than once is counted for each, by instance. The
 ` functions generated for comprehensions, lists of bullets and the right sides of pipes are
 ` closures the type pass typed, and are numbered among them. The body of a spawned task is
-` named `Fork`, or `Spin` where it runs in parallel, and that of a `do @no-gc` block
+` named `Fork`, or `Spin` where it runs in parallel, and that of a `do without gc` block
 ` `GCFreeRegion`, and numbered so among the closures of that name.
 . groups [Size]
 . places [U64]
@@ -4541,14 +4553,14 @@ instance < task-count && task-bodies[instance] == 1
 _ copies-in Bool
     - instance InstanceId
 
-` Whether an instance is the body of a spawned task or of a `do @no-gc` block, given a capture
+` Whether an instance is the body of a spawned task or of a `do without gc` block, given a capture
 ` of what it copies.
 instance < task-count && task-bodies[instance] != 0
 
 ────────────────────
 _ do find-tasks
 
-` Marks the instances that are the bodies of spawned tasks, and those of `do @no-gc` blocks,
+` Marks the instances that are the bodies of spawned tasks, and those of `do without gc` blocks,
 ` which the type pass lists in the order it met them.
 if facts.task-bodies.length == 0 && facts.region-bodies.length == 0
     =
@@ -9089,7 +9101,8 @@ _ do reach-made-call
 ` node the compiler answers itself makes none of the calls recorded at it but those it makes
 ` of a range that indexes a view. `super(…)` calls its callee's initializer, which the
 ` compiler writes nothing for when it generated the constructor. The body of a spawned task
-` reports a panic that leaves it itself.
+` reports a panic that leaves it itself. One owned can be for a case's activation, whose case makes
+` a `TaskOwner` the first time it is entered.
 if is-intrinsic-plan(facts.plan-of(fact.instance, fact.syntax)) && fact.form != .call-view-range
     =
 if is-super-call(fact)
@@ -9102,7 +9115,10 @@ if is-super-call(fact)
     =
 if fact.propagates
     mark(kinds, instances.report.source)
-if fact.form == .call-task
+if spawns-task(fact.form)
+    owns-tasks = owns-tasks || fact.form == .call-owned-task
+    if fact.form == .call-owned-task
+        mark(kinds, facts.task-owner-make)
     reach-report(kinds)
     if fact.callee != no-instance && instances.signatures[fact.callee].errors.count != 0
         reach-error-report(kinds)
@@ -9247,7 +9263,7 @@ if owner.name.ends-with(".h")
                 if name.text == observer-activation-name
                     observes = true
                 if suspends-task(name.text)
-                    c-suspends[callee] = 1
+                    c-suspends[callee] = if leaves-termination(name.text) then 2 else 1
                     suspends = true
                 c-described[callee] = describing(name)
             if (fn.effects /and/ CompilationEffect.gc-leaf) == 0 || c-suspends[callee] != 0

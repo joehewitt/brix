@@ -124,10 +124,14 @@ _ using-name Atom
 _ state-name Atom
 _ active-name Atom
 _ generation-name Atom
+_ tasks-name Atom
 _ payload-name Atom
 _ subscriber-name Atom
 _ source-name Atom
 _ machine-cases [[SyntaxId]]
+_ owning-cases [SyntaxId]
+_ tasks-cases [SyntaxId]
+_ tasks-slots [SlotId]
 _ machine-kept [[[Atom]]]
 _ machine-roots [[SyntaxId]]
 _ machine-bound SlotId = no-slot
@@ -182,6 +186,7 @@ _ fills = false
 .. state-name = program.store-atom("(loop)")
 .. active-name = program.store-atom("(active)")
 .. generation-name = program.store-atom("(generation)")
+.. tasks-name = program.store-atom("(tasks)")
 .. payload-name = program.store-atom("(payload)")
 .. subscriber-name = program.store-atom("(subscriber)")
 .. source-name = program.store-atom("(source)")
@@ -322,6 +327,9 @@ owner-decl = 0
 outer-uses-self = false
 held = no-slot
 subscriber-slots.clear()
+owning-cases.clear()
+tasks-cases.clear()
+tasks-slots.clear()
 builder-slots.clear()
 fills = false
 forget-names(0)
@@ -2355,6 +2363,8 @@ do match tree.nodes[id]
         pop-scope()
     | .node-do-task-block(row)
         walk(row.worker)
+        if !row.detached
+            own-task(id)
         walk-nested(id, RowRange'SyntaxId(), row.body, row.catchers)
     | .node-do-block(row)
         if nested-decl-for(id) != 0
@@ -2525,7 +2535,7 @@ _ do walk-nested Void
     - body SyntaxId
     - handlers RowRange'SyntaxId = RowRange'SyntaxId()
 
-` A lambda, a task body or the body of a `do @no-gc` block: its own scope, argument slots,
+` A lambda, a task body or the body of a `do without gc` block: its own scope, argument slots,
 ` and capture pool. Captures gather while the body walks and are rowed when it closes,
 ` innermost first. A task's handlers run in the task, after its body, so they are bound in
 ` its scope as well.
@@ -2613,6 +2623,7 @@ if self
 machine-cases += cases
 machine-kept += kept
 machine-roots += items
+owning-cases += 0
 state-depth += 1
 walk-entered(0, items)
 for item in items
@@ -2620,6 +2631,7 @@ for item in items
         walk-case(item)
 walk-handlers(items)
 state-depth -= 1
+owning-cases.pop()
 machine-cases.pop()
 machine-kept.pop()
 machine-roots.pop()
@@ -2659,11 +2671,13 @@ bindings.machines.append
 machine-cases += cases
 machine-kept += kept
 machine-roots += items
+owning-cases += 0
 walk-entered(0, items)
 for item in items
     if tree.is-transition(item)
         walk-case(item)
 walk-handlers(items)
+owning-cases.pop()
 machine-cases.pop()
 machine-kept.pop()
 machine-roots.pop()
@@ -2686,6 +2700,10 @@ for position in 0 .. < cases.length
     if !flagged
         hide(active-name, node)
     hide(generation-name, node)
+    if tree.spawns-in-case(items, node)
+        tasks-cases += node
+        tasks-slots += bindings.slots.length as SlotId
+        hide(tasks-name, node)
     if tree.payload-source(items, tree.state-name(node)!)
         hide(payload-name, node)
     for name in kept[position]
@@ -2771,7 +2789,10 @@ _ do walk-case Void
 ` their own, with what runs once they have; then come its cases, the functions its groups run,
 ` and the `do finally` blocks of its exit in a scope of their own, beyond the entry's locals. A
 ` named machine among its entry statements is part of the machine (`walk-nested-machine`).
+` Tasks its entry statements and handlers spawn are the activation's of the case it enters, where
+` that case owns tasks (`owning-case`); those its `do finally` blocks spawn are not.
 . items = tree.state-items(tree.state-body(node))
+owning-cases += owning-case(node)
 push-scope(.scope-activation, node)
 declare-activation(node)
 push-scope(.scope-block, node)
@@ -2787,12 +2808,15 @@ for item in items
     if tree.is-transition(item)
         walk-case(item)
 walk-handlers(items)
+owning-cases += 0
 push-scope(.scope-block, node)
 for item in items
     if tree.nodes[item] is .node-do-finally-block
         walk(item)
 pop-scope()
 pop-scope()
+owning-cases.pop()
+owning-cases.pop()
 
 ────────────────────
 _ do declare-activation
@@ -3002,12 +3026,16 @@ _ do record-capture
     - depth U32
     - by-value Bool
     - flags ResolutionMask = 0
+    - owner = false
 
 ` Every open nested function between the reference and the declaring function records the
 ` slot once, which is how the TypeScript compiler threads a value through chained closure
 ` callbacks. Task bodies and `this` capture by value. A capture notes whether the function
-` assigns the slot. The body of a `do @no-gc` block runs where it is written, and takes the
-` address of each local and argument it captures there.
+` assigns the slot. The body of a `do without gc` block runs where it is written, and takes the
+` address of each local and argument it captures there. A receiver captured for anything but the
+` `owner` of a task spawned inside is marked used, which a value of a struct cannot be.
+if !owner && bindings.slots[slot].kind == .slot-this
+    bindings.mark-slot(slot, SlotFlag.slot-self-used)
 . assigned = if write-bit != 0 then CaptureFlag.capture-assigned else CaptureFlag.capture-none
     .. write-bit = flags /and/ (ResolutionFlag.resolution-write)
 . kind = bindings.slots[slot].kind
@@ -3201,10 +3229,53 @@ do match? tree.nodes[id]
         bindings.record-scan(target, .scan-index, id)
 
 ────────────────────
+_ do own-task
+    - id SyntaxId
+
+` A task spawned where a case's activation owns it is given the slot the machine keeps the
+` activation's record of its tasks in, which the functions around it capture, as the task
+` block's resolution; any other is given the receiver, where there is one, for its object to own.
+. tasks = activation-tasks()
+if tasks == no-slot
+    capture-self(true)
+    =
+use-slot(tasks, slot-depth(tasks), 0)
+bindings.set-resolution(binding, id, Resolution(.resolve-slot, 0, tasks, 0, 0))
+
+────────────────────
+_ do activation-tasks SlotId
+
+` The slot of the record of the tasks of the case whose activation owns what is spawned here, or
+` none.
+=? no-slot if owning-cases.length == 0
+. case = owning-cases[owning-cases.length - 1]
+=? no-slot if case == 0
+for position in 0 .. < tasks-cases.length
+    =? tasks-slots[position] if tasks-cases[position] == case
+= no-slot
+
+────────────────────
+_ do owning-case SyntaxId
+    - node SyntaxId
+
+` The case among the machine's cases that a case or continuation enters, where its activation
+` owns tasks, or none.
+. name = tree.state-name(node)
+=? 0 if !name || machine-cases.length == 0
+. cases = machine-cases[machine-cases.length - 1]
+. position = tree.case-position(cases, name)
+=? 0 if position == null
+. case = cases[position]
+=? case if tasks-cases.find(case) != null
+= 0
+
+────────────────────
 _ do capture-self
+    - owner = false
 
 ` A member or method reached from a nested function needs `this`, which the TypeScript compiler
-` captures by value at every closure scope on the way out.
+` captures by value at every closure scope on the way out, as does a task spawned there that its
+` `owner` keeps.
 . position = lookup-position(this-name)
 if !position
     =
@@ -3212,7 +3283,7 @@ if !position
 if depth < function-depth
     . slot = name-slots[position]
     bindings.mark-slot(slot, SlotFlag.slot-captured)
-    record-capture(slot, depth, true)
+    record-capture(slot, depth, true, 0, owner)
 
 ────────────────────
 _ do walk-generator Void

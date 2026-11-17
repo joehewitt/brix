@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #if defined(__clang__)
-#define YU_GUI_GC_POLLING __attribute__((annotate("yumi:gc_polling")))
+#define YU_GUI_WITHOUT_BLOCKING __attribute__((annotate("yumi:gc_polling")))
 #else
-#define YU_GUI_GC_POLLING
+#define YU_GUI_WITHOUT_BLOCKING
 #endif
 
 // **********************************************************************************************
@@ -80,7 +80,7 @@ enum YuGuiPresentationVisibility {
 
 extern "C" void* yumiGuiAppCreate(void);
 extern "C" void yumiGuiAppRelease(void* app);
-extern "C" YU_GUI_GC_POLLING void yumiGuiAppRun(void* app);
+extern "C" YU_GUI_WITHOUT_BLOCKING void yumiGuiAppRun(void* app);
 extern "C" void yumiGuiAppStop(void* app);
 extern "C" void yumiGuiAppScheduleStop(void* app, uint64_t delayNanoseconds);
 extern "C" void yumiGuiAppSetTitle(void* app, const char* title);
@@ -510,7 +510,7 @@ extern "C" void yumiGuiTextInputDebugInjectEvent(
     const char* text
 );
 
-#undef YU_GUI_GC_POLLING
+#undef YU_GUI_WITHOUT_BLOCKING
 
 extern "C" void* yumiGuiCursorCreate(void* canvas, double hotspotX, double hotspotY);
 extern "C" void yumiGuiCursorRelease(void* cursor);

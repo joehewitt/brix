@@ -723,6 +723,60 @@ cleanup saw Task terminated
 worker cleanup
 ;====
 :====
+# A task terminated while it is suspended is answered that it is cancelled. One that ignores the
+# answer runs on, and the termination ends it later, at a wait or a poll; its cleanup runs.
+
+/time/duration
+
+do new
+    . answer = false
+    do finally
+        . failure = Task().failure
+        if failure
+            -- "cleanup saw $failure.message"
+        -- "suspend answered $answer"
+    answer = Task().suspend()
+    Semaphore().wait()
+    -- "unexpected resume"
+
+50ms.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+cleanup saw Task terminated
+suspend answered true
+;====
+:====
+# A task terminated while it takes a lock and gives it back does not end holding it, so its
+# cleanup can take it.
+
+. pool = Worker(1)
+. ready = Semaphore()
+. mutex = Mutex()
+. count = 0
+
+do (pool) new
+    do finally
+        mutex.lock()
+        -- "cleanup took the lock"
+        mutex.unlock()
+    ready.post()
+    while true
+        do
+            use mutex
+            count += 1
+
+ready.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+cleanup took the lock
+;====
+:====
 
 . ready = Semaphore()
 . done = Semaphore()
@@ -2811,4 +2865,804 @@ task.wait()
 
 detached ran
 true
+;====
+:====
+# A task cancelled inside a do without cancel block runs the block to its end, waits included, and
+# the cancellation ends it at its next wait after the block. Its handle shows the request at once.
+
+. ready = Semaphore()
+. release = Semaphore()
+. worker = do new
+    do finally
+        -- "cleanup saw ${Task().failure?.message ?? "nothing"}"
+    do without cancel
+        ready.post()
+        release.wait()
+        -- "shielded wait finished"
+    -- "after the block"
+    Semaphore().wait()
+    -- "never"
+ready.wait()
+worker.cancel()
+-- "requested: ${worker.is-canceled}, in force: ${worker.is-cancel-in-force}"
+release.post()
+worker.wait()
+-- "cancelled: ${worker.end == .cancelled}"
+
+:----
+
+requested: true, in force: false
+shielded wait finished
+after the block
+cleanup saw Task cancelled
+cancelled: true
+;====
+:====
+# Blocks without cancel nest, and the inner block's end leaves the outer one's in place. A return
+# from inside such a block leaves it too.
+
+. gate = Semaphore()
+. nested = do new
+    do without cancel
+        do without cancel
+            gate.wait()
+        -- "inner block ended"
+        gate.wait()
+        -- "outer block ended"
+    gate.wait()
+    -- "never"
+nested.cancel()
+gate.post()
+gate.post()
+nested.wait()
+-- "nested cancelled: ${nested.end == .cancelled}"
+. returner = do new
+    -- "returned ${returns-early()}"
+    Semaphore().wait()
+    -- "never"
+returner.cancel()
+returner.wait()
+-- "returner cancelled: ${returner.end == .cancelled}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do returns-early Int
+
+do without cancel
+    = 5
+= 6
+
+:----
+
+inner block ended
+outer block ended
+nested cancelled: true
+returned 5
+returner cancelled: true
+;====
+:====
+# A task cancelled while it runs on a worker's threads still waits in full inside a later block
+# without cancel.
+
+. pool = Worker(2)
+. entered = Semaphore()
+. release = Semaphore()
+. worker = do (pool) new
+    . busy = spin(400000)
+    do without cancel
+        entered.post()
+        release.wait()
+        -- "worker got release ${busy > 0}"
+    Semaphore().wait()
+    -- "never"
+worker.cancel()
+entered.wait()
+-- "main posts"
+release.post()
+worker.wait()
+-- "cancelled: ${worker.end == .cancelled}"
+pool.stop()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do spin Int
+    - count Int
+
+. total = 0
+for index in 0 .. < count
+    total += index % 7
+= total
+
+:----
+
+main posts
+worker got release true
+cancelled: true
+;====
+:====
+# A block without cancel does not keep out termination: the task ends at its wait there.
+
+. ready = Semaphore()
+do new
+    do finally
+        -- "cleanup saw ${Task().failure?.message ?? "nothing"}"
+    do without cancel
+        ready.post()
+        Semaphore().wait()
+        -- "never"
+ready.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+cleanup saw Task terminated
+;====
+:====
+# A do without cancel block in a cancelled task's cleanup waits in full there, and lets go of its
+# hold where it ends, so the next wait ends the cleanup. Inside it the task sees the request.
+
+. ready = Semaphore()
+. flushed = Semaphore()
+. writer = do new
+    do finally
+        do without cancel
+            flushed.wait()
+            -- "flushed, requested: ${Task().is-canceled}, in force: ${Task().is-cancel-in-force}"
+        -- "after the block, in force: ${Task().is-cancel-in-force}"
+        Semaphore().wait()
+        -- "never"
+    ready.post()
+    Semaphore().wait()
+ready.wait()
+writer.cancel()
+flushed.post()
+writer.wait()
+-- "cancelled: ${writer.end == .cancelled}"
+
+:----
+
+flushed, requested: true, in force: false
+after the block, in force: true
+cancelled: true
+;====
+:====
+# In a cleanup, a break, an error and a panic that leave a do without cancel block let go of its
+# hold too.
+
+. ready = Semaphore()
+. looper = do new
+    do finally
+        for index in 0 .. < 3
+            do without cancel
+                if index == 1
+                    break
+        -- "after the break, in force: ${Task().is-cancel-in-force}"
+        . failure = catch flush()
+        -- "after the error ${failure is Error}, in force: ${Task().is-cancel-in-force}"
+    do finally
+        do without cancel
+            ?! Panic("inside the block")
+    ready.post()
+    Semaphore().wait()
+catch failed
+    -- "caught: $failed.message"
+ready.wait()
+looper.cancel()
+looper.wait()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do flush
+
+do finally
+    do without cancel
+        ?! Error("flush failed")
+
+:----
+
+after the break, in force: true
+after the error true, in force: true
+caught: inside the block
+;====
+:====
+# A task a method starts is its object's. The object's close cancels it as close leaves, so the
+# body of close may still use it, and close does not wait for it. A task marked @detached outlives
+# the close.
+
+. relay = Relay()
+relay.start()
+relay.close()
+relay.worker!.wait()
+-- "worker cancelled: ${relay.worker!.end == .cancelled}"
+relay.gate.post()
+relay.keeper!.wait()
+-- "keeper finished: ${relay.keeper!.end == .finished}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Relay
+
++ asked = Semaphore()
++ answered = Semaphore()
++ gate = Semaphore()
++ worker Task?
++ keeper Task?
+
+────────────────────
++ do start
+
+worker = do new
+    do finally
+        -- "worker cleanup"
+    while true
+        asked.wait()
+        -- "worker answered"
+        answered.post()
+keeper = do new @detached
+    gate.wait()
+    -- "keeper ran after close"
+
+────────────────────
++ do close
+
+asked.post()
+answered.wait()
+-- "close used its worker"
+
+:----
+
+worker answered
+close used its worker
+worker cleanup
+worker cancelled: true
+keeper ran after close
+keeper finished: true
+;====
+:====
+# A task started in a nested body of a method, a task's or a function value's, is the object's too.
+# A task that closes its own object is not cancelled by that close, and a task started after a
+# close is the object's until the next one.
+
+. done = Semaphore()
+. holder = Holder(done)
+holder.start-nested()
+holder.close()
+done.wait()
+done.wait()
+-- "nested tasks cancelled"
+holder.start-self-closing()
+holder.task!.wait()
+-- "self closer cancelled by the next close: ${holder.task!.end == .cancelled}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ done Semaphore
++ task Task?
+
+────────────────────
++ This
+    - done Semaphore
+
+────────────────────
++ do start-nested
+
+. signal = done
+. ready = Semaphore()
+do new @detached
+    do new
+        do finally
+            signal.post()
+        Semaphore().wait()
+    ready.post()
+ready.wait()
+. run = =>
+    do new
+        do finally
+            signal.post()
+        Semaphore().wait()
+    true
+. ran = run()
+
+────────────────────
++ do start-self-closing
+
+. started = Semaphore()
+task = do new
+    close()
+    -- "still running after closing its object"
+    started.post()
+    Semaphore().wait()
+started.wait()
+close()
+
+────────────────────
++ do close
+
+:----
+
+nested tasks cancelled
+still running after closing its object
+self closer cancelled by the next close: true
+;====
+:====
+# A method of a value type starts a task no one owns. An object's task on a worker's threads is
+# cancelled by its close as one on the main queue is, and a task started while markup builds an
+# element is the element's.
+
+/core/tests/support/markup-fixtures
+
+. done = Semaphore()
+Pair(5).spawn(done)
+done.wait()
+-- "the value's task ran"
+. pool = Worker(2)
+. pooled = Pooled(pool)
+pooled.start()
+pooled.close()
+pooled.task!.wait()
+-- "pool task cancelled: ${pooled.task!.end == .cancelled}"
+pool.stop()
+. entered = Semaphore()
+<Box box
+    do new
+        do finally
+            done.post()
+        entered.post()
+        Semaphore().wait()
+entered.wait()
+box.close()
+done.wait()
+-- "the element's task cancelled"
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Tuple
+
++ a Int
+
+────────────────────
++ do spawn
+    - done Semaphore
+
+do new
+    done.post()
+
+━━━━━━━━━━━━━━━━━━━━
++ Pooled
+
++ pool Worker
++ task Task?
+
+────────────────────
++ This
+    - pool Worker
+
+────────────────────
++ do start
+
+. entered = Semaphore()
+task = do (pool) new
+    do finally
+        -- "pool task cleanup"
+    entered.post()
+    Semaphore().wait()
+entered.wait()
+
+────────────────────
++ do close
+
+:----
+
+the value's task ran
+pool task cleanup
+pool task cancelled: true
+the element's task cancelled
+;====
+:====
+# A task a state case starts in its entry rows, in a handler, or in a nested body of either belongs
+# to the case's activation: its exit rows still use it, and it is cancelled as they end. An inner
+# case's exit leaves the outer case's tasks. A task marked @detached is no one's, and one the exit
+# rows start is the object's. Entering the case again makes a new activation, and an object's
+# close leaves its machines, which cancels theirs.
+
+. runner = Runner()
+runner.enter <- true
+for _ in 0 .. < 3
+    runner.entered.wait()
+runner.ticks <- 1
+runner.entered.wait()
+runner.inner <- true
+runner.entered.wait()
+runner.outer <- true
+runner.inner-task!.wait()
+-- "inner case's task cancelled: ${runner.inner-task!.end == .cancelled}"
+-- "outer case's task running: ${runner.worker!.end == .running}"
+runner.leave <- true
+for task in [runner.worker!, runner.nested!, runner.closure!, runner.handler!]
+    task.wait()
+    -- "cancelled: ${task.end == .cancelled}"
+runner.gate.post()
+runner.loose!.wait()
+-- "detached finished: ${runner.loose!.end == .finished}"
+. lingering = runner.after!
+-- "exit rows' task running: ${lingering.end == .running}"
+runner.enter <- true
+for _ in 0 .. < 3
+    runner.entered.wait()
+runner.close()
+runner.worker!.wait()
+-- "second worker cancelled by close: ${runner.worker!.end == .cancelled}"
+lingering.wait()
+-- "exit rows' task cancelled by close: ${lingering.end == .cancelled}"
+runner.gate.post()
+runner.loose!.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ Runner
+
++ event enter Bool
++ event leave Bool
++ event inner Bool
++ event outer Bool
++ event ticks Int
++ entered = Semaphore()
++ asked = Semaphore()
++ answered = Semaphore()
++ gate = Semaphore()
++ worker Task?
++ nested Task?
++ closure Task?
++ handler Task?
++ loose Task?
++ inner-task Task?
++ after Task?
+
+────────────────────
++ flow ~>
+
+~> idle
+~> active on enter
+    do
+        worker = do new
+            do finally
+                -- "worker cleanup"
+            entered.post()
+            while true
+                asked.wait()
+                answered.post()
+        do new @detached
+            nested = do new
+                entered.post()
+                Semaphore().wait()
+        . start = => do
+            closure = do new
+                entered.post()
+                Semaphore().wait()
+            = true
+        . started = start()
+        loose = do new @detached
+            gate.wait()
+            -- "detached ran after exit"
+    for tick on ticks
+        handler = do new
+            entered.post()
+            Semaphore().wait()
+    ~> waiting
+    ~> busy on inner
+        do
+            inner-task = do new
+                entered.post()
+                Semaphore().wait()
+        then waiting on outer
+    do finally
+        asked.post()
+        answered.wait()
+        -- "exit rows used the worker"
+        after = do new
+            Semaphore().wait()
+    then idle on leave
+
+────────────────────
++ do close
+
+:----
+
+inner case's task cancelled: true
+outer case's task running: true
+exit rows used the worker
+worker cleanup
+cancelled: true
+cancelled: true
+cancelled: true
+cancelled: true
+detached ran after exit
+detached finished: true
+exit rows' task running: true
+exit rows used the worker
+worker cleanup
+second worker cancelled by close: true
+exit rows' task cancelled by close: true
+detached ran after exit
+;====
+:====
+# A machine in a function with no receiver owns its cases' tasks as one a class holds does. A task a
+# transition's rows start belongs to the activation of the case the transition enters.
+
++ enters AsyncChannel'Bool
++ leaves AsyncChannel'Bool
++ stops AsyncChannel'Bool
++ entered = Semaphore()
++ worker Task? = null
++ stopper Task? = null
+
+~> idle
+~> active on enters
+    do
+        worker = do new
+            do finally
+                -- "worker cleanup"
+            entered.post()
+            Semaphore().wait()
+    then stopped on stops
+        do
+            stopper = do new
+                do finally
+                    -- "stopper cleanup"
+                entered.post()
+                Semaphore().wait()
+    then idle on leaves
+~> stopped
+    then idle on leaves
+
+enters <- true
+entered.wait()
+stops <- true
+worker!.wait()
+-- "main machine task cancelled: ${worker!.end == .cancelled}"
+entered.wait()
+-- "stopper running in stopped: ${stopper!.end == .running}"
+leaves <- true
+stopper!.wait()
+-- "stopper cancelled as stopped exits: ${stopper!.end == .cancelled}"
+
+:----
+
+worker cleanup
+main machine task cancelled: true
+stopper running in stopped: true
+stopper cleanup
+stopper cancelled as stopped exits: true
+;====
+:====
+# A subclass's refinement that adds entry rows or a handler to a case the base writes owns the tasks
+# they start for the case's activation, cancelled as the case exits, its own exit rows first.
+
+. sub = Sub()
+sub.entered.wait()
+sub.entered.wait()
+sub.leaves <- true
+sub.base-task!.wait()
+sub.sub-task!.wait()
+-- "base task cancelled: ${sub.base-task!.end == .cancelled}"
+-- "sub entry task cancelled: ${sub.sub-task!.end == .cancelled}"
+sub.busies <- true
+sub.ticks <- 1
+sub.entered.wait()
+sub.leaves <- true
+sub.handler!.wait()
+-- "sub handler task cancelled: ${sub.handler!.end == .cancelled}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ event leaves Bool
++ event busies Bool
++ event ticks Int
++ entered = Semaphore()
++ base-task Task?
++ sub-task Task?
++ handler Task?
+
+────────────────────
++ body ~>
+
+~> free
+    do
+        base-task = do new
+            do finally
+                -- "base cleanup"
+            entered.post()
+            Semaphore().wait()
+    then away on leaves
+~> away
+    then busy on busies
+~> busy
+    then away on leaves
+
+────────────────────
++ do close
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Thing
+
+────────────────────
++ body ~>
+
+~> free
+    do
+        sub-task = do new
+            do finally
+                -- "sub cleanup"
+            entered.post()
+            Semaphore().wait()
+~> busy
+    for n on ticks
+        handler = do new
+            entered.post()
+            Semaphore().wait()
+
+:----
+
+sub cleanup
+base cleanup
+base task cancelled: true
+sub entry task cancelled: true
+sub handler task cancelled: true
+;====
+:====
+# A task that leaves its own case, by sending what moves the machine, is not cancelled as it leaves:
+# the case's next exit cancels it, or its object's close. A case's task that closes its own object
+# goes on running, and the object's next close cancels it.
+
+. runner = Runner()
+runner.enter <- true
+runner.entered.wait()
+-- "left by its own task: ${runner.flow is .idle}"
+-- "still running: ${runner.first!.end == .running}"
+runner.enter <- true
+runner.entered.wait()
+runner.leave <- true
+runner.first!.wait()
+-- "cancelled by the next exit: ${runner.first!.end == .cancelled}"
+runner.enter <- true
+runner.entered.wait()
+runner.close()
+runner.third!.wait()
+-- "cancelled by close: ${runner.third!.end == .cancelled}"
+. closer = Closer()
+closer.enter <- true
+closer.entered.wait()
+closer.close()
+closer.worker!.wait()
+-- "closer cancelled by the next close: ${closer.worker!.end == .cancelled}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Runner
+
++ event enter Bool
++ event leave Bool
++ entered = Semaphore()
++ entries = 0
++ first Task?
++ third Task?
+
+────────────────────
++ flow ~>
+
+~> idle
+~> active on enter
+    do
+        entries += 1
+        . leaves = entries != 2
+        . task = do new
+            if leaves
+                leave <- true
+                -- "left its own case"
+            entered.post()
+            Semaphore().wait()
+        if entries == 1
+            first = task
+        else if entries == 3
+            third = task
+    then idle on leave
+
+────────────────────
++ do close
+
+━━━━━━━━━━━━━━━━━━━━
++ Closer
+
++ event enter Bool
++ entered = Semaphore()
++ worker Task?
+
+────────────────────
++ flow ~>
+
+~> idle
+~> active on enter
+    do
+        worker = do new
+            close()
+            -- "closed its own object"
+            entered.post()
+            Semaphore().wait()
+
+────────────────────
++ do close
+:----
+
+left its own case
+left by its own task: true
+still running: true
+cancelled by the next exit: true
+left its own case
+cancelled by close: true
+closed its own object
+closer cancelled by the next close: true
+;====
+:====
+# A task terminated while it awaits a completion leaves it abandoned, and its cleanup runs to its
+# end: the termination is raised once.
+
+/time/duration
+
+do new
+    . completion = Completion'Int()
+    do finally
+        -- "abandoned: ${completion.is-abandoned}"
+        . failure = Task().failure
+        if failure
+            -- "cleanup saw $failure.message"
+        -- "cleanup done"
+    completion.await()
+    -- "unexpected resume"
+
+50ms.wait()
+request-process-termination(130)
+
+:----
+%crash
+
+abandoned: true
+cleanup saw Task terminated
+cleanup done
+;====
+:====
+# `cancel-later` cancels a task without yielding to it: the active task goes on, and the task ends
+# at its wait once its turn comes.
+
+. ready = Semaphore()
+. task = do new
+    do finally
+        -- "worker cleanup"
+    ready.post()
+    Semaphore().wait()
+    -- "unexpected resume"
+
+ready.wait()
+task.cancel-later()
+-- "main goes on"
+task.wait()
+-- "cancelled: ${task.end == .cancelled}"
+
+:----
+
+main goes on
+worker cleanup
+cancelled: true
+;====
+:====
+# A task that `cancel-later` cancels before it runs runs up to its first wait, and ends there.
+
+. task = do new
+    -- "runs up to its first wait"
+    Semaphore().wait()
+    -- "unexpected resume"
+
+task.cancel-later()
+task.wait()
+-- "cancelled: ${task.end == .cancelled}"
+
+:----
+
+runs up to its first wait
+cancelled: true
 ;====

@@ -583,9 +583,9 @@ warning: --probes selector nothing matched no probe sites
 
 A probe left out costs nothing. A probe compiled in costs the time to record it, and a build with
 probes also checks, at a **probe safepoint** in each loop, whether the program should pass on what it
-has recorded, unless every selector is a `profile:` one. The annotation `@no-probe-safepoints` keeps
-a function free of safepoints; see Functions. Compare times only between runs built with the same
-probes.
+has recorded, unless every selector is a `profile:` one. A function written
+`(without probe-safepoints)` holds none; see Functions. Compare times only between runs built with
+the same probes.
 
 ## The console
 

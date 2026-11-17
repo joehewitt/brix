@@ -8,7 +8,7 @@ Conversion members accept them too, for example `+ to Int @inline`.
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ increment Int @inline @no-gc
++ increment Int @inline without gc
     - value Int
 
 value + 1

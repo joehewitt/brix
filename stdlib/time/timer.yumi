@@ -12,7 +12,7 @@
 + increment Interval
 
 _ lock Semaphore
-_ runs U64
+_ ticker Task?
 
 as Broadcastable'Interval for
 _ channel := AsyncOnDemandChannel'Interval(this)
@@ -28,11 +28,10 @@ _ channel := AsyncOnDemandChannel'Interval(this)
 
 `XXXjoe Create a unique timer id and save it! Don't be casting the semaphore ptr to a uid!!
 
-runs += 1
-. run = runs
-do new
+ticker?.cancel-later()
+ticker = do new
     . elapsed = Interval(0)
-    if start-time > 0 && run == runs
+    if start-time > 0
         . us = start-time as Microseconds
         =? if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
 
@@ -40,7 +39,7 @@ do new
         channel <- elapsed
 
     . us = increment as Microseconds
-    while run == runs
+    while true
         if C:yumiSuspendActiveTaskUntilTime(us, lock.native-pointer)
             break
 
@@ -53,7 +52,8 @@ do new
 ────────────────────
 + do end-using
 
-runs += 1
+ticker?.cancel-later()
+ticker = null
 C:yumiCancelTimerEventListener(lock.native-pointer)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -92,9 +92,8 @@ C:yumiCancelTimerEventListener(sem.native-pointer)
 
 _ dirty = false
 _ painting = false
-_ waiting = false
+_ waiter Task?
 _ waiting-deadline-ns U64
-_ wait-generation U64
 _ last-deadline-ns U64
 _ sem := Semaphore()
 
@@ -120,9 +119,7 @@ request(next-deadline(monotonic-time-nanoseconds()))
 
 callback = null
 dirty = false
-waiting = false
-wait-generation += 1
-cancel-timer-event-listener(sem)
+stop-waiting()
 
 ────────────────────
 _ do request
@@ -131,29 +128,39 @@ _ do request
 =? if !callback
 
 dirty = true
-if waiting && deadline-ns < waiting-deadline-ns
-    wait-generation += 1
-    waiting = false
-    cancel-timer-event-listener(sem)
-if !waiting && !painting
+if is-waiting && deadline-ns < waiting-deadline-ns
+    stop-waiting()
+if !is-waiting && !painting
     wait-then-fire(deadline-ns)
 
 ────────────────────
 _ do wait-then-fire
     - deadline-ns U64
 
-=? if waiting
+=? if is-waiting
 
-waiting = true
 waiting-deadline-ns = deadline-ns
-wait-generation += 1
-. generation = wait-generation
-do new
-    =? if generation != wait-generation || !callback
+waiter = do new
+    =? if !callback
     =? if wait-until-absolute-time(deadline-ns, sem)
-    =? if generation != wait-generation
-    waiting = false
+    ` A deadline already passed is not waited for, so the wait may not have seen a cancel.
+    =? if Task().is-canceled
+    waiter = null
     fire(deadline-ns)
+
+────────────────────
+_ get is-waiting
+
+` Whether a task waits to fire. Once its wait ends it lets go of `waiter`, so that a cancel does
+` not cut the callback short.
+waiter != null && !waiter.is-finished
+
+────────────────────
+_ do stop-waiting
+
+waiter?.cancel-later()
+waiter = null
+cancel-timer-event-listener(sem)
 
 ────────────────────
 _ do fire

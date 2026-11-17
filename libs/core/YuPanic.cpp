@@ -337,11 +337,6 @@ yumiTakePanic() {
 }
 
 extern "C" void*
-yumiRecover() {
-    return yumiTakePanic();
-}
-
-extern "C" void*
 yumiTaskFailure() {
     // The panic ending the active task, without taking it: the active one, or the one set aside
     // while a cleanup runs. It is moved out of the parse region first, as yumiTakePanic moves it,

@@ -73,13 +73,15 @@ public:
         void* closure,
         size_t localSize,
         const YuTaskProvenance& provenance = YuTaskProvenance(),
-        YuTaskEnding** ending = nullptr);
+        YuTaskEnding** ending = nullptr,
+        uint64_t* handle = nullptr);
     bool startTaskIfRunning(
         YuTaskStartFunc func,
         void* closure,
         size_t localSize,
         const YuTaskProvenance& provenance = YuTaskProvenance());
     void scheduleTask(YuTask* task, bool includeCanceled = false);
+    void wakeCanceledTask(YuTask* task);
     void enqueueClaimedTask(YuTask* task, bool yielded);
     bool hasWaitingTasks();
 
@@ -104,6 +106,7 @@ public:
 
 private:
     void wakeLiveTasks(bool terminating);
+    void wakeTask(YuTask* task, bool forCancel);
     bool nextTask(YuTask** task);
     bool nextPoolTask(YuTaskWorker* worker, YuTask** task, bool searching);
     bool tryNextTask(YuTask** task);
@@ -121,7 +124,8 @@ private:
         size_t localSize,
         const YuTaskProvenance& provenance,
         bool requireRunning,
-        YuTaskEnding** ending = nullptr);
+        YuTaskEnding** ending = nullptr,
+        uint64_t* handle = nullptr);
 
     void pushLocal(YuTaskWorker* worker, YuTask* task);
     bool popLocal(YuTaskWorker* worker, YuTask** task);

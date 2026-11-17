@@ -70,7 +70,7 @@ _ is-applying = false
 _ reveals = false
 _ pending-line Size?
 _ is-caret-lit = true
-_ blink-generation U64
+_ blinker Task?
 
 • This • markdown-editor flex-col
     focus-mode = FocusMode.input
@@ -1645,21 +1645,20 @@ while cursor
 _ do start-blink
 
 is-caret-lit = true
-blink-generation += 1
-. generation = blink-generation
-do new
+blinker?.cancel-later()
+blinker = do new
     . blinked = 0ms
-    while generation == blink-generation && (blinked < markdown-blink-timeout || !is-caret-lit)
+    while blinked < markdown-blink-timeout || !is-caret-lit
         markdown-blink-interval.wait()
-        if generation == blink-generation
-            is-caret-lit = !is-caret-lit
-            blinked += markdown-blink-interval
-            repaint()
+        is-caret-lit = !is-caret-lit
+        blinked += markdown-blink-interval
+        repaint()
 
 ────────────────────
 _ do stop-blink
 
-blink-generation += 1
+blinker?.cancel-later()
+blinker = null
 
 ────────────────────
 _ do reveal-pending-line

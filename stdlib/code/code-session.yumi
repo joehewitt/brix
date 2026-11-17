@@ -39,7 +39,7 @@ _ window-spans [[SyntaxSpan]]
 _ window-revision U64
 _ baseline Byte[]?
 _ edit-stamp U64
-_ is-marking = false
+_ marker Task?
 _ marked-stamp U64
 _ fold-window [SyntaxFold]
 _ fold-first Size
@@ -137,7 +137,7 @@ if source == null
     updated <- revision
 else
     baseline = code-text-bytes(CodeText(source))
-    do new mark-changes()
+    start-marking()
 
 ────────────────────
 + do mark-saved
@@ -838,14 +838,15 @@ _ do reparse
 if active.parse(text.bytes, text.length, budget)
     has-parse-error = active.has-error
 else if active.is-parsing
-    do new finish-background-parse(active)
+    do new @detached
+        finish-background-parse(active)
 
 ────────────────────
 _ do finish-background-parse
     - active SyntaxDocument
 
 . done = Semaphore'Bool()
-do new thread
+do new thread @detached
     done.post(active.continue-parse())
 done.await()
 . edited = active.finish-parse()
@@ -857,10 +858,16 @@ if edited
 updated <- revision
 
 ────────────────────
+_ do start-marking
+
+` Starts a task that marks the lines that differ from the baseline, unless one runs already: it
+` goes on until the marks match the last edit.
+=? if marker && !marker.is-finished
+marker = do new mark-changes()
+
+────────────────────
 _ do mark-changes
 
-=? if is-marking
-is-marking = true
 while baseline != null && marked-stamp != edit-stamp
     . stamp = edit-stamp
     . source = baseline
@@ -875,7 +882,6 @@ while baseline != null && marked-stamp != edit-stamp
         line-changes = found
         marked-stamp = stamp
         updated <- revision
-is-marking = false
 
 ────────────────────
 _ do apply CodeTextChange
@@ -902,7 +908,7 @@ if baseline != null
     edit-stamp += 1
     . delta = (change.new-end-point.row as I64) - (change.old-end-point.row as I64)
     line-changes = diff-shifted-changes(line-changes, change.old-end-point.row, delta)
-    do new mark-changes()
+    start-marking()
 = change
 
 ────────────────────

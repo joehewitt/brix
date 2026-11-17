@@ -81,6 +81,7 @@ _ forgotten-module ModuleId = U32.max
 | slot-together = 128
 | slot-placed = 256
 | slot-shared-read = 512
+| slot-self-used = 1024
 
 ━━━━━━━━━━━━━━━━━━━━
 + Slot is Struct
@@ -646,6 +647,21 @@ for slot in row.slots.start .. < row.slots.start + row.slots.count
     if slots[slot].syntax == node && slots[slot].name == name
         = slot
 = no-slot
+
+────────────────────
++ activation-tasks SlotId
+    - id BindingId
+    - task SyntaxId
+    - tasks Atom
+
+` The slot a machine keeps the `TaskOwner` of a case's activation in, under the name `tasks`,
+` where the binder gave the task spawned at a node to that activation; or none.
+|? resolution.kind == .resolve-slot && resolution.slot != no-slot && slots[resolution.slot].name == tasks
+    resolution.slot
+??
+    no-slot
+
+.. resolution = resolution-of(id, task)
 
 ────────────────────
 + do declared-at SlotId

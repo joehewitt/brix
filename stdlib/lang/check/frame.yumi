@@ -1154,28 +1154,28 @@ facts.mention-types(mentioned)
     - site SyntaxId
 
 ` Code that may not suspend does not yield or call a runtime function that suspends the task,
-` reported where it does: in a GC-free zone, naming where it is entered, or under `@no-suspend`
-` or `@no-safepoint`.
+` reported where it does: in a GC-free zone, naming where it is entered, or under `without suspend`
+` or `without safepoints`.
 . effects = dispatch-effects(surround.effects)
 =? if (effects /and/ CompilationEffect.no-suspend) == 0
 if (effects /and/ CompilationEffect.gc-free) != 0
     diagnose(site, .restricted, program.store-atom("cannot suspend inside a GC-free zone (entered at ${zone-entry()})"))
     =
-diagnose(site, .restricted, program.store-atom("cannot suspend inside a @no-suspend context"))
+diagnose(site, .restricted, program.store-atom("cannot suspend under ${suspend-restriction(effects)}"))
 
 ────────────────────
 + do check-allocates
     - site SyntaxId
 
 ` Code that may not use the heap allocates nothing from the collector, reported where it does:
-` in a GC-free zone, naming where it is entered, or under `@no-heap`. A raise is typed with no
+` in a GC-free zone, naming where it is entered, or under `without heap`. A raise is typed with no
 ` such effect, as an error is raised outside the zone.
 . effects = dispatch-effects(surround.effects)
 =? if (effects /and/ CompilationEffect.no-heap) == 0
 if (effects /and/ CompilationEffect.gc-free) != 0
     diagnose(site, .restricted, program.store-atom("allocation is not allowed in a GC-free zone (entered at ${zone-entry()})"))
     =
-diagnose(site, .restricted, program.store-atom("allocation is not allowed in a @no-heap context"))
+diagnose(site, .restricted, program.store-atom("allocation is not allowed under 'without heap'"))
 
 ────────────────────
 + do check-lazy-read
@@ -1186,9 +1186,18 @@ diagnose(site, .restricted, program.store-atom("allocation is not allowed in a @
 ` may not use the heap or suspend does not read one.
 . effects = dispatch-effects(surround.effects)
 =? if (effects /and/ (CompilationEffect.no-heap /or/ CompilationEffect.no-suspend)) == 0
-. context = if (effects /and/ CompilationEffect.no-heap) != 0 then "a @no-heap context" else "a @no-suspend context"
-. place = if (effects /and/ CompilationEffect.gc-free) != 0 then "a GC-free zone (entered at ${zone-entry()})" else context
-diagnose(site, .restricted, program.store-atom("cannot read lazy global '$name' inside $place, since its first read runs its value"))
+. restriction = if (effects /and/ CompilationEffect.no-heap) != 0 then "'without heap'" else suspend-restriction(effects)
+. place = if (effects /and/ CompilationEffect.gc-free) != 0 then "inside a GC-free zone (entered at ${zone-entry()})" else "under $restriction"
+diagnose(site, .restricted, program.store-atom("cannot read lazy global '$name' $place, since its first read runs its value"))
+
+────────────────────
+_ do suspend-restriction String
+    - effects U32
+
+` The restriction that keeps code from suspending, as it is written: `without safepoints` keeps
+` it from suspending too.
+=? "'without safepoints'" if (effects /and/ CompilationEffect.no-safepoint) != 0
+= "'without suspend'"
 
 ────────────────────
 + zone-entry String

@@ -10,7 +10,7 @@
 
 namespace YuGC {
 
-static constexpr size_t kObjectSidePayloadLaneCount = 8;
+static constexpr size_t kObjectSidePayloadLaneCount = 9;
 static constexpr size_t kSpanBitmapWordBits = sizeof(uint64_t) * 8;
 
 static constexpr unsigned char kSpanRetirementActive = 0;

@@ -68,6 +68,8 @@ YuTask::YuTask(
     locals(NULL),
     localsSize(localSize),
     canceled(false),
+    cancelShield(0),
+    shieldLocked(false),
     terminating(false),
     terminationRaised(false),
     active(false),
@@ -179,7 +181,7 @@ YuTask::releaseHandle() {
     if (ended) {
         uint32_t code = runtimeContext.taskEnd;
         if (code == YU_TASK_END_RUNNING) {
-            code = getCanceled() ? YU_TASK_END_CANCELLED : YU_TASK_END_FINISHED;
+            code = isCancelRequested() ? YU_TASK_END_CANCELLED : YU_TASK_END_FINISHED;
         }
         ended->finish(code);
         ended->release();
@@ -250,6 +252,49 @@ YuTask::addFinishHook(uint64_t handle, YuTaskStartFunc func, void* closure) {
 
     task->finishHooks.push_back(YuTaskFinishHook{func, closure});
     return true;
+}
+
+static void
+lockShieldFlag(std::atomic<bool>& flag) {
+    while (flag.exchange(true, std::memory_order_acquire)) {
+        while (flag.load(std::memory_order_relaxed)) {
+        }
+    }
+}
+
+static void
+unlockShieldFlag(std::atomic<bool>& flag) {
+    flag.store(false, std::memory_order_release);
+}
+
+void
+YuTask::enterCancelShield() {
+    lockShieldFlag(shieldLocked);
+    cancelShield.fetch_add(1, std::memory_order_acq_rel);
+    unlockShieldFlag(shieldLocked);
+}
+
+void
+YuTask::leaveCancelShield() {
+    lockShieldFlag(shieldLocked);
+    if (cancelShield.load(std::memory_order_acquire) != 0) {
+        cancelShield.fetch_sub(1, std::memory_order_acq_rel);
+    }
+    unlockShieldFlag(shieldLocked);
+}
+
+bool
+YuTask::claimCancelWake() {
+    if (!canceled.load(std::memory_order_seq_cst)) {
+        return false;
+    }
+    lockShieldFlag(shieldLocked);
+    bool wakeable = cancelShield.load(std::memory_order_acquire) == 0 || getTerminating();
+    uint32_t idle = YuTaskRunIdle;
+    bool claimed = wakeable &&
+        runState.compare_exchange_strong(idle, YuTaskRunQueued, std::memory_order_seq_cst);
+    unlockShieldFlag(shieldLocked);
+    return claimed;
 }
 
 YuTask*

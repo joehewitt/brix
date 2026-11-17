@@ -537,7 +537,7 @@ _ follows-callee Bool
 ` Whether a call can raise exactly when its callee is one that may: every case of
 ` `panic-capable-call` that does not answer before it reads the callee's mark, and whose
 ` answer after it is no.
-|? fact.callee == no-instance || fact.form == .call-task
+|? fact.callee == no-instance || spawns-task(fact.form)
     false
 |? program.modules[callee.module].name.ends-with(".h")
     false
@@ -554,16 +554,20 @@ _ follows-callee Bool
 + do panic-capable-call Bool
     - fact CallFact
 
+` Whether a call may raise a panic. A C function that suspends the task may: the task is checked
+` for being terminated after it, which raises the termination panic, and the callers of the
+` function that calls it must take it. One that leaves a termination to its caller does not
+` (`leaves-termination`).
 if fact.form == .call-closure && fact.callee == no-instance
     = true
-if fact.callee == no-instance || fact.form == .call-task
+if fact.callee == no-instance || spawns-task(fact.form)
     = false
 . callee = instances.rows[fact.callee]
 if program.modules[callee.module].name.ends-with(".h")
-    if is-task-suspending(callee.module, callee.decl) || elided
+    . name = c-function-name(callee.module, callee.decl)
+    if is-elided-c-function(callee.module, callee.decl) || leaves-termination(name)
         = false
-    .. elided = is-elided-c-function(callee.module, callee.decl)
-    = !is-leaf-function(callee.module, callee.decl)
+    = suspends-task(name) || !is-leaf-function(callee.module, callee.decl)
 if is-known-panic-free(callee.module, callee.decl)
     = false
 if is-table-intrinsic(callee.module, callee.decl)
@@ -637,7 +641,7 @@ match program.modules[row.module].decls[row.decl]
 .. row = instances.rows[instance]
 
 ────────────────────
-+ do is-task-suspending Bool
++ do c-function-name String
     - module ModuleId
     - decl DeclId
 
@@ -647,7 +651,7 @@ do match? program.modules[module].decls[decl]
         if fn.name
             . atom = fn.name
             name = atom.text
-= suspends-task(name)
+= name
 
 ────────────────────
 _ do is-elided-c-function Bool

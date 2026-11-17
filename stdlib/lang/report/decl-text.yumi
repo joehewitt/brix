@@ -20,7 +20,7 @@ if row.owner == 0 && (row.kind == .getter-decl || row.kind == .setter-decl)
 . static = if row.is-static then "yes" else "no"
 . effects = effects-text(row.effects)
 . variadic = if row.variadic-index == U32.max then "-" else "${row.variadic-index}"
-= "kind=$kind static=$static effects=$effects variadic=$variadic required=${row.required-count}"
+= "kind=$kind static=$static without=$effects variadic=$variadic required=${row.required-count}"
 
 ━━━━━━━━━━━━━━━━━━━━
 + shape-args-text String
@@ -143,11 +143,11 @@ match specificity
 if names then ",".join(names) else "-"
 
 .. names = List'String
-    *? "no-gc" if gc-free
-    *? "no-heap" if !gc-free && has-effect(effects, CompilationEffect.no-heap)
-    *? "no-safepoint" if !gc-free && safepoint-free
-    *? "no-probe-safepoint" if has-effect(effects, CompilationEffect.no-probe-safepoint)
-    *? "no-suspend" if has-effect(effects, CompilationEffect.no-suspend) && !safepoint-free
+    *? "gc" if gc-free
+    *? "heap" if !gc-free && has-effect(effects, CompilationEffect.no-heap)
+    *? "safepoints" if !gc-free && safepoint-free
+    *? "probe-safepoints" if has-effect(effects, CompilationEffect.no-probe-safepoint)
+    *? "suspend" if has-effect(effects, CompilationEffect.no-suspend) && !safepoint-free
 .. gc-free = has-effect(effects, CompilationEffect.gc-free)
 .. safepoint-free = has-effect(effects, CompilationEffect.no-safepoint)
 

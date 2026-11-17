@@ -25,9 +25,9 @@ thread keeps its own run queue. A task woken on a pool thread is queued on that 
 thread steals half of another thread's queue. A new task wakes one idle thread, not all of them.
 
 A pool task that runs for 10 ms while other pool tasks wait is preempted at its next loop poll and
-goes to the back of the pool's shared queue. Preemption never happens on a default queue, in
-`@no-suspend` or `@no-gc` code, or while native code that called back into Yumi is on the task's
-stack. Loop polls cost nothing more for this: the runtime handles preemption in the same call that
+goes to the back of the pool's shared queue. Preemption never happens on a default queue, in code
+kept `without suspend` or `without gc`, or while native code that called back into Yumi is on the
+task's stack. Loop polls cost nothing more for this: the runtime handles preemption in the same call that
 answers a GC handshake.
 
 Run only code written for threads in a pool. Pool tasks share memory with no implicit locking.

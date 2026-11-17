@@ -609,7 +609,13 @@ whistling 90
   tick passes it.
 - **Nested machines** start when the case that holds them is entered and stop when it is left;
   see [Machines side by side](#machines-side-by-side).
-- **Tasks** that a case starts are not part of it, and go on after it is left.
+- **Tasks.** A task that a case's `do` rows or handlers start, or the `do` rows of a transition
+  into it, belongs to that time the case is entered, as does one started in a nested body there,
+  such as a function value's. The case's `finally` rows can still use it, and leaving the case
+  cancels it once they end, without waiting for it. A task that leaves its own case, by sending
+  what moves the machine, is not cancelled as it leaves; the case's next exit cancels it, or its
+  object's `close`. A task the `finally` rows start, or one marked `@detached`, does not belong to
+  the case; see [Owned tasks](concurrency.md#owned-tasks).
 - **Closing.** Calling an object's `close` leaves every machine its properties hold, and the one its
   class's `content` writes, before the body of `close` runs, so their exit rows see the object as
   it was. The object's events and the live actions it owns close with them, and no transition

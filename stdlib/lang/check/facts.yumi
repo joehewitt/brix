@@ -36,7 +36,8 @@
 ` `call-item-read` is the read of an item by a pattern of a list, or of what a key holds by
 ` a pattern of a map, recorded at the pattern written for the item: it gives what that
 ` pattern is matched against, and is no call of the pattern's own. `call-task` is the body of
-` a task spawned where it is recorded, which runs in a task of its own. `call-view-range` is
+` a task spawned where it is recorded, which runs in a task of its own, and `call-owned-task` that
+` of one an object owns, which its `close` cancels. `call-view-range` is
 ` a call the compiler makes of a range that indexes a view of an array or a table, recorded at
 ` the index: its `normalize` for a range of positions, then its `forward`. `call-replaced` is
 ` the read of what an index holds before an array is stored there, recorded at the index
@@ -73,7 +74,15 @@
 | call-probe-metric = 23
 | call-store-setter = 24
 | call-list-append = 25
+| call-owned-task = 26
 
+
+━━━━━━━━━━━━━━━━━━━━
++ spawns-task Bool
+    - form CallForm
+
+` Whether a call of a form is the body of a spawned task, owned or not.
+form == .call-task || form == .call-owned-task
 
 ━━━━━━━━━━━━━━━━━━━━
 + answers-node Bool
@@ -86,7 +95,7 @@
 form != .call-truth && form != .call-operand-truth && !made && !listed
 
 .. made = unprobed || form == .call-probe || form == .call-probe-head || form == .call-probe-metric
-.. unprobed = untasked || form == .call-task || form == .call-view-range || form == .call-replaced
+.. unprobed = untasked || spawns-task(form) || form == .call-view-range || form == .call-replaced
 .. untasked = stores || form == .call-enum-default || form == .call-item-read
 .. stores = form == .call-store-through || form == .call-store-setter
 .. listed = made-list || form == .call-list-data || form == .call-list-append
@@ -2859,6 +2868,7 @@ _ deferred-rows Map'Size'U32'ArenaBacking
 + machine-own InstanceId = no-instance
 + machine-stop InstanceId = no-instance
 + machine-close InstanceId = no-instance
++ task-owner-make InstanceId = no-instance
 + unhandled-error DeclRef? = null
 + style-uses List'StyleUse'ArenaBacking
 + style-users List'StyleUser'ArenaBacking
@@ -9119,6 +9129,8 @@ if machine-stop == no-instance
     machine-stop = ids.instance(peer.machine-stop)
 if machine-close == no-instance
     machine-close = ids.instance(peer.machine-close)
+if task-owner-make == no-instance
+    task-owner-make = ids.instance(peer.task-owner-make)
 for unit in peer.markup-rules
     . rule = ids.instance(unit)
     if !waits-for-markup(rule)

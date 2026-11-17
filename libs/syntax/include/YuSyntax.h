@@ -14,10 +14,10 @@
 
 // **********************************************************************************************
 
-YU_SYNTAX_API YUMI_GC_LEAF int32_t yumiSyntaxLanguageCount(void);
-YU_SYNTAX_API YUMI_GC_LEAF const char* yumiSyntaxLanguageName(int32_t language);
-YU_SYNTAX_API YUMI_GC_LEAF const char* yumiSyntaxLanguageTitle(int32_t language);
-YU_SYNTAX_API YUMI_GC_LEAF const char* yumiSyntaxLanguageExtensions(int32_t language);
+YU_SYNTAX_API YUMI_WITHOUT_GC int32_t yumiSyntaxLanguageCount(void);
+YU_SYNTAX_API YUMI_WITHOUT_GC const char* yumiSyntaxLanguageName(int32_t language);
+YU_SYNTAX_API YUMI_WITHOUT_GC const char* yumiSyntaxLanguageTitle(int32_t language);
+YU_SYNTAX_API YUMI_WITHOUT_GC const char* yumiSyntaxLanguageExtensions(int32_t language);
 
 YU_SYNTAX_API int32_t yumiSyntaxCaptureCount(int32_t language);
 YU_SYNTAX_API const char* yumiSyntaxCaptureName(int32_t language, int32_t capture);
@@ -28,7 +28,7 @@ YU_SYNTAX_API const char* yumiSyntaxFoldQueryError(int32_t language);
 
 YU_SYNTAX_API void* yumiSyntaxDocumentCreate(int32_t language);
 YU_SYNTAX_API void yumiSyntaxDocumentRelease(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF void yumiSyntaxDocumentEdit(
+YU_SYNTAX_API YUMI_WITHOUT_GC void yumiSyntaxDocumentEdit(
     void* document,
     uint32_t startByte,
     uint32_t oldEndByte,
@@ -40,18 +40,18 @@ YU_SYNTAX_API YUMI_GC_LEAF void yumiSyntaxDocumentEdit(
     uint32_t newEndRow,
     uint32_t newEndColumn
 );
-YU_SYNTAX_API YUMI_GC_BLOCKING int32_t yumiSyntaxDocumentParse(
+YU_SYNTAX_API int32_t yumiSyntaxDocumentParse(
     void* document,
     const void* text,
     uint32_t length,
     uint32_t budgetMicroseconds
 );
-YU_SYNTAX_API YUMI_GC_BLOCKING bool yumiSyntaxDocumentContinueParse(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF bool yumiSyntaxDocumentFinishParse(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF void yumiSyntaxDocumentCancelParse(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF bool yumiSyntaxDocumentIsParsing(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF bool yumiSyntaxDocumentHasTree(void* document);
-YU_SYNTAX_API YUMI_GC_LEAF bool yumiSyntaxDocumentHasError(void* document);
+YU_SYNTAX_API bool yumiSyntaxDocumentContinueParse(void* document);
+YU_SYNTAX_API YUMI_WITHOUT_GC bool yumiSyntaxDocumentFinishParse(void* document);
+YU_SYNTAX_API YUMI_WITHOUT_GC void yumiSyntaxDocumentCancelParse(void* document);
+YU_SYNTAX_API YUMI_WITHOUT_GC bool yumiSyntaxDocumentIsParsing(void* document);
+YU_SYNTAX_API YUMI_WITHOUT_GC bool yumiSyntaxDocumentHasTree(void* document);
+YU_SYNTAX_API YUMI_WITHOUT_GC bool yumiSyntaxDocumentHasError(void* document);
 YU_SYNTAX_API uint32_t yumiSyntaxDocumentHighlight(
     void* document,
     const void* text,

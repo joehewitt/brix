@@ -119,7 +119,7 @@ enum {
     YumiGCThreadCacheMarkWorkHandlesOffset = offsetof(YumiGCThreadCache, markWorkHandles)
 };
 
-YUMI_GC_LEAF static inline uint64_t
+YUMI_WITHOUT_GC static inline uint64_t
 yumiGCPackControlWord(size_t phase, size_t sweepGeneration, int handshakeRequested) {
     return
         ((uint64_t)sweepGeneration << YumiGCControlSweepGenerationShift) |
@@ -127,7 +127,7 @@ yumiGCPackControlWord(size_t phase, size_t sweepGeneration, int handshakeRequest
         (handshakeRequested ? YumiGCControlHandshakeRequestedBit : 0);
 }
 
-YUMI_GC_LEAF static inline uint64_t
+YUMI_WITHOUT_GC static inline uint64_t
 yumiGCPackControlWordFull(
     size_t phase,
     size_t sweepGeneration,
@@ -142,34 +142,34 @@ yumiGCPackControlWordFull(
             YumiGCControlHandshakeEpochMask);
 }
 
-YUMI_GC_LEAF static inline unsigned char
+YUMI_WITHOUT_GC static inline unsigned char
 yumiGCControlWordPhase(uint64_t word) {
     return (unsigned char)(word & YumiGCControlPhaseMask);
 }
 
-YUMI_GC_LEAF static inline size_t
+YUMI_WITHOUT_GC static inline size_t
 yumiGCControlWordSweepGeneration(uint64_t word) {
     return (size_t)(word >> YumiGCControlSweepGenerationShift);
 }
 
-YUMI_GC_LEAF static inline int
+YUMI_WITHOUT_GC static inline int
 yumiGCControlWordHandshakeRequested(uint64_t word) {
     return (word & YumiGCControlHandshakeRequestedBit) != 0;
 }
 
-YUMI_GC_LEAF static inline unsigned char
+YUMI_WITHOUT_GC static inline unsigned char
 yumiGCControlWordHandshakeReason(uint64_t word) {
     return (unsigned char)((word & YumiGCControlHandshakeReasonMask) >>
         YumiGCControlHandshakeReasonShift);
 }
 
-YUMI_GC_LEAF static inline size_t
+YUMI_WITHOUT_GC static inline size_t
 yumiGCControlWordHandshakeEpoch(uint64_t word) {
     return (size_t)((word & YumiGCControlHandshakeEpochMask) >>
         YumiGCControlHandshakeEpochShift);
 }
 
-YUMI_GC_LEAF static inline void
+YUMI_WITHOUT_GC static inline void
 yumiGCInitializeRuntimeAllocationBuffer(YumiGCRuntimeAllocationBuffer* buffer) {
     if (!buffer) {
         return;
@@ -178,7 +178,7 @@ yumiGCInitializeRuntimeAllocationBuffer(YumiGCRuntimeAllocationBuffer* buffer) {
     buffer->structSize = (uint32_t)sizeof(*buffer);
 }
 
-YUMI_GC_LEAF static inline void
+YUMI_WITHOUT_GC static inline void
 yumiGCInitializeThreadCache(YumiGCThreadCache* cache) {
     if (!cache) {
         return;

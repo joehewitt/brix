@@ -197,6 +197,45 @@ match nodes[item]
         true
 
 ────────────────────
++ do spawns-in-case Bool
+    - items [SyntaxId]
+    - case SyntaxId
+
+` Whether the activation of a case, among the cases of the machine whose body is `items`, owns a
+` task spawned for it: one spawned in the body of the case, or of a continuation that enters it
+` (`spawns-in-body`).
+. name = state-name(case)
+=? false if !name
+if nodes[case] is .node-state-case && spawns-in-body(case)
+    = true
+for continuation in continuations-named(items, name)
+    =? true if spawns-in-body(continuation)
+= false
+
+────────────────────
++ do spawns-in-body Bool
+    - node SyntaxId
+
+` Whether a task not marked `@detached` is spawned in an entry statement or a handler of the body
+` of a case or a continuation. One spawned in a `do finally` block, or in a case or machine
+` written in the body, is not.
+for item in state-items(state-body(node))
+    if (is-entry-item(item) || is-state-handler(item)) && nested-machine(item) == 0
+        =? true if spawns-owned(item)
+= false
+
+────────────────────
++ do spawns-owned Bool
+    - item SyntaxId
+
+` Whether a task not marked `@detached` is spawned in a node, or in a node inside it.
+for node in subtree-start(item) .. item
+    do match? nodes[node]
+        | .node-do-task-block(row)
+            =? true if !row.detached
+= false
+
+────────────────────
 + do is-state-handler Bool
     - item SyntaxId
 

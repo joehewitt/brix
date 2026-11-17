@@ -52,17 +52,20 @@ if detail.length > 0 then detail else "git ${" ".join(arguments)} exited with st
     - index String? = null
 
 . process = use git-process(directory, arguments, ProcessStderr.capture, index)
+do finally process.reap()
 . errors = process.stderr!
 . drained = Semaphore'String()
-do new
+. drainer = do new
     . text = errors as String
     drained.post(text)
+do finally drainer.cancel()
 . fed = Semaphore'Void()
-do new
+. feeder = do new
     if input != null
         catch process.write(input)
     process.close-input()
     fed.post()
+do finally feeder.cancel()
 . output = ChunkedTokenStream'Byte(process).read()
 . status = process.wait(null) ?? -1
 fed.wait()

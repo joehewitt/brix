@@ -51,6 +51,9 @@ done
 - **Stack.** A task's stack is smaller than `main`'s, and deep recursion that `main` survives can
   overflow it: `Stack overflow`. `@large-stack` after `do-new` or `do-new-thread`, or a worker,
   gives the task a stack as large as `main`'s.
+- **Owner.** A task started in a method is cancelled when its object closes, and one started in a
+  state machine's case when the case is left, unless `@detached` follows `do-new`; see
+  [Owned tasks](#owned-tasks).
 - **Results.** A task's body cannot return a value, and its handle holds none. A task passes
   results back through a channel, as in the next example, or a caller waits for a function with
   `await`; see [Waiting for a result](#waiting-for-a-result).
@@ -123,7 +126,8 @@ set order, so a program that needs an order waits on channels.
 ### Task handles
 
 A `do-new` form gives the handle of the task it starts, and `(call Task)`{.brix} the handle of the
-task that calls it. A handle has `id`, `is-finished` and `is-canceled`. One that `do-new` gave also
+task that calls it. A handle has `id`, `is-finished`, `is-canceled`, which says the task was
+cancelled, and `is-cancel-in-force`, which says its next wait ends it. One that `do-new` gave also
 has `end`, how the task ended: `running`, `finished`, `raised`, `panicked` or `cancelled`. While a
 task's cleanups run, `(. (call Task) failure)`{.brix} gives the panic ending it. These are the
 methods:
@@ -131,11 +135,122 @@ methods:
 | Method | Effect |
 | --- | --- |
 | `wait` | Waits until the task ends. A task cannot wait for itself. |
-| `cancel` | Cancels the task. It ends the next time it waits, running up to its first wait if it has not started: its cleanups run, and a wait in one of them ends that cleanup, but its `on-failure` rows do not run. |
+| `cancel` | Cancels the task. It ends the next time it waits, running up to its first wait if it has not started: its cleanups run, and a wait in one of them ends that cleanup, but its `on-failure` rows do not run. The task that cancels waits its turn behind every task ready to run, the cancelled one included. |
+| `cancel-later` | Cancels the task as `cancel` does, but the task that cancels goes on at once, and the cancelled one ends once its turn comes. An event handler that replaces a task it started uses it, so that no other task runs in the middle of the handler. |
 | `close` | Cancels the task if it still runs, then waits for it. A `use` of a handle closes it where its block ends, so a task started in the block ends there, however the block is left. |
-| `suspend` | Makes the task wait until it is resumed, and gives whether it was canceled. |
+| `suspend` | Makes the task wait until it is resumed, and gives whether it was canceled, as a termination also makes it. It does not end the task: the caller checks the answer. |
 | `resume-now`, `resume-later` | Resumes a suspended task. |
 | `when-finished` | Runs a function in a new task when the task ends. |
+
+### Owned tasks
+
+A task started in a method of a class belongs to the object the method runs for, and one started
+while markup builds an element belongs to that element. A task started in a nested body of the
+method, such as the body of another task or a function value, belongs to the same object. One
+started in a state machine's case, by its `do` rows or handlers or the `do` rows of a transition
+into it, belongs instead to that time the case is entered, and leaving the case cancels it; see
+[Entering and leaving](state-machines.md#entering-and-leaving). When the object's `close` leaves,
+after its body, it cancels the tasks the object owns and does not wait for them. The body of
+`close` can still use them, and a task that calls `close` on its own object goes on running. A task
+started after `close` belongs to the object until its next `close`.
+
+`@detached` after `do-new` or `do-new-thread` marks a task that no object owns, as the keeper
+below. Outside a state's case, a task started in a function that is not a method, in a static
+method, in a method an interface declares, or in a method of a value type such as a tuple, has no
+owner. Starting an owned task allocates the record its owner keeps of it, so it is not allowed under
+`(without heap)`.
+
+```brix
+(main
+  (let relay (call Relay))
+  (call (. relay start))
+  (call (. relay close))
+  (call (. (. relay done) wait))
+  (call (. (. relay gate) post))
+  (call (. (. relay done) wait))
+)
+
+(type + Relay
+  (prop + asked _ (= (call Semaphore)))
+  (prop + answered _ (= (call Semaphore)))
+  (prop + gate _ (= (call Semaphore)))
+  (prop + done _ (= (call Semaphore)))
+  (fn-do + start _
+    (do-new
+      (finally
+        (print "worker cancelled")
+        (call (. done post))
+      )
+      (while true
+        (call (. asked wait))
+        (print "worker answered")
+        (call (. answered post))
+      )
+    )
+    (do-new @detached
+      (call (. gate wait))
+      (print "keeper ran after close")
+      (call (. done post))
+    )
+  )
+  (fn-do + close _
+    (call (. asked post))
+    (call (. answered wait))
+    (print "close used its worker")
+  )
+)
+```
+
+```output
+worker answered
+close used its worker
+worker cancelled
+keeper ran after close
+```
+
+### Blocks without cancel
+
+A `(do (without cancel) …)` block holds off cancellation of the task that runs it. A task
+cancelled before or during the block runs it to its end, and its waits there wait in full; the
+task ends at its first wait after the block. Its `is-canceled` is true from the cancel on, so code
+in the block can see the request and wind down, while `is-cancel-in-force` stays false until the
+block ends.
+Blocks without cancel nest, and the task holds off cancellation until the outermost one ends,
+however it is left. In a cleanup of a cancelled task, where a wait would end the cleanup, a wait
+inside the block waits in full. Termination is not held off: a terminated task ends at its next
+wait, inside the block or not.
+
+```brix
+(main
+  (let ready (call Semaphore))
+  (let release (call Semaphore))
+  (let writer
+    (do-new
+      (finally
+        (print "writer cleanup")
+      )
+      (do (without cancel)
+        (call (. ready post))
+        (call (. release wait))
+        (print "record written")
+      )
+      (call (. (call Semaphore) wait))
+      (print "never")
+    )
+  )
+  (call (. ready wait))
+  (call (. writer cancel))
+  (call (. release post))
+  (call (. writer wait))
+  (print "writer cancelled")
+)
+```
+
+```output
+record written
+writer cleanup
+writer cancelled
+```
 
 ### When a program ends
 
@@ -273,7 +388,10 @@ closure that calls it.
 ### Locks
 
 A `Mutex` lets one task at a time run a block: a `do-use` form with the mutex locks it for the
-rows the form holds, and other tasks that reach the lock wait. See Errors for `use`.
+rows the form holds, and other tasks that reach the lock wait. See Errors for `use`. Taking the
+lock is not a wait that a cancel or a termination ends: the task still waits until the lock is
+free and takes it, and ends at a later wait, inside the block or after it, where the `use` gives
+the lock back.
 
 ## Channels
 

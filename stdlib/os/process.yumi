@@ -225,7 +225,7 @@ _ do end-if-canceled
 
 ` Ends the active task where a wait for the process found it cancelled, after taking the wait off
 ` the event loop, which would otherwise resume a task that has ended once the process exits.
-. canceled = Task().is-canceled
+. canceled = Task().is-cancel-in-force
 if canceled
     C:yumiCancelProcExitEventListener(pid, null)
 check-task-cancelation(canceled)
@@ -239,6 +239,17 @@ send-signal(C:SIGTERM)
 + do kill
 
 send-signal(C:SIGKILL)
+
+────────────────────
++ do reap
+
+` Ends the process where it still runs, with SIGKILL, and waits for it with the active task's
+` cancellation held off, so that it is reaped however the task that started it ends. A cleanup
+` calls it; where the process was already waited for, it does nothing.
+=? if is-reaped
+kill()
+do without cancel
+    do wait(null)
 
 ────────────────────
 + do terminate-group

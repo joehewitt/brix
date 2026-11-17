@@ -176,8 +176,9 @@ YuTaskQueue::startTask(
     void* closure,
     size_t localSize,
     const YuTaskProvenance& provenance,
-    YuTaskEnding** ending) {
-    startTaskImpl(func, closure, localSize, provenance, false, ending);
+    YuTaskEnding** ending,
+    uint64_t* handle) {
+    startTaskImpl(func, closure, localSize, provenance, false, ending, handle);
 }
 
 bool
@@ -196,7 +197,8 @@ YuTaskQueue::startTaskImpl(
     size_t localSize,
     const YuTaskProvenance& provenance,
     bool requireRunning,
-    YuTaskEnding** ending) {
+    YuTaskEnding** ending,
+    uint64_t* handle) {
     if (requireRunning && isFinished.load(std::memory_order_acquire)) {
         return false;
     }
@@ -204,6 +206,9 @@ YuTaskQueue::startTaskImpl(
     YuTask* task = new YuTask(this, func, closure, localSize, provenance);
     if (ending) {
         *ending = task->attachEnding();
+    }
+    if (handle) {
+        *handle = task->ensureHandle();
     }
     addLiveTask(task);
     addActivity();
@@ -216,14 +221,24 @@ YuTaskQueue::startTaskImpl(
 
 void
 YuTaskQueue::scheduleTask(YuTask* task, bool includeCanceled) {
-    if (task->getGCState() == YuTaskGCStateDead) {
-        return;
-    }
     if (!includeCanceled && task->getCanceled()) {
         return;
     }
+    wakeTask(task, false);
+}
+
+void
+YuTaskQueue::wakeCanceledTask(YuTask* task) {
+    wakeTask(task, true);
+}
+
+void
+YuTaskQueue::wakeTask(YuTask* task, bool forCancel) {
+    if (task->getGCState() == YuTaskGCStateDead) {
+        return;
+    }
     if (workers) {
-        if (task->claimQueued()) {
+        if (forCancel ? task->claimCancelWake() : task->claimQueued()) {
             enqueueClaimedTask(task, false);
         }
         return;
@@ -235,9 +250,11 @@ YuTaskQueue::scheduleTask(YuTask* task, bool includeCanceled) {
     pthread_mutex_lock(&lock);
     if (task->getGCState() != YuTaskGCStateDead) {
         if (task == hostedTask) {
-            wake = activeHostWake;
-            context = hostContext;
-        } else if (task->claimQueued()) {
+            if (!forCancel || task->getCanceled()) {
+                wake = activeHostWake;
+                context = hostContext;
+            }
+        } else if (forCancel ? task->claimCancelWake() : task->claimQueued()) {
             yumiGCSetTaskStateAndContext(task, YuTaskGCStateParked, true);
             enqueueTaskLocked(task);
             signal = sleepingThreads != 0;
@@ -378,13 +395,16 @@ YuTaskQueue::wakeLiveTasks(bool terminating) {
                 continue;
             }
 
+            bool wakes = false;
             if (terminating) {
                 task->requestTermination();
+                wakes = task != hosted && task->claimQueued();
             } else {
                 task->cancel();
+                wakes = task != hosted && task->claimCancelWake();
             }
 
-            if (task != hosted && task->claimQueued()) {
+            if (wakes) {
                 claimed.push_back(task);
             }
         }

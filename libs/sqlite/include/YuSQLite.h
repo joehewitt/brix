@@ -13,7 +13,7 @@
 #define YU_SQLITE_API extern
 #endif
 
-YU_SQLITE_API YUMI_GC_BLOCKING int32_t yumiSQLitePrepare(
+YU_SQLITE_API int32_t yumiSQLitePrepare(
     sqlite3* database,
     const char* sql,
     int64_t length,
@@ -21,52 +21,52 @@ YU_SQLITE_API YUMI_GC_BLOCKING int32_t yumiSQLitePrepare(
     int32_t* hasMore
 );
 
-YU_SQLITE_API YUMI_GC_BLOCKING void yumiSQLiteLock(sqlite3* database);
-YU_SQLITE_API YUMI_GC_LEAF void yumiSQLiteUnlock(sqlite3* database);
+YU_SQLITE_API void yumiSQLiteLock(sqlite3* database);
+YU_SQLITE_API YUMI_WITHOUT_GC void yumiSQLiteUnlock(sqlite3* database);
 
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteBindNull(sqlite3_stmt* statement, int32_t index);
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteBindInt64(
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteBindNull(sqlite3_stmt* statement, int32_t index);
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteBindInt64(
     sqlite3_stmt* statement,
     int32_t index,
     int64_t value
 );
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteBindDouble(
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteBindDouble(
     sqlite3_stmt* statement,
     int32_t index,
     double value
 );
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteBindText(
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteBindText(
     sqlite3_stmt* statement,
     int32_t index,
     const char* text,
     int64_t length
 );
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteBindBlob(
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteBindBlob(
     sqlite3_stmt* statement,
     int32_t index,
     const void* bytes,
     int64_t length
 );
 
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteColumnCount(sqlite3_stmt* statement);
-YU_SQLITE_API YUMI_GC_LEAF int32_t yumiSQLiteReadType(sqlite3_stmt* statement, int64_t index);
-YU_SQLITE_API YUMI_GC_LEAF int64_t yumiSQLiteReadInt64(
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteColumnCount(sqlite3_stmt* statement);
+YU_SQLITE_API YUMI_WITHOUT_GC int32_t yumiSQLiteReadType(sqlite3_stmt* statement, int64_t index);
+YU_SQLITE_API YUMI_WITHOUT_GC int64_t yumiSQLiteReadInt64(
     sqlite3_stmt* statement,
     int64_t index,
     int32_t* type
 );
-YU_SQLITE_API YUMI_GC_LEAF double yumiSQLiteReadDouble(
+YU_SQLITE_API YUMI_WITHOUT_GC double yumiSQLiteReadDouble(
     sqlite3_stmt* statement,
     int64_t index,
     int32_t* type
 );
-YU_SQLITE_API YUMI_GC_LEAF const char* yumiSQLiteReadText(
+YU_SQLITE_API YUMI_WITHOUT_GC const char* yumiSQLiteReadText(
     sqlite3_stmt* statement,
     int64_t index,
     int32_t* type,
     int64_t* length
 );
-YU_SQLITE_API YUMI_GC_LEAF const void* yumiSQLiteReadBlob(
+YU_SQLITE_API YUMI_WITHOUT_GC const void* yumiSQLiteReadBlob(
     sqlite3_stmt* statement,
     int64_t index,
     int32_t* type,

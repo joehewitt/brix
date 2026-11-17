@@ -6,16 +6,15 @@
 
 // *************************************************************************************************
 
-extern "C" YUMI_GC_LEAF void yumiPanicSet(void* panic);
-extern "C" YUMI_GC_LEAF void yumiPanicClear();
-extern "C" YUMI_GC_LEAF void* yumiPanicSuspend();
-extern "C" YUMI_GC_LEAF void yumiPanicResume(void* panic);
-extern "C" YUMI_GC_LEAF void yumiPanicBeginCleanup();
-extern "C" YUMI_GC_LEAF void yumiPanicEndCleanup();
-extern "C" YUMI_GC_LEAF void yumiPanicReturn();
-extern "C" YUMI_GC_LEAF void yumiRaisePanic(void* panic, void** traceSlot);
+extern "C" YUMI_WITHOUT_GC void yumiPanicSet(void* panic);
+extern "C" YUMI_WITHOUT_GC void yumiPanicClear();
+extern "C" YUMI_WITHOUT_GC void* yumiPanicSuspend();
+extern "C" YUMI_WITHOUT_GC void yumiPanicResume(void* panic);
+extern "C" YUMI_WITHOUT_GC void yumiPanicBeginCleanup();
+extern "C" YUMI_WITHOUT_GC void yumiPanicEndCleanup();
+extern "C" YUMI_WITHOUT_GC void yumiPanicReturn();
+extern "C" YUMI_WITHOUT_GC void yumiRaisePanic(void* panic, void** traceSlot);
 extern "C" void* yumiTakePanic();
-extern "C" void* yumiRecover();
 extern "C" void* yumiTaskFailure();
 extern "C" void yumiReportUnhandledPanic(
     void* panic,

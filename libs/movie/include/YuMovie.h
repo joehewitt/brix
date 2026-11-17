@@ -19,8 +19,8 @@ enum {
 extern "C" void* yumiMovieCreate(const char* path, int32_t width, int32_t height, double frameRate);
 extern "C" void yumiMovieRelease(void* movie);
 extern "C" uint32_t yumiMovieGetStatus(void* movie);
-extern "C" YUMI_GC_LEAF bool yumiMovieIsReady(void* movie);
-extern "C" YUMI_GC_LEAF int64_t yumiMovieGetFrameCount(void* movie);
+extern "C" YUMI_WITHOUT_GC bool yumiMovieIsReady(void* movie);
+extern "C" YUMI_WITHOUT_GC int64_t yumiMovieGetFrameCount(void* movie);
 extern "C" const char* yumiMovieGetError(void* movie);
 extern "C" bool yumiMovieAppendCanvas(void* movie, void* canvas);
 extern "C" bool yumiMovieFinish(void* movie);

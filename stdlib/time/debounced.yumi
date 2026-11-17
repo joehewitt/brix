@@ -8,16 +8,17 @@
     - delay Duration
     - action Doer
 
-. calls U64
+` A call while the action runs starts a new delay and does not cut the action short: the task
+` lets go of `pending` once its delay ends.
+. pending Task?
 = => do
-    calls += 1
-    . call = calls
-    do new
+    pending?.cancel-later()
+    pending = do new
         delay.wait()
-        if call == calls
-            action()
-                catch error Error
-                    unhandled-error(error)
+        pending = null
+        action()
+            catch error Error
+                unhandled-error(error)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do throttled DebouncedAction

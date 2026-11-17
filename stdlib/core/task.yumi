@@ -59,7 +59,16 @@ if record then record.end else if is-finished then .finished else .running
 ────────────────────
 + get is-canceled
 
+` Whether the task was cancelled, inside a `do without cancel` block or not, so code there can see
+` the request and wind down.
 C:yumiGetTaskCanceled(handle)
+
+────────────────────
++ get is-cancel-in-force
+
+` Whether the task's next wait ends it: it was cancelled and no `do without cancel` block holds
+` that off, or it is terminating.
+C:yumiGetTaskCancelInForce(handle)
 
 ────────────────────
 + get is-terminating
@@ -87,7 +96,17 @@ check-task-cancelation(canceled)
 ────────────────────
 + do cancel
 
+` Cancels the task and yields to it: the active task waits its turn behind every task ready to
+` run, the cancelled one included.
 C:yumiCancelTask(handle)
+
+────────────────────
++ do cancel-later
+
+` Cancels the task without yielding to it: the active task goes on, and the task ends at the wait
+` it is parked at, or at its next, once it runs. One that has not run yet runs up to its first
+` wait.
+C:yumiCancelTaskLater(handle)
 
 ────────────────────
 + do close
@@ -183,6 +202,13 @@ use lock
 = first
 
 ━━━━━━━━━━━━━━━━━━━━
+_ TaskOwner
+
+` What a case of a state machine keeps, from the first time it is entered, for the tasks its
+` activations spawn: it owns them, and those of each activation are cancelled as the case exits.
+` The compiler makes it.
+
+━━━━━━━━━━━━━━━━━━━━
 + Worker is Tuple
 
 _ native CPointer'Char8
@@ -253,7 +279,7 @@ if mutex
     did-post = C:yumiWaitForSemaphore(native, buf, Payload.size, mutex)
 else
     did-post = C:yumiWaitForSemaphore(native, buf, Payload.size, null)
-check-task-cancelation(task.is-canceled)
+check-task-cancelation(task.is-cancel-in-force)
 if did-post
     = buf[0]
 
@@ -263,7 +289,7 @@ if did-post
 
 . task = Task()
 C:yumiPostSemaphore(native, &value, Payload.size)
-check-task-cancelation(task.is-canceled)
+check-task-cancelation(task.is-cancel-in-force)
 
 ━━━━━━━━━━━━━━━━━━━━
 + Mutex is Tuple
@@ -340,14 +366,14 @@ task.resume-later()
 
 . task = Task()
 C:yumiWaitForSemaphore(native, null, 0, null)
-check-task-cancelation(task.is-canceled)
+check-task-cancelation(task.is-cancel-in-force)
 
 ────────────────────
 + do post
 
 . task = Task()
 C:yumiPostSemaphore(native, null, 0)
-check-task-cancelation(task.is-canceled)
+check-task-cancelation(task.is-cancel-in-force)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do task-started Task
@@ -407,9 +433,11 @@ C:yumiRequestProcessTermination(exit-code)
 
 ` Ends the active task where a wait found it cancelled, with the termination panic where the task
 ` is terminating and the cancellation panic otherwise. A wait in the library calls it after its
-` own work for a cancelled wait, such as leaving a queue.
+` own work for a cancelled wait, such as leaving a queue. The termination is taken as it is
+` raised, so a poll in the task's cleanups does not raise it again.
 if was-canceled
     if Task().is-terminating
+        C:yumiTakeActiveTaskTermination()
         ?! TaskTerminationError()
     ?! TaskCancelationError()
 

@@ -2869,6 +2869,15 @@ for name in annotations
 = false
 
 ━━━━━━━━━━━━━━━━━━━━
++ do task-detached Bool
+    - annotations ImmutableArray'Atom
+
+for name in annotations
+    if name.text == "detached"
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
 + unannotated-body SyntaxId
     - loc MatchLocation
     - body DoBody
@@ -2975,6 +2984,45 @@ for name in names
 = DoAnnotationMasks(normalize-compilation-effects(effects), features)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do written-annotation Atom ?! YumiSyntaxError
+    - loc MatchLocation
+    - name Atom
+
+` An annotation written with `@`. A restriction and a C function's label are written in a
+` `without` section, and the names they lower to are refused here.
+. meant = restriction-name(name.text)
+if meant
+    ?! YumiSyntaxError(loc, "Write 'without $meant' in place of '@${name.text}'")
+= name
+
+━━━━━━━━━━━━━━━━━━━━
++ restriction-name String?
+    - text String
+
+` The name after `without` that the annotation a restriction lowers to stands for, if it is one.
+match text
+    |= "no-heap"
+        "heap"
+    |= "no-suspend"
+        "suspend"
+    |= "no-gc"
+        "gc"
+    |= "gc-leaf"
+        "gc"
+    |= "no-safepoint"
+        "safepoints"
+    |= "no-safepoints"
+        "safepoints"
+    |= "no-probe-safepoint"
+        "probe-safepoints"
+    |= "no-probe-safepoints"
+        "probe-safepoints"
+    |= "gc-polling"
+        "blocking"
+    ??
+        null
+
+━━━━━━━━━━━━━━━━━━━━
 + do section-annotations ImmutableArray'Atom ?! YumiSyntaxError
     - tree ASTBuilder
     - loc MatchLocation
@@ -3048,11 +3096,20 @@ while index > 0
 
 . annotations = section-annotations(tree, loc, body.annotations, sections, true)
 . bindings = sections.bindings
-=? stack-bound(tree, loc, bindings, body.body) if annotations.length == 0 && bindings.length > 0
+. holds = names-cancel(sections.without)
+=? stack-bound(tree, loc, bindings, body.body) if annotations.length == 0 && bindings.length > 0 && !holds
 . masks = do-annotation-masks(loc, annotations)
-. block = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features))
+. block = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features, holds))
 =? block if bindings.length == 0
 = stack-bound(tree, loc, bindings, tree.append(ASTBlock(loc, tree.store-child(block))))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do names-cancel Bool
+    - names ImmutableArray'Atom
+
+for name in names
+    =? true if name.text == "cancel"
+= false
 
 ━━━━━━━━━━━━━━━━━━━━
 + do sectioned-body SyntaxId? ?! YumiSyntaxError

@@ -171,10 +171,14 @@ YuThread::startTask(
     void* closure,
     size_t localSize,
     const YuTaskProvenance& provenance,
-    YuTaskEnding** ending) {
+    YuTaskEnding** ending,
+    uint64_t* handle) {
     YuTask* newTask = queue->createTask(func, closure, localSize, provenance);
     if (ending) {
         *ending = newTask->attachEnding();
+    }
+    if (handle) {
+        *handle = newTask->ensureHandle();
     }
     queue->scheduleTask(newTask);
 }
@@ -228,13 +232,19 @@ YuThread::finishSuspendedTask() {
     if (!shouldSchedule) {
         yumiGCSetTaskStateAndContext(task, gcState, true);
     }
-    if (task->finishRunning(shouldSchedule)) {
+    task->pin();
+    bool parked = !task->finishRunning(shouldSchedule);
+    if (!parked) {
         task->getTaskQueue()->enqueueClaimedTask(task, yielded);
     }
 
     if (mutex) {
         mutex->unlock();
     }
+    if (parked) {
+        task->getTaskQueue()->wakeCanceledTask(task);
+    }
+    task->unpinHandle();
 }
 
 void

@@ -34,28 +34,28 @@ typedef void (*YumiGCStorageRootRecordVisitor)(
 
 // *************************************************************************************************
 
-YUMI_GC_POLLING void yumiGCScanContextRoots(
+YUMI_WITHOUT_BLOCKING void yumiGCScanContextRoots(
     const YumiGCContextSnapshot* context,
     void* stackBase,
     size_t stackSize,
     YuGCStackRootVisitor visitor,
     void* data);
-YUMI_GC_POLLING void yumiGCScanConservativeContextRoots(
+YUMI_WITHOUT_BLOCKING void yumiGCScanConservativeContextRoots(
     const YumiGCContextSnapshot* context,
     void* stackBase,
     size_t stackSize,
     YuGCStackRootVisitor visitor,
     void* data);
-YUMI_GC_LEAF size_t yumiGCStorageRootRecordCapacity(size_t taskCount, size_t threadCount);
-YUMI_GC_POLLING void yumiGCVisitStorageRootRecords(
+YUMI_WITHOUT_GC size_t yumiGCStorageRootRecordCapacity(size_t taskCount, size_t threadCount);
+YUMI_WITHOUT_BLOCKING void yumiGCVisitStorageRootRecords(
     YumiGCStorageRootRecordVisitor visitor,
     void* data);
-YUMI_GC_LEAF void* yumiGCDebugConservativeRootSlot(void);
-YUMI_GC_LEAF bool yumiGCVisitingConservativeRoot(void);
-YUMI_GC_LEAF void yumiGCDebugClearStackMapLookupCache(void);
-YUMI_GC_LEAF size_t yumiGCDebugStackMapFunctionIndexCount(void);
-YUMI_GC_LEAF bool yumiGCDebugStackMapLookupSelfTest(void);
-YUMI_GC_LEAF bool yumiGCDebugStackMapLookup(
+YUMI_WITHOUT_GC void* yumiGCDebugConservativeRootSlot(void);
+YUMI_WITHOUT_GC bool yumiGCVisitingConservativeRoot(void);
+YUMI_WITHOUT_GC void yumiGCDebugClearStackMapLookupCache(void);
+YUMI_WITHOUT_GC size_t yumiGCDebugStackMapFunctionIndexCount(void);
+YUMI_WITHOUT_GC bool yumiGCDebugStackMapLookupSelfTest(void);
+YUMI_WITHOUT_GC bool yumiGCDebugStackMapLookup(
     uintptr_t pc,
     uintptr_t* functionAddress,
     uint32_t* functionByteSize,

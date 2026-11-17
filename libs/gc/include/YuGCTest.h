@@ -9,23 +9,23 @@ extern "C" {
 
 // Manual phase controls are collector-internal test hooks. Applications use automatic pacing
 // and yumiCollect() for an explicitly blocking collection.
-YUMI_GC_POLLING bool yumiGCTestAllocBatch(
+YUMI_WITHOUT_BLOCKING bool yumiGCTestAllocBatch(
     size_t size,
     void* descriptor,
     size_t preferredCount,
     YumiGCAllocationBatch* batch);
-YUMI_GC_LEAF bool yumiGCTestDiscardBatch(
+YUMI_WITHOUT_GC bool yumiGCTestDiscardBatch(
     char* cursor,
     char* limit,
     size_t slotSize,
     size_t generation);
-YUMI_GC_POLLING void yumiGCStartConcurrentMark(void);
-YUMI_GC_POLLING size_t yumiGCStepConcurrentMark(void);
-YUMI_GC_POLLING void yumiGCFinishConcurrentMark(void);
-YUMI_GC_POLLING void yumiGCFinishAutomaticCycle(void);
-YUMI_GC_POLLING void yumiGCStepIncrementalSweep(size_t workLimit);
-YUMI_GC_POLLING void yumiGCStepScavenge(size_t pageBudget);
-YUMI_GC_POLLING size_t yumiGCMutatorAssist(size_t workLimit);
+YUMI_WITHOUT_BLOCKING void yumiGCStartConcurrentMark(void);
+YUMI_WITHOUT_BLOCKING size_t yumiGCStepConcurrentMark(void);
+YUMI_WITHOUT_BLOCKING void yumiGCFinishConcurrentMark(void);
+YUMI_WITHOUT_BLOCKING void yumiGCFinishAutomaticCycle(void);
+YUMI_WITHOUT_BLOCKING void yumiGCStepIncrementalSweep(size_t workLimit);
+YUMI_WITHOUT_BLOCKING void yumiGCStepScavenge(size_t pageBudget);
+YUMI_WITHOUT_BLOCKING size_t yumiGCMutatorAssist(size_t workLimit);
 
 void* yumiGCTestSinglePointerDescriptorPointer(void);
 void* yumiGCTestAlternateSinglePointerDescriptorPointer(void);
@@ -86,7 +86,7 @@ size_t yumiGCTestCleanupCancelLookupCount(void);
 size_t yumiGCTestRootUnlinkCount(void);
 size_t yumiGCTestRootRegistrationCount(void);
 size_t yumiGCTestOwnerWeakRegistrationCount(void);
-YUMI_GC_POLLING bool yumiGCTestTemporaryRootStorage(char* pointer);
+YUMI_WITHOUT_BLOCKING bool yumiGCTestTemporaryRootStorage(char* pointer);
 
 #ifdef __cplusplus
 }

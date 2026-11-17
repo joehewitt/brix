@@ -2,11 +2,13 @@
 
 + task-suspending-prefix = "yumiSuspendActiveTask"
 
-+ task-waiting-names [String] = ["yumiWaitForTask", "yumiTaskEndingWait"]
++ task-yielding-names [String] = ["yumiWaitForTask", "yumiTaskEndingWait", "yumiCancelTask", "yumiResumeTaskNow"]
+
++ termination-leaving-names [String] = ["yumiLockMutex", "yumiSuspendTask"]
 
 + allocating-names [String] = ["yumiAllocObject", "yumiAllocObjectDescribed", "yumiAllocBuffer", "yumiAllocBufferDescribed", "yumiResizeBuffer", "yumiResizeBufferDescribed", "yumiGCAllocObject", "yumiGCAllocObjectDescribed", "yumiGCAllocBuffer", "yumiGCAllocBufferDescribed", "yumiGCResizeBuffer", "yumiGCResizeBufferDescribed", "yumiGCResizeBufferCopy", "yumiAllocObjectWithSiteKey", "yumiGCAllocationBufferRefill", "yumiGCCompilerAllocationBufferRefill", "yumiGCTestAllocBatch", "yumiParseRegionPromote", "yumiParseRegionPromoteValue", "yumiTakePanic", "yumiArrayViewCreate", "yumiCharToString", "yumiDoubleToFixedString", "yumiDoubleToString", "yumiFloatToString", "yumiIntToString", "yumiLonglongToString", "yumiStringAdopt", "yumiStringConcat", "yumiStringCreate", "yumiStringCreateASCII", "yumiStringCreateValidated", "yumiStringDecompose", "yumiStringNormalize", "yumiStringRepeat", "yumiStringSlice", "yumiStringSliceUtf8", "yumiStringFromUtf8Codepoint", "yumiStringFromUtf8Codepoints", "yumiStringToLowercase", "yumiStringToUppercase", "yumiStringToUtf8Codepoints", "yumiToHex", "yumiUintToString", "yumiUlonglongToString"]
 
-+ plain-polling-names [String] = ["yumiPrint", "yumiPrintUnhandledError", "yumiReportUnhandledError", "yumiReportUnhandledPanic", "yumiReportFatalPanic", "yumiStartTask", "yumiForkTask", "yumiForkMainTask", "yumiTerminate", "yumiTerminateActiveTask", "yumiSaveArgs", "yumiGCValidateAllocationABI", "yumiGetProcessExitCode", "exit", "yumiInterruptRequestedFlags", "yumiGCEnterFFI", "yumiGCEnterZone", "yumiGCLeaveZone", "yumiArrayCopySlice", "yumiArrayCopySliceDescribed", "yumiArrayViewsReplace", "yumiArrayViewsInvalidate", "yumiArenaReserveDescribed", "yumiGCObjectSidePayload", "yumiGCClearObjectSidePayload", "yumiBatchStartIndex", "yumiBatchEndIndex", "yumiBatchTestStart", "yumiBatchTestFinish", "yumiActiveTaskQueueActivity", "yumiReleaseLazyGlobal", "yumiAbandonLazyGlobal", "yumiProbeTracing", "yumiCollect", "yumiGCCollect", "yumiGCScavenge", "yumiGCStartConcurrentMark", "yumiGCFinishConcurrentMark", "yumiGCFrameBudget", "yumiGCOwnerWeakLoad", "yumiGCRegisterOwnerWeak", "yumiGCReleaseOwnerWeak", "yumiGCAddRoot", "yumiGCRegisterCleanup", "yumiGCCancelCleanup", "yumiCollectionObserverActivate", "yumiCollectionObserverDeactivate", "yumiGCPublishObjectSidePayload", "yumiGCPublishCleanupObjectSidePayload", "yumiBenchTemporaryRootShim", "yumiStringMeasureDisplayWidth"]
++ plain-polling-names [String] = ["yumiPrint", "yumiPrintUnhandledError", "yumiReportUnhandledError", "yumiReportUnhandledPanic", "yumiReportFatalPanic", "yumiStartTask", "yumiStartOwnedTask", "yumiCancelOwnedTasks", "yumiCancelOwnedTasksTo", "yumiForkTask", "yumiForkMainTask", "yumiTerminate", "yumiTerminateActiveTask", "yumiSaveArgs", "yumiGCValidateAllocationABI", "yumiGetProcessExitCode", "exit", "yumiInterruptRequestedFlags", "yumiGCEnterFFI", "yumiGCEnterZone", "yumiGCLeaveZone", "yumiArrayCopySlice", "yumiArrayCopySliceDescribed", "yumiArrayViewsReplace", "yumiArrayViewsInvalidate", "yumiArenaReserveDescribed", "yumiGCObjectSidePayload", "yumiGCClearObjectSidePayload", "yumiBatchStartIndex", "yumiBatchEndIndex", "yumiBatchTestStart", "yumiBatchTestFinish", "yumiActiveTaskQueueActivity", "yumiReleaseLazyGlobal", "yumiAbandonLazyGlobal", "yumiProbeTracing", "yumiCollect", "yumiGCCollect", "yumiGCScavenge", "yumiGCStartConcurrentMark", "yumiGCFinishConcurrentMark", "yumiGCFrameBudget", "yumiGCOwnerWeakLoad", "yumiGCRegisterOwnerWeak", "yumiGCReleaseOwnerWeak", "yumiGCAddRoot", "yumiGCRegisterCleanup", "yumiGCCancelCleanup", "yumiCollectionObserverActivate", "yumiCollectionObserverDeactivate", "yumiGCPublishObjectSidePayload", "yumiGCPublishCleanupObjectSidePayload", "yumiBenchTemporaryRootShim", "yumiStringMeasureDisplayWidth"]
 
 + code-running-names [String] = ["yumiRunEventLoop", "yumiGCDrainCleanups"]
 
@@ -15,6 +17,17 @@
     - name String
 
 name.starts-with(task-suspending-prefix) || task-suspending-names.find(name) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ leaves-termination Bool
+    - name String
+
+` Whether a C function suspends the task but leaves a termination to what follows, so the call is
+` not followed by the check that ends a terminated task. `yumiLockMutex` takes a lock: a waiter is
+` woken only to take it, and a task ended there would hold it before its `use` keeps it, to give it
+` back. `yumiSuspendTask` answers whether the task is cancelled, as a termination makes it, and
+` its caller checks the answer, doing its own work first, such as leaving a queue.
+termination-leaving-names.find(name) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + allocates Bool
@@ -26,10 +39,10 @@ allocating-names.find(name) != null
 + is-claimed Bool
     - name String
 
-` Whether a C function is classified: one that suspends the task or waits for a task, one that
+` Whether a C function is classified: one that suspends the task or yields to a task, one that
 ` allocates from the collector, one that runs code that may do either, or one that polls and does
 ` neither.
-suspends-task(name) || waits-for-task(name) || allocates(name) || is-plain-polling || runs-code(name)
+suspends-task(name) || yields-to-task(name) || allocates(name) || is-plain-polling || runs-code(name)
 .. is-plain-polling = plain-polling-names.find(name) != null
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -39,12 +52,13 @@ suspends-task(name) || waits-for-task(name) || allocates(name) || is-plain-polli
 code-running-names.find(name) != null
 
 ━━━━━━━━━━━━━━━━━━━━
-+ waits-for-task Bool
++ yields-to-task Bool
     - name String
 
-` Whether a C function waits for a task to end. It suspends the task, but is called as its
-` declaration says, as one that may block, and not as one that suspends it.
-task-waiting-names.find(name) != null
+` Whether a C function lets another task run before it returns: one that waits for a task to end,
+` or one that cancels or resumes a task and yields to it. It suspends the task, but is called as
+` its declaration says, as one that may block, and not as one that suspends it.
+task-yielding-names.find(name) != null
 
 ━━━━━━━━━━━━━━━━━━━━
 + may-suspend Bool
@@ -52,9 +66,9 @@ task-waiting-names.find(name) != null
     - polls Bool
 
 ` Whether a C function may suspend the task where a restriction forbids it: one that suspends it
-` or waits for a task does. Any other that polls the collector can, so one that polls and is not
+` or yields to a task does. Any other that polls the collector can, so one that polls and is not
 ` classified is taken to.
-suspends-task(name) || waits-for-task(name) || runs-code(name) || (polls && !is-claimed(name))
+suspends-task(name) || yields-to-task(name) || runs-code(name) || (polls && !is-claimed(name))
 
 ━━━━━━━━━━━━━━━━━━━━
 + may-allocate Bool

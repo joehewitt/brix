@@ -10,7 +10,7 @@ zone-collection-boundary()
 -- C:yumiGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do zone-state Bool @no-gc
++ do zone-state Bool without gc
     - count Int
 
 . total = 0
@@ -19,7 +19,7 @@ for index in 0 .. < count
 = C:yumiGCActiveTaskCanUseFastAllocation()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do zone-collection-boundary @no-gc
++ do zone-collection-boundary without gc
 
 C:yumiCollect()
 
@@ -48,7 +48,7 @@ true
 + GCFreeReplacement is Error
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-fallible Int ?! GCFreeFailure @no-gc
++ do gc-free-fallible Int ?! GCFreeFailure without gc
     - succeeds Bool
 
 if succeeds
@@ -56,13 +56,13 @@ if succeeds
 ?! GCFreeFailure("failed")
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-propagate Int ?! GCFreeFailure @no-gc
++ do gc-free-propagate Int ?! GCFreeFailure without gc
     - succeeds Bool
 
 = gc-free-fallible(succeeds) + 1
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch Int @no-gc
++ do gc-free-catch Int without gc
     - succeeds Bool
 
 . value = gc-free-fallible(succeeds)
@@ -71,7 +71,7 @@ if succeeds
 = value + 2
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch-replace Int ?! GCFreeReplacement @no-gc
++ do gc-free-catch-replace Int ?! GCFreeReplacement without gc
     - succeeds Bool
 
 . value = gc-free-fallible(succeeds)
@@ -136,7 +136,7 @@ true
 :====
 
 . seed = 5
-do @no-gc
+do without gc
     . value = seed + 7
     value += 1
 -- seed
@@ -148,7 +148,7 @@ do @no-gc
 :====
 
 . seed = 5
-do @no-gc
+do without gc
     . box = Box()
 -- seed
 
@@ -160,7 +160,7 @@ do @no-gc
 :----
 %crash
 
-Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1): main (do @no-gc) → Box()
+Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1): main (do without gc) → Box()
 <no file:4>
         . box = Box()
                 ^^^^^
@@ -175,7 +175,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1):
 + value Int = 0
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do allocate-in-zone Int @no-gc
++ do allocate-in-zone Int without gc
 
 . box = Box()
 = box.value
@@ -183,7 +183,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1):
 :----
 %crash
 
-Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1): allocate-in-zone (@no-gc) → Box()
+Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1): allocate-in-zone (without gc) → Box()
 <no file:12>
     . box = Box()
             ^^^^^
@@ -199,7 +199,7 @@ holder.replace("after")
 + value String = "before"
 
 ────────────────────
-+ do replace @no-gc
++ do replace without gc
     - next String
 
 value = next
@@ -207,7 +207,7 @@ value = next
 :----
 %crash
 
-Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:11:1); compute into a zone buffer and publish after the zone exits: Holder.replace (@no-gc) → value = next
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:11:1); compute into a zone buffer and publish after the zone exits: Holder.replace (without gc) → value = next
 <no file:14>
     value = next
     ^^^^^^^^^^^^
@@ -218,19 +218,19 @@ Exception: storing a managed pointer is not allowed in a GC-free zone (entered a
 -- generator()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do suspended-values @no-gc
++ do suspended-values without gc
 
 <= 1
 
 :----
 %crash
 
-Exception: allocation is not allowed in a GC-free zone (entered at no file:6:1): suspended-values (@no-gc)
+Exception: allocation is not allowed in a GC-free zone (entered at no file:6:1): suspended-values (without gc)
 <no file:6>
-    + do suspended-values @no-gc
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    + do suspended-values without gc
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Exception: cannot suspend inside a GC-free zone (entered at no file:6:1): suspended-values (@no-gc) → <= 1
+Exception: cannot suspend inside a GC-free zone (entered at no file:6:1): suspended-values (without gc) → <= 1
 <no file:8>
     <= 1
     ^^^^
@@ -240,7 +240,7 @@ Exception: cannot suspend inside a GC-free zone (entered at no file:6:1): suspen
 conflict()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ conflict @no-gc @no-heap
++ conflict without gc, heap
 
 :----
 %crash
@@ -256,14 +256,14 @@ Exception: Conflicting compilation effect 'no-heap'
 -- generator()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do suspended-values @no-safepoint
++ do suspended-values without safepoints
 
 <= 1
 
 :----
 %crash
 
-Exception: cannot suspend inside a @no-suspend context: suspended-values (@no-safepoint @no-suspend) → <= 1
+Exception: cannot suspend under 'without safepoints': suspended-values (without safepoints) → <= 1
 <no file:8>
     <= 1
     ^^^^
@@ -277,7 +277,7 @@ Exception: cannot suspend inside a @no-suspend context: suspended-values (@no-sa
 -- arena-cycle(span-source)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do arena-cycle U64 @no-gc
++ do arena-cycle U64 without gc
     - span-source Char[]
 
 . arena = Arena(4096)
@@ -308,13 +308,13 @@ arena.reset()
 = checksum
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do arena-copy-string String @no-gc
++ do arena-copy-string String without gc
     - arena Arena
 
 = arena.copy-string("arena-owned")
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do arena-copy-codepoint-span String @no-gc
++ do arena-copy-codepoint-span String without gc
     - arena Arena
     - source Char[]
 
@@ -370,7 +370,7 @@ storage = ManagedBacking'Value()
 storage = ArenaBacking'Value(arena)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do arena-cycle U32 @no-gc
++ do arena-cycle U32 without gc
     - arena Arena
 
 . storage Storage'U32'(ArenaBacking'U32) = Storage'U32(arena, 41u32)
@@ -388,7 +388,7 @@ storage = ArenaBacking'Value(arena)
 -- controlled-union-cycle()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do controlled-union-cycle U64 @no-gc
++ do controlled-union-cycle U64 without gc
 
 . arena = Arena(8192)
 do finally
@@ -521,7 +521,7 @@ this.source as U64
     is View
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do equal @no-gc
++ do equal without gc
     - left View
     - right View
 
@@ -530,7 +530,7 @@ this.source as U64
 :----
 %crash
 
-Exception: Interface equality requires unrestricted effects: equal (@no-gc) → left == right
+Exception: Interface equality requires unrestricted effects: equal (without gc) → left == right
 <no file:17>
     = left == right
       ^^^^^^^^^^^^^
@@ -548,7 +548,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-gc) → 
     is View
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do equal @no-heap
++ do equal without heap
     - left View
     - right View
 
@@ -557,7 +557,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-gc) → 
 :----
 %crash
 
-Exception: Interface equality requires unrestricted effects: equal (@no-heap) → left == right
+Exception: Interface equality requires unrestricted effects: equal (without heap) → left == right
 <no file:17>
     = left == right
       ^^^^^^^^^^^^^
@@ -575,7 +575,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-heap) �
     is View
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do equal @no-safepoint
++ do equal without safepoints
     - left View
     - right View
 
@@ -584,7 +584,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-heap) �
 :----
 %crash
 
-Exception: Interface equality requires unrestricted effects: equal (@no-safepoint @no-suspend) → left == right
+Exception: Interface equality requires unrestricted effects: equal (without safepoints) → left == right
 <no file:17>
     = left == right
       ^^^^^^^^^^^^^
@@ -602,7 +602,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-safepoin
     is View
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do equal @no-suspend
++ do equal without suspend
     - left View
     - right View
 
@@ -611,7 +611,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-safepoin
 :----
 %crash
 
-Exception: Interface equality requires unrestricted effects: equal (@no-suspend) → left == right
+Exception: Interface equality requires unrestricted effects: equal (without suspend) → left == right
 <no file:17>
     = left == right
       ^^^^^^^^^^^^^
@@ -666,7 +666,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-suspend)
 = 7
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do measure Int @no-gc
++ do measure Int without gc
     - shape Shape
     - base Base
 
@@ -709,7 +709,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-suspend)
 + value Int = 0
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do measure Int @no-gc
++ do measure Int without gc
     - shape Shape
 
 = shape.area()
@@ -717,7 +717,7 @@ Exception: Interface equality requires unrestricted effects: equal (@no-suspend)
 :----
 %crash
 
-Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1): measure (@no-gc) → Shape.area → Square.area → Box()
+Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1): measure (without gc) → Shape.area → Square.area → Box()
 <no file:24>
     . box = Box()
             ^^^^^
@@ -756,7 +756,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1)
 + value Int = 0
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do measure Int @no-gc
++ do measure Int without gc
     - base Base
 
 = base.area()
@@ -764,7 +764,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1)
 :----
 %crash
 
-Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1): measure (@no-gc) → Base.area → Derived.area → Box()
+Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1): measure (without gc) → Base.area → Derived.area → Box()
 <no file:25>
     . box = Box()
             ^^^^^
@@ -774,7 +774,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1)
 -- run(:: n Int => n + 1)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do run Int @no-suspend
++ do run Int without suspend
     - action () Int
         - Int
 
@@ -783,7 +783,7 @@ Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1)
 :----
 %crash
 
-Exception: Function value call requires unrestricted effects: run (@no-suspend) → action(4)
+Exception: Function value call requires unrestricted effects: run (without suspend) → action(4)
 <no file:9>
     = action(4)
       ^^^^^^^^^
@@ -793,7 +793,7 @@ Exception: Function value call requires unrestricted effects: run (@no-suspend) 
 
 . seed = 5
 . total = 0
-do @no-gc
+do without gc
     total = seed + 8
 -- total
 -- run(5)
@@ -803,7 +803,7 @@ do @no-gc
     - seed I64
 
 . total = 0
-do @no-gc
+do without gc
     total = seed + 8
 = total
 
@@ -816,7 +816,7 @@ do @no-gc
 # A GC-free block assigns fields of an outer struct local
 
 . point = Point(1, 2)
-do @no-gc
+do without gc
     point.x = 10
     point.y += 5
 -- point.x
@@ -837,14 +837,14 @@ do @no-gc
 # A loop in a GC-free block, and a nested GC-free block, update outer locals
 
 . sum = 0
-do @no-gc
+do without gc
     for index in 0 .. < 5
         sum += index
 -- sum
 . outer = 1
-do @no-gc
+do without gc
     outer += 10
-    do @no-gc
+    do without gc
         outer += 100
 -- outer
 
@@ -859,14 +859,14 @@ do @no-gc
 + counter = 1
 
 counter = 2
-do @no-gc
+do without gc
     counter += 40
 -- counter
 -- bump(5)
 -- shift(Point(1, 2))
 . left = 1
 . right = 2
-do @no-gc
+do without gc
     (left, right) = (right, left)
 -- left
 -- right
@@ -881,7 +881,7 @@ do @no-gc
 + do bump I64
     - seed I64
 
-do @no-gc
+do without gc
     seed += 10
 = seed
 
@@ -889,7 +889,7 @@ do @no-gc
 + do shift Int
     - point Point
 
-do @no-gc
+do without gc
     point.x += 100
 = point.x
 
@@ -907,18 +907,18 @@ do @no-gc
 . known Int? = 4
 . seen = 0
 if known
-    do @no-gc
+    do without gc
         seen = known + 1
         known = 9
     -- seen
     -- known + 1
 . unset Int? = null
-do @no-gc
+do without gc
     unset = 7
 -- unset + 1
 . cleared I64? = 3
 if cleared
-    do @no-gc
+    do without gc
         cleared = null
     -- cleared ?? -1
 
@@ -934,10 +934,10 @@ if cleared
 
 . holder = Holder(3)
 if holder.value
-    do @no-gc
+    do without gc
         holder.value = null
     -- holder.value ?? -1
-do @no-gc
+do without gc
     holder.value = 7
 -- holder.value ?? -1
 
@@ -955,14 +955,14 @@ do @no-gc
 
 . name = "before"
 . other = "after"
-do @no-gc
+do without gc
     name = other
 -- name
 
 :----
 %crash
 
-Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:4:1); compute into a zone buffer and publish after the zone exits: main (do @no-gc) → name = other
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:4:1); compute into a zone buffer and publish after the zone exits: main (do without gc) → name = other
 <no file:5>
         name = other
         ^^^^^^^^^^^^
@@ -974,7 +974,7 @@ Exception: storing a managed pointer is not allowed in a GC-free zone (entered a
 -- direct()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do direct Int @no-suspend
++ do direct Int without suspend
 
 lock(C:yumiNewMutex())
 = 1
@@ -988,7 +988,7 @@ C:yumiLockMutex(native)
 :----
 %compile-error
 
-Exception: cannot suspend inside a @no-suspend context: direct (@no-suspend) → lock → C:yumiLockMutex(native)
+Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:yumiLockMutex(native)
 <no file:16>
     C:yumiLockMutex(native)
     ^^^^^^^^^^^^^^^^^^^^^^^
@@ -1017,7 +1017,7 @@ C:yumiLockMutex(C:yumiNewMutex())
 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do direct Int @no-suspend
++ do direct Int without suspend
     - source Source
 
 = source.take()
@@ -1025,7 +1025,7 @@ C:yumiLockMutex(C:yumiNewMutex())
 :----
 %compile-error
 
-Exception: cannot suspend inside a @no-suspend context: direct (@no-suspend) → Source.take → Impl.take → C:yumiLockMutex(C:yumiNewMutex())
+Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:yumiLockMutex(C:yumiNewMutex())
 <no file:20>
     C:yumiLockMutex(C:yumiNewMutex())
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1037,7 +1037,7 @@ Exception: cannot suspend inside a @no-suspend context: direct (@no-suspend) →
 -- outer(3)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 . text = C:yumiIntToString(n, 0)
@@ -1046,7 +1046,7 @@ Exception: cannot suspend inside a @no-suspend context: direct (@no-suspend) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → C:yumiIntToString(n, 0)
+Exception: allocation is not allowed under 'without heap': outer (without heap) → C:yumiIntToString(n, 0)
 <no file:10>
     . text = C:yumiIntToString(n, 0)
              ^^^^^^^^^^^^^^^^^^^^^^^
@@ -1063,7 +1063,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 = action()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 = apply(=> n + 1)
@@ -1071,7 +1071,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → => n + 1
+Exception: allocation is not allowed under 'without heap': outer (without heap) → => n + 1
 <no file:14>
     = apply(=> n + 1)
             ^^^^^^^^
@@ -1102,7 +1102,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 Box()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - label Label
 
 . box = label as Box
@@ -1111,7 +1111,7 @@ Box()
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → the converter of Label → Box()
+Exception: allocation is not allowed under 'without heap': outer (without heap) → the converter of Label → Box()
 <no file:22>
     Box()
     ^^^^^
@@ -1134,7 +1134,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 = box.value + n
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 . first = Box()
@@ -1144,17 +1144,17 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → helper → Box()
+Exception: allocation is not allowed under 'without heap': outer (without heap) → helper → Box()
 <no file:13>
     . box = Box()
             ^^^^^
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → Box()
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
 <no file:20>
     . first = Box()
               ^^^^^
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → Box()
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
 <no file:21>
     . second = Box()
                ^^^^^
@@ -1200,7 +1200,7 @@ a
 = item.weight
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 . total = weigh(Fill.full)
@@ -1209,7 +1209,7 @@ a
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → Pair(n)
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Pair(n)
 <no file:44>
     = total + weigh(Pair(n))
                     ^^^^^^^
@@ -1226,7 +1226,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 + x Int
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - items Array'Point
 
 . rows = items.rows
@@ -1235,7 +1235,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → items.rows
+Exception: allocation is not allowed under 'without heap': outer (without heap) → items.rows
 <no file:14>
     . rows = items.rows
              ^^^^^^^^^^
@@ -1253,7 +1253,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 <= n
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Generator'Int @no-heap
++ do outer Generator'Int without heap
     - n Int
 
 = counted(n)
@@ -1261,7 +1261,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → counted
+Exception: allocation is not allowed under 'without heap': outer (without heap) → counted
 <no file:6>
     + do counted
     ^^^^^^^^^^^
@@ -1272,28 +1272,28 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 -- outer(3)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 . total = n
 do new
     total += 1
-do @no-gc
+do without gc
     total += 1
 = total
 
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → do new
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
 <no file:9>
     do new
     ^^^^^
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → do @no-gc
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do without gc
 <no file:11>
-    do @no-gc
-    ^^^^^^^^
+    do without gc
+    ^^^^^^^^^^^^
 ;====
 :====
 # A method bound to its object and made a function value is copied; a function is not
@@ -1323,7 +1323,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 = n * 2
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Maker @no-heap
++ do outer Maker without heap
     - adder Adder
 
 . plain Maker = twice
@@ -1332,7 +1332,7 @@ Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) →
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → adder.add
+Exception: allocation is not allowed under 'without heap': outer (without heap) → adder.add
 <no file:31>
     = adder.add
       ^^^^^^^^^
@@ -1348,13 +1348,13 @@ _ names [String] := ["a", "b"]
 _ plain [String] = ["c"]
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do heavy Int @no-heap
++ do heavy Int without heap
     - n Int
 
 = names.length + plain.length + n
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do waits Int @no-suspend
++ do waits Int without suspend
     - n Int
 
 = names.length + n
@@ -1362,12 +1362,12 @@ _ plain [String] = ["c"]
 :----
 %compile-error
 
-Exception: cannot read lazy global 'names' inside a @no-heap context, since its first read runs its value: heavy (@no-heap) → names
+Exception: cannot read lazy global 'names' under 'without heap', since its first read runs its value: heavy (without heap) → names
 <no file:12>
     = names.length + plain.length + n
       ^^^^^
 
-Exception: cannot read lazy global 'names' inside a @no-suspend context, since its first read runs its value: waits (@no-suspend) → names
+Exception: cannot read lazy global 'names' under 'without suspend', since its first read runs its value: waits (without suspend) → names
 <no file:18>
     = names.length + n
       ^^^^^
@@ -1382,14 +1382,14 @@ Exception: cannot read lazy global 'names' inside a @no-suspend context, since i
 -- slices("abc")
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do idle Int @no-suspend
++ do idle Int without suspend
     - n Int
 
 . collected = C:yumiGCRuntimeIdleCollect(0u64)
 = n
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do slices String @no-heap
++ do slices String without heap
     - text String
 
 = C:yumiStringSlice(text, 0, 1) as String
@@ -1397,12 +1397,12 @@ Exception: cannot read lazy global 'names' inside a @no-suspend context, since i
 :----
 %compile-error
 
-Exception: cannot suspend inside a @no-suspend context: idle (@no-suspend) → C:yumiGCRuntimeIdleCollect(0u64)
+Exception: cannot suspend under 'without suspend': idle (without suspend) → C:yumiGCRuntimeIdleCollect(0u64)
 <no file:12>
     . collected = C:yumiGCRuntimeIdleCollect(0u64)
                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Exception: allocation is not allowed in a @no-heap context: slices (@no-heap) → C:yumiStringSlice(text, 0, 1)
+Exception: allocation is not allowed under 'without heap': slices (without heap) → C:yumiStringSlice(text, 0, 1)
 <no file:19>
     = C:yumiStringSlice(text, 0, 1) as String
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1413,7 +1413,7 @@ Exception: allocation is not allowed in a @no-heap context: slices (@no-heap) �
 -- outer(3)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 do new
@@ -1429,7 +1429,7 @@ do new
 -- outer(3)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @no-heap
++ do outer Int without heap
     - n Int
 
 do new
@@ -1441,13 +1441,13 @@ catch Panic
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: outer (@no-heap) → do new
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
 <no file:8>
     do new
     ^^^^^
 ;====
 :====
-# without on a block or a header is the restriction @no- names.
+# A without section restricts a block or a function's header, and code that keeps to it runs.
 
 . seed = 5
 do without gc
@@ -1483,7 +1483,7 @@ do without safepoints, probe-safepoints
     for value in 1 .. count
         sum += value
 -- sum
-do @no-heap @no-suspend
+do without heap, suspend
     sum += total(2)
 -- sum
 
@@ -1539,10 +1539,25 @@ do without suspend
 :----
 %compile-error
 
-Exception: cannot suspend inside a @no-suspend context: main (do @no-suspend) → C:yumiWaitForTask(0)
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:yumiWaitForTask(0)
 <no file:5>
         C:yumiWaitForTask(0)
         ^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# Cancelling a task yields to it, so it suspends
+/YuEvents/YuEvents.h
+
+do without suspend
+    C:yumiCancelTask(0)
+
+:----
+%compile-error
+
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:yumiCancelTask(0)
+<no file:5>
+        C:yumiCancelTask(0)
+        ^^^^^^^^^^^^^^^^^^^
 ;====
 :====
 
@@ -1559,7 +1574,7 @@ do without heap
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: main (do @no-heap) → Box()
+Exception: allocation is not allowed under 'without heap': main (do without heap) → Box()
 <no file:4>
         sum = Box().value
               ^^^^^
@@ -1580,7 +1595,7 @@ Exception: allocation is not allowed in a @no-heap context: main (do @no-heap) �
 :----
 %compile-error
 
-Exception: allocation is not allowed in a @no-heap context: boxed (@no-heap) → Box()
+Exception: allocation is not allowed under 'without heap': boxed (without heap) → Box()
 <no file:6>
     = Box().value
       ^^^^^
@@ -1613,4 +1628,33 @@ Exception: 'without cancel' is only for a do block
 <no file:5>
     + do run without cancel
     ^^^^^^^^^^^^^^^^^^^^^^
+;====
+:====
+# A task an object owns allocates the record the object keeps of it, so a method under without heap
+# cannot start one, though it can start a task marked @detached that captures nothing
+
+. holder = Holder()
+holder.start()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
+────────────────────
++ do start without heap
+
+do new
+    -- "owned"
+do new @detached
+    -- "detached"
+
+────────────────────
++ do close
+
+:----
+%compile-error
+
+Exception: allocation is not allowed under 'without heap': Holder.start (without heap) → do new
+<no file:11>
+    do new
+    ^^^^^
 ;====

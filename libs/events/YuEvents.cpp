@@ -11,6 +11,7 @@
 #include <YuEvents/YuPoll.h>
 #include <YuCore/YuCore.h>
 #include <YuGC/YuGC.h>
+#include <YuGC/YuGCRuntime.h>
 
 #include <stdlib.h>
 #include <atomic>
@@ -683,8 +684,8 @@ unstartedEnding() {
     return new YuTaskEnding(0, 1, YU_TASK_END_CANCELLED);
 }
 
-extern "C" uint64_t
-yumiStartTask(
+static uint64_t
+startTask(
     YuTaskQueue* queue,
     YuTaskStartFunc func,
     void* closure,
@@ -692,7 +693,8 @@ yumiStartTask(
     const char* file,
     uint32_t line,
     uint32_t column,
-    uint32_t options) {
+    uint32_t options,
+    uint64_t* handle) {
     bool wantsEnding = options & YU_TASK_START_HANDLE;
     if (yumiProcessTerminationRequested()) {
         return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
@@ -720,15 +722,174 @@ yumiStartTask(
         if (queue->isStopped()) {
             return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
         }
-        queue->startTask(func, closure, localSize, provenance, wanted);
+        queue->startTask(func, closure, localSize, provenance, wanted, handle);
     } else if (options & YU_TASK_START_SPIN) {
-        gSpinQueue->startTask(func, closure, localSize, provenance, wanted);
+        gSpinQueue->startTask(func, closure, localSize, provenance, wanted, handle);
     } else if (thread) {
-        thread->startTask(func, closure, localSize, provenance, wanted);
+        thread->startTask(func, closure, localSize, provenance, wanted, handle);
     } else {
         return wantsEnding ? reinterpret_cast<uint64_t>(unstartedEnding()) : 0;
     }
     return wantsEnding ? reinterpret_cast<uint64_t>(ending) : 1;
+}
+
+extern "C" uint64_t
+yumiStartTask(
+    YuTaskQueue* queue,
+    YuTaskStartFunc func,
+    void* closure,
+    size_t localSize,
+    const char* file,
+    uint32_t line,
+    uint32_t column,
+    uint32_t options) {
+    return startTask(queue, func, closure, localSize, file, line, column, options, nullptr);
+}
+
+struct YuTaskOwner {
+    YuMutex lock;
+    std::vector<uint64_t> handles;
+    size_t pruneAt = 8;
+};
+
+static size_t
+deleteTaskOwner(void* context) {
+    delete static_cast<YuTaskOwner*>(context);
+    return 1;
+}
+
+static YuTaskOwner*
+ownedTasksOf(char* owner) {
+    char* holder = yumiGCObjectSidePayload(owner, YumiObjectSidePayloadOwnedTasks);
+    return holder ? *reinterpret_cast<YuTaskOwner**>(holder) : nullptr;
+}
+
+static YuTaskOwner*
+ensureOwnedTasks(char* owner) {
+    if (YuTaskOwner* found = ownedTasksOf(owner)) {
+        return found;
+    }
+#if YU_ENABLE_YUMI_GC
+    if (!yumiGCIsManagedAddress(owner)) {
+        return nullptr;
+    }
+#endif
+    void* ownerRoot = yumiAddTemporaryRoot(owner);
+    char* holder = yumiGCAllocObject(sizeof(YuTaskOwner*));
+    void* holderRoot = yumiAddTemporaryRoot(holder);
+    YuTaskOwner* made = new YuTaskOwner();
+    *reinterpret_cast<YuTaskOwner**>(holder) = made;
+    YuTaskOwner* kept = nullptr;
+    if (yumiGCRegisterNativeCleanup(holder, made, deleteTaskOwner)) {
+        char* published = yumiGCPublishObjectSidePayload(
+            owner, YumiObjectSidePayloadOwnedTasks, holder);
+        kept = published ? *reinterpret_cast<YuTaskOwner**>(published) : nullptr;
+    } else {
+        delete made;
+    }
+    if (holderRoot) {
+        yumiRemoveTemporaryRoot(holderRoot);
+    }
+    if (ownerRoot) {
+        yumiRemoveTemporaryRoot(ownerRoot);
+    }
+    return kept;
+}
+
+static bool
+taskHandleIsLive(uint64_t handle) {
+    YuTask* task = YuTask::pinHandle(handle);
+    if (!task) {
+        return false;
+    }
+    task->unpinHandle();
+    return true;
+}
+
+static void
+addOwnedTask(YuTaskOwner* tasks, uint64_t handle) {
+    tasks->lock.lock();
+    if (tasks->handles.size() >= tasks->pruneAt) {
+        size_t kept = 0;
+        for (uint64_t held : tasks->handles) {
+            if (taskHandleIsLive(held)) {
+                tasks->handles[kept++] = held;
+            }
+        }
+        tasks->handles.resize(kept);
+        tasks->pruneAt = kept * 2 > 8 ? kept * 2 : 8;
+    }
+    tasks->handles.push_back(handle);
+    tasks->lock.unlock();
+}
+
+extern "C" uint64_t
+yumiStartOwnedTask(
+    char* owner,
+    YuTaskQueue* queue,
+    YuTaskStartFunc func,
+    void* closure,
+    size_t localSize,
+    const char* file,
+    uint32_t line,
+    uint32_t column,
+    uint32_t options) {
+    uint64_t handle = 0;
+    uint64_t started =
+        startTask(queue, func, closure, localSize, file, line, column, options, &handle);
+    if (handle && owner) {
+        if (YuTaskOwner* tasks = ensureOwnedTasks(owner)) {
+            addOwnedTask(tasks, handle);
+        }
+    }
+    return started;
+}
+
+static void
+cancelTaskWithoutYielding(YuTask* task) {
+    task->cancel();
+    task->getTaskQueue()->wakeCanceledTask(task);
+}
+
+static void
+cancelOwnedTasks(char* owner, char* heir) {
+    YuTaskOwner* tasks = owner ? ownedTasksOf(owner) : nullptr;
+    if (!tasks) {
+        return;
+    }
+    std::vector<uint64_t> handles;
+    tasks->lock.lock();
+    handles.swap(tasks->handles);
+    tasks->pruneAt = 8;
+    tasks->lock.unlock();
+    YuTask* current = yumiTryGetActiveTask();
+    uint64_t closing = 0;
+    for (uint64_t handle : handles) {
+        YuTask* task = YuTask::pinHandle(handle);
+        if (!task) {
+            continue;
+        }
+        if (task == current) {
+            closing = handle;
+        } else {
+            cancelTaskWithoutYielding(task);
+        }
+        task->unpinHandle();
+    }
+    if (closing) {
+        YuTaskOwner* keeper = heir ? ensureOwnedTasks(heir) : nullptr;
+        addOwnedTask(keeper ? keeper : tasks, closing);
+    }
+}
+
+extern "C" void
+yumiCancelOwnedTasks(char* owner) {
+    cancelOwnedTasks(owner, nullptr);
+}
+
+extern "C" void
+yumiCancelOwnedTasksTo(char* owner, char* heir) {
+    cancelOwnedTasks(owner, heir);
 }
 
 static size_t
@@ -902,19 +1063,29 @@ yumiGetTaskFinished(uint64_t handle) {
     return false;
 }
 
-extern "C" bool
-yumiGetTaskCanceled(uint64_t handle) {
+static bool
+readTaskCancel(uint64_t handle, bool inForce) {
     if (YuTask* active = yumiActiveTaskForHandle(handle)) {
-        return active->getCanceled();
+        return inForce ? active->getCanceled() : active->isCancelRequested();
     }
 
     YuTask* task = YuTask::pinHandle(handle);
     if (!task) {
         return false;
     }
-    bool canceled = task->getCanceled();
+    bool canceled = inForce ? task->getCanceled() : task->isCancelRequested();
     task->unpinHandle();
     return canceled;
+}
+
+extern "C" bool
+yumiGetTaskCanceled(uint64_t handle) {
+    return readTaskCancel(handle, false);
+}
+
+extern "C" bool
+yumiGetTaskCancelInForce(uint64_t handle) {
+    return readTaskCancel(handle, true);
 }
 
 extern "C" bool
@@ -1036,10 +1207,37 @@ yumiResumeTaskLater(uint64_t handle) {
 
 extern "C" void
 yumiCancelTask(uint64_t handle) {
-    if (YuTask* task = YuTask::pinHandle(handle)) {
-        task->cancel();
-        yumiResumePinnedTask(task, true);
+    YuTask* task = YuTask::pinHandle(handle);
+    if (!task) {
+        return;
     }
+    cancelTaskWithoutYielding(task);
+    YuThread* thread = yumiGetActiveThread();
+    YuTask* current = thread ? thread->getActiveTask() : NULL;
+    task->unpinHandle();
+    if (current && task != current) {
+        thread->suspendTask(current, NULL, YuTaskGCStateParked, true);
+    }
+}
+
+extern "C" void
+yumiCancelTaskLater(uint64_t handle) {
+    YuTask* task = YuTask::pinHandle(handle);
+    if (!task) {
+        return;
+    }
+    cancelTaskWithoutYielding(task);
+    task->unpinHandle();
+}
+
+extern "C" void
+yumiEnterCancelShield() {
+    yumiGetActiveThread()->getActiveTask()->enterCancelShield();
+}
+
+extern "C" void
+yumiLeaveCancelShield() {
+    yumiGetActiveThread()->getActiveTask()->leaveCancelShield();
 }
 
 // =============================================================================================

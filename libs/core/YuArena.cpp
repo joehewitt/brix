@@ -398,7 +398,7 @@ recycleArenaSlot(ArenaSlot* arena) {
 
 } // namespace
 
-extern "C" YUMI_GC_LEAF void*
+extern "C" YUMI_WITHOUT_GC void*
 yumiArenaCreate(size_t initialCapacity) {
     ArenaSlot* arena = takeArenaSlot();
     if (!arena) {
@@ -426,13 +426,13 @@ yumiArenaCreate(size_t initialCapacity) {
     return arena;
 }
 
-extern "C" YUMI_GC_LEAF size_t
+extern "C" YUMI_WITHOUT_GC size_t
 yumiArenaIncarnation(void* opaque) {
     ArenaSlot* arena = static_cast<ArenaSlot*>(opaque);
     return arena ? arena->incarnation.load(std::memory_order_acquire) : 0;
 }
 
-extern "C" YUMI_GC_LEAF char*
+extern "C" YUMI_WITHOUT_GC char*
 yumiArenaReserve(
     void* opaque,
     size_t incarnation,
@@ -466,7 +466,7 @@ yumiArenaReserve(
     return result;
 }
 
-extern "C" YUMI_GC_LEAF void
+extern "C" YUMI_WITHOUT_GC void
 yumiArenaAllocationFailed(void* opaque, size_t incarnation, size_t alignment) {
     const char* message = "Arena allocation failed";
     if (!slot(opaque, incarnation)) {
@@ -525,7 +525,7 @@ yumiArenaVisitTracedReservations(
     }
 }
 
-extern "C" YUMI_GC_LEAF const YumiStringData*
+extern "C" YUMI_WITHOUT_GC const YumiStringData*
 yumiArenaCopyString(void* opaque, size_t incarnation, const char* value) {
     ArenaSlot* arena = slot(opaque, incarnation);
     if (!arena || !value) {
@@ -550,7 +550,7 @@ yumiArenaCopyString(void* opaque, size_t incarnation, const char* value) {
     return reinterpret_cast<const YumiStringData*>(copy + sizeof(YumiStringHeader));
 }
 
-extern "C" YUMI_GC_LEAF const YumiStringData*
+extern "C" YUMI_WITHOUT_GC const YumiStringData*
 yumiArenaCopyCodepointSpan(
     void* opaque,
     size_t incarnation,
@@ -624,7 +624,7 @@ yumiArenaCopyCodepointSpan(
     return reinterpret_cast<const YumiStringData*>(output);
 }
 
-extern "C" YUMI_GC_LEAF bool
+extern "C" YUMI_WITHOUT_GC bool
 yumiArenaOwns(void* opaque, size_t incarnation, const void* value) {
     ArenaSlot* arena = slot(opaque, incarnation);
     if (!arena || !value) {
@@ -640,7 +640,7 @@ yumiArenaOwns(void* opaque, size_t incarnation, const void* value) {
     return false;
 }
 
-extern "C" YUMI_GC_LEAF size_t
+extern "C" YUMI_WITHOUT_GC size_t
 yumiArenaMark(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     if (!arena || activeBytesOf(arena) > kArenaMarkOffsetMask) {
@@ -651,7 +651,7 @@ yumiArenaMark(void* opaque, size_t incarnation) {
            activeBytesOf(arena);
 }
 
-extern "C" YUMI_GC_LEAF size_t
+extern "C" YUMI_WITHOUT_GC size_t
 yumiArenaRewind(
     void* opaque,
     size_t incarnation,
@@ -725,7 +725,7 @@ yumiArenaRewind(
     return 0;
 }
 
-extern "C" YUMI_GC_LEAF void
+extern "C" YUMI_WITHOUT_GC void
 yumiArenaReset(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     if (!arena) {
@@ -745,7 +745,7 @@ yumiArenaReset(void* opaque, size_t incarnation) {
     gArenaResetCount.fetch_add(1, std::memory_order_relaxed);
 }
 
-extern "C" YUMI_GC_LEAF void
+extern "C" YUMI_WITHOUT_GC void
 yumiArenaRelease(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     if (!arena) {
@@ -768,63 +768,63 @@ yumiArenaRelease(void* opaque, size_t incarnation) {
     recycleArenaSlot(arena);
 }
 
-extern "C" YUMI_GC_LEAF size_t yumiArenaGeneration(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaGeneration(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->generation : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaState(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaState(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return !arena ? 2 : arena->resetCount ? 1 : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaActiveBlockCount(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaActiveBlockCount(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->activeBlockCount : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRetainedBlockCount(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRetainedBlockCount(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->retainedBlockCount : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaActiveBytes(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaActiveBytes(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? activeBytesOf(arena) : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaReservedBytes(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaReservedBytes(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->reservedBytes : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRetainedBytes(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRetainedBytes(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->retainedBytes : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaPeakActiveBytes(void* opaque, size_t incarnation) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaPeakActiveBytes(void* opaque, size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->peakActiveBytes : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaOwnerSystemBlockAllocationCount(
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaOwnerSystemBlockAllocationCount(
     void* opaque,
     size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->systemBlockAllocationCount : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaOwnerResetCount(
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaOwnerResetCount(
     void* opaque,
     size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->resetCount : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaOwnerRewindCount(
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaOwnerRewindCount(
     void* opaque,
     size_t incarnation) {
     ArenaSlot* arena = slot(opaque, incarnation);
     return arena ? arena->rewindCount : 0;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaSystemBlockAllocationCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaSystemBlockAllocationCount(void) {
     return gArenaSystemBlockAllocationCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaSystemBlockFreeCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaSystemBlockFreeCount(void) {
     return gArenaSystemBlockFreeCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRuntimeActiveBytes(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRuntimeActiveBytes(void) {
     std::lock_guard<std::mutex> lock(gArenaSlotMutex);
     size_t total = 0;
     for (ArenaSlotPage* page = gArenaSlotPages; page; page = page->next) {
@@ -834,38 +834,38 @@ extern "C" YUMI_GC_LEAF size_t yumiArenaRuntimeActiveBytes(void) {
     }
     return total;
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRuntimeReservedBytes(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRuntimeReservedBytes(void) {
     return gArenaReservedBytes.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRuntimeRetainedBytes(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRuntimeRetainedBytes(void) {
     return gArenaRetainedBytes.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRuntimePeakActiveBytes(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRuntimePeakActiveBytes(void) {
     return gArenaPeakActiveBytes.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaMarkCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaMarkCount(void) {
     return gArenaMarkCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaRewindCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaRewindCount(void) {
     return gArenaRewindCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaResetCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaResetCount(void) {
     return gArenaResetCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaSlotCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaSlotCount(void) {
     return gArenaSlotCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaLiveSlotCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaLiveSlotCount(void) {
     return gArenaLiveSlotCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaManagedAllocationCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaManagedAllocationCount(void) {
     return gArenaManagedAllocationCount.load(std::memory_order_relaxed);
 }
-extern "C" YUMI_GC_LEAF size_t yumiArenaZoneTransitionCount(void) {
+extern "C" YUMI_WITHOUT_GC size_t yumiArenaZoneTransitionCount(void) {
     return 0;
 }
 
-extern "C" YUMI_GC_LEAF void*
+extern "C" YUMI_WITHOUT_GC void*
 yumiArenaFindOwner(const void* data) {
     const uintptr_t address = reinterpret_cast<uintptr_t>(data);
     std::lock_guard<std::mutex> lock(gArenaSlotMutex);

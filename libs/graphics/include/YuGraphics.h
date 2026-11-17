@@ -25,35 +25,35 @@ extern "C" void* yumiGraphicsCanvasCreateFormatted(
     int32_t format
 );
 extern "C" void* yumiGraphicsCanvasCreateWithSurface(void* surface, double scale);
-extern "C" YUMI_GC_LEAF void yumiGraphicsCanvasSurfaceChanged(void* canvas);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsCanvasSurfaceChanged(void* canvas);
 extern "C" void* yumiGraphicsSurfaceCreate(int32_t pixelWidth, int32_t pixelHeight);
 extern "C" void yumiGraphicsSurfaceRelease(void* surface);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsSurfaceGetPixelWidth(void* surface);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsSurfaceGetPixelHeight(void* surface);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsSurfaceGetPixelWidth(void* surface);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsSurfaceGetPixelHeight(void* surface);
 extern "C" uint32_t yumiGraphicsSurfaceCreateMachPort(void* surface);
 extern "C" void* yumiGraphicsSurfaceLookUpMachPort(uint32_t port);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetColorSpaceKind(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetPixelFormat(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetColorSpaceKind(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetPixelFormat(void* canvas);
 extern "C" void yumiGraphicsCanvasRelease(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetWidth(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetHeight(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetPixelWidth(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetPixelHeight(void* canvas);
-extern "C" YUMI_GC_LEAF double yumiGraphicsCanvasGetScale(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetWidth(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetHeight(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetPixelWidth(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetPixelHeight(void* canvas);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsCanvasGetScale(void* canvas);
 extern "C" void* yumiGraphicsCanvasCreateCGImage(void* canvas);
-extern "C" YUMI_GC_LEAF uint64_t yumiGraphicsCanvasContentSerial(void* canvas);
-extern "C" YUMI_GC_LEAF uint64_t yumiGraphicsCanvasIdentity(void* canvas);
-extern "C" YUMI_GC_LEAF void yumiGraphicsCanvasObserveChanges(void* canvas);
-extern "C" YUMI_GC_LEAF bool yumiGraphicsCanvasChangedRegion(void* canvas, uint64_t since, int32_t* region);
+extern "C" YUMI_WITHOUT_GC uint64_t yumiGraphicsCanvasContentSerial(void* canvas);
+extern "C" YUMI_WITHOUT_GC uint64_t yumiGraphicsCanvasIdentity(void* canvas);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsCanvasObserveChanges(void* canvas);
+extern "C" YUMI_WITHOUT_GC bool yumiGraphicsCanvasChangedRegion(void* canvas, uint64_t since, int32_t* region);
 extern "C" void yumiGraphicsSetCanvasReleaseObserver(void (*observer)(uint64_t identity));
 extern "C" void* yumiGraphicsCanvasRetainPixelStore(void* canvas);
 extern "C" void* yumiGraphicsPixelStoreData(void* store);
 extern "C" uint64_t yumiGraphicsPixelStoreLength(void* store);
 extern "C" void yumiGraphicsPixelStoreRelease(void* store);
-extern "C" YUMI_GC_LEAF void* yumiGraphicsCanvasGetPixelData(void* canvas);
-extern "C" YUMI_GC_LEAF uint64_t yumiGraphicsCanvasGetBytesPerRow(void* canvas);
-extern "C" YUMI_GC_LEAF int32_t yumiGraphicsCanvasGetBytesPerPixel(void* canvas);
-extern "C" YUMI_GC_LEAF void* yumiGraphicsCanvasGetColorSpace(void* canvas);
+extern "C" YUMI_WITHOUT_GC void* yumiGraphicsCanvasGetPixelData(void* canvas);
+extern "C" YUMI_WITHOUT_GC uint64_t yumiGraphicsCanvasGetBytesPerRow(void* canvas);
+extern "C" YUMI_WITHOUT_GC int32_t yumiGraphicsCanvasGetBytesPerPixel(void* canvas);
+extern "C" YUMI_WITHOUT_GC void* yumiGraphicsCanvasGetColorSpace(void* canvas);
 extern "C" void yumiGraphicsCanvasPixelsChanged(void* canvas);
 extern "C" bool yumiGraphicsCanvasWritePNG(void* canvas, const char* path, bool compact);
 extern "C" void* yumiGraphicsCanvasEncodePNG(void* canvas, bool compact);
@@ -88,13 +88,13 @@ extern "C" bool yumiGraphicsCanvasOpaqueBounds(void* canvas, int32_t minimumAlph
 extern "C" uint64_t yumiGraphicsCanvasCountDifferentPixels(void* canvas, void* otherCanvas);
 extern "C" bool yumiGraphicsCanvasCopyPixels(void* canvas, uint8_t* out, uint64_t size);
 extern "C" bool yumiGraphicsCanvasWritePixels(void* canvas, const uint8_t* in, uint64_t size);
-extern "C" YUMI_GC_LEAF uint32_t yumiGraphicsCanvasGetPixel(void* canvas, double x, double y);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiGraphicsCanvasGetPixel(void* canvas, double x, double y);
 
 // **********************************************************************************************
 
-extern "C" YUMI_GC_LEAF void yumiGraphicsSave(void* canvas);
-extern "C" YUMI_GC_LEAF void yumiGraphicsRestore(void* canvas);
-extern "C" YUMI_GC_LEAF void yumiGraphicsTransform(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSave(void* canvas);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsRestore(void* canvas);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsTransform(
     void* canvas,
     double a,
     double c,
@@ -103,11 +103,11 @@ extern "C" YUMI_GC_LEAF void yumiGraphicsTransform(
     double tx,
     double ty
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsTranslate(void* canvas, double x, double y);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsTranslate(void* canvas, double x, double y);
 extern "C" void yumiGraphicsClipPath(void* canvas, int32_t fillRule);
 extern "C" void yumiGraphicsClearRect(void* canvas, double x, double y, double width, double height);
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetBlendMode(void* canvas, int32_t mode);
-extern "C" YUMI_GC_LEAF void yumiGraphicsClipRect(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetBlendMode(void* canvas, int32_t mode);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsClipRect(
     void* canvas,
     double x,
     double y,
@@ -124,24 +124,24 @@ extern "C" void yumiGraphicsClear(
     double blue,
     double alpha
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetFillColor(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetFillColor(
     void* canvas,
     double red,
     double green,
     double blue,
     double alpha
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetStrokeColor(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetStrokeColor(
     void* canvas,
     double red,
     double green,
     double blue,
     double alpha
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetStrokeWidth(void* canvas, double width);
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetStrokeCap(void* canvas, int32_t cap);
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetStrokeJoin(void* canvas, int32_t join);
-extern "C" YUMI_GC_LEAF void yumiGraphicsSetStrokeDash(void* canvas, double length);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetStrokeWidth(void* canvas, double width);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetStrokeCap(void* canvas, int32_t cap);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetStrokeJoin(void* canvas, int32_t join);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsSetStrokeDash(void* canvas, double length);
 extern "C" void yumiGraphicsFillGradient(
     void* canvas,
     double x,
@@ -339,11 +339,11 @@ extern "C" void yumiGraphicsClipMask(
 
 // **********************************************************************************************
 
-extern "C" YUMI_GC_LEAF void yumiGraphicsBeginPath(void* canvas);
-extern "C" YUMI_GC_LEAF bool yumiGraphicsPathContainsPoint(void* canvas, double x, double y, int32_t fillRule);
-extern "C" YUMI_GC_LEAF void yumiGraphicsMoveTo(void* canvas, double x, double y);
-extern "C" YUMI_GC_LEAF void yumiGraphicsLineTo(void* canvas, double x, double y);
-extern "C" YUMI_GC_LEAF void yumiGraphicsCurveTo(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsBeginPath(void* canvas);
+extern "C" YUMI_WITHOUT_GC bool yumiGraphicsPathContainsPoint(void* canvas, double x, double y, int32_t fillRule);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsMoveTo(void* canvas, double x, double y);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsLineTo(void* canvas, double x, double y);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsCurveTo(
     void* canvas,
     double x1,
     double y1,
@@ -352,8 +352,8 @@ extern "C" YUMI_GC_LEAF void yumiGraphicsCurveTo(
     double x3,
     double y3
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsClosePath(void* canvas);
-extern "C" YUMI_GC_LEAF void yumiGraphicsAppendPath(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsClosePath(void* canvas);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsAppendPath(
     void* canvas,
     const uint8_t* verbs,
     int64_t verbCount,
@@ -504,69 +504,93 @@ extern "C" void* yumiGraphicsStyledTextLayoutCreate(
     bool wordWrap,
     double lineSpacing
 );
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetFragmentCount(void* layout);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetFragmentTag(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetFragmentLine(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetFragmentX(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetFragmentWidth(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetFragmentAscent(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetFragmentDescent(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextFontCreatedCount(void);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetLastFontCreateMissCount(void);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetWidth(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetNaturalWidth(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetConstrainedWidth(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetHeight(void* layout);
-extern "C" YUMI_GC_LEAF uint64_t yumiGraphicsTextLayoutGetSerial(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetAscent(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetDescent(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLeading(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetBaseline(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLastBaseline(void* layout);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetLineCount(void* layout);
-extern "C" YUMI_GC_LEAF bool yumiGraphicsTextLayoutIsTruncated(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetTypographicX(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetTypographicY(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetInkX(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetInkY(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetInkWidth(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetInkHeight(void* layout);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineTypographicX(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineTypographicY(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineWidth(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineHeight(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetLineStart(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetLineEnd(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetLineForIndex(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetXForIndex(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetIndexAtPoint(void* layout, double x, double y);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineInkX(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineInkY(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineInkWidth(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineInkHeight(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineBaseline(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineAscent(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineDescent(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF double yumiGraphicsTextLayoutGetLineLeading(void* layout, int64_t index);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetRunCount(void* layout);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetRunGlyphCount(void* layout, int64_t runIndex);
-extern "C" YUMI_GC_LEAF int64_t yumiGraphicsTextLayoutGetRunLine(void* layout, int64_t runIndex);
-extern "C" YUMI_GC_LEAF void yumiGraphicsTextLayoutGetRunGlyphs(
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetFragmentCount(void* layout);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetFragmentTag(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetFragmentLine(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetFragmentX(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetFragmentWidth(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetFragmentAscent(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetFragmentDescent(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextFontCreatedCount(void);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetLastFontCreateMissCount(void);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetWidth(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetNaturalWidth(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetConstrainedWidth(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetHeight(void* layout);
+extern "C" YUMI_WITHOUT_GC uint64_t yumiGraphicsTextLayoutGetSerial(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetAscent(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetDescent(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLeading(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetBaseline(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLastBaseline(void* layout);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetLineCount(void* layout);
+extern "C" YUMI_WITHOUT_GC bool yumiGraphicsTextLayoutIsTruncated(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetTypographicX(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetTypographicY(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetInkX(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetInkY(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetInkWidth(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetInkHeight(void* layout);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineTypographicX(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineTypographicY(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineWidth(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineHeight(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetLineStart(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetLineEnd(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetLineForIndex(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetXForIndex(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetIndexAtPoint(void* layout, double x, double y);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineInkX(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineInkY(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineInkWidth(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineInkHeight(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineBaseline(
+    void* layout,
+    int64_t index
+);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineAscent(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineDescent(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC double yumiGraphicsTextLayoutGetLineLeading(void* layout, int64_t index);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetRunCount(void* layout);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetRunGlyphCount(void* layout, int64_t runIndex);
+extern "C" YUMI_WITHOUT_GC int64_t yumiGraphicsTextLayoutGetRunLine(void* layout, int64_t runIndex);
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsTextLayoutGetRunGlyphs(
     void* layout,
     int64_t runIndex,
     uint16_t* glyphs,
     int64_t capacity
 );
-extern "C" YUMI_GC_LEAF void yumiGraphicsTextLayoutGetRunPositions(
+extern "C" YUMI_WITHOUT_GC void yumiGraphicsTextLayoutGetRunPositions(
     void* layout,
     int64_t runIndex,
     double* xyPairs,
     int64_t capacity
 );
 // Borrowed CTFontRef. Callers retaining data beyond this operation must retain the font.
-extern "C" YUMI_GC_LEAF void* yumiGraphicsTextLayoutGetRunFont(void* layout, int64_t runIndex);
-extern "C" YUMI_GC_LEAF bool yumiGraphicsTextLayoutIsRunObject(void* layout, int64_t runIndex);
-extern "C" YUMI_GC_LEAF bool yumiGraphicsTextLayoutGetRunColor(void* layout, int64_t runIndex, uint32_t* rgba8);
+extern "C" YUMI_WITHOUT_GC void* yumiGraphicsTextLayoutGetRunFont(void* layout, int64_t runIndex);
+extern "C" YUMI_WITHOUT_GC bool yumiGraphicsTextLayoutIsRunObject(void* layout, int64_t runIndex);
+extern "C" YUMI_WITHOUT_GC bool yumiGraphicsTextLayoutGetRunColor(void* layout, int64_t runIndex, uint32_t* rgba8);
 extern "C" void yumiGraphicsDrawTextLayout(
     void* canvas,
     void* layout,

@@ -46,7 +46,8 @@ public:
         void* closure,
         size_t localSize,
         const YuTaskProvenance& provenance = YuTaskProvenance(),
-        YuTaskEnding** ending = nullptr);
+        YuTaskEnding** ending = nullptr,
+        uint64_t* handle = nullptr);
     void suspendTask(
         YuTask* task,
         YuMutex* mutex,

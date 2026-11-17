@@ -176,10 +176,9 @@ local, a parameter, or a struct local. A pointer local declared with no value st
   in Yumi, such as `(call (. 50ms wait))`{.brix}, lets them run. Make a long blocking call in a
   task on the pool, with `do-new-thread`.
 - **Short calls.** Functions that cannot reach the collector, such as `strlen`, `strcmp` and the
-  math functions, are called directly. The annotations `@gc-leaf`, for such a function, and
-  `@gc-polling`, for one called between two of the collector's checks, are given to C functions by
-  the toolchain's own headers. A program cannot give them to a C function, and on a Yumi function
-  they do nothing.
+  math functions, are called directly. The toolchain's own headers mark such a function
+  `(without gc)`, and one called between two of the collector's checks `(without blocking)`. A
+  program cannot mark a C function itself.
 - **`errno`** is not a `C:` name. `(call C:yumiGetErrNo)`, from `/YuCore/YuCore.h`, reads it on
   every platform.
 - **Output.** `print` writes to C's `stdout` and flushes it, so output from `puts` and `print`
@@ -360,7 +359,8 @@ becomes CPointer'I32 only when asked; write "as CPointer'I32"`.
 The collector is the default so that objects can refer to one another freely, through parent
 links, callbacks and several views of one model, with no rule about who frees what. Leave it only
 where a lifetime or a pause matters: an arena for many values that one piece of work makes and can
-drop together, memory from C for what a C API owns, and `@no-gc` for code that must never pause.
+drop together, memory from C for what a C API owns, and `(without gc)` for code that must never
+pause.
 The collector frees memory, not resources: close a file, a socket or a subscription with `use` or
 `close`, since its object may be reclaimed much later.
 
@@ -494,7 +494,7 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
   (let readings (call (of Array F64) (list 2.5 4.0 3.5)))
   (print (call mean readings))
   (let total 0)
-  (do @no-gc
+  (do (without gc)
     (for (in i (..< 1 5))
       (+= total (* i i))
     )
@@ -502,7 +502,7 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
   (print total)
 )
 
-(fn-do + mean F64 @no-gc
+(fn-do + mean F64 (without gc)
   (param values (of Array F64))
   (let sum 0.0)
   (for (in value values)
@@ -517,31 +517,31 @@ An `Arena`, from `/core/arena`, holds memory that is freed all at once.
 30
 ```
 
-`@no-gc`, on a function or on a `(do @no-gc …)` block, makes code that never meets the collector:
-it allocates nothing the collector manages, never pauses for it, and never suspends its task. The
-core library's arrays, tables and arenas use it for their inner loops. Each restriction can also be written as
-a `(without …)` part after the annotations, as in `(do (without gc) …)` or
-`(fn-do + mean F64 (without heap suspend) …)`; see Functions.
+`(without gc)`, after a function's annotations or on a `(do …)` block, makes code that never meets
+the collector: it allocates nothing the collector manages, never pauses for it, and never suspends
+its task. The core library's arrays, tables and arenas use it for their inner loops. Each part of
+it can be asked for alone, as in `(fn-do + mean F64 (without heap suspend) …)`; see
+Functions.
 
-| Annotation | Refuses |
+| Name | Refuses |
 | --- | --- |
-| `@no-heap` | Making objects, arrays, lists and text; closures, tasks and `(do @no-gc …)` blocks that capture locals; a struct or other value that is no object made a value of an interface; a view of an array's rows or fields; calling a generator; a method bound to its object made a function value; and reading a global written with `(:= …)`. |
-| `@no-safepoint` | Pausing for the collector. |
-| `@no-suspend` | Suspending the task, calling function values, and reading a global written with `(:= …)`. |
-| `@no-gc` | All three. |
+| `heap` | Making objects, arrays, lists and text; closures, tasks and `(do (without gc) …)` blocks that capture locals; a struct or other value that is no object made a value of an interface; a view of an array's rows or fields; calling a generator; a method bound to its object made a function value; and reading a global written with `(:= …)`. |
+| `safepoints` | Pausing for the collector. |
+| `suspend` | Suspending the task, calling function values, and reading a global written with `(:= …)`. |
+| `gc` | All three. |
 
 - **Messages.** Making an object gives `allocation is not allowed in a GC-free zone (entered at …)`,
   storing an object anywhere but the zone's own locals gives `storing a managed pointer is not
   allowed in a GC-free zone`, and waiting gives `cannot suspend inside a GC-free zone`. Each is
   reported where it happens, with the calls that reach it from where the restriction is placed,
-  as in `mean (@no-gc) → helper → Box()`. Code a restriction reaches is checked under it however
+  as in `mean (without gc) → helper → Box()`. Code a restriction reaches is checked under it however
   it is called: directly, through an interface or a class's method, or through a conversion.
   Reading a global written with `(:= …)` gives `cannot read lazy global 'name' inside …, since its
   first read runs its value`, as that read may run any code and wait while another task runs it.
 - **What may run.** Numbers, structs, pointers, arrays made outside the code, method calls, C calls,
-  and an arena's methods, which are themselves `@no-gc`. A C function marked `@gc-polling` may
-  reach the collector, so under `@no-heap` or `@no-suspend` one counts as allocating and as
-  suspending unless the compiler knows it does neither.
+  and an arena's methods, which are themselves `(without gc)`. A C function marked
+  `(without blocking)` may reach the collector, so under `(without heap)` or `(without suspend)`
+  one counts as allocating and as suspending unless the compiler knows it does neither.
 
 ## What is checked
 

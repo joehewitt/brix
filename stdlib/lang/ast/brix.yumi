@@ -309,7 +309,7 @@ while header < close && is-header-item(header)
 while item < header
     if tape.is-atom(item)
         if bytes[tape.start(item)] == 64
-            annotations[annotation-filled] = atom-at(item, 1)
+            annotations[annotation-filled] = annotation-at(item)
             annotation-filled += 1
     else if head(item) == .raises-head
         errors[error-filled] = reduce-type(item + 2)
@@ -1879,6 +1879,7 @@ while arm < close
         - task-scheduling(loc, body.annotations)
         - task-large-stack(body.annotations)
         - tree.store-children(scratch-items(catchers, filled))
+        - task-detached(body.annotations)
 
 ────────────────────
 _ do failure-start Index
@@ -1978,7 +1979,7 @@ while item < end
 = scratch-items(errors, filled)
 
 ────────────────────
-_ do annotation-atoms ImmutableArray'Atom
+_ do annotation-atoms ImmutableArray'Atom ?! YumiSyntaxError
     - first Index
     - end Index
 
@@ -1987,10 +1988,17 @@ _ do annotation-atoms ImmutableArray'Atom
 . item = first
 while item < end
     if tape.is-atom(item) && bytes[tape.start(item)] == 64
-        names[filled] = atom-at(item, 1)
+        names[filled] = annotation-at(item)
         filled += 1
     item = tape.after(item)
 = scratch-items(names, filled)
+
+────────────────────
+_ do annotation-at Atom ?! YumiSyntaxError
+    - item Index
+
+` The annotation an `@` atom names, which may not be one a `without` section is written for.
+= written-annotation(located(begin-at(item), item), atom-at(item, 1))
 
 ────────────────────
 _ do getter SyntaxId ?! YumiSyntaxError
@@ -3029,7 +3037,7 @@ while index < close && tape.is-atom(index) && bytes[tape.start(index)] == 64
 . filled Size = 0
 . annotation = first
 while annotation < index
-    annotations[filled] = atom-at(annotation, 1)
+    annotations[filled] = annotation-at(annotation)
     filled += 1
     annotation = tape.after(annotation)
 = DoBody(arm-body(begin, owner, index, close), scratch-items(annotations, filled))

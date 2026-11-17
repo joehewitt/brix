@@ -136,7 +136,7 @@ _ is-rendering = false
 _ live-fill-rate F64?
 _ live-fill-rest-at U64?
 _ live-fill-wake-at F64?
-_ live-fill-wakes U64
+_ live-fill-waker Task?
 _ needs-layout = true
 _ requested-native-size = Dimensions(-1, -1)
 _ requested-native-position Point?
@@ -2172,17 +2172,18 @@ if wake-at == null
     live-fill-rest-at = null
     =? if live-fill-wake-at == null
     live-fill-wake-at = null
-    live-fill-wakes += 1
+    live-fill-waker?.cancel-later()
+    live-fill-waker = null
     =
 live-fill-rest-at = live-fill-rest-at ?? monotonic-time-nanoseconds()
 =? if live-fill-wake-at == wake-at
 live-fill-wake-at = wake-at
-live-fill-wakes += 1
-. wakes = live-fill-wakes
+live-fill-waker?.cancel-later()
 . delay = max(wake-at - live-fills.seconds, 0.001) / max(window-clock.time-scale, 0.000001)
-do new
+live-fill-waker = do new
     (delay as Seconds).wait()
-    =? if is-closed || wakes != live-fill-wakes
+    live-fill-waker = null
+    =? if is-closed
     live-fill-wake-at = null
     live-fills.is-pending = true
     schedule-render()

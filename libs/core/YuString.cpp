@@ -550,7 +550,7 @@ yumiStringSliceUtf8(const char* bytes, size_t begin, size_t end) {
     return _copyKnownString(bytes + begin, end - begin, scan.characterLength, scan.isASCII, bytes);
 }
 
-extern "C" YUMI_GC_LEAF const YumiStringData*
+extern "C" YUMI_WITHOUT_GC const YumiStringData*
 yumiArenaCopyByteSpan(
     void* arena,
     size_t incarnation,

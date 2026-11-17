@@ -73,17 +73,17 @@ _ VoiceState is I64
 + gain F64
 
 ────────────────────
-+ get is-active Bool @no-gc
++ get is-active Bool without gc
 
 stage != VoiceState.idle
 
 ────────────────────
-+ get loudness F64 @no-gc
++ get loudness F64 without gc
 
 envelope * level
 
 ────────────────────
-+ do noise F64 @no-gc
++ do noise F64 without gc
 
 seed = seed * 1664525 + 1013904223
 = (seed as F64) / 2147483648.0 - 1
@@ -122,7 +122,7 @@ cursors = Size[sizes.length]
 stores = F64[sizes.length]
 
 ────────────────────
-+ do comb F64 @no-gc
++ do comb F64 without gc
     - line Size
     - input F64
 
@@ -135,7 +135,7 @@ cursors[line] = if cursor + 1 >= lengths[line] then 0 else cursor + 1
 = output
 
 ────────────────────
-+ do pass F64 @no-gc
++ do pass F64 without gc
     - line Size
     - input F64
 
@@ -147,7 +147,7 @@ cursors[line] = if cursor + 1 >= lengths[line] then 0 else cursor + 1
 = delayed - input
 
 ────────────────────
-+ do side F64 @no-gc
++ do side F64 without gc
     - first Size
     - input F64
 
@@ -284,7 +284,7 @@ for voice in voices
 if frames > 0 then C:sqrt(energy / (frames as F64)) else 0.0
 
 ────────────────────
-+ do render @no-gc
++ do render without gc
     - out CPointer'F32
     - count I64
 
@@ -295,7 +295,7 @@ while done < count
     done += part
 
 ────────────────────
-_ do render-block @no-gc
+_ do render-block without gc
     - out CPointer'F32
     - count Size
 
@@ -319,7 +319,7 @@ for index in 0 .. < count
 finish(out, count)
 
 ────────────────────
-_ do finish @no-gc
+_ do finish without gc
     - out CPointer'F32
     - count Size
 
@@ -349,7 +349,7 @@ for index in 0 .. < count
 frames += count as I64
 
 ────────────────────
-_ do take-cues @no-gc
+_ do take-cues without gc
 
 . read = cues.consumed
 . written = cues.written
@@ -373,7 +373,7 @@ while read < written
 cues.consume(read)
 
 ────────────────────
-_ do hush-now @no-gc
+_ do hush-now without gc
 
 for slot in 0 .. < voices.length
     voices[slot].stage = VoiceState.idle
@@ -382,7 +382,7 @@ for slot in 0 .. < voices.length
 limit-envelope = 0
 
 ────────────────────
-_ do release-handle @no-gc
+_ do release-handle without gc
     - handle F64
 
 for slot in 0 .. < voices.length
@@ -391,7 +391,7 @@ for slot in 0 .. < voices.length
         release-voice(voice, bank.layer-table[voice.layer].release)
 
 ────────────────────
-_ do release-voice @no-gc
+_ do release-voice without gc
     - voice SoundVoice
     - seconds F64
 
@@ -405,19 +405,19 @@ voice.decay-factor = C:exp(-6.9 / (voice.left as F64))
 voice.echoes = 0
 
 ────────────────────
-_ frames-of I64 @no-gc
+_ frames-of I64 without gc
     - seconds F64
 
 greater(1, seconds * rate) as I64
 
 ────────────────────
-_ do random F64 @no-gc
+_ do random F64 without gc
 
 seed = seed * 1664525 + 1013904223
 = (seed as F64) / 4294967296.0
 
 ────────────────────
-_ do start-patch @no-gc
+_ do start-patch without gc
     - index Size
     - level F64
     - pan F64
@@ -446,7 +446,7 @@ for layer-index in patch.first .. < patch.first + patch.count
     begin-voice(voice, layer-index, index, loud, pan, bend, handle, wait)
 
 ────────────────────
-_ do release-handle-fast @no-gc
+_ do release-handle-fast without gc
     - handle F64
 
 for slot in 0 .. < voices.length
@@ -455,7 +455,7 @@ for slot in 0 .. < voices.length
         release-voice(voice, 0.03)
 
 ────────────────────
-_ do take-voice SoundVoice @no-gc
+_ do take-voice SoundVoice without gc
 
 . quietest = voices[0]
 . quietest-level F64 = 1000000
@@ -470,7 +470,7 @@ steals += 1
 = quietest
 
 ────────────────────
-_ do begin-voice @no-gc
+_ do begin-voice without gc
     - voice SoundVoice
     - layer-index Size
     - patch Size
@@ -523,14 +523,14 @@ else
     enter-attack(voice, layer)
 
 ────────────────────
-_ control-value F64 @no-gc
+_ control-value F64 without gc
     - index I64
     - otherwise F64
 
 if index >= 0 && (index as Size) < controls.length then controls[index as Size] else otherwise
 
 ────────────────────
-_ do enter-attack @no-gc
+_ do enter-attack without gc
     - voice SoundVoice
     - layer SoundLayer
 
@@ -541,7 +541,7 @@ voice.sweep-step = 1 - C:exp(-(mixer-control-frames as F64) / (sweep-time * rate
     .. sweep-time = greater(0.001, layer.sweep-time)
 
 ────────────────────
-_ do advance-stage @no-gc
+_ do advance-stage without gc
     - voice SoundVoice
     - layer SoundLayer
 
@@ -571,7 +571,7 @@ do match? voice.stage
         enter-attack(voice, layer)
 
 ────────────────────
-_ do enter-decay @no-gc
+_ do enter-decay without gc
     - voice SoundVoice
     - layer SoundLayer
 
@@ -584,7 +584,7 @@ voice.left = frames-of(layer.decay)
 voice.decay-factor = C:exp(-7.6 / (voice.left as F64))
 
 ────────────────────
-_ do end-voice @no-gc
+_ do end-voice without gc
     - voice SoundVoice
     - layer SoundLayer
 
@@ -597,7 +597,7 @@ else
     voice.stage = VoiceState.idle
 
 ────────────────────
-_ do render-voice @no-gc
+_ do render-voice without gc
     - voice SoundVoice
     - layer SoundLayer
     - count Size
@@ -659,7 +659,7 @@ while index < count && voice.is-active
         voice.stage = VoiceState.idle
 
 ────────────────────
-_ do oscillate F64 @no-gc
+_ do oscillate F64 without gc
     - voice SoundVoice
     - wave SoundWave
     - frequency F64
@@ -698,7 +698,7 @@ do match? wave
 = 0
 
 ────────────────────
-_ blep F64 @no-gc
+_ blep F64 without gc
     - turn F64
     - step F64
 
@@ -708,7 +708,7 @@ if turn < step then leading-edge else if turn > 1 - step then trailing-edge else
 .. trailing-edge = ((turn - 1) / step) * ((turn - 1) / step) + ((turn - 1) / step) * 2 + 1
 
 ────────────────────
-_ do filter F64 @no-gc
+_ do filter F64 without gc
     - voice SoundVoice
     - kind SoundFilter
     - input F64
@@ -733,7 +733,7 @@ do match? kind
 = input
 
 ━━━━━━━━━━━━━━━━━━━━
-_ greater F64 @no-gc
+_ greater F64 without gc
     - left F64
     - right F64
 

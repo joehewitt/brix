@@ -138,7 +138,11 @@ public:
     size_t getStackSize() { return context.stackSize; }
     char* getLocals() { return locals; }
     size_t getLocalsSize() { return localsSize; }
-    bool getCanceled() { return canceled.load(std::memory_order_acquire); }
+    bool getCanceled() {
+        return canceled.load(std::memory_order_acquire) &&
+            (cancelShield.load(std::memory_order_acquire) == 0 || getTerminating());
+    }
+    bool isCancelRequested() { return canceled.load(std::memory_order_acquire); }
     bool getTerminating() { return terminating.load(std::memory_order_acquire); }
     bool getActive() { return active.load(std::memory_order_acquire); }
     uint32_t getRunState() const { return runState.load(std::memory_order_acquire); }
@@ -186,13 +190,16 @@ public:
         }
         uint32_t expected = YuTaskRunRunning;
         if (runState.compare_exchange_strong(expected, YuTaskRunIdle,
-                std::memory_order_acq_rel)) {
+                std::memory_order_seq_cst)) {
             return false;
         }
         runState.store(YuTaskRunQueued, std::memory_order_release);
         return true;
     }
     void releaseQueued() { runState.store(YuTaskRunIdle, std::memory_order_release); }
+    void enterCancelShield();
+    void leaveCancelShield();
+    bool claimCancelWake();
     uint32_t getGCState() const { return gcState.load(std::memory_order_acquire); }
     uint64_t getGCHandshakeEpoch() const { return gcHandshakeEpoch.load(std::memory_order_acquire); }
     uint64_t getGCLastPollNanos() const { return gcLastPollNanos.load(std::memory_order_acquire); }
@@ -313,7 +320,7 @@ public:
     }
     bool inGCBlockingContext() const { return gcBlockingDepth != 0; }
 
-    void cancel() { canceled.store(true, std::memory_order_release); }
+    void cancel() { canceled.store(true, std::memory_order_seq_cst); }
     bool takeTermination() {
         if (!getTerminating() || terminationRaised) {
             return false;
@@ -322,8 +329,8 @@ public:
         return true;
     }
     void requestTermination() {
-        terminating.store(true, std::memory_order_release);
-        canceled.store(true, std::memory_order_release);
+        terminating.store(true, std::memory_order_seq_cst);
+        canceled.store(true, std::memory_order_seq_cst);
     }
     void setGCState(uint32_t state) { gcState.store(state, std::memory_order_release); }
     void setActive(bool value) { active.store(value, std::memory_order_release); }
@@ -355,6 +362,7 @@ public:
     YuTaskEnding* attachEnding();
     static YuTaskEnding* endingForHandle(uint64_t handle);
     void unpinHandle() { handlePins.fetch_sub(1, std::memory_order_release); }
+    void pin() { handlePins.fetch_add(1, std::memory_order_relaxed); }
     bool isHandlePinned() const { return handlePins.load(std::memory_order_acquire) != 0; }
 
 private:
@@ -371,6 +379,8 @@ private:
     char* locals;
     size_t localsSize;
     std::atomic<bool> canceled;
+    std::atomic<uint32_t> cancelShield;
+    std::atomic<bool> shieldLocked;
     std::atomic<bool> terminating;
     bool terminationRaised;
     std::atomic<bool> active;

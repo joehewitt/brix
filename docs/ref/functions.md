@@ -922,12 +922,6 @@ Fields and stream pattern rules take annotations of their own, described with th
 | `@inline` | Put the function's body in place of each call to it. |
 | `@live` | Keep state across the runs of the live value that calls the function. See Reactivity. |
 | `@rollback` | On a stream pattern rule or action: undo the changes it made through the match's helper when the match goes back past it. See Stream patterns. |
-| `@no-heap` | The function may not allocate memory the collector manages. |
-| `@no-suspend` | The function may not suspend its task. |
-| `@no-safepoints` | The function holds no point where the collector may stop it. |
-| `@no-probe-safepoints` | The function holds no point where probes may stop it. |
-| `@no-gc` | All of `@no-heap`, `@no-safepoints` and `@no-suspend`. |
-| `@gc-leaf`, `@gc-polling` | How the collector treats a native function. See Native code and memory. |
 
 A function that calls itself, directly or through other functions, cannot be inlined. The
 compiler calls it as usual and, with `--warnings`, reports each call it could not inline.
@@ -944,14 +938,25 @@ After its annotations, a function's header can take a `(without …)` part and `
 )
 ```
 
-- **Without.** `(without heap)` is `@no-heap`, and so for `suspend`, `safepoints`,
-  `probe-safepoints` and `gc`. On a C function in a header module, `(without gc)` is `@gc-leaf`
-  and `(without blocking)` is `@gc-polling`. A name that is none of these, or one named twice, is
-  an error.
+- **Without.** Each name keeps the function from something, which the compiler checks in the
+  function and in everything it calls:
+
+  | Name | The function may not |
+  | --- | --- |
+  | `heap` | Allocate memory the collector manages. |
+  | `suspend` | Suspend its task. |
+  | `safepoints` | Hold a point where the collector may stop it. |
+  | `probe-safepoints` | Hold a point where probes may stop it. |
+  | `gc` | Do any of `heap`, `safepoints` and `suspend`. |
+
+  On a C function in a header module, `(without gc)` says the function never reaches the
+  collector, and `(without blocking)` that it is called between two of the collector's checks;
+  see Native code and memory. A name that is none of these, or one named twice, is an error.
 - **With.** Each `(with name value)` sets a `@stack` property for the whole body, as a `do-with`
   around it would, the first outermost, so a later value can read an earlier one. It needs a
   `fn-do`.
 - **Blocks.** A `(do …)` takes the same parts after its annotations, as in
-  `(do (without gc) (with depth 3) …)`. There `(without cancel)` is also accepted, and
-  changes nothing yet. A `(do …)` kept from anything but `gc` runs in place: the functions it
-  calls are kept from the same, and its loops poll only as far as that allows.
+  `(do (without gc) (with depth 3) …)`. A `(do …)` kept from any of these but `gc` runs in
+  place: the functions it calls are kept from the same, and its loops poll only as far as that
+  allows. A block can also name `cancel`, which a function cannot: a task cancelled while it runs
+  the block goes on to the block's end and ends at its first wait after it; see Concurrency.

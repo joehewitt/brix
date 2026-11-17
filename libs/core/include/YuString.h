@@ -57,62 +57,62 @@ typedef struct {
 
 // **********************************************************************************************
 
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringCreate(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringCreate(
     const char* bytes, size_t byteLength);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringCreateValidated(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringCreateValidated(
     const char* bytes, size_t byteLength);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringCreateASCII(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringCreateASCII(
     const char* bytes, size_t byteLength);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringAdopt(const char* bytes);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringConcat(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringAdopt(const char* bytes);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringConcat(
     const char* left, const char* right);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringRepeat(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringRepeat(
     const char* value, size_t count);
-extern "C" YUMI_GC_LEAF bool yumiStringFind(
+extern "C" YUMI_WITHOUT_GC bool yumiStringFind(
     const char* self, const char* findStr, bool reverse, int start, int* outIndex);
-extern "C" YUMI_GC_LEAF bool yumiStringFindBytes(
+extern "C" YUMI_WITHOUT_GC bool yumiStringFindBytes(
     const char* self, const char* findStr, bool reverse, int start, int* outIndex);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringCopy(const char* value);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringSlice(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringCopy(const char* value);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringSlice(
     char* self, size_t begin, size_t end);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringSliceUtf8(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringSliceUtf8(
     const char* bytes, size_t begin, size_t end);
 
-extern "C" YUMI_GC_LEAF int yumiStringGetCharAtIndex(
+extern "C" YUMI_WITHOUT_GC int yumiStringGetCharAtIndex(
     const char* str, size_t index, ResultCharOffset* ret);
-extern "C" YUMI_GC_LEAF int yumiStringGetNextChar(
+extern "C" YUMI_WITHOUT_GC int yumiStringGetNextChar(
     const char* str, ResultCharOffset* ret);
 
-extern "C" YUMI_GC_LEAF bool yumiStringIsEmpty(const char* str);
-extern "C" YUMI_GC_LEAF uint64_t yumiStringGetByteLength(const char* str);
-extern "C" YUMI_GC_LEAF uint32_t yumiStringGetLength(const char* str);
-extern "C" YUMI_GC_LEAF uint32_t yumiStringGetFlags(const char* str);
-extern "C" YUMI_GC_LEAF bool yumiStringEquals(const char* left, const char* right);
-extern "C" YUMI_GC_LEAF int yumiStringCompare(const char* left, const char* right);
-extern "C" YUMI_GC_LEAF uint32_t yumiStringGetDisplayWidth(const char* str);
-extern "C" YUMI_GC_POLLING uint8_t yumiStringMeasureDisplayWidth(
+extern "C" YUMI_WITHOUT_GC bool yumiStringIsEmpty(const char* str);
+extern "C" YUMI_WITHOUT_GC uint64_t yumiStringGetByteLength(const char* str);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiStringGetLength(const char* str);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiStringGetFlags(const char* str);
+extern "C" YUMI_WITHOUT_GC bool yumiStringEquals(const char* left, const char* right);
+extern "C" YUMI_WITHOUT_GC int yumiStringCompare(const char* left, const char* right);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiStringGetDisplayWidth(const char* str);
+extern "C" YUMI_WITHOUT_BLOCKING uint8_t yumiStringMeasureDisplayWidth(
     const char* str, ResultDisplayWidth* ret);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringToUppercase(const char* input);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringToLowercase(const char* input);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringDecompose(const char* input);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringNormalize(const char* str);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringFromUtf8Codepoint(uint32_t c);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiStringFromUtf8Codepoints(
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringToUppercase(const char* input);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringToLowercase(const char* input);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringDecompose(const char* input);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringNormalize(const char* str);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringFromUtf8Codepoint(uint32_t c);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiStringFromUtf8Codepoints(
     const uint32_t* self, size_t start, size_t end);
-extern "C" YUMI_GC_LEAF uint8_t yumiStringValidateUtf8(
+extern "C" YUMI_WITHOUT_GC uint8_t yumiStringValidateUtf8(
     const char* input, size_t inputSize);
 
-extern "C" YUMI_GC_LEAF uint8_t yumiStringSliceToUtf8Codepoints(
+extern "C" YUMI_WITHOUT_GC uint8_t yumiStringSliceToUtf8Codepoints(
     const char* input, size_t inputSize, uint32_t* output, size_t outputSize,
     ResultDecodeUTF8* ret);
 
-extern "C" YUMI_GC_POLLING uint8_t yumiStringToUtf8Codepoints(
+extern "C" YUMI_WITHOUT_BLOCKING uint8_t yumiStringToUtf8Codepoints(
     const char* str, ResultDecodeUTF8* ret);
 
-extern "C" YUMI_GC_LEAF uint32_t yumiCharGetCategory(uint32_t c);
-extern "C" YUMI_GC_LEAF uint32_t yumiCharGetDisplayWidth(uint32_t c);
-extern "C" YUMI_GC_LEAF uint32_t yumiCharToUppercase(uint32_t c);
-extern "C" YUMI_GC_LEAF uint32_t yumiCharToLowercase(uint32_t c);
-extern "C" YUMI_GC_POLLING const YumiStringData* yumiCharToString(char c);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiCharGetCategory(uint32_t c);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiCharGetDisplayWidth(uint32_t c);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiCharToUppercase(uint32_t c);
+extern "C" YUMI_WITHOUT_GC uint32_t yumiCharToLowercase(uint32_t c);
+extern "C" YUMI_WITHOUT_BLOCKING const YumiStringData* yumiCharToString(char c);
 
 #endif

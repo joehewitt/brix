@@ -70,7 +70,7 @@ _ ProbeLiveEntry is (uid ProbeUID, class-type ProbeClassId, live ProbeLive)
 _ ProbeFrame is (uid U32, class-type U16)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do probe-log @no-probe-safepoints
++ do probe-log without probe-safepoints
     - text String
 
 probe-buffer-write(ProbeType.system-log)
@@ -80,7 +80,7 @@ probe-buffer-write(text)
 probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do probe-task-flush @no-probe-safepoints
++ do probe-task-flush without probe-safepoints
 
 probe-control-poll()
 probe-flush()
@@ -222,7 +222,7 @@ token != 0 && is-alive()
 = Array'T(address as CPointer'T, length)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-env-size @no-probe-safepoints
+_ do probe-env-size without probe-safepoints
     - name String
     - default-value Size
 
@@ -235,13 +235,13 @@ if value
 = default-value
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-buffer-reset @no-probe-safepoints
+_ do probe-buffer-reset without probe-safepoints
 
 probe-buffer-length = 0
 probe-next-flush-ns = 0
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-buffer-ensure @no-probe-safepoints @no-suspend
+_ do probe-buffer-ensure without probe-safepoints, suspend
     - required Size
 
 =? if required <= probe-buffer.size
@@ -257,7 +257,7 @@ while next-size < required
 probe-buffer = probe-buffer.resize(next-size)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-buffer-reserve Size @no-probe-safepoints @no-suspend
+_ do probe-buffer-reserve Size without probe-safepoints, suspend
     - size Size
 
 . offset = probe-buffer-length
@@ -269,7 +269,7 @@ if !probe-next-flush-ns
 = offset
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-buffer-write Size @no-probe-safepoints @no-suspend
+_ do probe-buffer-write Size without probe-safepoints, suspend
     - data CPointer'Byte
     - size Size
 
@@ -281,25 +281,25 @@ C:memcpy(probe-buffer.data + offset, data, size)
 = size
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-buffer-write @no-probe-safepoints @no-suspend
+_ probe-buffer-write without probe-safepoints, suspend
     - data Byte[]
 
 probe-buffer-write(data.data, data.size)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-buffer-write'T @no-probe-safepoints @no-suspend
+_ probe-buffer-write'T without probe-safepoints, suspend
     - data Array'T
 
 probe-buffer-write(data.data as CPointer'Byte, data.byte-size)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-buffer-write @no-probe-safepoints @no-suspend
+_ probe-buffer-write without probe-safepoints, suspend
     - data String
 
 probe-buffer-write(data as CPointer'Byte, data.size)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-buffer-write'Num Size @no-probe-safepoints @no-suspend
+_ do probe-buffer-write'Num Size without probe-safepoints, suspend
     - data Num
     - Num is Number
 
@@ -308,7 +308,7 @@ probe-buffer.write'Num(data, offset, .little)
 = Num.size
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-head Size @no-probe-safepoints @no-suspend
+_ do probe-write-head Size without probe-safepoints, suspend
     - probe-type ProbeType
     - probe-id U16
     - object-id ProbeUID
@@ -327,7 +327,7 @@ probe-buffer.write'U64(now % 1000000000u64, offset + 17, .little)
 = offset + probe-head-size
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-group Size @no-probe-safepoints @no-suspend
+_ do probe-write-group Size without probe-safepoints, suspend
     - probe-type ProbeType
     - probe-id U16
     - object-id ProbeUID
@@ -340,7 +340,7 @@ probe-buffer.write'U8(ProbeType.done, offset + 4, .little)
 = probe-head-size + probe-group-tail-size
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do get-probes-path @no-probe-safepoints
+_ do get-probes-path without probe-safepoints
 
 . probes = C:getenv("PROBES_ENABLED")
 if probes
@@ -349,7 +349,7 @@ if probes
         = C:getenv("PROBES_PATH")
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probes-begin @no-probe-safepoints
+_ do probes-begin without probe-safepoints
 
 C:yumiProbeCounterSetup(0)
 probe-profile-metric-count = 0
@@ -362,7 +362,7 @@ if probes-path
         probe-inspecting = C:yumiProbeControlOpen(control-path, "")
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probes-end @no-probe-safepoints
+_ do probes-end without probe-safepoints
 
 probe-profile-flush()
 probe-counter-flush()
@@ -370,7 +370,7 @@ probe-control-close()
 probes-close()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probes-open @no-probe-safepoints
+_ do probes-open without probe-safepoints
     - probes-path String
 
 probe-segment-size = probe-env-size("PROBES_SEGMENT_SIZE", probe-default-segment-size)
@@ -405,7 +405,7 @@ probe-flush-interval-ns = C:yumiProbeFlushIntervalNs()
 probe-buffer-reset()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-log @no-probe-safepoints
+_ do probe-declare-log without probe-safepoints
     - id U16
     - name String
     - template String
@@ -421,7 +421,7 @@ probe-buffer-write(template)
 probe-buffer-write'U32(type-count)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-key @no-probe-safepoints
+_ do probe-declare-key without probe-safepoints
     - key String
 
 probe-buffer-write'U8(ProbeType.declare-key)
@@ -429,7 +429,7 @@ probe-buffer-write'U32(key.size as U32)
 probe-buffer-write(key)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-log2 @no-probe-safepoints
+_ do probe-declare-log2 without probe-safepoints
     - id U16
     - key String
     - name String
@@ -456,7 +456,7 @@ probe-buffer-write'U32(line)
 probe-buffer-write'U32(type-count)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-event @no-probe-safepoints
+_ do probe-declare-event without probe-safepoints
     - id U16
     - key String
     - name String
@@ -474,7 +474,7 @@ probe-buffer-write(module-name)
 probe-buffer-write'U32(type-count)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-counter @no-probe-safepoints
+_ do probe-declare-counter without probe-safepoints
     - id U16
     - key String
     - module-name String
@@ -493,7 +493,7 @@ probe-buffer-write(source-path)
 probe-buffer-write'U32(line)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-type @no-probe-safepoints
+_ do probe-declare-type without probe-safepoints
     - id U16
     - name String
 
@@ -503,7 +503,7 @@ probe-buffer-write'U32(name.size as U32)
 probe-buffer-write(name)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-argument @no-probe-safepoints
+_ do probe-declare-argument without probe-safepoints
     - type ProbeType
     - class-type ProbeClassId
 
@@ -511,26 +511,26 @@ probe-buffer-write'U8(type)
 probe-buffer-write(class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probes-ready @no-probe-safepoints
+_ do probes-ready without probe-safepoints
 
 probe-buffer-write'U8(ProbeType.done)
 probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-counter-setup @no-probe-safepoints
+_ do probe-counter-setup without probe-safepoints
     - max-id Size
 
 C:yumiProbeCounterSetup(max-id + 1)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-counter-add @no-probe-safepoints
+_ do probe-counter-add without probe-safepoints
     - id ProbeId
     - delta U64
 
 C:yumiProbeCounterAdd(id, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-gc-counter-flush @no-probe-safepoints
+_ do probe-gc-counter-flush without probe-safepoints
     - cycles-id ProbeId
     - pauses-id ProbeId
     - assist-nanos-id ProbeId
@@ -543,14 +543,14 @@ if assist-nanos-id
     probe-counter-add(assist-nanos-id, C:yumiGCAssistTimeNanos() as U64)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-profile-setup @no-probe-safepoints
+_ do probe-profile-setup without probe-safepoints
     - metric-count Size
 
 probe-profile-metric-count = metric-count
 C:yumiProbeProfileSetup(metric-count)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-declare-profile-metric @no-probe-safepoints
+_ do probe-declare-profile-metric without probe-safepoints
     - id ProbeProfileMetricId
     - key String
     - kind U8
@@ -572,12 +572,12 @@ probe-buffer-write'U32(line)
 probe-buffer-write'U16(object-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-profile-now-ns U64 @no-probe-safepoints
+_ probe-profile-now-ns U64 without probe-safepoints
 
 C:yumiProbeMonotonicNowNs()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-profile-flush @no-probe-safepoints
+_ do probe-profile-flush without probe-safepoints
 
 =? if !probe-profile-metric-count
 
@@ -613,7 +613,7 @@ for id in 1 .. < profile-limit
 probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-uid'T ProbeUID @no-probe-safepoints @no-suspend
+_ do probe-object-uid'T ProbeUID without probe-safepoints, suspend
     - object Array'T
     - class-type ProbeClassId
 
@@ -633,7 +633,7 @@ probe-live-prune()
 = entry.uid
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-uid'T ProbeUID @no-probe-safepoints @no-suspend
+_ do probe-object-uid'T ProbeUID without probe-safepoints, suspend
     - object T
     - class-type ProbeClassId
     - T is Inspectable
@@ -644,14 +644,14 @@ if probe-inspecting
 = uid
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-object-uid'T ProbeUID @no-probe-safepoints @no-suspend
+_ probe-object-uid'T ProbeUID without probe-safepoints, suspend
     - object T
     - class-type ProbeClassId
 
 object.uid
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-counter-add'T @no-probe-safepoints
+_ do probe-object-counter-add'T without probe-safepoints
     - id ProbeId
     - object T
     - class-type ProbeClassId
@@ -661,7 +661,7 @@ _ do probe-object-counter-add'T @no-probe-safepoints
 C:yumiProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-counter-add'T @no-probe-safepoints
+_ do probe-object-counter-add'T without probe-safepoints
     - id ProbeId
     - object T
     - class-type ProbeClassId
@@ -670,7 +670,7 @@ _ do probe-object-counter-add'T @no-probe-safepoints
 C:yumiProbeObjectCounterAdd(id, probe-object-uid(object, class-type), class-type, delta)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-counter-flush @no-probe-safepoints
+_ do probe-counter-flush without probe-safepoints
 
 . counter-count = C:yumiProbeCounterCount()
 if counter-count > 1
@@ -699,32 +699,32 @@ for index in 0 .. < object-counter-count
 probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probes-close @no-probe-safepoints
+_ do probes-close without probe-safepoints
 
 C:yumiProbeClose()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-close @no-probe-safepoints
+_ do probe-control-close without probe-safepoints
 
 probe-inspecting = false
 C:yumiProbeControlClose()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-control-read-u16 @no-probe-safepoints
+_ probe-control-read-u16 without probe-safepoints
     - data Byte[]
     - offset Size
 
 data.read'U16(offset, .little)!
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-control-read-u32 @no-probe-safepoints
+_ probe-control-read-u32 without probe-safepoints
     - data Byte[]
     - offset Size
 
 data.read'U32(offset, .little)!
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-write-u16 @no-probe-safepoints
+_ do probe-control-write-u16 without probe-safepoints
     - data Byte[]
     - offset Size
     - value U16
@@ -732,7 +732,7 @@ _ do probe-control-write-u16 @no-probe-safepoints
 data.write'U16(value, offset, .little)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-write-u32 @no-probe-safepoints
+_ do probe-control-write-u32 without probe-safepoints
     - data Byte[]
     - offset Size
     - value U32
@@ -740,7 +740,7 @@ _ do probe-control-write-u32 @no-probe-safepoints
 data.write'U32(value, offset, .little)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-write-status @no-probe-safepoints
+_ do probe-control-write-status without probe-safepoints
     - frame-type U16
     - request-id U32
     - status U32
@@ -763,7 +763,7 @@ if message-bytes.size
 = C:yumiProbeControlWrite(frame.data, frame.size)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-inspection-log @no-probe-safepoints
+_ do probe-control-inspection-log without probe-safepoints
     - phase String
     - request ProbeControlInspect
     - status String
@@ -774,7 +774,7 @@ probe-log("probe.inspect $phase requestId=${request.request-id} objectId=${reque
 .. message-text = if message.size > 0 then " message=$message" else ""
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-live-register'T @no-probe-safepoints @no-suspend
+_ do probe-live-register'T without probe-safepoints, suspend
     - uid ProbeUID
     - class-type ProbeClassId
     - object T
@@ -788,7 +788,7 @@ probe-live-object-ids.append(uid)
 probe-live-prune()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-live-entry ProbeLiveEntry? @no-probe-safepoints @no-suspend
+_ do probe-live-entry ProbeLiveEntry? without probe-safepoints, suspend
     - uid ProbeUID
 
 probe-live-lock()
@@ -796,13 +796,13 @@ do finally C:yumiProbeLiveUnlock()
 = probe-live-objects[uid]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-live-lock @no-probe-safepoints
+_ do probe-live-lock without probe-safepoints
 
 if !C:yumiProbeLiveTryLock()
     C:yumiProbeLiveLock()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-live-prune @no-probe-safepoints @no-suspend
+_ do probe-live-prune without probe-safepoints, suspend
 
 if (probe-live-arrays.length as Size) >= probe-live-array-limit
     . kept-keys = ArrayBuilder'ProbeArrayKey()
@@ -827,7 +827,7 @@ if (probe-live-objects.length as Size) >= probe-live-object-limit
     probe-live-object-limit = if kept-ids.length * 2 < probe-live-floor then probe-live-floor else kept-ids.length * 2
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-handle-inspect @no-probe-safepoints
+_ do probe-control-handle-inspect without probe-safepoints
     - request ProbeControlInspect
 
 if (request.flags /and/ 1) != 0
@@ -884,7 +884,7 @@ probe-control-write-status(probe-control-type-done, request.request-id, probe-co
 probe-flush()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-handle-frame @no-probe-safepoints
+_ do probe-control-handle-frame without probe-safepoints
     - frame Byte[]
     - frame-size Size
 
@@ -946,7 +946,7 @@ facet = frame[facet-start .. < facet-start + facet-length].slice-string()
 probe-control-handle-inspect(request)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-poll @no-probe-safepoints @no-suspend
+_ do probe-control-poll without probe-safepoints, suspend
 
 =? if probe-control-is-polling || probe-open-snapshots
 =? if !C:yumiProbeControlAvailable()
@@ -963,7 +963,7 @@ while true
 probe-control-is-polling = false
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-control-safepoint-poll @no-probe-safepoints
+_ do probe-control-safepoint-poll without probe-safepoints
 
 if probe-control-safepoint-countdown
     probe-control-safepoint-countdown -= 1
@@ -972,7 +972,7 @@ probe-control-safepoint-countdown = probe-control-safepoint-period
 probe-control-poll()
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-flush @no-probe-safepoints @no-suspend
+_ do probe-flush without probe-safepoints, suspend
 
 =? if !probe-buffer-length || probe-open-snapshots
 
@@ -982,7 +982,7 @@ probe-buffer-length = 0
 probe-next-flush-ns = now-ns + probe-flush-interval-ns
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-flush-at-if-needed @no-probe-safepoints @no-suspend
+_ do probe-flush-at-if-needed without probe-safepoints, suspend
     - buffer-length Size
     - now-ns U64
 
@@ -994,7 +994,7 @@ if buffer-length && !probe-open-snapshots
     .. is-due = now-ns >= probe-next-flush-ns
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-flush-if-needed @no-probe-safepoints @no-suspend
+_ do probe-flush-if-needed without probe-safepoints, suspend
 
 . buffer-length = probe-buffer-length
 if buffer-length
@@ -1005,7 +1005,7 @@ if buffer-length
     probe-flush-at-if-needed(buffer-length, now-ns)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-safepoint-flush-if-needed @no-probe-safepoints
+_ do probe-safepoint-flush-if-needed without probe-safepoints
 
 probe-control-safepoint-poll()
 . buffer-length = probe-buffer-length
@@ -1013,7 +1013,7 @@ if buffer-length
     probe-flush-at-if-needed(buffer-length, C:yumiProbeNowNs())
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-push @no-probe-safepoints @no-suspend
+_ do probe-group-push without probe-safepoints, suspend
     - probe-id U16
 
 . group-id = C:yumiGenerateUID()
@@ -1026,7 +1026,7 @@ top-class-type = ProbeDataType.group
 = probe-write-group(ProbeType.log, probe-id, object-id, class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-push-event @no-probe-safepoints @no-suspend
+_ do probe-group-push-event without probe-safepoints, suspend
     - probe-id U16
 
 . group-id = C:yumiGenerateUID()
@@ -1039,7 +1039,7 @@ top-class-type = ProbeDataType.group
 = probe-write-group(ProbeType.event, probe-id, object-id, class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-push-object'T @no-probe-safepoints @no-suspend
+_ do probe-group-push-object'T without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object T
@@ -1049,7 +1049,7 @@ _ do probe-group-push-object'T @no-probe-safepoints @no-suspend
 = probe-group-push-object-id(probe-id, probe-type, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-group-push-object'T @no-probe-safepoints @no-suspend
+_ probe-group-push-object'T without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object T
@@ -1058,7 +1058,7 @@ _ probe-group-push-object'T @no-probe-safepoints @no-suspend
 probe-group-push-object-id(probe-id, probe-type, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-push-object-id @no-probe-safepoints @no-suspend
+_ do probe-group-push-object-id without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object-id ProbeUID
@@ -1072,7 +1072,7 @@ top-class-type = ProbeDataType.group
 = probe-write-group(probe-type, probe-id, object-id, class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-pop @no-probe-safepoints @no-suspend
+_ do probe-group-pop without probe-safepoints, suspend
     - probe-id U16
 
 . group-id = top-object-uid
@@ -1081,7 +1081,7 @@ probe-stack-pop()
 = probe-write-group(ProbeType.log, probe-id, top-object-uid, top-class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-pop-event @no-probe-safepoints @no-suspend
+_ do probe-group-pop-event without probe-safepoints, suspend
     - probe-id U16
 
 . group-id = top-object-uid
@@ -1090,7 +1090,7 @@ probe-stack-pop()
 = probe-write-group(ProbeType.event, probe-id, top-object-uid, top-class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-pop-object'T @no-probe-safepoints @no-suspend
+_ do probe-group-pop-object'T without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object T
@@ -1100,7 +1100,7 @@ _ do probe-group-pop-object'T @no-probe-safepoints @no-suspend
 = probe-group-pop-object-id(probe-id, probe-type, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ probe-group-pop-object'T @no-probe-safepoints @no-suspend
+_ probe-group-pop-object'T without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object T
@@ -1109,7 +1109,7 @@ _ probe-group-pop-object'T @no-probe-safepoints @no-suspend
 probe-group-pop-object-id(probe-id, probe-type, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-group-pop-object-id @no-probe-safepoints @no-suspend
+_ do probe-group-pop-object-id without probe-safepoints, suspend
     - probe-id U16
     - probe-type ProbeType
     - object-id ProbeUID
@@ -1121,7 +1121,7 @@ probe-stack-pop()
 = probe-write-group(probe-type, probe-id, object-id, class-type, group-id)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-stack-pop @no-probe-safepoints @no-suspend
+_ do probe-stack-pop without probe-safepoints, suspend
 
 stack.rewind(stack.length - 1)
 if stack.length == 0
@@ -1131,7 +1131,7 @@ else
     top-object-uid, top-class-type = stack[Position.last]
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-snapshot @no-probe-safepoints @no-suspend
+_ do probe-write-snapshot without probe-safepoints, suspend
     - object-id ProbeUID
     - class-type ProbeClassId
 
@@ -1140,19 +1140,19 @@ probe-buffer-write'U32(object-id)
 probe-buffer-write'U16(class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-log-head @no-probe-safepoints @no-suspend
+_ do probe-log-head without probe-safepoints, suspend
     - probe-id U16
 
 = probe-write-head(ProbeType.log, probe-id, top-object-uid, top-class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-event-head @no-probe-safepoints @no-suspend
+_ do probe-event-head without probe-safepoints, suspend
     - probe-id U16
 
 = probe-write-head(ProbeType.event, probe-id, top-object-uid, top-class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-log-head'T @no-probe-safepoints @no-suspend
+_ do probe-object-log-head'T without probe-safepoints, suspend
     - probe-id U16
     - object T
     - class-type ProbeClassId
@@ -1161,7 +1161,7 @@ _ do probe-object-log-head'T @no-probe-safepoints @no-suspend
 = probe-write-head(ProbeType.log, probe-id, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-log-head'T @no-probe-safepoints @no-suspend
+_ do probe-object-log-head'T without probe-safepoints, suspend
     - probe-id U16
     - object T
     - class-type ProbeClassId
@@ -1169,7 +1169,7 @@ _ do probe-object-log-head'T @no-probe-safepoints @no-suspend
 = probe-write-head(ProbeType.log, probe-id, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-event-head'T @no-probe-safepoints @no-suspend
+_ do probe-object-event-head'T without probe-safepoints, suspend
     - probe-id U16
     - object T
     - class-type ProbeClassId
@@ -1178,7 +1178,7 @@ _ do probe-object-event-head'T @no-probe-safepoints @no-suspend
 = probe-write-head(ProbeType.event, probe-id, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-object-event-head'T @no-probe-safepoints @no-suspend
+_ do probe-object-event-head'T without probe-safepoints, suspend
     - probe-id U16
     - object T
     - class-type ProbeClassId
@@ -1186,21 +1186,21 @@ _ do probe-object-event-head'T @no-probe-safepoints @no-suspend
 = probe-write-head(ProbeType.event, probe-id, probe-object-uid(object, class-type), class-type)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write @no-probe-safepoints @no-suspend
+_ do probe-write without probe-safepoints, suspend
     - value String
 
 probe-buffer-write'U32(value.size as U32)
 probe-buffer-write(value)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write'Num @no-probe-safepoints @no-suspend
+_ do probe-write'Num without probe-safepoints, suspend
     - value Num
     - Num is Number
 
 probe-buffer-write(value)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-object'T @no-probe-safepoints @no-suspend
+_ do probe-write-object'T without probe-safepoints, suspend
     - value Array'T
     - class-type ProbeClassId
     - is-snapshot = false
@@ -1223,7 +1223,7 @@ if is-snapshot
 = probe-buffer-write'U8(ProbeType.done)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-object'T @no-probe-safepoints @no-suspend
+_ do probe-write-object'T without probe-safepoints, suspend
     - value T
     - class-type ProbeClassId
     - is-snapshot = false
@@ -1249,7 +1249,7 @@ if is-snapshot
 = probe-buffer-write'U8(ProbeType.done)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do probe-write-object'T @no-probe-safepoints @no-suspend
+_ do probe-write-object'T without probe-safepoints, suspend
     - value T
     - class-type ProbeClassId
     - is-snapshot = false

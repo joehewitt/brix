@@ -54,7 +54,8 @@ enum YumiObjectSidePayloadLane {
     YumiObjectSidePayloadStyleObjects = 6,
     // Strong. Event endpoint entries live exactly as long as their owner.
     YumiObjectSidePayloadEvents = 7,
-    YumiObjectSidePayloadLaneCount = 8
+    YumiObjectSidePayloadOwnedTasks = 8,
+    YumiObjectSidePayloadLaneCount = 9
 };
 #endif
 
@@ -67,44 +68,48 @@ enum YumiGCBufferResize {
 };
 #endif
 
-YUMI_GC_POLLING void yumiGCInit(void);
-YUMI_GC_POLLING void yumiGCScavenge(void);
-YUMI_GC_LEAF unsigned char yumiGCCollectorPhase(void);
+YUMI_WITHOUT_BLOCKING void yumiGCInit(void);
+YUMI_WITHOUT_BLOCKING void yumiGCScavenge(void);
+YUMI_WITHOUT_GC unsigned char yumiGCCollectorPhase(void);
 
-YUMI_GC_POLLING char* yumiGCAllocObject(size_t size);
-YUMI_GC_POLLING char* yumiGCAllocObjectDescribed(size_t size, void* descriptor);
-YUMI_GC_POLLING char* yumiGCAllocBuffer(size_t itemSize, size_t count);
-YUMI_GC_POLLING char* yumiGCAllocBufferDescribed(size_t itemSize, size_t count, void* descriptor);
-YUMI_GC_POLLING char* yumiGCResizeBuffer(char* buffer, size_t oldSize, size_t newSize);
-YUMI_GC_POLLING char* yumiGCResizeBufferDescribed(char* buffer, size_t oldSize, size_t newSize, void* descriptor);
-YUMI_GC_POLLING enum YumiGCBufferResize yumiGCResizeBufferPrepare(
+YUMI_WITHOUT_BLOCKING char* yumiGCAllocObject(size_t size);
+YUMI_WITHOUT_BLOCKING char* yumiGCAllocObjectDescribed(size_t size, void* descriptor);
+YUMI_WITHOUT_BLOCKING char* yumiGCAllocBuffer(size_t itemSize, size_t count);
+YUMI_WITHOUT_BLOCKING char* yumiGCAllocBufferDescribed(
+    size_t itemSize,
+    size_t count,
+    void* descriptor
+);
+YUMI_WITHOUT_BLOCKING char* yumiGCResizeBuffer(char* buffer, size_t oldSize, size_t newSize);
+YUMI_WITHOUT_BLOCKING char* yumiGCResizeBufferDescribed(char* buffer, size_t oldSize, size_t newSize, void* descriptor);
+YUMI_WITHOUT_BLOCKING enum YumiGCBufferResize yumiGCResizeBufferPrepare(
     char* buffer,
     size_t oldSize,
     size_t newSize,
     void* descriptor,
     void** replacementDescriptor);
-YUMI_GC_POLLING void yumiGCResizeBufferCopy(
+YUMI_WITHOUT_BLOCKING void yumiGCResizeBufferCopy(
     char* replacement,
     char* buffer,
     size_t oldSize,
     size_t newSize,
     void* replacementDescriptor);
-YUMI_GC_POLLING char* yumiAllocObjectWithSiteKey(const YumiGCAllocationSiteKey* key);
+YUMI_WITHOUT_BLOCKING char* yumiAllocObjectWithSiteKey(const YumiGCAllocationSiteKey* key);
 
-YUMI_GC_POLLING void* yumiGCAddRoot(char* pointer);
-YUMI_GC_POLLING void* yumiGCAddTemporaryRoot(char* pointer);
-YUMI_GC_LEAF void* yumiGCAddIdleTemporaryRoot(char* pointer);
-YUMI_GC_POLLING void* yumiGCAddDescribedRoot(
+YUMI_WITHOUT_BLOCKING void* yumiGCAddRoot(char* pointer);
+YUMI_WITHOUT_BLOCKING void* yumiGCAddTemporaryRoot(char* pointer);
+YUMI_WITHOUT_GC void* yumiGCAddIdleTemporaryRoot(char* pointer);
+YUMI_WITHOUT_BLOCKING void* yumiGCAddDescribedRoot(
     char* pointer,
     size_t byteSize,
     void* descriptor);
-YUMI_GC_LEAF void yumiGCUpdateRoot(void* root, char* pointer);
-YUMI_GC_LEAF void yumiGCRemoveRoot(void* root);
-YUMI_GC_LEAF void yumiGCRemoveTemporaryRoot(void* root);
-YUMI_GC_LEAF bool yumiGCRemoveTaskTemporaryRoot(void* root);
-YUMI_GC_LEAF void yumiGCDrainTemporaryRoots(YumiGCTemporaryRootStorage* storage);
-YUMI_GC_POLLING void yumiGCCollect(void);
-YUMI_GC_POLLING void yumiGCCollectForAllocation(void);
+YUMI_WITHOUT_GC void yumiGCUpdateRoot(void* root, char* pointer);
+YUMI_WITHOUT_GC void yumiGCRemoveRoot(void* root);
+YUMI_WITHOUT_GC void yumiGCRemoveTemporaryRoot(void* root);
+YUMI_WITHOUT_GC bool yumiGCRemoveTaskTemporaryRoot(void* root);
+YUMI_WITHOUT_GC void yumiGCDrainTemporaryRoots(YumiGCTemporaryRootStorage* storage);
+YUMI_WITHOUT_BLOCKING void yumiGCCollect(void);
+YUMI_WITHOUT_BLOCKING void yumiGCCollectForAllocation(void);
 #ifndef YU_GC_COLLECT_RESULT_TYPE
 #define YU_GC_COLLECT_RESULT_TYPE
 typedef size_t YumiGCCollectResult;
@@ -112,50 +117,54 @@ enum {
     YumiGCCollectCompleted = 0
 };
 #endif
-YUMI_GC_POLLING YumiGCCollectResult yumiCollect(void);
-YUMI_GC_POLLING void yumiGCFrameBudget(uint64_t remainingNanos);
-YUMI_GC_LEAF bool yumiGCVerifyObject(char* pointer);
-YUMI_GC_LEAF void* yumiGCObjectDescriptor(char* pointer);
-YUMI_GC_LEAF void yumiGCWriteBarrier(char* source, char* value);
-YUMI_GC_LEAF void yumiGCBulkWriteBarrier(char* source, char* value, size_t byteSize, void* descriptor);
-YUMI_GC_LEAF void yumiGCSetHeapGoal(size_t goal);
-YUMI_GC_LEAF void yumiGCSetMinimumHeapGoal(size_t goal);
-YUMI_GC_POLLING size_t yumiGCRegisterOwnerWeak(char* owner, char* target);
-YUMI_GC_POLLING char* yumiGCOwnerWeakLoad(size_t handle);
-YUMI_GC_POLLING bool yumiGCReleaseOwnerWeak(size_t handle);
-YUMI_GC_POLLING size_t yumiGCRegisterCleanup(
+YUMI_WITHOUT_BLOCKING YumiGCCollectResult yumiCollect(void);
+YUMI_WITHOUT_BLOCKING void yumiGCFrameBudget(uint64_t remainingNanos);
+YUMI_WITHOUT_GC bool yumiGCVerifyObject(char* pointer);
+YUMI_WITHOUT_GC void* yumiGCObjectDescriptor(char* pointer);
+YUMI_WITHOUT_GC void yumiGCWriteBarrier(char* source, char* value);
+YUMI_WITHOUT_GC void yumiGCBulkWriteBarrier(char* source, char* value, size_t byteSize, void* descriptor);
+YUMI_WITHOUT_GC void yumiGCSetHeapGoal(size_t goal);
+YUMI_WITHOUT_GC void yumiGCSetMinimumHeapGoal(size_t goal);
+YUMI_WITHOUT_BLOCKING size_t yumiGCRegisterOwnerWeak(char* owner, char* target);
+YUMI_WITHOUT_BLOCKING char* yumiGCOwnerWeakLoad(size_t handle);
+YUMI_WITHOUT_BLOCKING bool yumiGCReleaseOwnerWeak(size_t handle);
+YUMI_WITHOUT_BLOCKING size_t yumiGCRegisterCleanup(
     char* target,
     char* context,
     YumiGCCleanupCallback callback);
-YUMI_GC_POLLING size_t yumiGCRegisterNativeCleanup(
+YUMI_WITHOUT_BLOCKING size_t yumiGCRegisterNativeCleanup(
     char* target,
     void* context,
     YumiGCCleanupCallback callback);
-YUMI_GC_POLLING bool yumiGCCancelCleanup(size_t handle);
-YUMI_GC_POLLING size_t yumiGCDrainCleanups(void);
-YUMI_GC_LEAF void yumiGCQueueFileDescriptorCleanup(int fd);
-YUMI_GC_LEAF void yumiGCReportCleanupException(void);
-YUMI_GC_POLLING char* yumiGCObjectSidePayload(char* object, size_t lane);
-YUMI_GC_POLLING char* yumiGCPublishObjectSidePayload(char* object, size_t lane, char* payload);
-YUMI_GC_POLLING char* yumiGCPublishCleanupObjectSidePayload(
+YUMI_WITHOUT_BLOCKING bool yumiGCCancelCleanup(size_t handle);
+YUMI_WITHOUT_BLOCKING size_t yumiGCDrainCleanups(void);
+YUMI_WITHOUT_GC void yumiGCQueueFileDescriptorCleanup(int fd);
+YUMI_WITHOUT_GC void yumiGCReportCleanupException(void);
+YUMI_WITHOUT_BLOCKING char* yumiGCObjectSidePayload(char* object, size_t lane);
+YUMI_WITHOUT_BLOCKING char* yumiGCPublishObjectSidePayload(
+    char* object,
+    size_t lane,
+    char* payload
+);
+YUMI_WITHOUT_BLOCKING char* yumiGCPublishCleanupObjectSidePayload(
     char* object,
     size_t lane,
     char* payload,
     YumiGCCleanupCallback callback);
-YUMI_GC_LEAF void yumiGCClearObjectSidePayload(char* object, size_t lane);
-YUMI_GC_LEAF bool yumiGCClearCleanupObjectSidePayload(char* object, size_t lane);
-YUMI_GC_LEAF bool yumiGCHasObjectSidePayload(char* object, size_t lane);
-YUMI_GC_LEAF size_t yumiGCObjectSidePayloadCount(size_t lane);
-YUMI_GC_LEAF size_t yumiGCCollectionObserversSidePayloadLane(void);
-YUMI_GC_LEAF size_t yumiGCMarkupAttachmentsSidePayloadLane(void);
-YUMI_GC_LEAF size_t yumiGCStyleAttachmentsSidePayloadLane(void);
-YUMI_GC_LEAF size_t yumiGCStyleTemplatesSidePayloadLane(void);
-YUMI_GC_LEAF size_t yumiGCStyleObjectsSidePayloadLane(void);
-YUMI_GC_LEAF size_t yumiGCEventsSidePayloadLane(void);
-YUMI_GC_POLLING size_t yumiCollectionObserverActivate(char* owner);
-YUMI_GC_POLLING bool yumiCollectionObserverDeactivate(size_t cleanup);
-YUMI_GC_LEAF bool yumiCollectionMayBeObserved(char* collection);
-YUMI_GC_LEAF size_t yumiCollectionObserverActiveCount(void);
+YUMI_WITHOUT_GC void yumiGCClearObjectSidePayload(char* object, size_t lane);
+YUMI_WITHOUT_GC bool yumiGCClearCleanupObjectSidePayload(char* object, size_t lane);
+YUMI_WITHOUT_GC bool yumiGCHasObjectSidePayload(char* object, size_t lane);
+YUMI_WITHOUT_GC size_t yumiGCObjectSidePayloadCount(size_t lane);
+YUMI_WITHOUT_GC size_t yumiGCCollectionObserversSidePayloadLane(void);
+YUMI_WITHOUT_GC size_t yumiGCMarkupAttachmentsSidePayloadLane(void);
+YUMI_WITHOUT_GC size_t yumiGCStyleAttachmentsSidePayloadLane(void);
+YUMI_WITHOUT_GC size_t yumiGCStyleTemplatesSidePayloadLane(void);
+YUMI_WITHOUT_GC size_t yumiGCStyleObjectsSidePayloadLane(void);
+YUMI_WITHOUT_GC size_t yumiGCEventsSidePayloadLane(void);
+YUMI_WITHOUT_BLOCKING size_t yumiCollectionObserverActivate(char* owner);
+YUMI_WITHOUT_BLOCKING bool yumiCollectionObserverDeactivate(size_t cleanup);
+YUMI_WITHOUT_GC bool yumiCollectionMayBeObserved(char* collection);
+YUMI_WITHOUT_GC size_t yumiCollectionObserverActiveCount(void);
 
 // The remaining public GC surface is metric/snapshot access. Keep the classification grouped so
 // newly added observability imports cannot silently fall back to the blocking policy.
@@ -201,8 +210,8 @@ size_t yumiGCAllocationStallCount(void);
 
 // Benchmark-only phase markers. Instrumented compiler builds emit these calls; clean benchmark
 // builds elide them before object emission.
-YUMI_GC_LEAF void yumiBenchMutatorPhaseStart(const char* name);
-YUMI_GC_LEAF void yumiBenchMutatorPhaseEnd(const char* name);
+YUMI_WITHOUT_GC void yumiBenchMutatorPhaseStart(const char* name);
+YUMI_WITHOUT_GC void yumiBenchMutatorPhaseEnd(const char* name);
 size_t yumiGCAllocationStallTimeNanos(void);
 size_t yumiGCHandshakeCount(void);
 size_t yumiGCHandshakeLatencyNanos(void);

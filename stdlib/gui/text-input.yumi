@@ -90,7 +90,7 @@ _ committed-text = ""
 _ is-dirty = false
 _ is-native-editing = false
 _ accepting-native-text = false
-_ edit-generation Size
+_ pending-live-edit Task?
 _ is-live-editing = false
 _ is-native-shown = false
 _ is-natively-hosted => window?.native-window-handle != null
@@ -574,7 +574,8 @@ text-selected <- TextSelectionEvent(caret, last)
 
 accept-native-input(next-text)
 is-native-editing = false
-edit-generation += 1
+pending-live-edit?.cancel-later()
+pending-live-edit = null
 if is-live-editing
     is-live-editing = false
     text-edited <- TextEditEvent(text, ValueChangePhase.ended)
@@ -592,11 +593,11 @@ _ do schedule-live-edit
 
 . delay = live-edit-delay
 =? if !delay
-edit-generation += 1
-. generation = edit-generation
-do new
+pending-live-edit?.cancel-later()
+pending-live-edit = do new
     delay.wait()
-    if generation == edit-generation && is-native-editing
+    pending-live-edit = null
+    if is-native-editing
         publish-live-edit()
 
 ────────────────────

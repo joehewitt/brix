@@ -29,10 +29,10 @@ struct YumiStackTrace {
 
 extern "C" void* yumiCaptureStackTrace();
 extern "C" void* yumiCaptureStackTraceSkipping(uint16_t skipFrames);
-extern "C" YUMI_GC_LEAF void yumiEnsureStackTrace(void** traceSlot);
+extern "C" YUMI_WITHOUT_GC void yumiEnsureStackTrace(void** traceSlot);
 extern "C" void yumiPrintStackTrace(void* trace);
 extern "C" char* yumiFormatStackTrace(void* trace);
-extern "C" YUMI_GC_LEAF double yumiStackTraceTime(void* trace);
+extern "C" YUMI_WITHOUT_GC double yumiStackTraceTime(void* trace);
 extern "C" void yumiReportTaskHeader(const char* heading, void* task);
 extern "C" void yumiReportTaskStack(const char* heading, void* task, uintptr_t fp, uintptr_t pc);
 

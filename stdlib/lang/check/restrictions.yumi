@@ -80,17 +80,17 @@ _ do placed String
     - root InstanceId
     - at SyntaxId
 
-` A function that places a restriction, with what it writes: its own decorations, or those of
-` the `do` block around where the chain leaves it. The body of a `do @no-gc` block is the
+` A function that places a restriction, with what it writes: its own `without` section, or that of
+` the `do` block around where the chain leaves it. The body of a `do without gc` block is the
 ` function it is written in.
 . row = session.instances.rows[root]
 . written = written-effects(root) /and/ restricting-effects()
 if is-region(root) && row.enclosing != no-instance
-    = "${paths.name-of(row.enclosing)} (do ${decorations(written)})"
+    = "${paths.name-of(row.enclosing)} (do ${without-text(written)})"
 if written != 0
-    = "${paths.name-of(root)} (${decorations(written)})"
+    = "${paths.name-of(root)} (${without-text(written)})"
 . block = block-effects(root, at)
-=? "${paths.name-of(root)} (do ${decorations(block)})" if block != 0
+=? "${paths.name-of(root)} (do ${without-text(block)})" if block != 0
 = paths.name-of(root)
 
 ────────────────────
@@ -168,15 +168,17 @@ match node
         false
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do decorations String
+_ do without-text String
     - effects U32
 
-=? "@no-gc" if (effects /and/ CompilationEffect.gc-free) != 0
+` A restriction as a `without` section writes it, leaving out the names another one implies.
+
+=? "without gc" if (effects /and/ CompilationEffect.gc-free) != 0
 . parts [String]
 if (effects /and/ CompilationEffect.no-heap) != 0
-    parts += "@no-heap"
+    parts += "heap"
 if (effects /and/ CompilationEffect.no-safepoint) != 0
-    parts += "@no-safepoint"
-if (effects /and/ CompilationEffect.no-suspend) != 0
-    parts += "@no-suspend"
-= " ".join(parts)
+    parts += "safepoints"
+else if (effects /and/ CompilationEffect.no-suspend) != 0
+    parts += "suspend"
+= "without ${", ".join(parts)}"
