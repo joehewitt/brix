@@ -63,58 +63,11 @@ if pattern == 0 || !tables.layouts.is-struct(layout)
     = Typed(nothing, no-type)
 . joined = ir.reserve-block()
 . mark = joins.length
-. is-closed = place-arms(pattern, type, joined)
+. is-closed = emit-arms(id, pattern, type, joined, nothing, true)
 if !is-closed
     refuse(.refused-expression, id)
 . result = close-joins(joined, mark, layout, nothing)
 = Typed(result, type)
-
-────────────────────
-_ do place-arms Bool ?! Refused
-    - pattern SyntaxId
-    - type TypeId
-    - joined IRBlockId
-
-` Tests the arms of a match in an inlined body in order, as `emit-arms` does, each taken arm
-` leaving the place its answer gives for the match to join, and says whether an else ended them.
-` An arm that raises has no shape here.
-do match? tree.nodes[pattern]
-    | .node-type-or(row)
-        if place-arms(row.left, type, joined)
-            = true
-        = place-arms(row.right, type, joined)
-    | .node-type-transform(row)
-        . condition SyntaxId = 0
-        . is-else = row.pattern == 0
-        if !is-else
-            do match? tree.nodes[row.pattern]
-                | .node-type-wildcard
-                    is-else = true
-                | .node-type-predicate(predicate)
-                    condition = predicate.expr
-        if (!is-else && condition == 0) || facts.plan-of(unit.reading, pattern) == .plan-raise
-            refuse(.refused-expression, pattern)
-            = false
-        if is-else
-            place-arm(row.expr, type, joined)
-            = true
-        . given = emit-expression(condition)
-        . given-type = given.type
-        . tested = test(condition, given)
-        . taken = ir.reserve-block()
-        . passed = ir.reserve-block()
-        branch(tested.operand, taken, passed)
-        ir.start-block(taken)
-        . named = bound.length
-        . it-slot = arm-slot-of(pattern, .slot-it)
-        if it-slot != no-slot
-            bound += BoundValue(it-slot, given-type, given.operand)
-        place-arm(row.expr, type, joined)
-        drop-bound(named)
-        ir.start-block(passed)
-        = false
-refuse(.refused-expression, pattern)
-= false
 
 ────────────────────
 _ do place-arm
@@ -2752,17 +2705,20 @@ _ do emit-arms Bool ?! Refused
     - type TypeId
     - joined IRBlockId
     - slot Operand
+    - places Bool = false
 
 ` Emits the arms of a match in order, and says whether an else ended them. Each arm leaves
-` its value and the block it ends in for the match to join. An arm that is a test and no
-` more gives what it tested where that tests as true: of an optional, what it holds. The body
-` of an arm that tests a condition reads what the condition gave as its `it`. An arm that
-` raises for whatever is left ends them as an else does.
+` its value and the block it ends in for the match to join, or where it `places`, in an inlined
+` body, the place its answer gives (`place-arm`). An arm that is a test and no more gives what
+` it tested where that tests as true: of an optional, what it holds. The body of an arm that
+` tests a condition reads what the condition gave as its `it`. An arm that raises for whatever
+` is left ends them as an else does. Where the arms place, an arm that is a test and no more and
+` an arm that raises have no shape.
 do match? tree.nodes[pattern]
     | .node-type-or(row)
-        if emit-arms(site, row.left, type, joined, slot)
+        if emit-arms(site, row.left, type, joined, slot, places)
             = true
-        = emit-arms(site, row.right, type, joined, slot)
+        = emit-arms(site, row.right, type, joined, slot, places)
     | .node-type-transform(row)
         . condition SyntaxId = 0
         . is-else = row.pattern == 0
@@ -2772,9 +2728,11 @@ do match? tree.nodes[pattern]
                     is-else = true
                 | .node-type-predicate(predicate)
                     condition = predicate.expr
+        if places && facts.plan-of(unit.reading, pattern) == .plan-raise
+            refuse(.refused-expression, pattern)
+            = false
         if is-else
-            if !arm-leaves(pattern, row.expr) && !arm-raises(row.expr)
-                emit-arm(site, row.expr, type, joined, slot, true)
+            leave-arm(site, pattern, row.expr, type, joined, slot, places)
             = true
         if condition == 0
             refuse(.refused-expression, pattern)
@@ -2790,12 +2748,14 @@ do match? tree.nodes[pattern]
         . it-slot = arm-slot-of(pattern, .slot-it)
         if it-slot != no-slot
             bound += BoundValue(it-slot, given-type, given.operand)
-        if !arm-leaves(pattern, row.expr) && !arm-raises(row.expr)
-            emit-arm(site, row.expr, type, joined, slot, true)
+        leave-arm(site, pattern, row.expr, type, joined, slot, places)
         drop-bound(named)
         ir.start-block(passed)
         = false
     | .node-type-predicate(row)
+        if places
+            refuse(.refused-expression, pattern)
+            = false
         . subject = emit-expression(row.expr)
         . held = subject.type
         . tested = test(row.expr, Typed(subject.operand, held))
@@ -2814,6 +2774,9 @@ do match? tree.nodes[pattern]
         ir.start-block(passed)
         = false
     | .node-type-panic(row)
+        if places
+            refuse(.refused-expression, pattern)
+            = false
         do match? tree.nodes[row.pattern]
             | .node-type-transform(arm)
                 if arm.pattern == 0 && arm.expr != 0
@@ -2833,3 +2796,20 @@ do match? tree.nodes[pattern]
                             = false
 refuse(.refused-expression, pattern)
 = false
+
+────────────────────
+_ do leave-arm ?! Refused
+    - site SyntaxId
+    - pattern SyntaxId
+    - body SyntaxId
+    - type TypeId
+    - joined IRBlockId
+    - slot Operand
+    - places Bool
+
+` Runs the body of an arm `emit-arms` takes: leaves the place its answer gives where the arms
+` place, and otherwise its value, unless it leaves the match or raises.
+if places
+    place-arm(body, type, joined)
+else if !arm-leaves(pattern, body) && !arm-raises(body)
+    emit-arm(site, body, type, joined, slot, true)
