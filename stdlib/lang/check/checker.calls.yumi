@@ -1,0 +1,865 @@
+./binding
+./calls
+./checker
+./checker.tables
+./conversions
+./coverage
+./dispatch
+./error-sets
+./facts
+./frame
+./header
+./instances
+./narrowing
+./narrowing-key
+./numeric
+./panics
+./pattern-helper
+./portable
+./probe-casts
+./session
+./signature
+./table-rows
+./type-env
+./type-relation
+./type-signature
+./type-store
+./type-text
+./types
+./typing-scratch
+/core/arena
+/core/scratch
+/lang/ast/ast
+/lang/ast/ast-children
+/lang/ast/ast-nodes
+/lang/ast/decl
+/lang/ast/facets
+/lang/ast/module
+/lang/ast/operator
+/lang/ast/program
+/lang/ast/row-range
+/lang/ast/state-machines
+/lang/ast/viability
+/lang/constants
+/stream/aggregate
+/stream/sort
+
+━━━━━━━━━━━━━━━━━━━━
+_ CallTyping is facet of Checker
+    sees Tables
+
+────────────────────
+_ held-type TypeId
+    - type TypeId
+
+` A type, or what it holds where it is an optional.
+if types.is-optional(type) then types.optional-inner(type) else type
+
+────────────────────
++ do infer-argument TypeId
+    - expr SyntaxId
+    - symbol Atom?
+
+` An argument is typed outside any `catch` its call is written under: an error it raises
+` leaves the function, and the catch holds only the errors of the call itself. One that names
+` an event is its `Broadcastable` (see `use-event`).
+if symbol
+    = types.void-type
+. caught = frame.surround
+frame.surround = frame.surround.catch-depth = 0
+. type = infer(expr, Want().adding(.want-argument))
+frame.surround = caught
+= type
+
+────────────────────
+_ do is-method Bool
+    - owner ModuleId
+    - decl DeclId
+
+` Whether a function is a method of a type, which the value of a stored property cannot call:
+` the object the method would run on is not yet made.
+do match? program.modules[owner].decls[decl]
+    | .decl-function(fn)
+        if fn.owner == 0 || fn.is-static
+            = false
+        do match? program.modules[owner].decls[fn.owner]
+            | .decl-class
+                = true
+= false
+
+────────────────────
+_ eager-call-message String
+    - name Atom
+    - owner ModuleId
+    - decl DeclId
+
+|? eager-value()
+    "A property's value is computed before the object exists, so it $called; declare the property without a value and assign it in a constructor's body"
+??
+    "A \"..\" initializer runs before the object exists, so it $called; compute the value from the constructor's parameters, or assign it in the constructor's body"
+
+.. called = "cannot call \"${name.text}\", a method of ${method-owner(owner, decl)}"
+
+────────────────────
+_ eager-value Bool
+
+|? reading.eager
+    instances.is-initializer(instance)
+??
+    outer != null && outer.eager-value()
+
+────────────────────
+_ do method-owner String
+    - owner ModuleId
+    - decl DeclId
+
+. decls = program.modules[owner].decls
+do match? decls[decl]
+    | .decl-function(fn)
+        do match? decls[fn.owner]
+            | .decl-class(class)
+                = class.name.text
+= ""
+
+────────────────────
+_ do settle-kept-arguments
+    - mark Size
+    - result TypeId
+
+` Declines each event read in a function written in a markup element's body that a call since
+` `mark` was given and no converter refused (`misused-endpoint`), which has no shape here.
+while kept-arguments.length > mark
+    . kept = kept-arguments.pop()
+    if kept != 0 && result != invalid-type
+        decline(kept)
+
+────────────────────
++ do infer-argument-value TypeId
+    - id SyntaxId
+    - row ASTArgument
+
+` An argument written where a value is wanted, as a line of a markup element's body, as the
+` reference compiles one: one with a name is the tuple of its name and its value, and one with a
+` bullet `•?` too is that tuple where the value tests as true, as a condition does, and nothing
+` where it does not; one with no name is its value.
+. value = infer(row.expr)
+if value == invalid-type || value == no-type || !row.name
+    = value
+. mark = scratch.types.mark
+. names-mark = scratch.names.mark
+scratch.names.push(types.index-atom(0))
+scratch.types.push(types.string-type)
+scratch.names.push(types.index-atom(1))
+scratch.types.push(value)
+. pair = types.intern-tuple(mark, names-mark)
+if !row.is-optional
+    = pair
+note-truthiness(id, row.expr, value)
+= types.optional-around(pair)
+
+────────────────────
++ do infer-call Found
+    - id SyntaxId
+    - callable SyntaxId
+    - params RowRange'SyntaxId
+    - args RowRange'SyntaxId
+    - curried Bool
+    - attributes SyntaxId = 0
+    - class TypeId = no-type
+    - want Want = Want()
+    - slots ImmutableArray'Atom'ArenaBacking = ImmutableArray'Atom'ArenaBacking()
+    - builders ImmutableArray'TypeId'ArenaBacking = ImmutableArray'TypeId'ArenaBacking()
+    - context U32 = U32.max
+
+` A call written with its arguments. A markup element gives, after them, the value of each
+` of the `attributes` its body writes for the `class` it makes, as an argument named as the
+` property and marked as one, and its constructor the `slots` its body fills, each with the type
+` of its builder (`builders`), and the `context` of the styles it sees. The arguments of a call of a name nothing declares are typed as
+` the reference types them before it finds no function (`names-nothing`).
+. owner = if want.asks(.want-owner) then held-type(want.type) else no-type
+. params-start = scratch.types.mark
+. param-count = 0
+. unresolved = false
+for param in tree.children[params]
+    . written = types.evaluate-type(module, tree, param, frame.env)
+    unresolved = unresolved || written == invalid-type
+    scratch.types.push(written)
+    param-count += 1
+. listing = tree.listed-bullets(id)
+=? Found(infer-listed-bullets(id, callable, listing)) if listing != 0
+if args.count == 1
+    do match? tree.nodes[callable]
+        | .node-type-arguments
+            . only = tree.children[args.start]
+            expect-bullets(only, types.evaluate-type(module, tree, callable, frame.env))
+. shapes-start = scratch.call-arguments.mark
+. types-start = scratch.types.mark
+. syntax-start = scratch.syntax.mark
+. object = if attributes != 0 then CalledObject() else type-called-object(callable, args.count)
+. outer-unknown = argument-typing
+. kept-mark = kept-arguments.length
+argument-typing = argument-typing.unknown-callee = attributes == 0 && names-nothing(callable, args)
+argument-typing = argument-typing.keeps = true
+for arg in tree.children[args]
+    do match tree.nodes[arg]
+        | .node-argument(argument)
+            scratch.types.push(infer-argument(argument.expr, argument-symbol(argument.expr)))
+            scratch.call-arguments.push
+                - argument-shape(argument.name, argument.is-optional, argument.expr)
+            scratch.syntax.push(arg)
+        ??
+            scratch.types.push(infer-argument(arg, argument-symbol(arg)))
+            scratch.call-arguments.push(argument-shape(null, false, arg))
+            scratch.syntax.push(arg)
+argument-typing = outer-unknown
+. given = attributes == 0 || push-attributes(attributes, class)
+. missing = given && unresolved && report-missing-params(params)
+. params = scratch.types.span(params-start, param-count)
+. arguments = arguments-since(shapes-start, types-start, syntax-start, params, curried, 0, slots, builders, context)
+called-object = object
+. result = if given && !missing then infer-callable(id, callable, arguments, owner) else Found(invalid-type)
+settle-kept-arguments(kept-mark, result.type)
+called-object = CalledObject()
+scratch.syntax.rewind(syntax-start)
+scratch.types.rewind(params-start)
+scratch.call-arguments.rewind(shapes-start)
+=? Found(invalid-type) if result.type != invalid-type && tracks-method(id, callable)
+= result
+
+────────────────────
+_ do tracks-method Bool
+    - id SyntaxId
+    - callable SyntaxId
+
+` Reports a method called with "#" before its name, as in `c.#size()`, which tracks nothing, as
+` only a stored property is tracked, and says whether it did.
+. name Atom? = null
+do match? tree.nodes[callable]
+    | .node-get-expression(get)
+        name = get.name if get.is-tracked
+    | .node-identifier(ident)
+        name = ident.name if ident.is-tracked
+if !name
+    = false
+. fact = facts.first-call(instance, id)
+while fact != no-fact
+    if facts.calls[fact].form == .call-method
+        . text = "\"${name.text}\" is a method, so \"#\" before it tracks nothing; track the properties it reads instead"
+        frame.diagnose(callable, .stated, program.store-atom(text))
+        = true
+    fact = facts.calls[fact].next
+= false
+
+────────────────────
+_ do report-missing-params Bool
+    - params RowRange'SyntaxId
+
+` Reports the first type written after a call's name that names nothing, as the reference does
+` once it has typed the arguments. Says whether one was reported.
+for param in tree.children[params]
+    if report-missing-type(param, frame.env)
+        = true
+= false
+
+────────────────────
++ do type-called-object CalledObject
+    - callable SyntaxId
+    - count Size
+
+` Types the object of a method a call names, which the reference evaluates before the call's
+` arguments, so that what the flow knows of it is what it knew before them. The call is
+` settled with it once its arguments are typed (`infer-callable`). A type a static method is
+` called on is no value, and nothing is typed of it here.
+do match? tree.nodes[callable]
+    | .node-get-expression(get)
+        if static-owner(get.object) != no-type
+            = CalledObject()
+        . writes = get.name.text == "<-write" && count == 1
+        . rekeys = get.name.text == "rekey" && count == 1
+        . asks-event = (writes || rekeys || (get.name.text == "release" && count == 0)) && !get.is-optional
+        . want = Want().adding(.want-receiver)
+        . receiver = infer-found(get.object, if asks-event then want.adding(.want-event) else want)
+        = CalledObject(get.object, receiver.type, receiver.link, found-event-of(receiver))
+= CalledObject()
+
+────────────────────
++ do infer-callable Found
+    - id SyntaxId
+    - callable SyntaxId
+    - arguments Arguments
+    - owner TypeId = no-type
+
+for type in arguments.types
+    if type == invalid-type
+        = Found(invalid-type)
+do match? tree.nodes[callable]
+    | .node-c-identifier(row)
+        = Found(calls.c-call(id, row.name, arguments))
+    | .node-type-identifier(row)
+        . is-this = types.this-atom && row.name == types.this-atom
+        if is-this || bindings.resolution-of(frame.binding, callable).kind != .resolve-type
+            = Found(construct-type(id, callable, arguments))
+    | .node-type-arguments
+        if bindings.resolution-of(frame.binding, callable).kind != .resolve-type
+            = Found(construct-type(id, callable, arguments))
+    | .node-type-associated
+        = Found(construct-type(id, callable, arguments))
+    | .node-symbol(row)
+        if owner != no-type
+            = Found(calls.static-call(id, owner, row.name, arguments))
+        . anonymous = anonymous-symbol(callable, row.name)
+        if anonymous == invalid-type
+            = Found(invalid-type)
+        if anonymous != no-type
+            = Found(calls.static-call(id, anonymous, row.name, arguments))
+        if calls.ambiguous-case(callable, row.name)
+            = Found(invalid-type)
+        . named = symbol-class(types, module, row.name)
+        if named == invalid-type
+            frame.diagnose
+                - id
+                - .stated
+                - program.store-atom("Unable to resolve symbol .${row.name.text}")
+            = Found(invalid-type)
+        = Found(calls.static-call(id, named, row.name, arguments))
+    | .node-get-expression(get)
+        . owner = static-owner(get.object)
+        if owner != no-type
+            = Found(call-static(id, get.object, owner, get.name, arguments))
+        . typed = called-object
+        called-object = CalledObject()
+        if typed.object != get.object
+            typed = type-called-object(callable, arguments.types.length)
+        . receiver = typed.type
+        if typed.event
+            . event = typed.event
+            . writes = get.name.text == "<-write" && arguments.types.length == 1
+            . rekeys = get.name.text == "rekey" && arguments.types.length == 1
+            if writes
+                . published = publish-event(id, get.object, event, arguments)
+                if published != invalid-type && optional-chained(get.object)
+                    = Found(types.optional-of(published))
+                = Found(published)
+            = Found(readdress-event(id, get.object, event, arguments, rekeys))
+        . own = typed.link
+        if receiver == invalid-type
+            = Found(invalid-type)
+        if is-super-syntax(get.object) && receiver != frame.self-type
+            conversions.convert(id, id, frame.self-type, receiver, .reason-receiver)
+        . source = projected-from(get.object, receiver)
+        if source != no-type && !calls.has-method(receiver, get.name, arguments)
+            receiver = source
+        . form = if get.is-optional then note-chain(id, callable, receiver) else plain-form
+            .. plain-form = ChainForm.chain-plain
+        if form == .chain-absent || absent-after(get.object, receiver)
+            = Found(types.null-type)
+        . optional = form == .chain-tested
+        . held = link-receiver(get.object, receiver, own, optional)
+        if !optional && !(optional-chained(get.object) && types.is-optional(receiver))
+            if calls-property(get.object, receiver, get.name, arguments)
+                . value = read-property(callable, get.object, receiver, get.name).type
+                if value == invalid-type
+                    = Found(value)
+                facts.set-node-type(instance, callable, value)
+                = Found(call-value(id, callable, value, arguments))
+            . answered = calls.method-call(id, get.object, receiver, get.name, arguments, true, row-capture-of(get.object))
+            if answered != invalid-type && types.intrinsic-of(receiver) == .table
+                . op = table-member(get.name.text)
+                if op != TableOp.table-row && op != TableOp.table-mark && not-capacity
+                    plan-table(id, op)
+                .. not-capacity = op != TableOp.table-capacity
+            if answered != invalid-type
+                plan-builder(id, receiver, get.name.text, arguments.types.length)
+            if answered == types.void-type && get.name.text == "<-write"
+                = Found(receiver)
+            = Found(answered)
+        if optional
+            facts.unwrapped.append(UnwrappedFact(instance, get.object, held))
+        . result = calls.method-call(id, get.object, held, get.name, arguments, true)
+        if result == invalid-type || types.is-optional(result)
+            = Found(result).linking(result)
+        = Found(types.optional-of(result)).linking(result)
+if is-super-syntax(callable) || names-super(callable)
+    = Found(super-call(id, callable, arguments))
+. resolution = bindings.resolution-of(frame.binding, callable)
+do match resolution.kind
+    |= .resolve-function
+        . name = identifier-name(tree, callable)
+        if !name
+            decline(id)
+            = Found(invalid-type)
+        if in-eager() && is-method(resolution.module, resolution.decl)
+            frame.diagnose
+                - id
+                - .stated
+                - program.store-atom(eager-call-message(name, resolution.module, resolution.decl))
+            = Found(invalid-type)
+        . answered = calls.function-call(id, name, arguments)
+        if answered != invalid-type && is-method(resolution.module, resolution.decl)
+            plan-builder(id, frame.self-type, name.text, arguments.types.length)
+        = Found(answered)
+    |= .resolve-type
+        . called = identifier-name(tree, callable)
+        if called && types.this-atom && called == types.this-atom
+            = Found(construct-type(id, callable, arguments))
+        if types.const-array-decl.refers-to(resolution.module, resolution.decl)
+            = Found(construct-type(id, callable, arguments))
+        if resolution.module == types.table-module && !is-row-table(callable, arguments)
+            = Found(invalid-type)
+        . (class-module, class-decl) = taking-class(callable, resolution.module, resolution.decl)
+        = Found(calls.construction(id, callable, class-module, class-decl, arguments))
+    |= .resolve-slot
+        if bindings.slots[resolution.slot].getter != 0
+            decline(callable)
+            = Found(invalid-type)
+        if precedes-declaration(resolution.slot)
+            frame.diagnose(id, .function-not-found, identifier-name(tree, callable))
+            = Found(invalid-type)
+        if wavers(resolution.slot)
+            decline(id)
+            = Found(invalid-type)
+        . called = read-slot(resolution.slot, id)
+        . declared = slot-known(resolution.slot)
+        if declared != called && types.is-optional(declared) && unwraps-called
+            facts.set-plan(instance, callable, .plan-callee)
+        .. unwraps-called = types.optional-inner(declared) == called
+        = Found(call-value(id, callable, called, arguments))
+    |= .resolve-member
+        . name = identifier-name(tree, callable)
+        if !name
+            decline(id)
+            = Found(invalid-type)
+        . held = read-member(callable, name).type
+        . key = member-key(resolution.decl)
+        . narrowed = if frame.members-narrowed then frame.narrowed-member(key) else no-type
+        . declared = if narrowed != no-type then key-declared(key) else no-type
+        . unwraps = optional-declared && types.optional-inner(declared) == held
+            .. optional-declared = declared != no-type && types.is-optional(declared)
+        if held != invalid-type && held == narrowed && (callable-held || unwraps)
+            facts.set-plan(instance, callable, .plan-callee)
+        .. callable-held = function-row(types, held) != no-type
+        = Found(call-value(id, callable, held, arguments))
+    |= .resolve-global
+        . held = infer-node(callable, Want())
+        if held == invalid-type
+            = Found(held)
+        = Found(call-value(id, callable, held, arguments))
+    |= .resolve-unresolved
+        . name = identifier-name(tree, callable)
+        if !name
+            = Found(invalid-type)
+        . bound = types.env-lookup(frame.env, name)
+        if bound
+            = Found(calls.construction-on(id, bound, arguments, true, callable))
+        = Found(calls.function-call(id, name, arguments))
+    ??
+        . target = infer(callable)
+        if target == invalid-type
+            = Found(target)
+        . kind = types.intrinsic-of(target)
+        if kind == .closure || kind == .binding || function-row(types, target) != no-type
+            = Found(calls.slot-call(id, target, arguments))
+        = Found(calls.method-call(id, callable, target, types.call-atom!, arguments))
+
+────────────────────
+_ calls-property Bool
+    - object SyntaxId
+    - receiver TypeId
+    - name Atom
+    - arguments Arguments
+
+` Whether a call written as a method call reads a property and calls what it holds, as the
+` reference does where the receiver has no method of the name but a property or a getter of
+` it. A union, a type given as a value, and `super` are called only for their methods.
+|? is-super-syntax(object)
+    false
+|? kind == .union || kind == .type-info || calls.has-method(receiver, name, arguments)
+    false
+??
+    property-named(receiver, name) != null || calls.has-getter(receiver, name)
+
+.. kind = types.intrinsic-of(receiver)
+
+────────────────────
+_ names-super Bool
+    - callable SyntaxId
+
+match tree.nodes[callable]
+    | .node-identifier(row)
+        row.name.text == "super"
+    ??
+        false
+
+────────────────────
+_ do super-call TypeId
+    - id SyntaxId
+    - callable SyntaxId
+    - arguments Arguments
+
+` `super(...)` runs the base class's constructor: only in a constructor, only as its first
+` statement, and only when there is a base.
+. self = frame.self-type
+. based = self != no-type && self != invalid-type && types.base-of(self) != null
+. message = ""
+if !based
+    message = "super requires a base type"
+else if !is-constructor-kind(frame.declaration.kind)
+    message = "super constructor call is only allowed in constructors"
+else if body-statements().count == 0 || tree.children[body-statements().start] != id
+    message = "super constructor call must be first"
+if message.length != 0
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+= calls.construction-on(id, super-type(), arguments, false, callable)
+
+────────────────────
+_ do call-value TypeId
+    - id SyntaxId
+    - callable SyntaxId
+    - target TypeId
+    - arguments Arguments
+
+` A call of what a name holds: a value of a function type is called, and a value of any
+` other type is given to the function its type declares for a call of it.
+if target == invalid-type || types.completions[target].intrinsic == .closure
+    = calls.slot-call(id, target, arguments)
+types.complete(target)
+. kind = types.completions[target].intrinsic
+if kind != .binding && function-row(types, target) == no-type
+    = calls.method-call(id, callable, target, types.call-atom!, arguments)
+= calls.slot-call(id, target, arguments)
+
+────────────────────
+_ type-head SyntaxId
+    - id SyntaxId
+
+` The name a type is written with, under the arguments it is given.
+match tree.nodes[id]
+    | .node-type-arguments(row)
+        type-head(row.base)
+    ??
+        id
+
+────────────────────
+_ do construct-type TypeId
+    - id SyntaxId
+    - callable SyntaxId
+    - arguments Arguments
+
+if names-const-array(callable)
+    frame.diagnose(id, .stated, program.store-atom("ConstArray requires one item type"))
+    = invalid-type
+types.clear-fault()
+. receiver = types.evaluate-type(module, tree, callable, frame.env)
+if receiver == invalid-type
+    if report-circular() || report-fault(callable)
+        = invalid-type
+    . head = type-head(callable)
+    if names-nothing(head)
+        frame.diagnose(head, .constructor-not-found)
+    else
+        decline(id)
+    = invalid-type
+if is-const-array(receiver)
+    . item = cpointer-item(receiver)
+    . items [ConstItem]
+    . folds = true
+    for position in 0 .. < arguments.types.length
+        . site = arguments.syntax[position]
+        . shape = arguments.shapes[position]
+        if shape.name || shape.is-property
+            frame.diagnose(site, .stated, program.store-atom("Illegal ConstArray item"))
+            = invalid-type
+        conversions.convert(site, site, arguments.types[position], item, .reason-argument)
+        if is-computed(site)
+            . message = program.store-atom("ConstArray item must be constant")
+            frame.diagnose(site, .stated, message)
+            = invalid-type
+        . folded = fold-const-item(site, item)
+        if folded
+            items += folded
+        else
+            folds = false
+    if folds
+        facts.note-const-array(instance, id, receiver, items)
+    = receiver
+. by-name = true
+do match? tree.nodes[callable]
+    | .node-type-identifier(row)
+        if types.this-atom && row.name == types.this-atom
+            by-name = false
+            if frame.self-type != no-type
+                receiver = frame.self-type
+if !check-table-row(receiver, arguments)
+    = invalid-type
+= calls.construction-on
+    - id
+    - receiver
+    - arguments
+    - by-name
+    - if tree.nodes[id] is .node-markup then id else callable
+
+────────────────────
+_ do fold-const-item ConstItem?
+    - site SyntaxId
+    - item TypeId
+
+` An item of a ConstArray as TypeScript lays it down: a string literal, or a number folded
+` to its bits and cut to the width of an integer item. Nothing for any other.
+do match? tree.nodes[site]
+    | .node-argument(row)
+        = fold-const-item(row.expr, item)
+    | .node-string-syntax
+        if item == types.string-type
+            = ConstItem(0, site)
+        = null
+. kind = types.completions[item].intrinsic
+if !is-integer-kind(kind)
+    = null
+. folded = fold-number(site)
+if !folded.folds
+    = null
+= ConstItem(cut-bits(folded.bits, item), 0)
+
+────────────────────
+_ do fold-number FoldedNumber
+    - site SyntaxId
+
+` The integer a literal number is, negated or cast to an integer type, as its bits.
+do match? tree.nodes[site]
+    | .node-argument(row)
+        = fold-number(row.expr)
+    | .node-integer-syntax(row)
+        . literal = parse-integer-literal(row.value)
+        if literal.overflow
+            = FoldedNumber(0, false)
+        = FoldedNumber(if literal.negative then 0 - literal.value else literal.value, true)
+    | .node-unary-expression(row)
+        if row.op == .negative-op
+            . inner = fold-number(row.operand)
+            = FoldedNumber(0 - inner.bits, inner.folds)
+    | .node-cast-expression(row)
+        . inner = fold-number(row.lhs)
+        . target = types.evaluate-type(module, tree, row.rhs, frame.env)
+        if inner.folds && target != invalid-type && integer-target
+            = FoldedNumber(cut-bits(inner.bits, target), true)
+        .. integer-target = is-integer-kind(types.completions[target].intrinsic)
+= FoldedNumber(0, false)
+
+────────────────────
+_ cut-bits U64
+    - bits U64
+    - type TypeId
+
+` Bits cut to the width of an integer type and extended by its sign.
+|? width >= 64 || width == 0
+    bits
+??
+    if negative then kept /or/ (mask /xor/ U64.max) else kept
+
+.. row = types.completions[type]
+.. width = row.bit-size as U64
+.. mask = (1u64 /lshift/ width) - 1
+.. kept = bits /and/ mask
+.. negative = row.is-signed && (kept /rshift/ (width - 1)) != 0
+
+────────────────────
+_ do taking-class (ModuleId, DeclId)
+    - callable SyntaxId
+    - named-module ModuleId
+    - named DeclId
+
+` The class a callable written with type arguments makes: the one its name resolves to, or where
+` that takes fewer type arguments than are written, the first class of the name this module sees
+` that takes as many or more, as the reference passes over one that takes fewer.
+do match? tree.nodes[callable]
+    | .node-type-arguments(row)
+        . given Size = row.args.count
+        . taken Size = types.class-type-args(named-module, named).count
+        . name = types.type-syntax-name(tree, row.base)
+        if taken < given && name
+            for candidate in program.lookup(module, name)
+                do match? program.modules[candidate.module].decls[candidate.decl]
+                    | .decl-class
+                        . held Size = types.class-type-args(candidate.module, candidate.decl).count
+                        if held >= given
+                            = (candidate.module, candidate.decl)
+= (named-module, named)
+
+────────────────────
+_ do names-const-array Bool
+    - callable SyntaxId
+
+` Whether a callable names ConstArray without the type of its items.
+do match? tree.nodes[callable]
+    | .node-type-identifier(row)
+        if row.name != types.const-array-atom!
+            = false
+        . named = types.type-named(module, row.name, frame.env)
+        = named != invalid-type && is-const-array(named)
+= false
+
+────────────────────
+_ do is-computed Bool
+    - site SyntaxId
+
+` Whether an item is the result of a call, which no constant array can hold.
+do match? tree.nodes[site]
+    | .node-argument(row)
+        = is-computed(row.expr)
+    | .node-call-expression(row)
+        do match? tree.nodes[row.callable]
+            | .node-identifier
+                = true
+            | .node-get-expression
+                = true
+= false
+
+────────────────────
+_ do call-static TypeId
+    - id SyntaxId
+    - object SyntaxId
+    - owner TypeId
+    - name Atom
+    - arguments Arguments
+
+` A call on a type. It is a call of a static method when the type is a type parameter, an
+` interface, or a type that declares a static method of the name: a type parameter answers
+` only what its constraints declare, an interface answers nothing itself, and a static method
+` that takes no such arguments is reported as one.
+. dependent = dependent-name(object)
+. interface = types.intrinsic-of(owner) == .interface
+if !dependent && !interface && !declares-static(owner, name)
+    . answered = calls.static-call(id, owner, name, arguments)
+    note-type-value(id, object)
+    = answered
+if !dependent && interface
+    . message = "Static methods cannot be called on an interface type"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+if dependent && !requires-static(dependent, name)
+    . shown = dependent.text
+    . message = "Static method ${name.text} is not declared by constraints on $shown"
+    frame.diagnose(id, .stated, program.store-atom(message))
+    = invalid-type
+. diagnosed = facts.diagnostics.length
+. result = calls.static-call(id, owner, name, arguments)
+if result == invalid-type
+    . message = program.store-atom("Static function not found")
+    facts.restate(diagnosed, instance, id, .function-not-found, .stated, message)
+= result
+
+────────────────────
+_ do note-type-value
+    - id SyntaxId
+    - object SyntaxId
+
+` A type that no static method answers for is called as the value describing it, and the
+` type's name is that value.
+. fact = facts.first-call(instance, id)
+if fact == no-fact || facts.calls[fact].callee == no-instance
+    =
+. receiver = instances.rows[facts.calls[fact].callee].self-type
+if receiver != no-type && types.intrinsic-of(receiver) == .type-info
+    facts.set-node-type(instance, object, receiver)
+
+────────────────────
+_ do dependent-name Atom?
+    - object SyntaxId
+
+` The type parameter a type's name stands for, when it names one.
+do match? tree.nodes[object]
+    | .node-type-identifier(row)
+        . this-name = types.this-atom
+        if this-name && this-name == row.name
+            = null
+        if types.env-lookup(frame.env, row.name)
+            = row.name
+= null
+
+────────────────────
+_ do requires-static Bool
+    - param Atom
+    - name Atom
+
+` Whether a constraint on a type parameter, of the function or converter or of the type it
+` belongs to, declares a static method of the name.
+. decls = program.modules[module].decls
+. decl = frame.decl
+while decl != 0
+    . constraints = RowRange'SyntaxId()
+    . next = 0u32
+    do match? decls[decl]
+        | .decl-function(fn)
+            constraints = fn.param-constraints
+            next = fn.owner
+        | .decl-converter(converter)
+            constraints = converter.param-constraints
+            next = converter.owner
+        | .decl-fromverter(fromverter)
+            next = fromverter.owner
+        | .decl-class(class)
+            constraints = class.param-constraints
+    for constraint in tree.children[constraints]
+        do match? tree.nodes[constraint]
+            | .node-param-constraint(row)
+                . constrained = types.type-syntax-name(tree, row.left)
+                if constrained && constrained == param
+                    . bound = types.evaluate-type(module, tree, row.right, frame.env)
+                    if bound != invalid-type && declares-static(bound, name)
+                        = true
+    decl = next
+= false
+
+────────────────────
+_ do declares-static Bool
+    - type TypeId
+    - name Atom
+
+` Whether a type, a base of it, or an interface it implements declares a static method.
+types.complete(type)
+do match? types.rows[type]
+    | .type-class(row)
+        . owner = program.modules[row.module]
+        do match? owner.decls[row.decl]
+            | .decl-class(class)
+                for member in owner.members-named(class.members, name)
+                    do match? owner.decls[member]
+                        | .decl-function(fn)
+                            if fn.is-static && fn.name && fn.name == name
+                                = true
+for interface in types.interfaces-of(type)
+    if declares-static(interface, name)
+        = true
+. base = types.base-of(type)
+if base
+    = declares-static(base, name)
+= false
+
+────────────────────
++ do call-override TypeId
+    - id SyntaxId
+    - op Operator
+    - left SyntaxId
+    - lhs TypeId
+    - right SyntaxId
+    - rhs TypeId
+    - exchanged Bool
+
+` Calls the operator one operand declares for the other, which for equality may be either
+` operand, and gives no type when neither declares it. `exchanged` says the operands arrive
+` in the reverse of their order in the source, so the call notes when its receiver is the
+` operator's right operand.
+. token = program.store-atom("$op")
+if calls.has-operator(lhs, token, rhs)
+    . result = calls.operator-call(id, lhs, token, right, rhs)
+    if exchanged && result != invalid-type
+        facts.mark-swapped(instance, id)
+    = result
+. either = op == .equals-op || op == .not-equals-op
+if either && calls.has-operator(rhs, token, lhs)
+    . result = calls.operator-call(id, rhs, token, left, lhs)
+    if !exchanged && result != invalid-type
+        facts.mark-swapped(instance, id)
+    = result
+= no-type
