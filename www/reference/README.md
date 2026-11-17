@@ -7,17 +7,18 @@ out of the site.
 
 ## Building the reference
 
-Run `bin/brix www/src/reference/build.yumi -o .tmp/build/build-reference` from the repository root to generate `www/dist/ref`. Add `--watch` to keep the Brix builder running and rebuild after any Markdown change below the source directory. The whole reference renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are not generated.
+Run `bin/brix www/reference/build.yumi -o .tmp/build/build-reference` from the repository root to generate `.tmp/site/ref`. Add `--watch` to keep the Brix builder running and rebuild after any Markdown change below the source directory. The whole reference renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are not generated.
 
-`reference/build.yumi` uses the reusable `www/src/markdown-site/site.yumi` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/forms.yumi` shows Brix code as rows, and `reference/annotations.yumi` adds annotated Brix examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Brix paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
+`reference/build.yumi` uses the reusable `www/markdown-site/site.yumi` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/forms.yumi` shows Brix code as rows the way the Brix editor draws them, and `reference/annotations.yumi` adds annotated Brix examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Brix paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
 
 ## Rows and forms
 
-The reference writes code as Brix forms: ` ```brix ` fences and inline code marked `{.brix}`. The site shows each as rows, the text the Brix editor shows for the same forms, and keeps the forms beside them. A Forms button on each Brix block switches every block and inline span on the page between rows and forms, and the browser remembers the choice. Without JavaScript the page shows rows.
+The reference writes code as Brix forms: ` ```brix ` fences and inline code marked `{.brix}`. The site shows each as rows, the text the Brix editor shows for the same forms, and keeps the forms beside them. A Source button, shown while the pointer is over a Brix block, switches every block and inline span on the page between rows and forms, and the browser remembers the choice. Without JavaScript the page shows rows.
 
-- A fence's rows are syntax-colored as Brix. Inline rows are plain text; rows of more than one line are shown as a small block in the line.
+- The rows look as they do in the Brix editor. The build reads the forms into the editor's row document (`stdlib/code/structure`) and takes each row's indent and the kind of each span from it, so the colors are the editor's. Each function stands in a rounded box, a type in a tray with a box for each of its methods, header rows on a wash, and a private declaration's border is dashed. The boxes are drawn in the editor's dark colors, from `stdlib/gui/source-editor`, in both page themes.
+- Inline rows take the same colors, in the editor's light or dark palette to match the page; rows of more than one line are shown as a small block in the line.
 - Code marked `{.rows}` and ` ```rows ` fences are already rows and are shown as written, as are ` ```output ` and ` ```text ` fences.
-- A fence's info string may name how its example ends, as in ` ```brix compile-error `. Rows of a `compile-error` example may not be readable Brix, so when they cannot be colored they are shown as plain text. Any other example whose rows cannot be colored is shown the same way, and the build prints a warning naming it.
+- A fence's info string may name how its example ends, as in ` ```brix compile-error `.
 - Forms that cannot be converted to rows fail the build, with the chapter and line.
 
 ## Reading layout and chapter navigation
@@ -103,10 +104,5 @@ The build verifies that parser runs reproduce the cleaned source exactly. The br
 
 ## Verification
 
-Build into a scratch folder to check a change without touching `www/dist/ref`:
-
-```sh
-bin/brix www/src/reference/build.yumi -o .tmp/build/build-reference -- --output .tmp/reference
-```
-
-Serve that folder over HTTP and switch a block between rows and forms to check the toggle.
+Build the reference, serve `.tmp/site/ref` over HTTP and switch a block between rows and forms to
+check the toggle.

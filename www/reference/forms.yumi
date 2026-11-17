@@ -1,0 +1,400 @@
+./../markdown-site/site
+./annotations
+/code/structure/document
+/code/structure/rows
+/data/markdown
+/lang/brix/brix
+
+_ reference-row-height Size = 22
+_ reference-edge Size = 11
+_ reference-half-gap Size = 6
+_ reference-member-gap Size = 2
+_ reference-edge-step Size = 4
+_ reference-wash-trail Size = 7
+_ reference-rule-offset Size = 10
+_ reference-double-offset Size = 9
+_ reference-border Size = 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ ReferenceRange is (start Size, end Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ReferenceSize is (height Size, end Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ ReferenceLayout is Tuple
+
++ tops [Size]
++ sizes [ReferenceSize]
+
+━━━━━━━━━━━━━━━━━━━━
++ do render-reference-forms String
+    - document MarkdownSiteDocument
+    - code MDFencedCode
+
+. forms = code.body.trim()
+. source = use reference-document(forms, "${document.source-name}:${code.first-body-line}")
+= reference-forms-html(reference-rows-html(source), reference-html(forms))
+
+━━━━━━━━━━━━━━━━━━━━
++ do render-reference-inline-code String
+    - document MarkdownSiteDocument
+    - code MDInlineCode
+
+. text = reference-html(code.code)
+if code.language == "brix"
+    . source = use reference-document(code.code, "${document.source-name}: ${code.code}")
+    . lines = reference-inline-lines(source)
+    . multiline = if lines.length > 1 then " brix-multiline" else ""
+    . html = "<code class=\"language-brix$multiline\"><span class=\"brix-rows ubrix-inline\">"
+    html += "${"\n".join(lines)}</span><span class=\"brix-forms\">$text</span></code>"
+    = html
+=? "<code>$text</code>" if !code.language
+= "<code class=\"language-${reference-html-attribute(code.language)}\">$text</code>"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-document SourceDocument
+    - forms String
+    - name String
+
+= brix-document-read(forms)
+    catch error Error
+        ?! Error("$name: ${error.message}")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-rows-html String
+    - source SourceDocument
+
+. blocks [[SourceOutlineRow]]
+. shown [SourceRow]
+. kept Size = 0
+for index in 0 .. < source.declarations.length
+    . base = source.first-row(index)
+    . rows = source.rows-of(index)
+    blocks += rows
+    . is-boxed = rows[0].block != SourceRowBlock.none
+    for local in 0 .. < rows.length
+        . row = source.row-at(base + local)
+        shown += row
+        if is-boxed || reference-has-content(row)
+            kept = base + local + 1
+. sizes [ReferenceSize]
+. base Size = 0
+for index in 0 .. < blocks.length
+    . is-followed = index + 1 < blocks.length && blocks[index + 1][0].block != SourceRowBlock.none
+    sizes ++= reference-sizes(blocks[index], base, kept, is-followed)
+    base += blocks[index].length
+. tops [Size]
+. top Size = 0
+for size in sizes
+    tops += top
+    top += size.height
+. layout = ReferenceLayout(tops, sizes)
+. layers = ""
+base = 0
+for rows in blocks
+    if rows[0].block != SourceRowBlock.none
+        layers += reference-surface-html(rows, base, layout)
+    base += rows.length
+. text = ""
+for index in 0 .. < kept
+    . row = shown[index]
+    text += reference-row-html(row, sizes[index].height)
+    if row.divider == source-divider-double
+        layers += "<div class=\"ub-double\" style=\"top:${tops[index] + reference-double-offset}px\"></div>"
+= "<div class=\"ubrix\"><div class=\"ubrix-sheet\">$layers<div class=\"ubrix-text\">$text</div></div></div>"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-sizes [ReferenceSize]
+    - rows [SourceOutlineRow]
+    - base Size
+    - kept Size
+    - is-followed Bool
+
+. sizes [ReferenceSize]
+. is-boxed = rows[0].block != SourceRowBlock.none
+. members [ReferenceRange]
+if rows[0].block == SourceRowBlock.holder
+    members = reference-members(rows)
+for local in 0 .. < rows.length
+    . row = base + local
+    . is-gap = reference-is-gap(rows[local])
+    . is-last = local + 1 == rows.length
+    . above = if row == 0 then 0 else reference-half-gap
+    . below = if row + 1 >= kept then 0 else reference-half-gap
+    if !is-boxed
+        if rows[local].divider > 0
+            sizes += ReferenceSize(above, above)
+        else if is-gap && local > 0 && rows[local - 1].divider > 0
+            sizes += ReferenceSize(0, 0)
+        else if is-last && is-gap && is-followed
+            sizes += ReferenceSize(reference-half-gap, reference-half-gap)
+        else
+            sizes += ReferenceSize(reference-row-height, reference-row-height)
+    else if local == 0 || reference-member-starts(members, local)
+        sizes += ReferenceSize(above + reference-edge, above + reference-edge)
+    else if is-gap && is-last
+        . inside = if reference-member-ends(members, local) then reference-member-gap else reference-edge
+        sizes += ReferenceSize(inside + below, inside)
+    else if is-gap && reference-member-ends(members, local + 1)
+        sizes += ReferenceSize(reference-edge + reference-half-gap, reference-edge)
+    else
+        sizes += ReferenceSize(reference-row-height, reference-row-height)
+= sizes
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-inline-lines [String]
+    - source SourceDocument
+
+. lines [String]
+. first Size? = null
+. kept Size = 0
+for index in 0 .. < source.declarations.length
+    . base = source.first-row(index)
+    for local in 0 .. < source.rows-of(index).length
+        . row = source.row-at(base + local)
+        if !row.is-divider
+            if reference-has-content(row)
+                first = first ?? lines.length
+                kept = lines.length + 1
+            lines += "${" " * row.content-start}${reference-spans-html(row.spans)}"
+. trimmed [String]
+for index in (first ?? 0) .. < kept
+    trimmed += lines[index]
+= trimmed
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-has-content Bool
+    - row SourceRow
+
+!row.is-divider && row.content.trim().length > 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-row-html String
+    - row SourceRow
+    - height Size
+
+. style = if height == reference-row-height then "" else " style=\"height:${height}px\""
+=? "<div class=\"ub-row\"$style></div>" if row.is-divider || row.spans.length == 0
+. preamble = if row.zone == SourceRowZone.preamble then " ub-preamble" else ""
+= "<div class=\"ub-row$preamble\"$style>${" " * row.content-start}${reference-spans-html(row.spans)}</div>"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-spans-html String
+    - spans [SourceSpan]
+
+. html = ""
+. index Size = 0
+while index < spans.length
+    . span = spans[index]
+    . text = span.text
+    index += 1
+    while index < spans.length && spans[index].kind == span.kind && spans[index].is-optional == span.is-optional
+        text += spans[index].text
+        index += 1
+    html += reference-span-html(span.kind, span.is-optional, text)
+= html
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-span-html String
+    - kind SourceSpanKind
+    - is-optional Bool
+    - text String
+
+|? kind == SourceSpanKind.plain && !is-optional
+    reference-html(text)
+??
+    "<span class=\"s-$kind$optional\">${reference-html(text)}</span>"
+
+.. optional = if is-optional then " s-optional" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-surface-html String
+    - rows [SourceOutlineRow]
+    - base Size
+    - layout ReferenceLayout
+
+. kind = rows[0].block
+. is-tray = kind == SourceRowBlock.holder
+. members [ReferenceRange]
+if is-tray
+    members = reference-members(rows)
+. top = reference-opener-top(layout, base)
+. bottom = reference-region-bottom(rows, base, rows.length, false, layout)
+. inner = reference-wash-html(rows, base, 0, rows.length, false, top, layout)
+for local in 0 .. < rows.length
+    if rows[local].divider == source-divider-dashed && !reference-in-members(members, local)
+        inner += reference-rule-html(layout.tops[base + local], top)
+for member in members
+    inner += reference-member-html(rows, base, member, top, layout)
+. surface = if is-tray then "ub-tray" else "ub-box ub-$kind"
+= reference-layer-html("$surface${reference-private(rows[0])}", top, bottom - top, inner)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-members [ReferenceRange]
+    - rows [SourceOutlineRow]
+
+. home = rows[0].owner
+. members [ReferenceRange]
+. start Size = 1
+while start < rows.length
+    if rows[start].owner == home
+        start += 1
+    else
+        . end = start + 1
+        while end < rows.length && rows[end].owner != home && rows[end].divider != source-divider-thin
+            end += 1
+        if rows[start].divider == source-divider-thin && reference-is-function-block(rows[start].block)
+            members += ReferenceRange(start, end)
+        start = end
+= members
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-in-members Bool
+    - members [ReferenceRange]
+    - local Size
+
+for member in members
+    =? true if local >= member.start && local < member.end
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-member-starts Bool
+    - members [ReferenceRange]
+    - local Size
+
+for member in members
+    =? true if member.start == local
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-member-ends Bool
+    - members [ReferenceRange]
+    - local Size
+
+for member in members
+    =? true if member.end == local
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-member-html String
+    - rows [SourceOutlineRow]
+    - base Size
+    - member ReferenceRange
+    - parent Size
+    - layout ReferenceLayout
+
+. top = reference-opener-top(layout, base + member.start)
+. bottom = reference-region-bottom(rows, base, member.end, true, layout)
+. inner = reference-wash-html(rows, base, member.start, member.end, true, top, layout)
+for local in member.start .. < member.end
+    if rows[local].divider == source-divider-dashed
+        inner += reference-rule-html(layout.tops[base + local], top)
+. head = rows[member.start]
+. classes = "ub-member ub-${head.block}${reference-private(head)}"
+= reference-layer-html(classes, top - parent - reference-border, bottom - top, inner)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do reference-wash-html String
+    - rows [SourceOutlineRow]
+    - base Size
+    - opener Size
+    - end Size
+    - is-member Bool
+    - parent Size
+    - layout ReferenceLayout
+
+. last = opener + 1
+=? "" if last >= end || rows[last].zone != SourceRowZone.header
+while last + 1 < end && rows[last + 1].zone == SourceRowZone.header
+    last += 1
+. next = last + 1
+. reached = reference-row-bottom(rows, base, last, end, is-member, layout) ?? layout.sizes[base + last].height
+. bottom = layout.tops[base + last] + reached
+if next < rows.length && rows[next].node == null
+    bottom = layout.tops[base + next]
+    if reference-is-gap(rows[next])
+        . reach = reference-row-bottom(rows, base, next, end, is-member, layout) ?? reference-wash-trail
+        bottom += if reach < reference-wash-trail then reach else reference-wash-trail
+= "<div class=\"ub-wash ub-${rows[opener].block}\" style=\"height:${bottom - parent - reference-border}px\"></div>"
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-rule-html String
+    - row-top Size
+    - parent Size
+
+"<div class=\"ub-rule\" style=\"top:${top}px\"></div>"
+
+.. top = row-top + reference-rule-offset - parent - reference-border
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-layer-html String
+    - classes String
+    - top Size
+    - height Size
+    - inner String
+
+"<div class=\"$classes\" style=\"top:${top}px;height:${height}px\">$inner</div>"
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-opener-top Size
+    - layout ReferenceLayout
+    - row Size
+
+layout.tops[row] + layout.sizes[row].height - reference-edge
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-region-bottom Size
+    - rows [SourceOutlineRow]
+    - base Size
+    - end Size
+    - is-member Bool
+    - layout ReferenceLayout
+
+layout.tops[base + end - 1] + (reference-row-bottom(rows, base, end - 1, end, is-member, layout) ?? 0)
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-row-bottom Size?
+    - rows [SourceOutlineRow]
+    - base Size
+    - local Size
+    - end Size
+    - is-member Bool
+    - layout ReferenceLayout
+
+|? local + 1 < end
+    null
+|? is-member && local + 1 >= rows.length
+    close - reference-edge-step
+??
+    close
+
+.. close = layout.sizes[base + local].end
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-is-gap Bool
+    - row SourceOutlineRow
+
+row.node == null && row.divider == 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-is-function-block Bool
+    - block SourceRowBlock
+
+block == SourceRowBlock.leaf || block == SourceRowBlock.steps || block == SourceRowBlock.text
+
+━━━━━━━━━━━━━━━━━━━━
+_ reference-private String
+    - row SourceOutlineRow
+
+if row.is-private then " ub-private" else ""
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ reference-forms-html
+    - rows String
+    - forms String
+
+<div class="brix-code" data-brix-code>\
+<div class="brix-rows">$rows</div>\
+<div class="brix-forms"><pre><code class="language-brix">$forms</code></pre></div>\
+</div>

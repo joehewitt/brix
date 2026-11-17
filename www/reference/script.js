@@ -229,8 +229,8 @@ export function initializeCodeView(document) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'code-view-toggle';
-        button.textContent = 'Forms';
-        button.title = 'Show code as Brix forms';
+        button.textContent = 'Source';
+        button.title = 'Show code as Brix source';
         block.append(button);
         return button;
     });

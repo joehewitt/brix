@@ -7,32 +7,28 @@ from pathlib import Path
 
 WWW = Path(__file__).resolve().parent
 ROOT = WWW.parent
-DIST = WWW / 'dist'
-STAGE = ROOT / '.tmp' / 'site'
-HOME = WWW / 'src' / 'prelaunch'
-REFERENCE_SOURCE = Path('www/src/reference/build.yumi')
+SITE = ROOT / '.tmp' / 'site'
+HOME = WWW / 'prelaunch'
+REFERENCE_SOURCE = Path('www/reference/build.yumi')
 REFERENCE_PROGRAM = Path('.tmp/build/build-reference')
 
 
 def main(arguments):
     parser = argparse.ArgumentParser(
         prog='www/build',
-        description=f'Build the website into {DIST.relative_to(ROOT)}: the home page and the language reference.')
+        description=f'Build the website into {SITE.relative_to(ROOT)}: the home page and the language reference.')
     parser.parse_args(arguments)
-    if STAGE.exists():
-        shutil.rmtree(STAGE)
-    shutil.copytree(HOME, STAGE)
+    if SITE.exists():
+        shutil.rmtree(SITE)
+    shutil.copytree(HOME, SITE)
     built = subprocess.run(
         [str(ROOT / 'bin' / 'brix'), str(REFERENCE_SOURCE), '-o', str(REFERENCE_PROGRAM),
-         '--', '--output', str(STAGE / 'ref')],
+         '--', '--output', str(SITE / 'ref')],
         cwd=ROOT)
     if built.returncode != 0:
         print('www/build: the reference did not build', file=sys.stderr)
         return built.returncode
-    if DIST.exists():
-        shutil.rmtree(DIST)
-    STAGE.rename(DIST)
-    print(f'Built {DIST.relative_to(ROOT)}')
+    print(f'Built {SITE.relative_to(ROOT)}')
     return 0
 
 

@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 import compiler
 from common import BUILD, ROOT, Failure, file_digest, say, take_folders
 
-LEFT_OUT = ('www/dist/',)
 SWEEP = os.path.join(BUILD, 'brix-sweep')
 COMPILER_SOURCE = os.path.join('compiler', 'brix-cli.bx')
 SUMMARY = 'sweep files '
@@ -55,7 +54,7 @@ def brix_sources(root=ROOT, folder=None):
         stdout=subprocess.PIPE,
         check=True,
     ).stdout.decode()
-    paths = [path for path in listed.split('\0') if path and not path.startswith(LEFT_OUT)]
+    paths = [path for path in listed.split('\0') if path]
     return sorted(set(path for path in paths if os.path.isfile(os.path.join(root, path))))
 
 
