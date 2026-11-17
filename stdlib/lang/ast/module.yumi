@@ -27,6 +27,30 @@ owner == other.owner && name == other.name
 hash-for(name) /xor/ hash-for(owner)
 
 ━━━━━━━━━━━━━━━━━━━━
++ MembersNamed is Tuple
+    is CursorIterable'DeclId'U32
+
+` The members of a class or extension with a name, in the order the module declared them, as
+` `Module.members-named` finds them.
+
++ module Module
++ first U32
+
+────────────────────
++ get initial-iterator-state U32 @inline
+
+first
+
+────────────────────
++ do next-iterator (U32, DeclId?) @inline
+    - place U32
+
+if place == no-member
+    . none DeclId?
+    = (place, none)
+= (module.member-links[place], module.member-pool[place])
+
+━━━━━━━━━━━━━━━━━━━━
 + Module
     is Usable'Void
 
@@ -78,6 +102,14 @@ _ released Bool
 ` The place in the member pool of the first member of a class or extension with a name, or
 ` `no-member`. The next with the name is at the place in `member-links`.
 member-heads[MemberKey(members.start, name)] ?? no-member
+
+────────────────────
++ members-named MembersNamed
+    - members RowRange'DeclId
+    - name Atom
+
+` The members of a class or extension with a name, which `first-member` and `member-links` chain.
+MembersNamed(this, first-member(members, name))
 
 ────────────────────
 + do begin-using

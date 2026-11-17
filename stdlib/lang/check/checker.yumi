@@ -1365,10 +1365,7 @@ do match? owner-module.decls[ref.decl]
         members = row.members
     | .decl-extension(row)
         members = row.members
-. place = owner-module.first-member(members, name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
+for member in owner-module.members-named(members, name)
     do match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == name
@@ -15480,19 +15477,13 @@ _ do overrides-facet Bool
 do match? decl
     | .decl-function(fn)
         =? false if fn.is-static || !fn.name || !is-overridable-kind(fn.kind)
-        . place = target.first-member(members, fn.name)
-        while place != no-member
-            . member = target.member-pool[place]
-            place = target.member-links[place]
+        for member in target.members-named(members, fn.name)
             do match? target.decls[member]
                 | .decl-function(other)
                     =? true if other.name == fn.name && other.kind == fn.kind && !other.is-static
     | .decl-property(property)
         =? false if property.value == 0 || !property.name
-        . place = target.first-member(members, property.name)
-        while place != no-member
-            . member = target.member-pool[place]
-            place = target.member-links[place]
+        for member in target.members-named(members, property.name)
             do match? target.decls[member]
                 | .decl-property(other)
                     =? true if other.name == property.name
@@ -15688,10 +15679,7 @@ _ do declares-name Bool
         row.members
     ??
         RowRange'DeclId()
-. place = target.first-member(members, name)
-while place != no-member
-    . member = target.member-pool[place]
-    place = target.member-links[place]
+for member in target.members-named(members, name)
     . (named, is-shared, _) = member-name(target, member)
     if named && named == name && (is-shared || !shared-only)
         = true
@@ -16029,10 +16017,7 @@ _ do check-member Bool
 do match decls[owner-decl]
     | .decl-class(class)
         if storage != .storage-getter
-            . place = program.modules[module].first-member(class.members, name)
-            while place != no-member
-                . member = program.modules[module].member-pool[place]
-                place = program.modules[module].member-links[place]
+            for member in program.modules[module].members-named(class.members, name)
                 do match? decls[member]
                     | .decl-property(other)
                         if member < decl && other.name && other.name == name
@@ -16101,10 +16086,7 @@ _ do check-inherited-event
 . decls = program.modules[module].decls
 do match? decls[event.owner]
     | .decl-class(class)
-        . place = program.modules[module].first-member(class.members, event.name)
-        while place != no-member
-            . member = program.modules[module].member-pool[place]
-            place = program.modules[module].member-links[place]
+        for member in program.modules[module].members-named(class.members, event.name)
             . earlier = match decls[member]
                 | .decl-property(other)
                     other.syntax < event.syntax && other.name && other.name == event.name
@@ -16448,10 +16430,7 @@ if fn.owner == 0
 else
     do match? target.decls[fn.owner]
         | .decl-class(class)
-            . place = target.first-member(class.members, fn-name)
-            while place != no-member
-                . member = target.member-pool[place]
-                place = target.member-links[place]
+            for member in target.members-named(class.members, fn-name)
                 if member < decl
                     repeated = repeated || same-definition(member, fn)
 if repeated
@@ -26299,10 +26278,7 @@ _ do class-property DeclId
 . owner = program.modules[ref.module]
 do match? owner.decls[ref.decl]
     | .decl-class(class)
-        . place = owner.first-member(class.members, name)
-        while place != no-member
-            . member = owner.member-pool[place]
-            place = owner.member-links[place]
+        for member in owner.members-named(class.members, name)
             do match? owner.decls[member]
                 | .decl-property(row)
                     if row.name && row.name == name
@@ -32260,10 +32236,7 @@ if fact.facet == U32.max && program.reaches-private(module, ref.module)
         row.members
     ??
         RowRange'DeclId()
-. place = owner-module.first-member(members, name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
+for member in owner-module.members-named(members, name)
     do match? owner-module.decls[member]
         | .decl-property(property)
             if property.name && property.name == name
@@ -32564,10 +32537,7 @@ _ do member-event DeclId?
     - name Atom
 
 ` The event of a name among a class's or a facet's members.
-. place = target.first-member(members, name)
-while place != no-member
-    . member = target.member-pool[place]
-    place = target.member-links[place]
+for member in target.members-named(members, name)
     do match? target.decls[member]
         | .decl-event(event)
             =? member if event.name == name
@@ -33251,10 +33221,7 @@ while cursor != no-type
             . target = program.modules[row.module]
             do match? target.decls[row.decl]
                 | .decl-class(class)
-                    . place = target.first-member(class.members, name)
-                    while place != no-member
-                        . member = target.member-pool[place]
-                        place = target.member-links[place]
+                    for member in target.members-named(class.members, name)
                         do match? target.decls[member]
                             | .decl-function(fn)
                                 if written && fn.kind == .function-decl && same-name
@@ -33299,10 +33266,7 @@ while cursor != no-type
             . target = program.modules[row.module]
             do match? target.decls[row.decl]
                 | .decl-class(class)
-                    . place = target.first-member(class.members, name)
-                    while place != no-member
-                        . member = target.member-pool[place]
-                        place = target.member-links[place]
+                    for member in target.members-named(class.members, name)
                         do match? target.decls[member]
                             | .decl-function(fn)
                                 if fn.kind == .getter-decl && fn.name == name
@@ -33812,10 +33776,7 @@ if tuple.decl != 0
 do match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
-. place = owner-module.first-member(members, fact.name)
-while place != no-member
-    . member = owner-module.member-pool[place]
-    place = owner-module.member-links[place]
+for member in owner-module.members-named(members, fact.name)
     do match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == fact.name
@@ -35090,10 +35051,7 @@ do match? types.rows[type]
         . owner = program.modules[row.module]
         do match? owner.decls[row.decl]
             | .decl-class(class)
-                . place = owner.first-member(class.members, name)
-                while place != no-member
-                    . member = owner.member-pool[place]
-                    place = owner.member-links[place]
+                for member in owner.members-named(class.members, name)
                     do match? owner.decls[member]
                         | .decl-function(fn)
                             if fn.is-static && fn.name && fn.name == name
