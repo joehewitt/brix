@@ -14,9 +14,6 @@
 
 + toolchain-config-name = "libs/build.json"
 
-` How the toolchain's runtime spells its names: "brix", or "brix" once it is renamed
-+ runtime-names String := configured-runtime-names()
-
 + project-folder-name = ".brix"
 
 _ git-folder-name = ".git"
@@ -99,9 +96,9 @@ _ runtime-source-root Path
     root
 
 .. root = brix-build-path
-.. root-sources = root / "$runtime-names/libs/core"
+.. root-sources = root / "brix/libs/core"
 .. bench-root = root / "bench"
-.. bench-sources = bench-root / "$runtime-names/libs/core"
+.. bench-sources = bench-root / "brix/libs/core"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ build-root Path
@@ -113,7 +110,7 @@ _ configured-build-root Path?
 
 Path(resolved-path(configured, "")) if configured != ""
 
-.. configured = toolchain-env("_BUILD_PATH") ?? ""
+.. configured = env("BRIX_BUILD_PATH") ?? ""
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do find-toolchain-root Path
@@ -133,57 +130,7 @@ _ do find-project-root Path
 ━━━━━━━━━━━━━━━━━━━━
 _ toolchain-home String
 
-Path(toolchain-env("_HOME") ?? "${env("HOME") ?? ""}/.brix").normalized
-
-━━━━━━━━━━━━━━━━━━━━
-+ toolchain-env String?
-    - suffix String
-
-` A variable of the toolchain, spelled BRIX… or as it was before Brix, BRIX….
-env("BRIX$suffix") ?? env("BRIX$suffix")
-
-━━━━━━━━━━━━━━━━━━━━
-+ runtime-name String
-    - name String
-
-` The runtime's spelling of `name`, a runtime name as it was written before Brix.
-|? runtime-names == "brix"
-    respelled(name, ["brix", "Brix", "BRIX", "Yu"], ["brix", "Brix", "BRIX", "Bx"])
-??
-    name
-
-━━━━━━━━━━━━━━━━━━━━
-+ canonical-runtime-name String
-    - name String
-
-` A name the runtime spells, as it was written before Brix, to compare with the compiler's lists.
-|? runtime-names == "brix"
-    respelled(name, ["brix", "Brix", "BRIX", "Bx"], ["brix", "Brix", "BRIX", "Yu"])
-??
-    name
-
-━━━━━━━━━━━━━━━━━━━━
-_ do respelled String
-    - name String
-    - from [String]
-    - to [String]
-
-. result = name
-for position in 0 .. < from.length
-    result = to[position].join(result.split(from[position]))
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-_ do configured-runtime-names String
-
-. text = catch? read-file-text(toolchain-root / toolchain-config-name)
-if text
-    . config = JSON(text)
-    if config is [String = JSON]
-        . names = (config as [String = JSON])["runtimeNames"]
-        if names && names is String
-            = names as String
-= "brix"
+Path(env("BRIX_HOME") ?? "${env("HOME") ?? ""}/.brix").normalized
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do directory-holding Path?
@@ -206,7 +153,7 @@ while directory
 + do module-search-paths [Path]
 
 . paths [Path]
-. configured = toolchain-env("PATH") ?? ""
+. configured = env("BRIXPATH") ?? ""
 if configured != ""
     paths ++= configured.split(":")
 else
@@ -259,7 +206,7 @@ if config is [String = JSON]
             if project is [String = JSON]
                 . path = (project as [String = JSON])["path"]
                 if path && path is String
-                    add-export-roots(paths, project, brix-runtime-path / runtime-names / (path as String))
+                    add-export-roots(paths, project, brix-runtime-path / "brix" / (path as String))
     . externals = fields["externalLibraries"]
     if externals && externals is [String = JSON]
         for name, external in externals as [String = JSON]
