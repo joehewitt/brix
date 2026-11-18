@@ -340,9 +340,9 @@ while level
                 decline(site)
                 =
             .. dependency-line = owner.tree.nodes[written] is .node-dependency-declaration
-            if !waits && is-live-rule(owner.tree, written)
+            if !waits && owner.tree.is-live-rule(written)
                 live-owned = true
-            if is-markup-trigger(owner.tree, written) && !host-self(receiver, site)
+            if owner.tree.is-markup-trigger(written) && !host-self(receiver, site)
                 decline(site)
                 =
             if !ran && !tabled
@@ -361,30 +361,16 @@ while level
                     =
             if section != 0
                 note-unit-errors(unit, site)
-            else if is-live-rule(owner.tree, written)
+            else if owner.tree.is-live-rule(written)
                 demand-errors(unit)
                 if instances.signatures[unit].errors.count != 0
-                    if waits || is-markup-trigger(owner.tree, written) || !hands-off(unit)
+                    if waits || owner.tree.is-markup-trigger(written) || !hands-off(unit)
                         decline(site)
                         =
                     note-unit-errors(unit, site)
     level = types.base-of(level)
 if found
     instances.mark-may-panic(instance)
-
-────────────────────
-+ do is-live-rule Bool
-    - tree AST
-    - syntax SyntaxId
-
-` Whether a rule a class writes runs as a live action of the object: a `when` or `whenever`
-` rule.
-do match? tree.nodes[syntax]
-    | .node-when-rule-syntax
-        = true
-    | .node-whenever-rule-syntax
-        = true
-= false
 
 ────────────────────
 + do waits-in-rule Bool
@@ -515,25 +501,7 @@ do match? tree.nodes[section-loop(module, syntax)]
     | .node-for-block(block)
         do match? tree.nodes[block.loop]
             | .node-loop-syntax(loop)
-                = clause-delivery(tree, loop.clause)
-= 0
-
-────────────────────
-_ do clause-delivery U32
-    - tree AST
-    - clause SyntaxId
-
-` Which publications a loop on an event hears where its only clause says so: 1 for
-` `when arrival`, 2 for `when bubbling`, and else 0.
-do match? tree.nodes[clause]
-    | .node-clause(row)
-        if row.op is .when-clause && row.next == 0
-            do match? tree.nodes[row.expr]
-                | .node-identifier(name)
-                    if name.name.text == "arrival"
-                        = 1
-                    if name.name.text == "bubbling"
-                        = 2
+                = tree.clause-delivery(loop.clause)
 = 0
 
 ────────────────────
@@ -554,7 +522,7 @@ do match? tree.nodes[iterator]
         body = block.body
         do match? tree.nodes[block.loop]
             | .node-loop-syntax(loop)
-                if loop.clause != 0 && clause-delivery(tree, loop.clause) == 0
+                if loop.clause != 0 && tree.clause-delivery(loop.clause) == 0
                     = false
 if body == 0
     = false
@@ -898,22 +866,6 @@ facts.note-tracked(cell-ref.module, cell-ref.decl, is-on)
 = true
 
 ────────────────────
-+ do tracks-reads Bool
-    - tree AST
-    - value SyntaxId
-
-` Whether a value reads a name or a member that it tracks.
-for node in tree.subtree-start(value) .. value
-    do match? tree.nodes[node]
-        | .node-identifier(row)
-            if row.is-tracked
-                = true
-        | .node-get-expression(row)
-            if row.is-tracked
-                = true
-= false
-
-────────────────────
 _ do promise Bool
     - callee InstanceId
 
@@ -1068,7 +1020,7 @@ while level
     . ref = class-ref(types, level)
     do match? program.modules[ref.module].decls[ref.decl]
         | .decl-class(class)
-            if class.content != 0 && branches-element(owner-tree, class.content, name)
+            if class.content != 0 && owner-tree.branches-element(class.content, name)
                 = root
             .. owner-tree = program.modules[ref.module].tree
     level = types.base-of(level)
@@ -1386,32 +1338,6 @@ for child in tree.children-of(id)
 = 0
 
 ────────────────────
-_ do in-container Bool
-    - region SyntaxId
-    - id SyntaxId
-
-` Whether a node is written in the container of a markup loop region.
-do match? tree.nodes[region]
-    | .node-for-block(row)
-        do match? tree.nodes[row.loop]
-            | .node-loop-syntax(loop)
-                = loop.container != 0 && after-start && id <= loop.container
-                    .. after-start = tree.subtree-start(loop.container) <= id
-= false
-
-────────────────────
-_ do in-key Bool
-    - region SyntaxId
-    - id SyntaxId
-
-` Whether a node is written in the `keyed by` clause of a markup loop region.
-do match? tree.nodes[region]
-    | .node-for-block(row)
-        . clause = tree.keyed-clause(row.loop)
-        = clause != 0 && tree.subtree-start(clause) <= id && id <= clause
-= false
-
-────────────────────
 _ do arm-line SyntaxId
     - region SyntaxId
     - id SyntaxId
@@ -1436,18 +1362,6 @@ _ matched-line SyntaxId
 if region != 0 && is-region(region) then arm-line(region, id) else 0u32
 
 .. region = tree.arm-match(arm)
-
-────────────────────
-_ do in-arm-body Bool
-    - region SyntaxId
-    - id SyntaxId
-
-` Whether a node is written in the body of an arm of a markup branch or match region.
-for arm in tree.region-arms(region)
-    . body = tree.region-arm-body(arm)
-    if tree.subtree-start(body) <= id && id <= body
-        = true
-= false
 
 ────────────────────
 + do check-subscription
@@ -1598,7 +1512,7 @@ if instances.signatures[run].errors.count == 0
 ` value's changes.
 . found = infer-found(container, if events then want.adding(.want-event) else want)
 . given = found.type
-. tracked = tracked-read(container)
+. tracked = tree.tracked-read(container)
 if tracked && found.event == U32.max && given != invalid-type && given != no-type && unbroadcast
     frame.diagnose
         - id
@@ -1610,10 +1524,10 @@ if found.event != U32.max
     . event = found-events[found.event]
     if unaddressed(loop, event)
         = no-type
-    if has-whenever(clause)
+    if tree.has-whenever(clause)
         decline(id)
         = no-type
-    if arrival-clause(clause)
+    if tree.arrival-clause(clause)
         do match? tree.nodes[clause]
             | .node-clause(row)
                 do match? tree.nodes[row.expr]
@@ -1623,7 +1537,7 @@ if found.event != U32.max
                             - loop
                             - name.name.text == "arrival"
     = subscribed-endpoint(id, loop, container, event, given)
-if arrival-clause(clause)
+if tree.arrival-clause(clause)
     do match? tree.nodes[clause]
         | .node-clause(row)
             if bindings.resolution-of(frame.binding, row.expr).kind == .resolve-unresolved
@@ -1631,7 +1545,7 @@ if arrival-clause(clause)
                 = no-type
 if given == invalid-type || given == no-type
     = no-type
-if (has-whenever(clause) && whenever-of(loop) == 0) || types.broadcastable-decl.module == 0
+if (tree.has-whenever(clause) && whenever-of(loop) == 0) || types.broadcastable-decl.module == 0
     decline(id)
     = no-type
 . stream = supported(given, types.broadcastable-decl)
@@ -1669,22 +1583,6 @@ facts.set-node-type(instance, loop, stream)
 = stream
 
 ────────────────────
-_ do tracked-read Atom?
-    - id SyntaxId
-
-` The name of a property or a local that an expression reads tracked, written `#name`, where
-` it reads one.
-for node in tree.subtree-start(id) .. < id + 1
-    do match? tree.nodes[node]
-        | .node-identifier(row)
-            if row.is-tracked
-                = row.name
-        | .node-get-expression(row)
-            if row.is-tracked
-                = row.name
-= null
-
-────────────────────
 _ do subscribed-endpoint TypeId
     - id SyntaxId
     - loop SyntaxId
@@ -1715,20 +1613,6 @@ subscribed-by = endpoint
 = stream
 
 ────────────────────
-_ do arrival-clause Bool
-    - clause SyntaxId
-
-` Whether a loop on an event asks with its first clause, `when arrival` or `when bubbling`,
-` for only the events that arrive at the object or for those that bubble too.
-do match? tree.nodes[clause]
-    | .node-clause(row)
-        if row.op is .when-clause
-            do match? tree.nodes[row.expr]
-                | .node-identifier(name)
-                    = name.name.text == "arrival" || name.name.text == "bubbling"
-= false
-
-────────────────────
 + do subscribe-whenever
     - id SyntaxId
     - clause SyntaxId
@@ -1756,7 +1640,7 @@ if resolution.kind != .resolve-slot || in-batch()
 . passed = infer(expr)
 if passed == invalid-type
     =
-if !tracks-reads(tree, expr)
+if !tree.tracks-reads(expr)
     frame.diagnose
         - clause
         - .stated
@@ -1822,16 +1706,6 @@ if clause == 0 || nested-decl-of(clause) == 0 then 0 else clause
 .. clause = tree.whenever-clause(loop)
 
 ────────────────────
-+ do is-subscriber-loop Bool
-    - loop SyntaxId
-
-` Whether the header of a loop reads a stream: `for x on s`.
-do match? tree.nodes[loop]
-    | .node-loop-syntax(row)
-        = row.is-subscriber
-= false
-
-────────────────────
 + do own-subscription
     - id SyntaxId
     - stream TypeId
@@ -1891,40 +1765,8 @@ facts.set-node-type(instance, frame.declaration.syntax, closure-of-self())
 check-loop(loop, LoopContainer(stream, item), body, false)
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        if ends-subscription(row.clause)
+        if tree.ends-subscription(row.clause)
             demand-unsubscribe(loop)
-
-────────────────────
-_ do has-whenever Bool
-    - clause SyntaxId
-
-` Whether a loop's clauses include a `whenever`.
-. current = clause
-while current != 0
-    . next SyntaxId = 0
-    do match? tree.nodes[current]
-        | .node-clause(row)
-            if row.op == .whenever-clause
-                = true
-            next = row.next
-    current = next
-= false
-
-────────────────────
-+ do ends-subscription Bool
-    - clause SyntaxId
-
-` Whether a loop's clauses include a `while` or an `until`, which end a subscription.
-. current = clause
-while current != 0
-    . next SyntaxId = 0
-    do match? tree.nodes[current]
-        | .node-clause(row)
-            if row.op == .while-clause || row.op == .until-clause
-                = true
-            next = row.next
-    current = next
-= false
 
 ────────────────────
 + do is-subscriber-body Bool
@@ -2061,7 +1903,7 @@ do match? tree.nodes[object]
             frame.diagnose(object, .stated, program.store-atom("Untrackable name"))
         else if resolution.kind == .resolve-slot && bindings.is-trackable(resolution.slot)
             track-local(object, resolution.slot)
-        else if bound && !namesake(resolution.slot, false)
+        else if bound && !bindings.namesake(resolution.slot, false)
             =
         else if resolution.kind != .resolve-slot || not-this
             if live-context(read-site(object)) != .live-none
@@ -2103,7 +1945,7 @@ if subscribers == no-slot || (frame.is-captured(slot) && !reaches) || in-initial
         do hold-subscribers(id, subscribers)
     =
 .. in-initializer = instances.rows[instance].initializer != 0
-if namesake(slot, false) && !plain
+if bindings.namesake(slot, false) && !plain
     decline(id)
     =
 if !hold-subscribers(id, subscribers)
@@ -2275,7 +2117,7 @@ _ do untracked
 do match? tree.nodes[id]
     | .node-identifier(row)
         =? if !row.is-tracked
-=? if in-applied-value(id) || reads-slot-scope(id)
+=? if tree.in-applied-value(id) || reads-slot-scope(id)
 . shown = name.text
 . message = "\"#$shown\" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write \"$shown\" to read it plainly, or read \"#$shown\" in the live value and pass it in as an argument"
 frame.diagnose(id, .stated, program.store-atom(message))
@@ -2305,7 +2147,7 @@ _ do pulled Bool
     - id SyntaxId
     - name Atom
 
-. pipeline = pipeline-of(id)
+. pipeline = tree.pipeline-of(id)
 =? false if pipeline == 0
 . enclosing = outer
 if enclosing && enclosing.nested-decl-of(pipeline) == instances.rows[instance].decl
@@ -2430,7 +2272,7 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
                 = .live-none
             if !nested && in-condition(node, id)
                 = .live-gate
-            if !nested && in-application(node, id) && (applies-plainly(node) || root-valued)
+            if !nested && tree.in-application(node, id) && (applies-plainly(node) || root-valued)
                 = .live-none
             .. root-valued = instances.rows[instance].root-values != 0
             if !nested && builds-slot(node)
@@ -2467,41 +2309,41 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
         | .node-if-block
             . chooser = selector-head(node)
             if chooser != 0 && !nested
-                = if in-arm-body(chooser, id) then LiveContext.live-other else LiveContext.live-region
+                = if tree.in-arm-body(chooser, id) then LiveContext.live-other else LiveContext.live-region
             . head = region-head(node)
             if head != 0
                 if !nested && arm-line(head, id) != 0
                     = .live-statement
-                if nested || in-arm-body(head, id)
+                if nested || tree.in-arm-body(head, id)
                     = .live-other
                 = .live-region
         | .node-match-expression
             if is-selector(node) && !nested
-                = if in-arm-body(node, id) then LiveContext.live-other else LiveContext.live-region
+                = if tree.in-arm-body(node, id) then LiveContext.live-other else LiveContext.live-region
             if is-region(node)
                 if !nested && arm-line(node, id) != 0
                     = .live-statement
-                if nested || in-arm-body(node, id)
+                if nested || tree.in-arm-body(node, id)
                     = .live-other
                 = .live-region
         | .node-type-transform
             if !nested && matched-line(node, id) != 0
                 = .live-statement
         | .node-for-block(row)
-            . subscribes = is-subscriber-loop(row.loop) && row.body != 0
+            . subscribes = tree.is-subscriber-loop(row.loop) && row.body != 0
             if !nested && subscribes && tree.subtree-start(row.body) <= id && id <= row.body
                 handler = true
             if is-loop-region(node)
-                if !nested && in-key(node, id)
+                if !nested && tree.in-key(node, id)
                     = .live-none
-                if nested || !in-container(node, id)
+                if nested || !tree.in-container(node, id)
                     = .live-other
                 = .live-region
         | .node-loop-syntax(row)
             if row.is-subscriber
                 = .live-other
         | .node-function-syntax
-            if !nested && gives-closure(node)
+            if !nested && tree.gives-closure(node)
                 = .live-none
             nested = true
         | .node-property-syntax(row)
@@ -2515,17 +2357,6 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
 if value && nested
     = .live-other
 = if value then .live-value else LiveContext.live-none
-
-────────────────────
-_ do gives-closure Bool
-    - function SyntaxId
-
-` Whether a function written as a value is the whole value of an attribute of a markup element.
-. holder = tree.holder-of(function)
-do match? tree.nodes[holder]
-    | .node-assign(row)
-        = row.rhs == function && tree.attribute-element(holder) != 0
-= false
 
 ────────────────────
 _ do in-condition Bool
@@ -2991,7 +2822,7 @@ do match? program.modules[unit.module].decls[unit.initializer]
 if resolution.kind != .resolve-slot || !bindings.is-trackable(resolution.slot)
     =
 if (bindings.slots[resolution.slot].flags /and/ SlotFlag.slot-tracked) == 0
-    if namesake(resolution.slot, true)
+    if bindings.namesake(resolution.slot, true)
         decline(id)
     =
 . subscribers = subscribers-slot(resolution.slot)

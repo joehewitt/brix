@@ -935,3 +935,1250 @@ match nodes[clause]
         row.op == .when-clause
     ??
         false
+
+────────────────────
++ do assigning-line SyntaxId
+    - body SyntaxId
+
+` The first line of a block that assigns, or none.
+do match? nodes[body]
+    | .node-block(row)
+        for statement in children[row.body]
+            if nodes[statement] is .node-assign
+                = statement
+= 0
+
+────────────────────
++ assigns Bool
+    - expr SyntaxId
+
+` An arrow body that is an assignment gives the value assigned.
+match nodes[expr]
+    | .node-assign
+        true
+    ??
+        false
+
+────────────────────
++ holds-struct Bool
+    - object-syntax SyntaxId
+
+` Whether a struct whose field is assigned is held where the change stays: not one a cast or
+` a call gives.
+match nodes[object-syntax]
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
+
+────────────────────
++ holds-text Bool
+    - object-syntax SyntaxId
+
+` Whether a text whose item is assigned is held where the new text is stored: not a literal, a
+` text joined from parts, or one a cast or a call gives.
+match nodes[object-syntax]
+    | .node-string-syntax
+        false
+    | .node-binary-expression
+        false
+    | .node-cast-expression
+        false
+    | .node-call-expression
+        false
+    ??
+        true
+
+────────────────────
++ is-identifier-syntax Bool
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-identifier
+        true
+    ??
+        false
+
+────────────────────
++ writes-type Bool
+    - pattern SyntaxId
+
+` Whether a declaration's pattern writes the type of what it declares.
+match nodes[pattern]
+    | .node-type-capture(row)
+        row.type != 0
+    ??
+        false
+
+────────────────────
++ written-part SyntaxId
+    - rhs SyntaxId
+    - position U32
+
+` The item written at a position of a tuple written as a value, or none.
+match nodes[rhs]
+    | .node-tuple-syntax(row)
+        if position < row.items.count then children[row.items.start + position] else 0
+    ??
+        0
+
+────────────────────
++ names-super Bool
+    - callable SyntaxId
+
+match nodes[callable]
+    | .node-identifier(row)
+        row.name.text == "super"
+    ??
+        false
+
+────────────────────
++ bullet-site SyntaxId
+    - id SyntaxId
+    - consumer SyntaxId
+
+match nodes[id]
+    | .node-bullet-expression(row)
+        if row.next != 0 then row.next else if consumer != 0 then consumer else id
+    ??
+        id
+
+────────────────────
++ do consumer-of SyntaxId
+    - id SyntaxId
+
+` The pipeline whose left operand is the bullet list, if one consumes it.
+. total = nodes.length
+for candidate in id + 1 .. < total
+    do match? nodes[candidate]
+        | .node-pipeline-expression(row)
+            if row.left == id
+                = candidate as SyntaxId
+= 0
+
+────────────────────
++ do is-piped-row Bool
+    - body RowRange'SyntaxId
+    - statement SyntaxId
+
+for position in 0 .. < body.count - 1
+    if children[body.start + position] == statement
+        do match? nodes[children[body.start + position + 1]]
+            | .node-pipeline-expression(row)
+                = row.left == 0
+        = false
+= false
+
+────────────────────
++ do pipeline-of SyntaxId
+    - id SyntaxId
+
+for node in id + 1 .. < (nodes.length as SyntaxId)
+    if subtree-start(node) > id
+        continue
+    do match? nodes[node]
+        | .node-iterator-expression(row)
+            do match? nodes[row.loop]
+                | .node-loop-syntax(loop)
+                    if subtree-start(loop.container) > id || id > loop.container
+                        = node
+= 0
+
+────────────────────
++ source-site SyntaxId
+    - left SyntaxId
+    - id SyntaxId
+
+` The reference converts a pipeline's left value where that value was produced: at the left
+` operand, which for a bullet list is where its shifted first bullet lands.
+match nodes[left]
+    | .node-bullet-expression
+        bullet-site(left, id)
+    ??
+        left
+
+────────────────────
++ do written-bullets SyntaxId
+    - expr SyntaxId
+
+. bullets = expr
+do match? nodes[bullets]
+    | .node-argument(row)
+        bullets = if row.name then 0 else row.expr
+do match? nodes[bullets]
+    | .node-block(row)
+        bullets = if row.body.count == 1 then children[row.body.start] else 0
+=? bullets if bullets != 0 && nodes[bullets] is .node-bullet-expression
+= 0
+
+────────────────────
++ do declaring-type-names [SyntaxId]
+
+. found [SyntaxId]
+for id in 1u32 .. < nodes.length
+    do match? nodes[id]
+        | .node-type-identifier(row)
+            if row.is-declare
+                found += id as SyntaxId
+= found
+
+────────────────────
++ do evaluated-surely Bool
+    - value SyntaxId
+    - node SyntaxId
+
+` Whether a node of a value is evaluated whenever the value is: each node around it that tests
+` something holds it in the part evaluated before the test, the left side of `&&`, `||` or
+` `??`, or the object an optional read or index reads from.
+for around in node + 1 .. < value + 1
+    if subtree-start(around) > node || tests-nothing(around)
+        continue
+    . first = match nodes[around]
+        | .node-binary-expression(row)
+            if row.op != .if-op then row.lhs else 0
+        | .node-get-expression(row)
+            row.object
+        | .node-index-expression(row)
+            row.object
+        ??
+            0
+    if first == 0 || node < subtree-start(first) || node > first
+        = false
+= true
+
+────────────────────
++ tests-nothing Bool
+    - node SyntaxId
+
+` Whether a node of a value evaluates all it holds whenever it is evaluated: a name, a literal,
+` a call, a block, which evaluates its lines in order, a read or an operator that tests
+` nothing.
+match nodes[node]
+    | .node-integer-syntax
+        true
+    | .node-block
+        true
+    | .node-float-syntax
+        true
+    | .node-string-syntax
+        true
+    | .node-identifier
+        true
+    | .node-call-expression
+        true
+    | .node-argument
+        true
+    | .node-get-expression(row)
+        !row.is-optional
+    | .node-index-expression(row)
+        !row.is-optional
+    | .node-tuple-syntax
+        true
+    | .node-unary-expression
+        true
+    | .node-cast-expression
+        true
+    | .node-type-identifier
+        true
+    | .node-type-arguments
+        true
+    | .node-binary-expression(row)
+        no-short-circuit && row.op != .if-op && row.op != .else-op
+
+        .. no-short-circuit = row.op != .and-op && row.op != .or-op && row.op != .coalesce-op
+    ??
+        false
+
+────────────────────
++ do arrival-clause Bool
+    - clause SyntaxId
+
+` Whether a loop on an event asks with its first clause, `when arrival` or `when bubbling`,
+` for only the events that arrive at the object or for those that bubble too.
+do match? nodes[clause]
+    | .node-clause(row)
+        if row.op is .when-clause
+            do match? nodes[row.expr]
+                | .node-identifier(name)
+                    = name.name.text == "arrival" || name.name.text == "bubbling"
+= false
+
+────────────────────
++ do clause-delivery U32
+    - clause SyntaxId
+
+` Which publications a loop on an event hears where its only clause says so: 1 for
+` `when arrival`, 2 for `when bubbling`, and else 0.
+do match? nodes[clause]
+    | .node-clause(row)
+        if row.op is .when-clause && row.next == 0
+            do match? nodes[row.expr]
+                | .node-identifier(name)
+                    if name.name.text == "arrival"
+                        = 1
+                    if name.name.text == "bubbling"
+                        = 2
+= 0
+
+────────────────────
++ do ends-subscription Bool
+    - clause SyntaxId
+
+` Whether a loop's clauses include a `while` or an `until`, which end a subscription.
+. current = clause
+while current != 0
+    . next SyntaxId = 0
+    do match? nodes[current]
+        | .node-clause(row)
+            if row.op == .while-clause || row.op == .until-clause
+                = true
+            next = row.next
+    current = next
+= false
+
+────────────────────
++ do gives-closure Bool
+    - function SyntaxId
+
+` Whether a function written as a value is the whole value of an attribute of a markup element.
+. holder = holder-of(function)
+do match? nodes[holder]
+    | .node-assign(row)
+        = row.rhs == function && attribute-element(holder) != 0
+= false
+
+────────────────────
++ do has-whenever Bool
+    - clause SyntaxId
+
+` Whether a loop's clauses include a `whenever`.
+. current = clause
+while current != 0
+    . next SyntaxId = 0
+    do match? nodes[current]
+        | .node-clause(row)
+            if row.op == .whenever-clause
+                = true
+            next = row.next
+    current = next
+= false
+
+────────────────────
++ do in-arm-body Bool
+    - region SyntaxId
+    - id SyntaxId
+
+` Whether a node is written in the body of an arm of a markup branch or match region.
+for arm in region-arms(region)
+    . body = region-arm-body(arm)
+    if subtree-start(body) <= id && id <= body
+        = true
+= false
+
+────────────────────
++ do in-container Bool
+    - region SyntaxId
+    - id SyntaxId
+
+` Whether a node is written in the container of a markup loop region.
+do match? nodes[region]
+    | .node-for-block(row)
+        do match? nodes[row.loop]
+            | .node-loop-syntax(loop)
+                = loop.container != 0 && after-start && id <= loop.container
+                    .. after-start = subtree-start(loop.container) <= id
+= false
+
+────────────────────
++ do in-key Bool
+    - region SyntaxId
+    - id SyntaxId
+
+` Whether a node is written in the `keyed by` clause of a markup loop region.
+do match? nodes[region]
+    | .node-for-block(row)
+        . clause = keyed-clause(row.loop)
+        = clause != 0 && subtree-start(clause) <= id && id <= clause
+= false
+
+────────────────────
++ do is-live-rule Bool
+    - syntax SyntaxId
+
+` Whether a rule a class writes runs as a live action of the object: a `when` or `whenever`
+` rule.
+do match? nodes[syntax]
+    | .node-when-rule-syntax
+        = true
+    | .node-whenever-rule-syntax
+        = true
+= false
+
+────────────────────
++ do is-subscriber-loop Bool
+    - loop SyntaxId
+
+` Whether the header of a loop reads a stream: `for x on s`.
+do match? nodes[loop]
+    | .node-loop-syntax(row)
+        = row.is-subscriber
+= false
+
+────────────────────
++ do tracked-read Atom?
+    - id SyntaxId
+
+` The name of a property or a local that an expression reads tracked, written `#name`, where
+` it reads one.
+for node in subtree-start(id) .. < id + 1
+    do match? nodes[node]
+        | .node-identifier(row)
+            if row.is-tracked
+                = row.name
+        | .node-get-expression(row)
+            if row.is-tracked
+                = row.name
+= null
+
+────────────────────
++ do tracks-reads Bool
+    - value SyntaxId
+
+` Whether a value reads a name or a member that it tracks.
+for node in subtree-start(value) .. value
+    do match? nodes[node]
+        | .node-identifier(row)
+            if row.is-tracked
+                = true
+        | .node-get-expression(row)
+            if row.is-tracked
+                = true
+= false
+
+────────────────────
++ do block-names
+    - root SyntaxId
+    - blocked [Atom]
+
+` Notes each name written under a node as changed.
+for node in subtree-start(root) .. < root + 1
+    do match? nodes[node]
+        | .node-identifier(row)
+            blocked += row.name
+
+────────────────────
++ counts-from-zero Bool
+    - container SyntaxId
+
+match nodes[container]
+    | .node-range-expression(range)
+        range.op == .range-to-op && range.increment == 0 && is-zero-literal(range.left)
+    ??
+        false
+
+────────────────────
++ has-arms Bool
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-or
+        true
+    | .node-type-transform
+        true
+    ??
+        false
+
+────────────────────
++ is-simple-loop-pattern Bool
+    - pattern SyntaxId
+
+|? pattern == 0
+    true
+??
+    match nodes[pattern]
+        | .node-identifier
+            true
+        | .node-type-capture(capture)
+            capture.type == 0
+        ??
+            false
+
+────────────────────
++ is-zero-literal Bool
+    - syntax SyntaxId
+
+match nodes[syntax]
+    | .node-integer-syntax(literal)
+        literal.value == "0" && !literal.unit
+    ??
+        false
+
+────────────────────
++ names-whole Bool
+    - pattern SyntaxId
+
+` Whether a pattern of a loop is its item whole under a name, or is not written.
+|? pattern == 0
+    true
+??
+    match nodes[pattern]
+        | .node-identifier
+            true
+        | .node-type-capture(capture)
+            capture.type == 0
+        ??
+            false
+
+────────────────────
++ do next-clause SyntaxId
+    - clause SyntaxId
+
+` The clause written after a clause, or none.
+do match? nodes[clause]
+    | .node-clause(row)
+        = row.next
+= 0
+
+────────────────────
++ do branched Bool
+    - content SyntaxId
+    - element SyntaxId
+    - outlets = false
+
+` Whether an element of a class's markup is written in an `if` or a `match` of it, or with
+` `outlets` in the default content of a slot, and in no function or loop of it.
+. found = false
+for node in element + 1 .. < content
+    if subtree-start(node) <= element
+        do match? nodes[node]
+            | .node-function-syntax
+                = false
+            | .node-for-block
+                = false
+            | .node-if-block
+                found = true
+            | .node-match-expression
+                found = true
+            | .node-slot-outlet
+                found = found || outlets
+= found
+
+────────────────────
++ do branches-element Bool
+    - content SyntaxId
+    - name Atom
+
+` Whether a class's markup gives an element of a name in an `if` or a `match` of it, outside
+` its functions and loops.
+for node in subtree-start(content) .. < content
+    do match? nodes[node]
+        | .node-markup(element)
+            do match? nodes[element.id]
+                | .node-identifier(id)
+                    if id.name == name && this.branched(content, node)
+                        = true
+= false
+
+────────────────────
++ do enclosed-element Bool
+    - element SyntaxId
+    - content SyntaxId
+
+` Whether a markup element of a class's markup is written in a function or a loop there.
+for node in element + 1 .. < content
+    if subtree-start(node) <= element
+        do match? nodes[node]
+            | .node-function-syntax
+                = true
+            | .node-for-block
+                = true
+= false
+
+────────────────────
++ do ends-returning Bool
+    - body SyntaxId
+
+` Whether the last line of a block returns or raises a panic or an error with no condition.
+do match? nodes[body]
+    | .node-block(block)
+        if block.body.count == 0
+            = false
+        do match? nodes[children[block.body.start + block.body.count - 1]]
+            | .node-return
+                = true
+            | .node-assertion-syntax(row)
+                = row.condition == 0
+= false
+
+────────────────────
++ do has-attributes Bool
+    - body SyntaxId
+
+` Whether the body of a markup element writes an attribute: a line that assigns.
+do match? nodes[body]
+    | .node-block(row)
+        for statement in children[row.body]
+            if nodes[statement] is .node-assign
+                = true
+= false
+
+────────────────────
++ do holds-markup Bool
+    - rule SyntaxId
+
+` Whether a style rule is a `• This` with a line of its body that is not the rule's own.
+do match? nodes[rule]
+    | .node-rule-syntax(row)
+        if row.name.text != "This" || row.body == 0
+            = false
+        do match? nodes[row.body]
+            | .node-block(block)
+                for statement in children[block.body]
+                    if !rule-part(statement)
+                        = true
+= false
+
+────────────────────
++ do inner-outlet Bool
+    - content SyntaxId
+    - outlet SyntaxId
+
+` Whether a slot outlet of the markup written in a class is no slot's: one a line forwards, or one
+` in the body of another, which is content the other mounts where it is given none.
+for node in subtree-start(content) .. < content
+    do match? nodes[node]
+        | .node-markup-slot-forward(row)
+            if row.outlet == outlet
+                = true
+        | .node-slot-outlet(row)
+            if node != outlet && row.body != 0 && in-body
+                = true
+            .. in-body = subtree-start(row.body) <= outlet && outlet <= row.body
+= false
+
+────────────────────
++ do is-control-line Bool
+    - line SyntaxId
+
+` Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
+` as the reference's `isMarkupControlFlow` finds it.
+do match? nodes[line]
+    | .node-if-block
+        = true
+    | .node-match-expression
+        = true
+    | .node-for-block(row)
+        = !is-subscriber-loop(row.loop)
+    | .node-iterator-expression(row)
+        = !is-subscriber-loop(row.loop)
+= false
+
+────────────────────
++ do is-markup-trigger Bool
+    - syntax SyntaxId
+
+` Whether a rule a class writes is a `whenever` rule on the markup an object is in.
+do match? nodes[syntax]
+    | .node-whenever-rule-syntax(rule)
+        = rule.kind.text != "value"
+= false
+
+────────────────────
++ row-loop SyntaxId
+    - body SyntaxId
+
+match nodes[holder-of(body)]
+    | .node-for-block(row)
+        row.loop
+    ??
+        0
+
+────────────────────
++ do arm-value SyntaxId
+    - body SyntaxId
+
+` The node that gives the body of an arm its value: the body, or of a block the last statement
+` that runs where it stands, or none where there is none.
+do match? nodes[body]
+    | .node-block(block)
+        . last SyntaxId = 0
+        for statement in children[block.body]
+            do match? nodes[statement]
+                | .node-declare(row)
+                    if row.is-lazy
+                        continue
+            if !is-declaration-syntax(this, statement) && !is-comment-syntax(this, statement)
+                last = statement
+        = last
+= body
+
+────────────────────
++ is-alternative Bool
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-or
+        true
+    ??
+        false
+
+────────────────────
++ key-expr SyntaxId
+    - key SyntaxId
+
+` A map pattern's key is an equality on a literal or a `$name`: the expression it compares to.
+match nodes[key]
+    | .node-type-equality(row)
+        row.expr
+    ??
+        key
+
+────────────────────
++ pattern-is-else Bool
+    - pattern SyntaxId
+
+|? pattern == 0
+    true
+??
+    match nodes[pattern]
+        | .node-type-wildcard
+            true
+        ??
+            false
+
+────────────────────
++ predicate-expr SyntaxId
+    - pattern SyntaxId
+
+|? pattern == 0
+    0
+??
+    match nodes[pattern]
+        | .node-type-predicate(row)
+            row.expr
+        ??
+            0
+
+────────────────────
++ do subject-property Atom?
+    - subject SyntaxId
+
+` The name of the property a subject reads from an object, or none.
+do match? nodes[subject]
+    | .node-get-expression(row)
+        = row.name
+= null
+
+────────────────────
++ do gives-nothing Bool
+    - source StateSource
+
+` Whether a source of a case's payload gives no value, as the reference finds none there: a
+` case one of whose names neither its trigger, if it has one, nor its owner's trigger captures.
+if !(nodes[source.node] is .node-state-case)
+    = false
+. trigger = state-trigger(source.node)
+. captures [Atom]
+if trigger != 0
+    pattern-names(trigger-pattern(trigger), captures)
+if source.owner != 0
+    pattern-names(trigger-pattern(state-trigger(source.owner)), captures)
+for target in children[state-targets(source.node)]
+    do match? nodes[target]
+        | .node-identifier(named)
+            if captures.find(named.name) == null
+                = true
+= false
+
+────────────────────
++ do names-root Bool
+    - machine SyntaxId
+    - roots [Atom]
+
+` Whether a machine has a case at its root of one of some names.
+for item in state-items(state-body(machine))
+    if nodes[item] is .node-state-case && roots.find(state-name(item)!) != null
+        = true
+= false
+
+────────────────────
++ do action-value SyntaxId
+    - action SyntaxId
+
+` What an action gives: its last statement where it is a block.
+do match? nodes[action]
+    | .node-block(block)
+        if block.body.count != 0
+            = children[block.body.start + block.body.count - 1]
+= action
+
+────────────────────
++ acts Bool
+    - arm SyntaxId
+
+match nodes[arm]
+    | .node-stream-transform(row)
+        row.right != 0
+    ??
+        false
+
+────────────────────
++ char-bound Bool
+    - id SyntaxId
+
+` Whether a bound of a range of characters is a character written, as the reference requires: a
+` character literal, whose unit is `(char)`, or a number with no unit or `Char`'s suffix.
+match nodes[id]
+    | .node-integer-syntax(row)
+        !row.unit || row.unit.text == "(char)" || row.unit.text == "c"
+    ??
+        false
+
+────────────────────
++ do computed-counts Bool
+    - id SyntaxId
+
+` Whether a stream pattern holds a count of a part whose bounds are not numbers written.
+for node in subtree-start(id) .. < id + 1
+    do match? nodes[node]
+        | .node-stream-length(row)
+            if !count-bound(row.min) || (row.max != 0 && !count-bound(row.max))
+                = true
+= false
+
+────────────────────
++ count-bound Bool
+    - id SyntaxId
+
+` Whether a bound of a count is a number written.
+match nodes[id]
+    | .node-integer-syntax(row)
+        !row.unit
+    ??
+        false
+
+────────────────────
++ do first-capture SyntaxId
+    - id SyntaxId
+
+` The first name a part of a pattern captures, or none.
+for node in subtree-start(id) .. < id + 1
+    if nodes[node] is .node-stream-capture
+        = node
+= 0
+
+────────────────────
++ do forwarded-read SyntaxId
+    - body SyntaxId
+
+` The name an action's expression is, where it is one name alone, as the reference finds a
+` capture an action forwards. None for any other expression.
+. inner = body
+do match? nodes[body]
+    | .node-block(block)
+        if block.body.count != 1
+            = 0
+        inner = children[block.body.start]
+= if nodes[inner] is .node-identifier then inner else 0
+
+────────────────────
++ do guards Bool
+    - operand SyntaxId
+
+` Whether a lookahead looks at a test that does not read the item, as `&\{ size <= limit }` does:
+` a guard, which tests its condition alone and needs no item, so it passes at the end of the
+` input where the condition holds, and a record is given without waiting for one more item.
+do match? nodes[operand]
+    | .node-stream-predicate(row)
+        = !mentions(row.predicate, "it")
+= false
+
+────────────────────
++ do holds-count Bool
+    - id SyntaxId
+
+` Whether a part of a stream pattern counts a part, whose text the reference gives empty over
+` items that are no characters.
+for node in subtree-start(id) .. < id + 1
+    if nodes[node] is .node-stream-length
+        = true
+= false
+
+────────────────────
++ do holds-rollback Bool
+    - pattern SyntaxId
+
+` Whether a pattern has a part marked to roll back.
+for node in subtree-start(pattern) .. < pattern + 1
+    do match? nodes[node]
+        | .node-stream-transform(row)
+            if row.rollback
+                = true
+= false
+
+────────────────────
++ do in-inner-action Bool
+    - node SyntaxId
+    - id SyntaxId
+
+` Whether a node lies in the action of an arm of a stream pattern written within an expression.
+for outer in node + 1 .. < id
+    do match? nodes[outer]
+        | .node-stream-transform(row)
+            if row.right != 0 && subtree-start(row.right) <= node && node <= row.right
+                = true
+= false
+
+────────────────────
++ do literal-arm Bool
+    - id SyntaxId
+
+` Whether an arm's pattern is one literal, whose text the reference gives as a constant.
+do match? nodes[id]
+    | .node-stream-string
+        = true
+    | .node-stream-transform(row)
+        = row.pattern != 0 && nodes[row.pattern] is .node-stream-string
+= false
+
+────────────────────
++ do local-rule-pattern SyntaxId
+    - rule SyntaxId
+
+` The pattern of a local rule, by its declaration.
+do match? nodes[rule]
+    | .node-declare(declaration)
+        do match? nodes[declaration.right]
+            | .node-stream-match(row)
+                = row.pattern
+= 0
+
+────────────────────
++ do mentions Bool
+    - id SyntaxId
+    - name String
+
+` Whether a name is read anywhere in an expression, as the reference finds what an action
+` refers to. An `it` read in the action of an arm written within the expression is that arm's
+` own.
+if id == 0
+    = false
+for node in subtree-start(id) .. < id + 1
+    do match? nodes[node]
+        | .node-identifier(row)
+            if row.name.text == name && (name != "it" || !in-inner-action(node, id))
+                = true
+= false
+
+────────────────────
++ do optional-operand SyntaxId
+    - id SyntaxId
+
+` The part an optional part of a stream pattern holds, or none for any other part.
+do match? nodes[id]
+    | .node-stream-unary(row)
+        if row.op == .zero-or-one-op
+            = row.operand
+= 0
+
+────────────────────
++ do rule-pattern SyntaxId
+    - rule SyntaxId
+
+` The pattern of a local rule's declaration.
+do match? nodes[rule]
+    | .node-declare(declaration)
+        do match? nodes[declaration.right]
+            | .node-stream-match(row)
+                = row.pattern
+= 0
+
+────────────────────
++ do trivial-action Bool
+    - body SyntaxId
+
+` Whether an action is a name, a number or text written alone, which the reference keeps
+` inline.
+. single = body
+do match? nodes[body]
+    | .node-block(row)
+        if row.body.count != 1
+            = false
+        single = children[row.body.start]
+do match? nodes[single]
+    | .node-identifier
+        = true
+    | .node-integer-syntax
+        = true
+    | .node-float-syntax
+        = true
+    | .node-string-syntax
+        = true
+= false
+
+────────────────────
++ do applies-rules Bool
+    - syntax SyntaxId
+
+` Whether a style rule applies rules, after its name or in the body of a `when`.
+do match? nodes[syntax]
+    | .node-rule-syntax(row)
+        if row.style-rule-applications.count != 0
+            = true
+        for branch in this.rule-whens(row.body)
+            if this.when-applications(branch).length != 0
+                = true
+= false
+
+────────────────────
++ do holds-rules Bool
+    - rule SyntaxId
+
+` Whether a style rule applies rules after its name or holds rules written in it, in its body or
+` in that of one of its `when`s.
+do match? nodes[rule]
+    | .node-rule-syntax(declared)
+        if declared.style-rule-applications.count != 0
+            = true
+        . body = declared.body
+        do match? nodes[body]
+            | .node-block(block)
+                for statement in children[block.body]
+                    if nodes[statement] is .node-rule-syntax
+                        = true
+        for branch in this.rule-whens(body)
+            for line in when-lines(branch)
+                if nodes[line] is .node-rule-syntax
+                    = true
+= false
+
+────────────────────
++ do in-application Bool
+    - element SyntaxId
+    - id SyntaxId
+
+` Whether a node is written in what a rule a markup element applies after `•` is given.
+do match? nodes[element]
+    | .node-markup(row)
+        for application in children[row.style-rule-applications]
+            if subtree-start(application) <= id && id <= application
+                = true
+= false
+
+────────────────────
++ do in-applied-value Bool
+    - id SyntaxId
+
+for node in id + 1 .. < (nodes.length as SyntaxId)
+    if subtree-start(node) <= id && nodes[node] is .node-style-rule-application
+        = true
+= false
+
+────────────────────
++ do in-gated Bool
+    - node SyntaxId
+    - conditions [SyntaxId]
+
+` Whether a node is written in one of the conditions given.
+for condition in conditions
+    if subtree-start(condition) <= node && node <= condition
+        = true
+= false
+
+────────────────────
++ do reads-tracked Bool
+    - value SyntaxId
+
+` Whether a value reads something tracked.
+for node in subtree-start(value) .. value
+    do match? nodes[node]
+        | .node-identifier(row)
+            if row.is-tracked
+                = true
+        | .node-get-expression(row)
+            if row.is-tracked
+                = true
+= false
+
+────────────────────
++ do roots-values Bool
+    - application SyntaxId
+
+` Whether an application written after `•` is written on the root `<This` of a class's markup,
+` whose values an instance of their own types (`check-root-values`).
+do match? nodes[holder-of(application)]
+    | .node-markup(row)
+        = names-this(row.type-id)
+= false
+
+────────────────────
++ do rule-argument-type SyntaxId
+    - argument SyntaxId
+
+` The type written for a value a style rule takes, or the pattern that takes it where it is
+` written with none.
+. pattern = argument
+do match? nodes[argument]
+    | .node-argument-decl(row)
+        pattern = row.pattern
+do match? nodes[pattern]
+    | .node-type-capture(capture)
+        = capture.type
+= pattern
+
+────────────────────
++ rule-body SyntaxId
+    - syntax SyntaxId
+
+match nodes[syntax]
+    | .node-rule-syntax(row)
+        row.body
+    ??
+        0
+
+────────────────────
++ do rule-content [SyntaxId]
+    - body SyntaxId
+
+` The lines of the body of a style rule that generate content, in the order written: markup
+` elements that bind a slot.
+. lines [SyntaxId]
+do match? nodes[body]
+    | .node-block(block)
+        for line in children[block.body]
+            if this.generates(line)
+                lines += line
+= lines
+
+────────────────────
++ rule-takes U32
+    - syntax SyntaxId
+
+match nodes[syntax]
+    | .node-rule-syntax(row)
+        row.args.count
+    ??
+        0
+
+────────────────────
++ rule-takes-nothing Bool
+    - syntax SyntaxId
+
+match nodes[syntax]
+    | .node-rule-syntax(row)
+        row.args.count == 0
+    ??
+        false
+
+────────────────────
++ do rule-whens [SyntaxId]
+    - body SyntaxId
+
+` The `when`s of the body of a style rule, in the order written.
+. whens [SyntaxId]
+if body == 0
+    = whens
+do match? nodes[body]
+    | .node-block(block)
+        for statement in children[block.body]
+            if nodes[statement] is .node-style-when
+                whens += statement
+= whens
+
+────────────────────
++ when-applications [SyntaxId]
+    - branch SyntaxId
+
+` The rules the body of a `when` of a style rule applies, in the order written.
+each in when-lines(branch) when nodes[each] is .node-style-rule-application
+
+────────────────────
++ when-content [SyntaxId]
+    - branch SyntaxId
+
+` The lines of the body of a `when` of a style rule that generate content, in the order written.
+each in when-lines(branch) when this.generates(each)
+
+────────────────────
++ argument-type-syntax SyntaxId
+    - argument SyntaxId
+
+` The type written for a value a style rule takes, `name Type`, or none.
+match nodes[argument]
+    | .node-argument-decl(row)
+        match nodes[row.pattern]
+            | .node-type-capture(capture)
+                capture.type
+            ??
+                0
+    ??
+        0
+
+────────────────────
++ generates Bool
+    - line SyntaxId
+
+` Whether a line of a style rule generates content: a markup element that binds a slot.
+match nodes[line]
+    | .node-markup(row)
+        row.slot-binding != 0
+    ??
+        false
+
+────────────────────
++ is-bare-value Bool
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-identifier
+        true
+    | .node-integer-syntax
+        true
+    | .node-float-syntax
+        true
+    | .node-string-syntax
+        true
+    | .node-get-expression
+        true
+    | .node-index-expression
+        true
+    | .node-list-syntax
+        true
+    | .node-tuple-syntax
+        true
+    | .node-range-expression
+        true
+    | .node-cast-expression
+        true
+    | .node-binary-expression(row)
+        is-arithmetic(row.op) || is-comparison(row.op) || valued-ops has row.op
+    | .node-unary-expression(row)
+        row.op == .not-op || row.op == .negative-op || row.op == .bitwise-not-op
+    ??
+        false
+
+.. valued-ops = [Operator.concat-op, Operator.concat-string-op, Operator.and-op, Operator.or-op, Operator.is-op, Operator.is-not-op, Operator.is-exactly-op, Operator.is-not-exactly-op, Operator.is-similar-op, Operator.is-not-similar-op, Operator.is-in-op, Operator.not-in-op, Operator.has-op, Operator.has-not-op]
+
+────────────────────
++ is-number Bool
+    - value SyntaxId
+
+match nodes[value]
+    | .node-integer-syntax
+        true
+    | .node-float-syntax
+        true
+    ??
+        false
+
+────────────────────
++ is-string-literal Bool
+    - value SyntaxId
+
+match nodes[value]
+    | .node-string-syntax
+        true
+    ??
+        false

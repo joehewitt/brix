@@ -81,7 +81,7 @@ for node in tree.subtree-start(content) .. < content
         | .node-markup(row)
             if named-element && clashes-property(receiver, node, row.id, row.type-id)
                 = true
-            .. named-element = row.id != 0 && node != root && !enclosed-element(node, content)
+            .. named-element = row.id != 0 && node != root && !tree.enclosed-element(node, content)
 = false
 
 ────────────────────
@@ -162,17 +162,6 @@ while node > floor
                     . place = property-named(level, read.name)
                     if place && names-element(types, types.properties[place])
                         = true
-= false
-
-────────────────────
-+ do is-markup-trigger Bool
-    - tree AST
-    - syntax SyntaxId
-
-` Whether a rule a class writes is a `whenever` rule on the markup an object is in.
-do match? tree.nodes[syntax]
-    | .node-whenever-rule-syntax(rule)
-        = rule.kind.text != "value"
 = false
 
 ────────────────────
@@ -590,32 +579,13 @@ while level && types.intrinsic-of(level) == .class
                     . named = program.store-atom("")
                     if row.name != 0
                         named = identifier-name(owner.tree, row.name) ?? named
-                    if named == name && !inner-outlet(owner.tree, content, node)
+                    if named == name && !owner.tree.inner-outlet(content, node)
                         = (level, node)
                 | .node-markup-slot-forward(row)
                     if identifier-name(owner.tree, row.slot-binding) == name
                         = (level, node)
     level = types.base-of(level)
 = (no-type, 0u32)
-
-────────────────────
-_ do inner-outlet Bool
-    - written AST
-    - content SyntaxId
-    - outlet SyntaxId
-
-` Whether a slot outlet of the markup written in a class is no slot's: one a line forwards, or one
-` in the body of another, which is content the other mounts where it is given none.
-for node in written.subtree-start(content) .. < content
-    do match? written.nodes[node]
-        | .node-markup-slot-forward(row)
-            if row.outlet == outlet
-                = true
-        | .node-slot-outlet(row)
-            if node != outlet && row.body != 0 && in-body
-                = true
-            .. in-body = written.subtree-start(row.body) <= outlet && outlet <= row.body
-= false
 
 ────────────────────
 + do outlet-scopes U32
@@ -1073,48 +1043,6 @@ while level
 = false
 
 ────────────────────
-+ do branches-element Bool
-    - markup AST
-    - content SyntaxId
-    - name Atom
-
-` Whether a class's markup gives an element of a name in an `if` or a `match` of it, outside
-` its functions and loops.
-for node in markup.subtree-start(content) .. < content
-    do match? markup.nodes[node]
-        | .node-markup(element)
-            do match? markup.nodes[element.id]
-                | .node-identifier(id)
-                    if id.name == name && branched(markup, content, node)
-                        = true
-= false
-
-────────────────────
-_ do branched Bool
-    - markup AST
-    - content SyntaxId
-    - element SyntaxId
-    - outlets = false
-
-` Whether an element of a class's markup is written in an `if` or a `match` of it, or with
-` `outlets` in the default content of a slot, and in no function or loop of it.
-. found = false
-for node in element + 1 .. < content
-    if markup.subtree-start(node) <= element
-        do match? markup.nodes[node]
-            | .node-function-syntax
-                = false
-            | .node-for-block
-                = false
-            | .node-if-block
-                found = true
-            | .node-match-expression
-                found = true
-            | .node-slot-outlet
-                found = found || outlets
-= found
-
-────────────────────
 + do check-markup-trigger
     - receiver TypeId
     - syntax SyntaxId
@@ -1253,23 +1181,7 @@ do match? program.modules[module].decls[owner]
                 for written in tree.children[row.members]
                     if written == member
                         = false
-                    if tree.nodes[written] is .node-content-block || holds-markup(written)
-                        = true
-= false
-
-────────────────────
-_ do holds-markup Bool
-    - rule SyntaxId
-
-` Whether a style rule is a `• This` with a line of its body that is not the rule's own.
-do match? tree.nodes[rule]
-    | .node-rule-syntax(row)
-        if row.name.text != "This" || row.body == 0
-            = false
-        do match? tree.nodes[row.body]
-            | .node-block(block)
-                for statement in tree.children[block.body]
-                    if !tree.rule-part(statement)
+                    if tree.nodes[written] is .node-content-block || tree.holds-markup(written)
                         = true
 = false
 
@@ -1588,7 +1500,7 @@ if row.id != 0 && !slot
         decline(id)
         = invalid-type
     .. received = (resolution.flags /and/ ResolutionFlag.resolution-received) != 0
-. placed = slot && is-placed(slot)
+. placed = slot && bindings.is-placed(slot)
 if placed && frame.is-captured(slot!) && !places-across(slot!)
     decline(id)
     = invalid-type
@@ -1767,7 +1679,7 @@ if made == invalid-type || made == no-type
     = invalid-type
 if !fills-constructor(id, row, made)
     = invalid-type
-if !accepts || (has-attributes(row.body) && made != class) || (scoping && made != class)
+if !accepts || (tree.has-attributes(row.body) && made != class) || (scoping && made != class)
     decline(id)
     = invalid-type
 .. accepts = takes-lines(made) || takes-hosted(made) || (holds-slot(made) && is-markup-host(made))
@@ -2078,18 +1990,6 @@ for arg in tree.children[args]
         break
 
 ────────────────────
-_ do has-attributes Bool
-    - body SyntaxId
-
-` Whether the body of a markup element writes an attribute: a line that assigns.
-do match? tree.nodes[body]
-    | .node-block(row)
-        for statement in tree.children[row.body]
-            if tree.nodes[statement] is .node-assign
-                = true
-= false
-
-────────────────────
 + do push-attributes Bool
     - body SyntaxId
     - class TypeId
@@ -2253,7 +2153,7 @@ _ do store-attributes Bool
 ` is declined.
 . fact = facts.latest-call(instance, id)
 if fact == no-fact || facts.calls[fact].callee == no-instance
-    = !has-attributes(body)
+    = !tree.has-attributes(body)
 . call = facts.calls[fact]
 . callee = instances.rows[call.callee]
 . owner = program.modules[callee.module]
@@ -2305,7 +2205,7 @@ do match? tree.nodes[body]
                                 - ElementStore(instance, id, args.count + given, place as U32, 0)
                             given += 1
                 = true
-= !has-attributes(body)
+= !tree.has-attributes(body)
 
 ────────────────────
 + do raise-elements
@@ -2351,7 +2251,7 @@ while unbuilt.length > first
 do match? tree.nodes[element]
     | .node-markup(row)
         . slot = element-slot(element, row.id)
-        if slot && !is-placed(slot)
+        if slot && !bindings.is-placed(slot)
             unbuilt += slot
             awaited += element
         do match? tree.nodes[row.body]
@@ -2371,7 +2271,7 @@ do match? tree.nodes[element]
 do match? tree.nodes[element]
     | .node-markup(row)
         . slot = element-slot(element, row.id)
-        if slot && !is-placed(slot) && unbuilt.find(slot) != null
+        if slot && !bindings.is-placed(slot) && unbuilt.find(slot) != null
             . around = building
             building = slot
             . made = make-element(element, row)
@@ -2509,7 +2409,7 @@ _ do give-binder Bool
 . slot = element-slot(element, name)
 . decl = nested-decl-of(name)
 . binds = types.well-known-type-of("core/markup", "MarkupIdBinder", class)
-. held = if slot then is-placed(slot) else names-content-property(element, name)
+. held = if slot then bindings.is-placed(slot) else names-content-property(element, name)
 if !held || decl == 0 || binds == invalid-type
     decline(element)
     = false
@@ -3059,7 +2959,7 @@ else if lines.length == 0
         if row.body != 0
             leave-unbuilt(row.body)
         = no-type
-else if lines.length > 1 || is-control-line(lines[0])
+else if lines.length > 1 || tree.is-control-line(lines[0])
     fallback = row.body
     if in-batch() && !defers-roots()
         decline(id)
@@ -3294,23 +3194,6 @@ for offset in 0 .. < range.count
     . syntax = bindings.slots[slot].syntax
     if syntax >= start && syntax <= body && frame.known(slot) == no-type
         frame.assign(slot, types.void-type)
-
-────────────────────
-_ do is-control-line Bool
-    - line SyntaxId
-
-` Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
-` as the reference's `isMarkupControlFlow` finds it.
-do match? tree.nodes[line]
-    | .node-if-block
-        = true
-    | .node-match-expression
-        = true
-    | .node-for-block(row)
-        = !is-subscriber-loop(row.loop)
-    | .node-iterator-expression(row)
-        = !is-subscriber-loop(row.loop)
-= false
 
 ────────────────────
 _ do store-arguments Bool
@@ -3716,16 +3599,6 @@ do match? tree.nodes[body]
 = true
 
 ────────────────────
-+ row-loop SyntaxId
-    - body SyntaxId
-
-match tree.nodes[tree.holder-of(body)]
-    | .node-for-block(row)
-        row.loop
-    ??
-        0
-
-────────────────────
 + do check-selector
     - anchor SyntaxId
 
@@ -3769,7 +3642,7 @@ do match? tree.nodes[statement]
                     next = row.next
             branch = next
     | .node-for-block(row)
-        if is-subscriber-loop(row.loop)
+        if tree.is-subscriber-loop(row.loop)
             =
         content-blocks += row.body
         content-parents += parent
@@ -3935,23 +3808,8 @@ do match? program.modules[ref.module].decls[ref.decl]
         content = class.content
 do match? program.modules[ref.module].decls[member]
     | .decl-property(declared)
-        = owned && tree.subtree-start(content) <= element && !enclosed-element(element, content)
+        = owned && tree.subtree-start(content) <= element && !tree.enclosed-element(element, content)
             .. owned = declared.element != 0 && ref.module == module && content > element
-= false
-
-────────────────────
-_ do enclosed-element Bool
-    - element SyntaxId
-    - content SyntaxId
-
-` Whether a markup element of a class's markup is written in a function or a loop there.
-for node in element + 1 .. < content
-    if tree.subtree-start(node) <= element
-        do match? tree.nodes[node]
-            | .node-function-syntax
-                = true
-            | .node-for-block
-                = true
 = false
 
 ────────────────────
@@ -4008,7 +3866,7 @@ do match? tree.nodes[statement]
 ` any call does. A block whose last line returns or raises is the reference's error. One that
 ` lets an error out has no shape here. A body that captures a local is given an object the
 ` collector owns where it runs.
-if ends-returning(body)
+if tree.ends-returning(body)
     frame.diagnose
         - id
         - .stated
@@ -4054,22 +3912,6 @@ for index in 0 .. < nested.captures.count
         continue
     frame.push-assigned(slot-key(capture.slot), held)
     frame.reset-paths(slot-key(capture.slot))
-
-────────────────────
-_ do ends-returning Bool
-    - body SyntaxId
-
-` Whether the last line of a block returns or raises a panic or an error with no condition.
-do match? tree.nodes[body]
-    | .node-block(block)
-        if block.body.count == 0
-            = false
-        do match? tree.nodes[tree.children[block.body.start + block.body.count - 1]]
-            | .node-return
-                = true
-            | .node-assertion-syntax(row)
-                = row.condition == 0
-= false
 
 ────────────────────
 + do read-later-element TypeId

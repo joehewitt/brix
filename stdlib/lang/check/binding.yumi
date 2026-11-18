@@ -4,6 +4,7 @@
 /core/table
 /lang/ast/ast
 /lang/ast/ast-children
+/lang/ast/ast-queries
 /lang/ast/ast-nodes
 /lang/ast/decl
 /lang/ast/module
@@ -1267,6 +1268,67 @@ while position < slots.length && slots[position].group == group
         = false
     position += 1
 = true
+
+────────────────────
++ holds-scope Bool
+    - tree AST
+    - scope ScopeId
+    - site SyntaxId
+
+` Whether a site lies in a scope: a function's own holds all of it.
+|? row.kind == .scope-function || row.kind == .scope-nested
+    true
+??
+    site >= tree.subtree-start(row.syntax) && site <= row.syntax
+
+.. row = scopes[scope]
+
+────────────────────
++ is-placed Bool
+    - slot SlotId
+
+` Whether the local declared for a markup element's name is given the element's object where
+` the element is written, which no block makes where it starts.
+(slots[slot].flags /and/ SlotFlag.slot-placed) != 0
+
+────────────────────
++ lazy-pattern SyntaxId
+    - tree AST
+    - slot SlotId
+
+match tree.nodes[row.group]
+    | .node-declare(declaration)
+        tree.pattern-identifier(declaration.left)
+    ??
+        row.group
+
+.. row = slots[slot]
+
+────────────────────
++ do names-machine Bool
+    - slot SlotId
+
+` Whether a slot holds the value of a state machine, which its cases read before the machine's
+` union is made where what a case holds is inferred (see `early-union`).
+for row in machines
+    if row.bound == slot
+        = true
+= false
+
+────────────────────
++ do namesake Bool
+    - slot SlotId
+    - tracked Bool
+
+` Whether another local of the function that declares a local has its name, one some read
+` tracks where `tracked` says.
+. other = slots[slot].namesake
+while other != no-slot && other != slot
+    if is-trackable(other) && (!tracked || tracked-other)
+        = true
+    .. tracked-other = (slots[other].flags /and/ SlotFlag.slot-tracked) != 0
+    other = slots[other].namesake
+= false
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-public Bool

@@ -235,7 +235,7 @@ arms-expected = no-type
 . as-statement = want.asks(.want-match-statement)
 . own-arming = arming
 . arms-mark = scratch.types.mark
-arming = Arming(as-statement, arms-mark, expected, false, arming.union, 0, is-alternative(pattern), no-slot, 0)
+arming = Arming(as-statement, arms-mark, expected, false, arming.union, 0, tree.is-alternative(pattern), no-slot, 0)
 . narrow-mark = scratch.narrowings.mark
 . first-arm = arm-bodies.length
 . first-value = arm-values.length
@@ -612,7 +612,7 @@ do match tree.nodes[id]
         arming = arming.present-depth = arming.present-depth - 1
         = left || present
     | .node-type-transform(row)
-        . is-else = pattern-is-else(row.pattern)
+        . is-else = tree.pattern-is-else(row.pattern)
         . entered = frame.live-members()
         . unread SyntaxId = 0
         if arming.several && subject != no-type && subject != invalid-type
@@ -637,7 +637,7 @@ do match tree.nodes[id]
             . passed = passed-type(row.pattern, subject)
             if passed != subject
                 frame.assign(subject-slot, passed)
-        . predicate = predicate-expr(row.pattern)
+        . predicate = tree.predicate-expr(row.pattern)
         . mark = scratch.narrowings.mark
         narrowing.narrow-condition(predicate, true)
         if predicate != 0 && subject == no-type
@@ -660,9 +660,9 @@ do match tree.nodes[id]
         if value == no-type
             . own-arm = arm-typing
             arm-typing = arm-typing.forced = if predicate != 0 && narrowing.condition-slot(predicate) == null then predicate else 0
-            arm-typing = arm-typing.symbol = if arming.expected != no-type then arm-value(row.expr) else 0
+            arm-typing = arm-typing.symbol = if arming.expected != no-type then tree.arm-value(row.expr) else 0
             if passes-expected(row.expr)
-                note-returned-match(arm-value(row.expr), arming.expected)
+                note-returned-match(tree.arm-value(row.expr), arming.expected)
                 arms-expected = arming.expected
             value = check-statement(row.expr)
             arm-typing = own-arm
@@ -687,14 +687,14 @@ do match tree.nodes[id]
                 arming = arming.unite = true
                 arming = arming.union = scratch.types.mark
             scratch.types.push(value)
-            arm-values += arm-value(row.expr)
+            arm-values += tree.arm-value(row.expr)
         if raises-at-arm(value, arming.expected)
             raised-arms += id
         = is-else
     | .node-type-panic(row)
         = collect-panic(row.pattern, subject)
     ??
-        . is-else = pattern-is-else(id)
+        . is-else = tree.pattern-is-else(id)
         if !is-else && !pattern-possible(id, subject)
             facts.set-plan(instance, id, .plan-never)
             = false
@@ -712,7 +712,7 @@ _ do passes-expected Bool
 
 ` Whether the value of an arm is a match that nothing in the arm runs before, which is of the
 ` type the arms are expected to give as a returned match is, so that its own arms convert to it.
-. value = arm-value(body)
+. value = tree.arm-value(body)
 =? false if arming.expected == no-type || arming.expected == types.void-type || !tree.is-match-syntax(value)
 =? false if may-miss(value, arming.expected)
 do match? tree.nodes[body]
@@ -741,25 +741,6 @@ match tree.nodes[pattern]
         is-conditional(row.pattern)
     ??
         true
-
-────────────────────
-+ do arm-value SyntaxId
-    - body SyntaxId
-
-` The node that gives the body of an arm its value: the body, or of a block the last statement
-` that runs where it stands, or none where there is none.
-do match? tree.nodes[body]
-    | .node-block(block)
-        . last SyntaxId = 0
-        for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
-                | .node-declare(row)
-                    if row.is-lazy
-                        continue
-            if !is-declaration-syntax(tree, statement) && !is-comment-syntax(tree, statement)
-                last = statement
-        = last
-= body
 
 ────────────────────
 + lacks-value Bool
@@ -802,9 +783,9 @@ _ do collect-panic Bool
 
 do match? tree.nodes[id]
     | .node-type-transform(row)
-        . is-else = pattern-is-else(row.pattern)
+        . is-else = tree.pattern-is-else(row.pattern)
         check-pattern(row.pattern, subject)
-        . predicate = predicate-expr(row.pattern)
+        . predicate = tree.predicate-expr(row.pattern)
         check-assertion(id, row.expr, 0)
         narrowing.narrow-condition(predicate, false)
         = is-else
@@ -824,19 +805,6 @@ for offset in 0 .. < bound.slots.count
 = no-slot
 
 ────────────────────
-_ predicate-expr SyntaxId
-    - pattern SyntaxId
-
-|? pattern == 0
-    0
-??
-    match tree.nodes[pattern]
-        | .node-type-predicate(row)
-            row.expr
-        ??
-            0
-
-────────────────────
 _ fails-present Bool
     - pattern SyntaxId
 
@@ -849,19 +817,6 @@ match tree.nodes[pattern]
         narrowing.is-null-syntax(row.expr)
     ??
         false
-
-────────────────────
-+ pattern-is-else Bool
-    - pattern SyntaxId
-
-|? pattern == 0
-    true
-??
-    match tree.nodes[pattern]
-        | .node-type-wildcard
-            true
-        ??
-            false
 
 ────────────────────
 + do check-pattern
@@ -1022,16 +977,6 @@ do match tree.nodes[pattern]
         decline(pattern)
 
 ────────────────────
-_ is-alternative Bool
-    - pattern SyntaxId
-
-match tree.nodes[pattern]
-    | .node-type-or
-        true
-    ??
-        false
-
-────────────────────
 _ name-read SyntaxId
     - pattern SyntaxId
 
@@ -1126,12 +1071,6 @@ for slot in right-slots
         . name = bindings.slots[slot].name.text
         frame.diagnose(left, .stated, program.store-atom("\"$name\" is bound by the alternative after this one but not by this one; bind it in each alternative"))
         =
-
-────────────────────
-_ known-type Bool
-    - type TypeId
-
-type != no-type && type != invalid-type
 
 ────────────────────
 _ do it-read SlotId
@@ -1507,7 +1446,7 @@ if found != no-type
 . receiver = if owner != no-type then owner else enclosing-self()
 . property = decl-property-name(root.module, root.decl) if root
 if owner != no-type
-    property = subject-property(matching.case)
+    property = tree.subject-property(matching.case)
 . classed = receiver != no-type && types.intrinsic-of(receiver) == .class
 . place = property-named(receiver, property) if property && classed
 if !place
@@ -1579,16 +1518,6 @@ do match? tree.nodes[subject]
         if inner != no-type && inner != invalid-type && types.intrinsic-of(inner) == .class
             = inner
 = no-type
-
-────────────────────
-_ do subject-property Atom?
-    - subject SyntaxId
-
-` The name of the property a subject reads from an object, or none.
-do match? tree.nodes[subject]
-    | .node-get-expression(row)
-        = row.name
-= null
 
 ────────────────────
 _ do refined-root MachineFact?
@@ -1981,7 +1910,7 @@ if mapped
 for element in tree.children[patterns]
     do match tree.nodes[element]
         | .node-type-map-item(row)
-            . key = infer(key-expr(row.key))
+            . key = infer(tree.key-expr(row.key))
             . known = mapped && key != invalid-type
             . value = no-type
             if known
@@ -2018,17 +1947,6 @@ calls.construction-on
     - arguments-since(shapes-start, types-start, syntax-start, scratch.no-types)
 calls.index-assign-call(site, subject, 0, class-arg(types, map, 0), 0, class-arg(types, map, 1))
 calls.operator-call(site, subject, program.store-atom("-"), 0, subject)
-
-────────────────────
-_ key-expr SyntaxId
-    - key SyntaxId
-
-` A map pattern's key is an equality on a literal or a `$name`: the expression it compares to.
-match tree.nodes[key]
-    | .node-type-equality(row)
-        row.expr
-    ??
-        key
 
 ────────────────────
 _ do check-case-value

@@ -136,6 +136,41 @@ if !released
     arena.release()
     released = true
 
+────────────────────
++ do has-event-member Bool
+    - members RowRange'DeclId
+
+` Whether a class's or a facet's members hold an event.
+for member in member-pool[members]
+    =? true if decls[member] is .decl-event
+= false
+
+────────────────────
++ do member-event DeclId?
+    - members RowRange'DeclId
+    - name Atom
+
+` The event of a name among a class's or a facet's members.
+for member in members-named(members, name)
+    do match? decls[member]
+        | .decl-event(event)
+            =? member if event.name == name
+= null
+
+────────────────────
++ member-name (Atom?, Bool, SyntaxId)
+    - member DeclId
+
+match decls[member]
+    | .decl-property(row)
+        (row.name, row.access != .private-access, row.syntax)
+    | .decl-function(row)
+        (row.name, row.access != .private-access, row.syntax)
+    | .decl-event(row)
+        (row.name, true, row.syntax)
+    ??
+        (null, false, 0)
+
 ━━━━━━━━━━━━━━━━━━━━
 + do extension-ordinal U32
     - module Module

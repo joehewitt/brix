@@ -352,3 +352,98 @@ match? op
         .pow-op
     |= .concat-eq-op
         .concat-op
+
+━━━━━━━━━━━━━━━━━━━━
++ steady-operator Bool
+    - op Operator
+
+` Whether an operator on two numbers or truths gives the same each time without doing anything:
+` a comparison, `&&` and `||`, and arithmetic that wraps rather than panics.
+compares || joins || wraps
+
+.. compares = op == .equals-op || op == .not-equals-op || op == .less-than-op || op == .greater-than-op || op == .less-than-equals-op || op == .greater-than-equals-op
+.. joins = op == .and-op || op == .or-op
+.. wraps = op == .add-op || op == .subtract-op || op == .multiply-op || op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op
+
+━━━━━━━━━━━━━━━━━━━━
++ is-negated-test Bool
+    - op Operator
+
+op == .is-not-op || op == .is-not-exactly-op || op == .is-not-similar-op
+
+━━━━━━━━━━━━━━━━━━━━
++ hidden-message String
+    - kind String
+    - name Atom
+    - access Access
+
+` What an error says of a member another module keeps from this one: that it is private, or that
+` it is shared with a file family not this one's.
+|? access is .private-access
+    "$kind \"${name.text}\" is private"
+??
+    "$kind \"${name.text}\" is shared, declared with ^, so only its own file family can use it"
+
+━━━━━━━━━━━━━━━━━━━━
++ is-arithmetic Bool
+    - op Operator
+
+|? op == .add-op || op == .subtract-op || op == .multiply-op
+    true
+|? op == .divide-op || op == .mod-op || op == .pow-op
+    true
+|? op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op
+    true
+??
+    op == .bitwise-lshift-op || op == .bitwise-rshift-op || op == .bitwise-zrshift-op
+
+━━━━━━━━━━━━━━━━━━━━
++ is-bitwise Bool
+    - op Operator
+
+op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op || is-shift(op)
+
+━━━━━━━━━━━━━━━━━━━━
++ is-shift Bool
+    - op Operator
+
+op == .bitwise-lshift-op || op == .bitwise-rshift-op || op == .bitwise-zrshift-op
+
+━━━━━━━━━━━━━━━━━━━━
++ negation-of Operator
+    - op Operator
+
+` The comparison that holds exactly when another does not.
+match op
+    |= .not-equals-op
+        .equals-op
+    |= .less-than-op
+        .greater-than-equals-op
+    |= .greater-than-op
+        .less-than-equals-op
+    |= .less-than-equals-op
+        .greater-than-op
+    |= .greater-than-equals-op
+        .less-than-op
+    ??
+        .not-equals-op
+
+━━━━━━━━━━━━━━━━━━━━
++ opposite-of Operator
+    - op Operator
+
+match op
+    |= .not-equals-op
+        .equals-op
+    |= .less-than-op
+        .greater-than-op
+    |= .greater-than-op
+        .less-than-op
+    |= .less-than-equals-op
+        .greater-than-equals-op
+    |= .greater-than-equals-op
+        .less-than-equals-op
+    |= .equals-op
+        .not-equals-op
+    ??
+        .equals-op

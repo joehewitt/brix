@@ -1502,7 +1502,7 @@ else
         value = check-statement(declaration.body)
         if discarding-block == declaration.body && !(tree.nodes[declaration.body] is .node-block)
             check-called(declaration.body, value)
-        . valueless = tree.is-quasi-syntax(declaration.body) && !assigns(declaration.body)
+        . valueless = tree.is-quasi-syntax(declaration.body) && !tree.assigns(declaration.body)
         if !declaration.is-imperative && valueless
             value = no-type
         if discards-result()
@@ -1725,7 +1725,7 @@ for part in sheet-parts(ref)
             | .decl-rule(rule)
                 if waits-for-markup(receiver, part.module, rule.syntax)
                     instances.mark-may-panic(instance)
-                    if is-live-rule(written.tree, rule.syntax)
+                    if written.tree.is-live-rule(rule.syntax)
                         live-owned = true
 own-markup-actions(receiver, site)
 . base = types.base-of(receiver) ?? no-type
@@ -1741,7 +1741,7 @@ if takes-nothing && !own && !given && !only-machines(declaration.body)
 . body = declaration.body
 . rooted = tree.root-this(frame.declaration.syntax) != 0
 . ruled = tree.nodes[frame.declaration.syntax] is .node-rule-syntax
-. dropped = if above && !rooted && !ruled then assigning-line(body) else 0u32
+. dropped = if above && !rooted && !ruled then tree.assigning-line(body) else 0u32
 . lines [SyntaxId]
 if wraps-default(body)
     lines += body
@@ -2464,7 +2464,7 @@ while frame != U32.max
     if held.gate == 0
         do match? program.modules[held.module].decls[held.decl]
             | .decl-style-rule(rule)
-                if rule-takes(program.modules[held.module].tree, rule.syntax) != 0
+                if program.modules[held.module].tree.rule-takes(rule.syntax) != 0
                     = frame
     frame = held.outer
 = U32.max
@@ -3019,35 +3019,6 @@ while position != 0
 = (0u32, 0u32)
 
 ────────────────────
-_ entered-use ScopeUse
-    - use ScopeUse
-
-` A rule written in a rule as it is seen in the markup of the class of the element it was brought
-` into view at: matching there where it reaches only that markup and matched nothing before.
-|? use.scope.own != .scope-pending
-    use
-??
-    ScopeUse
-        - RuleScope(scope.module, scope.decl, scope.owner, scope.frames, .scope-entered)
-        - use.cell
-        - use.values
-        - use.outer-cells
-
-.. scope = use.scope
-
-────────────────────
-_ do scope-own ScopeOwn
-    - written AST
-    - line SyntaxId
-
-` How a rule written in a rule, at a line of the module that writes it, is first brought into
-` view: matching nothing until its element's object is filled where it is written `• own`.
-do match? written.nodes[line]
-    | .node-rule-syntax(row)
-        =? .scope-pending if row.is-own
-= .scope-plain
-
-────────────────────
 _ do may-scope Bool
     - class TypeId
     - row ASTMarkup
@@ -3204,7 +3175,7 @@ for position in 0 .. < chain.length
                     | .decl-style-rule(rule)
                         if rule.name.text != "This"
                             continue
-                        . body = rule-body(owner.tree, rule.syntax)
+                        . body = owner.tree.rule-body(rule.syntax)
                         do match? owner.tree.nodes[body]
                             | .node-block(block)
                                 for statement in owner.tree.children[block.body]
@@ -3219,7 +3190,7 @@ for position in 0 .. < chain.length
                                                     - scope-own(owner.tree, statement)
                                     .. nested = owner.tree.nodes[statement] is .node-rule-syntax
                                     .. plain = scope-own(owner.tree, statement) == .scope-plain
-                        for branch in rule-whens(owner.tree, body)
+                        for branch in owner.tree.rule-whens(body)
                             . gate = U32.max
                             . held = U32.max
                             for line in owner.tree.when-lines(branch)
@@ -3272,7 +3243,7 @@ do match? owner.decls[member]
             | .node-rule-syntax(row)
                 . env = holder-env(DeclRef(module, class))
                 for arg in owner.tree.children[row.args]
-                    . written = argument-type-syntax(owner.tree, arg)
+                    . written = owner.tree.argument-type-syntax(arg)
                     . type = if written != 0 then types.evaluate-type(module, owner.tree, written, env) else invalid-type
                     if type == invalid-type || types.completions[type].has-variables
                         types.env-release(env)
@@ -3280,34 +3251,6 @@ do match? owner.decls[member]
                     taken += type
                 types.env-release(env)
 = taken
-
-────────────────────
-_ argument-type-syntax SyntaxId
-    - written AST
-    - argument SyntaxId
-
-` The type written for a value a style rule takes, `name Type`, or none.
-match written.nodes[argument]
-    | .node-argument-decl(row)
-        match written.nodes[row.pattern]
-            | .node-type-capture(capture)
-                capture.type
-            ??
-                0
-    ??
-        0
-
-────────────────────
-_ generates Bool
-    - written AST
-    - line SyntaxId
-
-` Whether a line of a style rule generates content: a markup element that binds a slot.
-match written.nodes[line]
-    | .node-markup(row)
-        row.slot-binding != 0
-    ??
-        false
 
 ────────────────────
 _ do implicit-names [String]
@@ -3661,7 +3604,7 @@ rule-arming = rule-arming.texts = declared == types.string-type
 . saved-target = rule-arming
 rule-arming = rule-arming.target = declared
 rule-arming = rule-arming.span = gives-source-span(declared)
-helping = helping.explicit = marked || holds-rollback(pattern)
+helping = helping.explicit = marked || tree.holds-rollback(pattern)
 helping = helping.body = matched
 . joined = arms-type(pattern)
 helping = helping.explicit = false
@@ -3832,7 +3775,7 @@ if final-statement != 0
         . message = "Function $name ends with a value it does not return"
         frame.diagnose(final-statement, .stated, program.store-atom(message))
         =
-    if is-bare-value(final-statement) && frame.self-type == no-type
+    if tree.is-bare-value(final-statement) && frame.self-type == no-type
         frame.diagnose(final-statement, .stated, program.store-atom(bare-value-text()))
         =
     instances.set-unreturned(instance, final-statement)
@@ -4121,17 +4064,6 @@ infer-binary-values(site, .equals-op, site, value, site, value)
 instances.set-returns(instance, types.bool-type, types.bool-type, .return-declared)
 finish-errors(frame)
 close()
-
-────────────────────
-_ do names-machine Bool
-    - slot SlotId
-
-` Whether a slot holds the value of a state machine, which its cases read before the machine's
-` union is made where what a case holds is inferred (see `early-union`).
-for row in bindings.machines
-    if row.bound == slot
-        = true
-= false
 
 ────────────────────
 _ do note-unit-errors
@@ -4438,21 +4370,6 @@ do match? tree.nodes[expr]
 = no-type
 
 ────────────────────
-_ member-name (Atom?, Bool, SyntaxId)
-    - target Module
-    - member DeclId
-
-match target.decls[member]
-    | .decl-property(row)
-        (row.name, row.access != .private-access, row.syntax)
-    | .decl-function(row)
-        (row.name, row.access != .private-access, row.syntax)
-    | .decl-event(row)
-        (row.name, true, row.syntax)
-    ??
-        (null, false, 0)
-
-────────────────────
 _ do declares-name Bool
     - owner-module ModuleId
     - owner DeclId
@@ -4469,7 +4386,7 @@ _ do declares-name Bool
     ??
         RowRange'DeclId()
 for member in target.members-named(members, name)
-    . (named, is-shared, _) = member-name(target, member)
+    . (named, is-shared, _) = target.member-name(member)
     if named && named == name && (is-shared || !shared-only)
         = true
 = false
@@ -4515,17 +4432,6 @@ do match? types.rows[type]
         = integer-index && is-integer-kind(types.intrinsic-of(types.child-type(row.fields, 1)))
             .. integer-index = is-integer-kind(types.intrinsic-of(types.child-type(row.fields, 0)))
 = false
-
-────────────────────
-_ checks-at-declaration Bool
-    - declaration CheckedDecl
-
-` Whether how a function returns is checked as the module declares it (`check-return-mode`):
-` a function, getter, setter or conversion written in the module as one expression.
-declared-plain && declaration.body != 0 && (function-or-getter || declaration.kind == .setter-decl)
-
-.. declared-plain = !declaration.is-generated && !declaration.is-imperative && !declaration.is-main
-.. function-or-getter = declaration.kind == .function-decl || declaration.kind == .getter-decl
 
 ────────────────────
 _ do check-closure-rows
@@ -5118,7 +5024,7 @@ if named && produced != no-type
             - .stated
             - program.store-atom("$written is never called; write $written() to call it")
         =
-if is-step && is-bare-value(statement) && !is-piped-row(body, statement)
+if is-step && tree.is-bare-value(statement) && !tree.is-piped-row(body, statement)
     frame.diagnose(statement, .stated, program.store-atom(bare-value-text()))
 
 ────────────────────
@@ -5142,40 +5048,6 @@ _ is-step-position Bool
 _ print-block-text String
 
 "A print is a step and gives no value; end the block with its value"
-
-────────────────────
-_ is-bare-value Bool
-    - statement SyntaxId
-
-match tree.nodes[statement]
-    | .node-identifier
-        true
-    | .node-integer-syntax
-        true
-    | .node-float-syntax
-        true
-    | .node-string-syntax
-        true
-    | .node-get-expression
-        true
-    | .node-index-expression
-        true
-    | .node-list-syntax
-        true
-    | .node-tuple-syntax
-        true
-    | .node-range-expression
-        true
-    | .node-cast-expression
-        true
-    | .node-binary-expression(row)
-        is-arithmetic(row.op) || is-comparison(row.op) || valued-ops has row.op
-    | .node-unary-expression(row)
-        row.op == .not-op || row.op == .negative-op || row.op == .bitwise-not-op
-    ??
-        false
-
-.. valued-ops = [Operator.concat-op, Operator.concat-string-op, Operator.and-op, Operator.or-op, Operator.is-op, Operator.is-not-op, Operator.is-exactly-op, Operator.is-not-exactly-op, Operator.is-similar-op, Operator.is-not-similar-op, Operator.is-in-op, Operator.not-in-op, Operator.has-op, Operator.has-not-op]
 
 ────────────────────
 _ is-leaving Bool
@@ -5302,7 +5174,7 @@ if right != 0
         lazy-slots.pop()
     if !is-lazy
         note-escape(right)
-    if !is-lazy && !writes-type(left)
+    if !is-lazy && !tree.writes-type(left)
         note-loose(right)
 else
     construct-declared(left)
@@ -5453,7 +5325,7 @@ _ do awaits-flow Bool
 
 if frame.is-captured(slot) || frame.known(slot) != no-type
     = false
-if bindings.slots[slot].getter != 0 || is-placed(slot)
+if bindings.slots[slot].getter != 0 || bindings.is-placed(slot)
     = false
 . kind = bindings.slots[slot].kind
 . named = kind == .slot-local || kind == .slot-pattern || kind == .slot-loop-item
@@ -6136,18 +6008,6 @@ _ key-declared TypeId
 .. index = frame.narrowed-members.find(key)
 
 ────────────────────
-_ lazy-pattern SyntaxId
-    - slot SlotId
-
-match tree.nodes[row.group]
-    | .node-declare(declaration)
-        tree.pattern-identifier(declaration.left)
-    ??
-        row.group
-
-.. row = bindings.slots[slot]
-
-────────────────────
 _ do read-slot TypeId
     - slot SlotId
     - site SyntaxId = 0
@@ -6172,7 +6032,7 @@ if outer && frame.is-captured(slot)
         let-out-lazy(slot, if site != 0 then site else bindings.slots[slot].group)
     = found
 if lazy-slots.find(slot) != null
-    frame.diagnose(lazy-pattern(slot), .circular-reference)
+    frame.diagnose(bindings.lazy-pattern(this.tree, slot), .circular-reference)
     = invalid-type
 . current = frame.slot-type(slot)
 . row = bindings.slots[slot]
@@ -6513,7 +6373,7 @@ for id in tree.subtree-start(exception) .. < exception + 1
             if resolution.kind == .resolve-slot
                 . row = bindings.slots[resolution.slot]
                 . own = row.syntax >= first && row.syntax <= declared
-                if !own && !holds-scope(row.scope, site)
+                if !own && !bindings.holds-scope(tree, row.scope, site)
                     = false
                 if !own && recorded != no-type && recorded != frame.slot-type(resolution.slot)
                     = false
@@ -6533,23 +6393,10 @@ _ do shadowed Bool
 . bound = bindings.bindings[frame.binding]
 for slot in bound.slots.start .. < bound.slots.start + bound.slots.count
     . row = bindings.slots[slot]
-    if row.name == name && between && holds-scope(row.scope, site)
+    if row.name == name && between && bindings.holds-scope(tree, row.scope, site)
         = true
     .. between = row.syntax > declared && row.syntax < site
 = false
-
-────────────────────
-_ holds-scope Bool
-    - scope ScopeId
-    - site SyntaxId
-
-` Whether a site lies in a scope: a function's own holds all of it.
-|? row.kind == .scope-function || row.kind == .scope-nested
-    true
-??
-    site >= tree.subtree-start(row.syntax) && site <= row.syntax
-
-.. row = bindings.scopes[scope]
 
 ────────────────────
 _ do settles Bool
@@ -6762,19 +6609,9 @@ while cursor != no-type
             . target = program.modules[row.module]
             do match? target.decls[row.decl]
                 | .decl-class(class)
-                    =? true if has-event-member(target, class.members)
+                    =? true if target.has-event-member(class.members)
             =? true if facets-have-events(row.module, row.decl)
     cursor = types.base-of(cursor) ?? no-type
-= false
-
-────────────────────
-_ do has-event-member Bool
-    - target Module
-    - members RowRange'DeclId
-
-` Whether a class's or a facet's members hold an event.
-for member in target.member-pool[members]
-    =? true if target.decls[member] is .decl-event
 = false
 
 ────────────────────
@@ -6791,7 +6628,7 @@ for position in start .. < end
     . home = program.modules[facets.modules[facet]]
     do match? home.decls[facets.decls[facet]]
         | .decl-extension(row)
-            =? true if facets.states[facet] == .facet-bound && has-event-member(home, row.members)
+            =? true if facets.states[facet] == .facet-bound && home.has-event-member(row.members)
 = false
 
 ────────────────────
@@ -7533,22 +7370,6 @@ if target == invalid-type || types.completions[target].has-variables
 = !could-match(subject, target, is-specificity(op))
 
 ────────────────────
-_ is-specificity Specificity
-    - op Operator
-
-match op
-    |= .is-exactly-op
-        .exact
-    |= .is-not-exactly-op
-        .exact
-    |= .is-similar-op
-        .convertible
-    |= .is-not-similar-op
-        .convertible
-    ??
-        .similar
-
-────────────────────
 _ do could-match Bool
     - subject TypeId
     - target TypeId
@@ -7770,18 +7591,6 @@ do match? tree.nodes[id]
             | .node-style-read-expression
                 = false
 = true
-
-────────────────────
-_ compares-in-place Bool
-    - plan OperatorPlan
-
-` Whether a comparison is one the reference makes with no call of its own: of tuples, structs
-` or unions field by field, of objects or atoms by identity, of an optional with `null`, of
-` values never equal, or a test of an object's class. The calls a field-by-field comparison
-` makes are recorded, and the frame sees them.
-structural || plan == .plan-absent || plan == .plan-unlike || plan == .plan-class-test
-
-.. structural = plan == .plan-fields || plan == .plan-not-fields || plan == .plan-identity
 
 ────────────────────
 _ is-typed-name Bool
@@ -8248,7 +8057,7 @@ for node in tree.subtree-start(line) .. line
             if row.condition != 0
                 gated += row.condition
 for node in tree.subtree-start(line) .. line
-    if in-gated(node, gated)
+    if tree.in-gated(node, gated)
         continue
     do match? tree.nodes[node]
         | .node-identifier(row)
@@ -9523,7 +9332,7 @@ do match? tree.nodes[arm]
         if !tree.tests-plainly(row.pattern)
             decline(arm)
             = false
-        if !pattern-is-else(row.pattern) && !pattern-possible(row.pattern, held)
+        if !tree.pattern-is-else(row.pattern) && !pattern-possible(row.pattern, held)
             facts.set-plan(instance, arm, .plan-never)
         else
             check-pattern(row.pattern, held)
@@ -9556,7 +9365,7 @@ if held == no-type || held == invalid-type
     = false
 do match? tree.nodes[arm]
     | .node-type-transform(row)
-        if !pattern-is-else(row.pattern) && !pattern-possible(row.pattern, held)
+        if !tree.pattern-is-else(row.pattern) && !pattern-possible(row.pattern, held)
             facts.set-plan(instance, arm, .plan-never)
             = true
         . it = arm-slot(arm, .slot-it)
@@ -9753,7 +9562,7 @@ for line in lines
                 =
 frame.assign(resolution.slot, item)
 if regioned
-    . held = bindings.resolution-of(frame.binding, row-loop(body))
+    . held = bindings.resolution-of(frame.binding, tree.row-loop(body))
     if held.kind != .resolve-slot
         decline(body)
         finish-errors(frame)
@@ -10019,14 +9828,6 @@ _ written-decl DeclId
 ` The function this one is, or that it is written in where it builds what it is written in
 ` builds (`builds-in-place`).
 if builds-in-place() && outer then outer.written-decl() else frame.decl
-
-────────────────────
-_ is-placed Bool
-    - slot SlotId
-
-` Whether the local declared for a markup element's name is given the element's object where
-` the element is written, which no block makes where it starts.
-(bindings.slots[slot].flags /and/ SlotFlag.slot-placed) != 0
 
 ────────────────────
 _ reads-before-made Bool
@@ -11334,7 +11135,7 @@ do match? target.decls[decl]
     | .decl-property(row)
         if row.decoration != null && row.decoration.text != "stack"
             = false
-        . worded = row.value != 0 && is-string-literal(target.tree, row.value)
+        . worded = row.value != 0 && target.tree.is-string-literal(row.value)
         if row.value != 0 && !worded && !is-constant-literal(owner, row.value)
             = false
         if row.type-syntax == 0
@@ -11345,17 +11146,6 @@ do match? target.decls[decl]
             = declared == types.string-type
         = declared != invalid-type && is-numeric(types, declared)
 = false
-
-────────────────────
-_ is-string-literal Bool
-    - source AST
-    - value SyntaxId
-
-match source.nodes[value]
-    | .node-string-syntax
-        true
-    ??
-        false
 
 ────────────────────
 _ do is-constant-literal Bool
@@ -11372,7 +11162,7 @@ do match? source.nodes[value]
     | .node-float-syntax(row)
         = plain-unit(owner, row.unit)
     | .node-unary-expression(row)
-        = row.op == .negative-op && is-number(source, row.operand)
+        = row.op == .negative-op && source.is-number(row.operand)
     | .node-identifier(row)
         = row.name == types.true-atom || row.name == types.false-atom
     | .node-cast-expression(row)
@@ -11393,19 +11183,6 @@ _ plain-unit Bool
     found == invalid-type || !declares-constructor(found)
 
 .. found = types.type-named(owner, unit, types.env-frame())
-
-────────────────────
-_ is-number Bool
-    - source AST
-    - value SyntaxId
-
-match source.nodes[value]
-    | .node-integer-syntax
-        true
-    | .node-float-syntax
-        true
-    ??
-        false
 
 ────────────────────
 _ do names-numeric Bool
@@ -11721,7 +11498,7 @@ do match resolution.kind
             = Found(invalid-type)
         if bindings.slots[resolution.slot].getter != 0
             = Found(read-getter(id, resolution.slot))
-        if is-placed(resolution.slot) && outlet-choice(bindings.slots[resolution.slot].group) != no-type
+        if bindings.is-placed(resolution.slot) && outlet-choice(bindings.slots[resolution.slot].group) != no-type
             . message = "Outlet \"${name.text}\" is not read by its name where its slot is filled inside an if or match"
             frame.diagnose(id, .stated, program.store-atom(message))
             = Found(invalid-type)
@@ -11746,19 +11523,19 @@ do match resolution.kind
         if bindings.slots[resolution.slot].kind == .slot-super && !want.asks(.want-receiver)
             frame.diagnose(id, .stated, program.store-atom("Bare super is not a value"))
             = Found(invalid-type)
-        if is-placed(resolution.slot) && reads-before-made(id, resolution.slot)
+        if bindings.is-placed(resolution.slot) && reads-before-made(id, resolution.slot)
             . message = "Named markup element \"${name.text}\" is read before its markup constructs it"
             frame.diagnose(id, .stated, program.store-atom(message))
             = Found(invalid-type)
         if precedes-declaration(resolution.slot)
-            if is-placed(resolution.slot) || awaits-element(resolution.slot)
+            if bindings.is-placed(resolution.slot) || awaits-element(resolution.slot)
                 = Found(read-unmade(id, name, resolution.slot))
-            if names-machine(resolution.slot)
+            if bindings.names-machine(resolution.slot)
                 decline(id)
                 = Found(invalid-type)
             frame.diagnose(id, .stated, program.store-atom("Name not found"))
             = Found(invalid-type)
-        if is-placed(resolution.slot) && outlet-region(bindings.slots[resolution.slot].group) != 0
+        if bindings.is-placed(resolution.slot) && outlet-region(bindings.slots[resolution.slot].group) != 0
             decline(id)
             = Found(invalid-type)
         note-carried(id, resolution.slot)
@@ -11958,7 +11735,7 @@ _ do pulled-root Bool
     - id SyntaxId
     - object SyntaxId
 
-=? false if pipeline-of(id) == 0 && !watched(id)
+=? false if tree.pipeline-of(id) == 0 && !watched(id)
 do match? tree.nodes[object]
     | .node-identifier(row)
         =? false if row.is-tracked
@@ -11977,21 +11754,6 @@ if (bindings.slots[slot].flags /and/ SlotFlag.slot-assigned) != 0
 for node in syntax + 1 .. < (tree.nodes.length as SyntaxId)
     if tree.subtree-start(node) <= syntax && tree.nodes[node] is .node-declare
         = is-live-statement(node)
-= false
-
-────────────────────
-_ do namesake Bool
-    - slot SlotId
-    - tracked Bool
-
-` Whether another local of the function that declares a local has its name, one some read
-` tracks where `tracked` says.
-. other = bindings.slots[slot].namesake
-while other != no-slot && other != slot
-    if bindings.is-trackable(other) && (!tracked || tracked-other)
-        = true
-    .. tracked-other = (bindings.slots[other].flags /and/ SlotFlag.slot-tracked) != 0
-    other = bindings.slots[other].namesake
 = false
 
 ────────────────────
@@ -12202,7 +11964,7 @@ _ do infer-stream TypeId
 ` action writes the value again to the channel through the function written for it as what it
 ` read changes. One that reads nothing tracked is reported, as it would never change; one written
 ` where a markup element is being made has no shape here yet.
-if !tracks-reads(tree, expr)
+if !tree.tracks-reads(expr)
     . message = "A stream of a value follows the reads written with \"#\", and this one has none, so it would never change; write \"#\" before what it follows, as in \"<c.#count>\""
     frame.diagnose(id, .stated, program.store-atom(message))
     = invalid-type
@@ -13151,19 +12913,6 @@ _ do privacy-message String
 = hidden-message("Property", name, hiding-access(fact, name, accessor) ?? Access.private-access)
 
 ────────────────────
-_ hidden-message String
-    - kind String
-    - name Atom
-    - access Access
-
-` What an error says of a member another module keeps from this one: that it is private, or that
-` it is shared with a file family not this one's.
-|? access is .private-access
-    "$kind \"${name.text}\" is private"
-??
-    "$kind \"${name.text}\" is shared, declared with ^, so only its own file family can use it"
-
-────────────────────
 _ do union-property TypeId
     - id SyntaxId
     - receiver TypeId
@@ -13358,7 +13107,7 @@ _ do declared-event DeclRef?
 do match? target.decls[class-decl]
     | .decl-class(class)
         =? DeclRef(class-module, found) if found
-        .. found = member-event(target, class.members, name)
+        .. found = target.member-event(class.members, name)
 . facets = program.facets
 =? null if facets.count == 0
 . (start, end) = facets.class-range(class-module, class-decl)
@@ -13369,20 +13118,7 @@ for position in start .. < end
         do match? program.modules[home].decls[facets.decls[facet]]
             | .decl-extension(row)
                 =? DeclRef(home, found) if found
-                .. found = member-event(program.modules[home], row.members, name)
-= null
-
-────────────────────
-_ do member-event DeclId?
-    - target Module
-    - members RowRange'DeclId
-    - name Atom
-
-` The event of a name among a class's or a facet's members.
-for member in target.members-named(members, name)
-    do match? target.decls[member]
-        | .decl-event(event)
-            =? member if event.name == name
+                .. found = program.modules[home].member-event(row.members, name)
 = null
 
 ────────────────────
@@ -16411,45 +16147,6 @@ match types.rows[type]
         type-short-name(types, type)
 
 ────────────────────
-_ opposite-of Operator
-    - op Operator
-
-match op
-    |= .not-equals-op
-        .equals-op
-    |= .less-than-op
-        .greater-than-op
-    |= .greater-than-op
-        .less-than-op
-    |= .less-than-equals-op
-        .greater-than-equals-op
-    |= .greater-than-equals-op
-        .less-than-equals-op
-    |= .equals-op
-        .not-equals-op
-    ??
-        .equals-op
-
-────────────────────
-_ negation-of Operator
-    - op Operator
-
-` The comparison that holds exactly when another does not.
-match op
-    |= .not-equals-op
-        .equals-op
-    |= .less-than-op
-        .greater-than-equals-op
-    |= .greater-than-op
-        .less-than-equals-op
-    |= .less-than-equals-op
-        .greater-than-op
-    |= .greater-than-equals-op
-        .less-than-op
-    ??
-        .not-equals-op
-
-────────────────────
 _ do infer-containment TypeId
     - id SyntaxId
     - positive Bool
@@ -18721,28 +18418,3 @@ pulled-pipelines.clear()
 pulled-reads.clear()
 pulled-names.clear()
 held.clear()
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-bitwise Bool
-    - op Operator
-
-op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op || is-shift(op)
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-shift Bool
-    - op Operator
-
-op == .bitwise-lshift-op || op == .bitwise-rshift-op || op == .bitwise-zrshift-op
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-arithmetic Bool
-    - op Operator
-
-|? op == .add-op || op == .subtract-op || op == .multiply-op
-    true
-|? op == .divide-op || op == .mod-op || op == .pow-op
-    true
-|? op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op
-    true
-??
-    op == .bitwise-lshift-op || op == .bitwise-rshift-op || op == .bitwise-zrshift-op

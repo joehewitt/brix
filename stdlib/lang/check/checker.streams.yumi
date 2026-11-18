@@ -389,17 +389,6 @@ for position in rule-arming.capture-base .. < capture-sites.length
         frame.assign(capture-slots[position], facts.node-type(instance, site))
 
 ────────────────────
-_ do optional-operand SyntaxId
-    - id SyntaxId
-
-` The part an optional part of a stream pattern holds, or none for any other part.
-do match? tree.nodes[id]
-    | .node-stream-unary(row)
-        if row.op == .zero-or-one-op
-            = row.operand
-= 0
-
-────────────────────
 _ do optional-text Bool
     - id SyntaxId
 
@@ -443,10 +432,10 @@ for position in rule-arming.capture-base .. < capture-sites.length
     if facts.plan-of(instance, name) == .plan-stream-value
         continue
     . held = facts.node-type(instance, name)
-    if optional-operand(part) != 0
+    if tree.optional-operand(part) != 0
         if capture-accumulating[position] || literal-part || sourceless
             continue
-        .. literal-part = tree.nodes[optional-operand(part)] is .node-stream-string
+        .. literal-part = tree.nodes[tree.optional-operand(part)] is .node-stream-string
         .. sourceless = source-candidates(peeled-optional(held)).length == 0
         if held == types.optional-of(types.string-type) && read-in && !plain-read
             continue
@@ -466,7 +455,7 @@ for position in rule-arming.capture-base .. < capture-sites.length
     . stated = facts.node-type(instance, called)
     if source-candidates(stated).length == 0 || made-at(called, .material-text)
         continue
-    if called != part || computed-counts(pattern) || delegates-result(result) || reads-wide
+    if called != part || tree.computed-counts(pattern) || delegates-result(result) || reads-wide
         decline(name)
         = false
     .. reads-wide = reads-plainly(pattern, capture-slots[position])
@@ -528,18 +517,6 @@ while row != U32.max
     if facts.materials[row].kind == kind
         = true
     row = facts.materials[row].next
-= false
-
-────────────────────
-_ do computed-counts Bool
-    - id SyntaxId
-
-` Whether a stream pattern holds a count of a part whose bounds are not numbers written.
-for node in tree.subtree-start(id) .. < id + 1
-    do match? tree.nodes[node]
-        | .node-stream-length(row)
-            if !count-bound(row.min) || (row.max != 0 && !count-bound(row.max))
-                = true
 = false
 
 ────────────────────
@@ -634,9 +611,9 @@ do match? tree.nodes[id]
             type = if depth != 0 then types.optional-of(inner) else inner
         . shapeless = if !valued then text-mismatch else (depth != 0 && types.is-optional(inner))
             .. text-mismatch = inner != types.string-type && (inner != optional || depth != 0)
-        . sliced = !text-items() && !valued && pattern-spans && !holds-count(row.pattern)
+        . sliced = !text-items() && !valued && pattern-spans && !tree.holds-count(row.pattern)
             .. pattern-spans = returns-span(instance, row.pattern)
-        . whole = optional-operand(row.pattern)
+        . whole = tree.optional-operand(row.pattern)
         . spanned = textless-inner && facts.plan-of(instance, planned-part) == .plan-span-call
             .. textless-inner = !valued && peeled-optional(inner) != types.string-type
             .. planned-part = if whole != 0 then whole else row.pattern
@@ -998,16 +975,6 @@ do match? tree.nodes[id]
 = false
 
 ────────────────────
-_ do first-capture SyntaxId
-    - id SyntaxId
-
-` The first name a part of a pattern captures, or none.
-for node in tree.subtree-start(id) .. < id + 1
-    if tree.nodes[node] is .node-stream-capture
-        = node
-= 0
-
-────────────────────
 _ do captures-none Bool
     - id SyntaxId
     - quiet Bool = false
@@ -1158,7 +1125,7 @@ _ do outlines Bool
 ` `outline-unsure` says. An action that names `This` is kept inline, as the reference finds
 ` no such type in the module.
 outline-unsure = false
-if pattern == 0 || value == types.string-type || trivial-action(body)
+if pattern == 0 || value == types.string-type || tree.trivial-action(body)
     = false
 . params = instances.signatures[instance].param-count
 . item-params = if rule-match(program, module, frame.decl) != 0 then 1u32 else 0u32
@@ -1189,29 +1156,6 @@ for node in tree.subtree-start(body) .. < body + 1
             else
                 = false
 = true
-
-────────────────────
-_ do trivial-action Bool
-    - body SyntaxId
-
-` Whether an action is a name, a number or text written alone, which the reference keeps
-` inline.
-. single = body
-do match? tree.nodes[body]
-    | .node-block(row)
-        if row.body.count != 1
-            = false
-        single = tree.children[row.body.start]
-do match? tree.nodes[single]
-    | .node-identifier
-        = true
-    | .node-integer-syntax
-        = true
-    | .node-float-syntax
-        = true
-    | .node-string-syntax
-        = true
-= false
 
 ────────────────────
 _ do named-before Bool
@@ -1523,7 +1467,7 @@ else
     . lone = !texted && lone-arm && matched == types.optional-of(types.string-type) && lone-spans
         .. lone-arm = sequence && !pattern-arms.joined && rule-arming.target == no-type
         .. lone-spans = returns-span(instance, id)
-    . recorded = if literal-arm(id) then sliced-text(id) else record-source-text(id, wanted-text)
+    . recorded = if tree.literal-arm(id) then sliced-text(id) else record-source-text(id, wanted-text)
         .. wanted-text = if rule-arming.target != no-type then rule-arming.target else types.string-type
     if untextual || !text-items() || recorded == invalid-type
         decline(id)
@@ -1566,18 +1510,6 @@ do match? tree.nodes[id]
 = false
 
 ────────────────────
-_ do literal-arm Bool
-    - id SyntaxId
-
-` Whether an arm's pattern is one literal, whose text the reference gives as a constant.
-do match? tree.nodes[id]
-    | .node-stream-string
-        = true
-    | .node-stream-transform(row)
-        = row.pattern != 0 && tree.nodes[row.pattern] is .node-stream-string
-= false
-
-────────────────────
 _ do plan-valued
     - id SyntaxId
 
@@ -1588,17 +1520,6 @@ _ do plan-valued
 . plan = facts.plan-of(instance, id)
 if plan != .plan-pattern-call && plan != .plan-span-call && plan != .plan-case
     facts.set-plan(instance, id, .plan-stream-value)
-
-────────────────────
-_ do holds-count Bool
-    - id SyntaxId
-
-` Whether a part of a stream pattern counts a part, whose text the reference gives empty over
-` items that are no characters.
-for node in tree.subtree-start(id) .. < id + 1
-    if tree.nodes[node] is .node-stream-length
-        = true
-= false
 
 ────────────────────
 _ do record-stream-text Bool
@@ -1663,14 +1584,14 @@ if facts.is-spanning-arm(instance, id)
     =
 . given = facts.node-type(instance, id)
 =? if given == no-type || given == result
-if relations.reads-text-as-number(given, result) && !acts(id)
+if relations.reads-text-as-number(given, result) && !tree.acts(id)
     . read = relations.compare-explicit(given, result, module)
     if relation-legal(read)
         conversions.record-conversion(id, read, .reason-join, false, no-type, id)
         =
 . written = match tree.nodes[id]
     | .node-stream-transform(row)
-        row.right != 0 && conversions.fitting-literal(arm-value(row.right), result)
+        row.right != 0 && conversions.fitting-literal(tree.arm-value(row.right), result)
     ??
         false
 conversions.convert
@@ -1681,16 +1602,6 @@ conversions.convert
     - .reason-join
     - true
     - result == types.string-type || written
-
-────────────────────
-_ acts Bool
-    - arm SyntaxId
-
-match tree.nodes[arm]
-    | .node-stream-transform(row)
-        row.right != 0
-    ??
-        false
 
 ────────────────────
 + do note-arm-casts
@@ -1705,18 +1616,7 @@ do match? tree.nodes[id]
         note-arm-casts(row.left, declared)
         note-arm-casts(row.right, declared)
     | .node-stream-transform(row)
-        calls.note-context-cast(action-value(row.right), declared, .cast-return)
-
-────────────────────
-_ do action-value SyntaxId
-    - action SyntaxId
-
-` What an action gives: its last statement where it is a block.
-do match? tree.nodes[action]
-    | .node-block(block)
-        if block.body.count != 0
-            = tree.children[block.body.start + block.body.count - 1]
-= action
+        calls.note-context-cast(tree.action-value(row.right), declared, .cast-return)
 
 ────────────────────
 _ do stream-action-type TypeId
@@ -1778,8 +1678,8 @@ if rolls-back
 if spans-source(rule-arming.target) && !rule-arming.span
     decline(id)
     = invalid-type
-. forwards-it = forwarding && name-text(forwarded-read(body)) == "it"
-    .. forwarding = helping.helper != null && forwarded-read(body) != 0
+. forwards-it = forwarding && name-text(tree.forwarded-read(body)) == "it"
+    .. forwarding = helping.helper != null && tree.forwarded-read(body) != 0
 . it-wanted = types.string-type
 if forwards-it && non-text-target && source-candidates(rule-arming.target).length != 0
     it-wanted = rule-arming.target
@@ -1787,7 +1687,7 @@ if forwards-it && non-text-target && source-candidates(rule-arming.target).lengt
 . it-type = types.string-type
 . spans-it = no-type
 if pattern != 0
-    . reads = mentions(body, "it")
+    . reads = tree.mentions(body, "it")
     . slot = arm-slot(id, .slot-it)
     . sequence = tree.nodes[pattern] is .node-stream-and
     if reads && !forwards-it
@@ -1811,7 +1711,7 @@ if pattern != 0
         if slot != no-slot
             frame.assign(slot, matched)
     else
-        . held = optional-operand(pattern)
+        . held = tree.optional-operand(pattern)
         if reads && held != 0 && text-items() && matched == types.optional-of(types.string-type)
             . made = if tree.nodes[held] is .node-stream-string then sliced-text(pattern) else record-source-text(pattern, types.string-type)
             if made != types.string-type
@@ -1829,7 +1729,7 @@ if pattern != 0
             it-type = made
         if slot != no-slot && (text-items() || reads)
             frame.assign(slot, it-type)
-else if mentions(body, "it")
+else if tree.mentions(body, "it")
     frame.diagnose(id, .stated, program.store-atom("An arm with no pattern has no \"it\"; read the subject by its name"))
     = invalid-type
 if !type-location(id, pattern != 0, body)
@@ -1842,7 +1742,7 @@ if helping.helper != null && !materialize-captures(id, body, restores, restored)
 if !observe-spans(id, body, restores, restored) || it-spanned
     decline(id)
     = invalid-type
-.. it-spanned = observes-span(it-type) && spans-it == no-type && mentions(body, "it")
+.. it-spanned = observes-span(it-type) && spans-it == no-type && tree.mentions(body, "it")
 keep-text-spans(body, restores, restored)
 . selects = action-selects
 . remade [U32]
@@ -1924,7 +1824,7 @@ _ it-span TypeId
 ` characters the arm's pattern matched: that of a sequence, or of a part that gives the text it
 ` matched, which is not optional; none where it is anything else, and in a rule that states a
 ` span.
-|? slot == no-slot || !text-items() || rule-arming.span || optional-operand(pattern) != 0
+|? slot == no-slot || !text-items() || rule-arming.span || tree.optional-operand(pattern) != 0
     no-type
 |? !(tree.nodes[pattern] is .node-stream-and) && !returns-span(instance, pattern)
     no-type
@@ -2047,7 +1947,7 @@ for position in rule-arming.capture-base .. < capture-slots.length
     . plan = facts.plan-of(instance, site)
     . type = facts.node-type(instance, site)
     . optional = type == types.optional-of(types.string-type) && optional-part
-        .. optional-part = optional-operand(capture-patterns[position]) != 0
+        .. optional-part = tree.optional-operand(capture-patterns[position]) != 0
     if capture-accumulating[position] || capture-repeats[position] != 0 || (type != types.string-type && !optional) || plan == .plan-stream-value || plan == .plan-stream-slice || (found != no-type && found != type)
         = no-type
     found = type
@@ -2256,7 +2156,7 @@ for node in tree.subtree-start(rule-arming.capture-root) .. < rule-arming.captur
     do match? tree.nodes[node]
         | .node-stream-transform(row)
             if row.right != 0 && !tree.lazies-only(row.right) && reads-slot(row.right, slot)
-                . forwarded = forwarded-read(row.right)
+                . forwarded = tree.forwarded-read(row.right)
                 . forwards = forwarded != 0 && capture-slot(forwarded) == slot
                 . result = if rule-arming.target != no-type then rule-arming.target else listed
                 . desired = if forwards && contains-output(result) then result else listed
@@ -2324,27 +2224,13 @@ _ agrees Bool
 |? !selected || (!contains-output(assumed.value) && !contains-output(result))
     true
 ??
-    !contains-output(result) && (assumed.pattern == 0 || gives-text || trivial-action(assumed.body))
+    !contains-output(result) && (assumed.pattern == 0 || gives-text || tree.trivial-action(assumed.body))
 
 .. selected = assumed.selects || values-select(result)
 .. forwarding = assumed.forwarded != no-type && contains-output(result)
 .. changed = result != assumed.forwarded
 .. untexted = peeled-optional(result) != types.string-type
 .. gives-text = assumed.value == types.string-type
-
-────────────────────
-_ do forwarded-read SyntaxId
-    - body SyntaxId
-
-` The name an action's expression is, where it is one name alone, as the reference finds a
-` capture an action forwards. None for any other expression.
-. inner = body
-do match? tree.nodes[body]
-    | .node-block(block)
-        if block.body.count != 1
-            = 0
-        inner = tree.children[block.body.start]
-= if tree.nodes[inner] is .node-identifier then inner else 0
 
 ────────────────────
 _ do capture-position U32
@@ -2381,7 +2267,7 @@ _ do materialize-captures Bool
 action-selects = false
 remade-positions.clear()
 remade-types.clear()
-. forwarded = forwarded-read(body)
+. forwarded = tree.forwarded-read(body)
 . seen [SlotId]
 . positions [U32]
 . sites [SyntaxId]
@@ -2824,8 +2710,8 @@ _ do materialize-result TypeId
 . backed = false
 if assuming
     result = value
-    . forwarded = if forwarded-read(body) != 0 then forwarded-position else U32.max
-        .. forwarded-position = capture-position(capture-slot(forwarded-read(body)), pattern-arms.arm)
+    . forwarded = if tree.forwarded-read(body) != 0 then forwarded-position else U32.max
+        .. forwarded-position = capture-position(capture-slot(tree.forwarded-read(body)), pattern-arms.arm)
     natural = if forwarded != U32.max then forwarded-type else no-type
         .. forwarded-type = facts.node-type(instance, capture-sites[forwarded])
     backed = forwarded != U32.max && plain-forward
@@ -3187,11 +3073,6 @@ do match? types.rows[type]
 = false
 
 ────────────────────
-_ down-cast-rank RelationRank
-
-relation-rank(.relation-down-cast)
-
-────────────────────
 _ second-type-arg TypeId
     - type TypeId
 
@@ -3378,18 +3259,6 @@ helping = helping.rolls = true
 note-helper-use(true)
 
 ────────────────────
-+ do holds-rollback Bool
-    - pattern SyntaxId
-
-` Whether a pattern has a part marked to roll back.
-for node in tree.subtree-start(pattern) .. < pattern + 1
-    do match? tree.nodes[node]
-        | .node-stream-transform(row)
-            if row.rollback
-                = true
-= false
-
-────────────────────
 _ do reads-length-only Bool
     - slot SlotId
     - body SyntaxId
@@ -3511,7 +3380,7 @@ do match? tree.nodes[pattern]
     | .node-stream-transform(row)
         if row.pattern == 0
             exception = row.right
-if exception == 0 || mentions(exception, "it")
+if exception == 0 || tree.mentions(exception, "it")
     decline(id)
     =
 if !type-location(pattern, false, exception)
@@ -3572,7 +3441,7 @@ do match? tree.nodes[id]
     | .node-stream-any
         = if text-items() then types.string-type else stream-view.item
     | .node-stream-char-range(row)
-        if char-bound(row.first) && char-bound(row.last)
+        if tree.char-bound(row.first) && tree.char-bound(row.last)
             if text-items()
                 = types.string-type
             if is-integer(stream-view.item)
@@ -3641,7 +3510,7 @@ do match? tree.nodes[id]
                 = types.string-type
             = repeated-values(id, row.operand, operand)
         if row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
-            if guards(row.operand)
+            if tree.guards(row.operand)
                 facts.set-plan(instance, id, .plan-stream-guard)
             = operand
     | .node-stream-capture(row)
@@ -3842,7 +3711,7 @@ do match? tree.nodes[arg]
 if pattern == 0 || stream-view.item == no-type
     decline(arg)
     = invalid-type
-. capture = first-capture(pattern)
+. capture = tree.first-capture(pattern)
 if capture != 0
     frame.diagnose(capture, .stated, program.store-atom("A pattern given as an argument can't capture names"))
     = invalid-type
@@ -3983,7 +3852,7 @@ _ do plain-rule Bool
 ` Whether a local rule a pattern given to a rule calls captures no name, runs no action, calls
 ` no rule and reads no name but one the function made of the pattern can be given. Keeps
 ` those names only where it is.
-. pattern = local-rule-pattern(rule)
+. pattern = tree.local-rule-pattern(rule)
 if pattern == 0
     = false
 for node in tree.subtree-start(pattern) .. < pattern + 1
@@ -4004,7 +3873,7 @@ _ do acting-rule Bool
     - read-types [TypeId]
 
 . row = instances.rows[instance]
-. pattern = local-rule-pattern(rule)
+. pattern = tree.local-rule-pattern(rule)
 if pattern == 0 || rule-match(program, row.module, row.decl) != 0
     = false
 . first = tree.subtree-start(rule)
@@ -4210,18 +4079,6 @@ if tested == invalid-type || tested == no-type
 note-truthiness(predicate, predicate, tested)
 facts.set-node-type(instance, id, stream-view.item)
 = stream-view.item
-
-────────────────────
-_ do guards Bool
-    - operand SyntaxId
-
-` Whether a lookahead looks at a test that does not read the item, as `&\{ size <= limit }` does:
-` a guard, which tests its condition alone and needs no item, so it passes at the end of the
-` input where the condition holds, and a record is given without waiting for one more item.
-do match? tree.nodes[operand]
-    | .node-stream-predicate(row)
-        = !mentions(row.predicate, "it")
-= false
 
 ────────────────────
 _ do repeated-values TypeId
@@ -4578,7 +4435,7 @@ for arm in arms
         do match? tree.nodes[arm]
             | .node-stream-transform(row)
                 = row.pattern != 0 && !tree.lazies-only(row.right) && it-unread && own-part
-                    .. it-unread = !mentions(row.right, "it")
+                    .. it-unread = !tree.mentions(row.right, "it")
                     .. own-part = row.pattern == id || bare-part(row.pattern, id)
         = false
 = false
@@ -4590,7 +4447,7 @@ _ do bare-part Bool
 
 do match? tree.nodes[node]
     | .node-stream-capture(row)
-        = (row.pattern == id || optional-operand(row.pattern) == id) && !row.accumulating
+        = (row.pattern == id || tree.optional-operand(row.pattern) == id) && !row.accumulating
     | .node-stream-and(row)
         = bare-part(row.left, id) || bare-part(row.right, id)
 = false
@@ -4777,7 +4634,7 @@ if node == id
     = true
 do match? tree.nodes[node]
     | .node-stream-transform(row)
-        if row.pattern == 0 || (!tree.lazies-only(row.right) && !mentions(row.right, "it"))
+        if row.pattern == 0 || (!tree.lazies-only(row.right) && !tree.mentions(row.right, "it"))
             = false
         = value-site(row.pattern, id)
     | .node-stream-and(row)
@@ -4852,7 +4709,7 @@ if !text-items()
     decline(id)
     = invalid-type
 if rule != 0
-    . pattern = local-rule-pattern(rule)
+    . pattern = tree.local-rule-pattern(rule)
     if !mapped(mappings, name, tree, pattern)
         = invalid-type
     if rule-type(rule) == invalid-type
@@ -4957,18 +4814,6 @@ do match? source.nodes[id]
     | .node-stream-length(row)
         = accumulates-in(source, row.operand, name)
 = false
-
-────────────────────
-_ do local-rule-pattern SyntaxId
-    - rule SyntaxId
-
-` The pattern of a local rule, by its declaration.
-do match? tree.nodes[rule]
-    | .node-declare(declaration)
-        do match? tree.nodes[declaration.right]
-            | .node-stream-match(row)
-                = row.pattern
-= 0
 
 ────────────────────
 + holds-value Bool
@@ -5603,7 +5448,7 @@ _ do record-recursion Bool
 do match? tree.nodes[rule]
     | .node-declare(declaration)
         matched = declaration.right
-. pattern = local-rule-pattern(rule)
+. pattern = tree.local-rule-pattern(rule)
 if pattern == 0 || rules.length == 0 || rules[rules.length - 1] != rule || helping.helper != null
     if pattern != 0 && rules.find(rule) != null && helping.helper == null
         . text = "The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can"
@@ -5758,7 +5603,7 @@ do match? tree.nodes[id]
         if rule == 0 || seen.find(rule) != null
             = 0
         seen += rule
-        = left-call(rule-pattern(rule), target, seen)
+        = left-call(tree.rule-pattern(rule), target, seen)
     | .node-stream-and(row)
         . leading = left-call(row.left, target, seen)
         if leading != 0 || !may-read-none(row.left, List'SyntaxId())
@@ -5826,20 +5671,8 @@ do match? tree.nodes[id]
         if rule == 0 || seen.find(rule) != null
             = false
         seen += rule
-        = may-read-none(rule-pattern(rule), seen)
+        = may-read-none(tree.rule-pattern(rule), seen)
 = false
-
-────────────────────
-_ do rule-pattern SyntaxId
-    - rule SyntaxId
-
-` The pattern of a local rule's declaration.
-do match? tree.nodes[rule]
-    | .node-declare(declaration)
-        do match? tree.nodes[declaration.right]
-            | .node-stream-match(row)
-                = row.pattern
-= 0
 
 ────────────────────
 + do report-left-recursion
@@ -5924,7 +5757,7 @@ typed-helpers += helping.site
 rule-arming = RuleArms(declared, gives-source-span(declared), true, declared == types.string-type, pattern, base, rule-arming.casting)
 . saved-explicit = helping
 . saved-unvalued = valuing
-helping = helping.explicit = marked || (beside-rule && holds-rollback(pattern))
+helping = helping.explicit = marked || (beside-rule && tree.holds-rollback(pattern))
 valuing = valuing.unvalued = false
 . joined = arms-type(pattern)
 valuing = saved-unvalued
@@ -5972,29 +5805,6 @@ match tree.nodes[id]
         0
 
 ────────────────────
-_ char-bound Bool
-    - id SyntaxId
-
-` Whether a bound of a range of characters is a character written, as the reference requires: a
-` character literal, whose unit is `(char)`, or a number with no unit or `Char`'s suffix.
-match tree.nodes[id]
-    | .node-integer-syntax(row)
-        !row.unit || row.unit.text == "(char)" || row.unit.text == "c"
-    ??
-        false
-
-────────────────────
-_ count-bound Bool
-    - id SyntaxId
-
-` Whether a bound of a count is a number written.
-match tree.nodes[id]
-    | .node-integer-syntax(row)
-        !row.unit
-    ??
-        false
-
-────────────────────
 _ do counts Bool
     - part SyntaxId
     - id SyntaxId
@@ -6005,7 +5815,7 @@ _ do counts Bool
 ` before each time it takes the part, so a bound it reads more than once must give the same
 ` each time without doing anything, as `steady` says. A bound is typed once, however often the
 ` part is.
-if count-bound(id)
+if tree.count-bound(id)
     = true
 . known = facts.node-type(instance, id)
 . type = if known != no-type then known else infer(id)
@@ -6061,18 +5871,6 @@ do match? tree.nodes[id]
 = false
 
 ────────────────────
-_ steady-operator Bool
-    - op Operator
-
-` Whether an operator on two numbers or truths gives the same each time without doing anything:
-` a comparison, `&&` and `||`, and arithmetic that wraps rather than panics.
-compares || joins || wraps
-
-.. compares = op == .equals-op || op == .not-equals-op || op == .less-than-op || op == .greater-than-op || op == .less-than-equals-op || op == .greater-than-equals-op
-.. joins = op == .and-op || op == .or-op
-.. wraps = op == .add-op || op == .subtract-op || op == .multiply-op || op == .bitwise-and-op || op == .bitwise-or-op || op == .bitwise-xor-op
-
-────────────────────
 _ do final-raise SyntaxId
     - body SyntaxId
 
@@ -6107,33 +5905,3 @@ match tree.nodes[id]
         true
     ??
         false
-
-────────────────────
-_ do mentions Bool
-    - id SyntaxId
-    - name String
-
-` Whether a name is read anywhere in an expression, as the reference finds what an action
-` refers to. An `it` read in the action of an arm written within the expression is that arm's
-` own.
-if id == 0
-    = false
-for node in tree.subtree-start(id) .. < id + 1
-    do match? tree.nodes[node]
-        | .node-identifier(row)
-            if row.name.text == name && (name != "it" || !in-inner-action(node, id))
-                = true
-= false
-
-────────────────────
-_ do in-inner-action Bool
-    - node SyntaxId
-    - id SyntaxId
-
-` Whether a node lies in the action of an arm of a stream pattern written within an expression.
-for outer in node + 1 .. < id
-    do match? tree.nodes[outer]
-        | .node-stream-transform(row)
-            if row.right != 0 && tree.subtree-start(row.right) <= node && node <= row.right
-                = true
-= false

@@ -210,7 +210,7 @@ do match? tree.nodes[loop]
             if next != 0
                 check-statement(next)
             =
-        . simple = row.next == 0 && is-simple-loop-pattern(row.pattern)
+        . simple = row.next == 0 && tree.is-simple-loop-pattern(row.pattern)
         . container = loop-container(row.container, simple, stated-item(row.pattern))
         frame.forget-members()
         reset-assigned-paths(body)
@@ -221,7 +221,7 @@ do match? tree.nodes[loop]
         loop-marks += scratch.narrowings.mark
         check-loop(loop, container, body, false, row.next == 0)
         if container.item != no-type && alone
-            if counts-from-zero(row.container)
+            if tree.counts-from-zero(row.container)
                 facts.set-constant
                     - instance
                     - loop
@@ -272,7 +272,7 @@ do match? tree.nodes[loop]
         . fitted = false
         do match? tree.nodes[pattern]
             | .node-structure-match(inner)
-                transformed = has-arms(inner.pattern)
+                transformed = tree.has-arms(inner.pattern)
                 pattern = inner.pattern
                 matched = true
                 fitted = !transformed
@@ -365,7 +365,7 @@ _ tested-clause SyntaxId
 ` The clauses of a loop header that are tested: those after the first of a loop on an event
 ` whose first clause says which publications it hears. A `whenever` among them says whether
 ` the loop is subscribed and is not tested.
-if facts.event-clause-of(module, loop) then next-clause(clause) else clause
+if facts.event-clause-of(module, loop) then tree.next-clause(clause) else clause
 
 ────────────────────
 _ do check-loop-rest
@@ -532,7 +532,7 @@ _ do checks-rows Bool
 . kind = types.intrinsic-of(iterated)
 if kind == .table-selection || kind == .immutable-table-selection || complex-pattern
     = false
-.. complex-pattern = !is-simple-loop-pattern(pattern)
+.. complex-pattern = !tree.is-simple-loop-pattern(pattern)
 if types.intrinsic-of(row-struct-of(iterated)) != .union
     = false
 . blocked [Atom]
@@ -549,7 +549,7 @@ _ proves-rows Bool
     - body SyntaxId
     - clause SyntaxId
 
-|? (kind != .table && kind != .table-span) || pattern == 0 || !is-simple-loop-pattern(pattern)
+|? (kind != .table && kind != .table-span) || pattern == 0 || !tree.is-simple-loop-pattern(pattern)
     false
 |? !named || (bindings.slots[named].flags /and/ SlotFlag.slot-captured) != 0
     false
@@ -698,16 +698,6 @@ if clause != 0
     mark-proven-rows(loop, clause, view, counter)
 
 ────────────────────
-_ counts-from-zero Bool
-    - container SyntaxId
-
-match tree.nodes[container]
-    | .node-range-expression(range)
-        range.op == .range-to-op && range.increment == 0 && is-zero-literal(range.left)
-    ??
-        false
-
-────────────────────
 _ do note-proven-items
     - pattern SyntaxId
     - container SyntaxId
@@ -730,7 +720,7 @@ if clause != 0
 _ do counted-array SlotId?
     - container SyntaxId
 
-if !counts-from-zero(container)
+if !tree.counts-from-zero(container)
     = null
 do match? tree.nodes[container]
     | .node-range-expression(range)
@@ -807,7 +797,7 @@ _ do counted-view SlotId?
 
 do match? tree.nodes[container]
     | .node-range-expression(range)
-        if range.op != .range-to-op || range.increment != 0 || !is-zero-literal(range.left)
+        if range.op != .range-to-op || range.increment != 0 || !tree.is-zero-literal(range.left)
             = null
         do match? tree.nodes[range.right]
             | .node-get-expression(get)
@@ -819,16 +809,6 @@ do match? tree.nodes[container]
                 .. not-length = planned-table-op(range.right) != TableOp.table-length
                 = plain-local(get.object)
 = null
-
-────────────────────
-_ is-zero-literal Bool
-    - syntax SyntaxId
-
-match tree.nodes[syntax]
-    | .node-integer-syntax(literal)
-        literal.value == "0" && !literal.unit
-    ??
-        false
 
 ────────────────────
 _ do plain-local SlotId?
@@ -1014,7 +994,7 @@ for node in tree.subtree-start(root) .. < root + 1
                 | .node-identifier(named)
                     blocked += named.name
                 ??
-                    block-names(row.lhs, blocked)
+                    tree.block-names(row.lhs, blocked)
                     effects.indices = true
         | .node-call-expression(row)
             do match tree.nodes[row.callable]
@@ -1023,7 +1003,7 @@ for node in tree.subtree-start(root) .. < root + 1
                         effects.table = true
                         effects.indices = true
                 ??
-                    block-names(row.callable, blocked)
+                    tree.block-names(row.callable, blocked)
                     do match? tree.nodes[row.callable]
                         | .node-get-expression(get)
                             note-call-effect(get.object, effects)
@@ -1032,23 +1012,12 @@ for node in tree.subtree-start(root) .. < root + 1
                 do match? tree.nodes[operand]
                     | .node-argument(argument)
                         expression = argument.expr
-                block-names(expression, blocked)
+                tree.block-names(expression, blocked)
                 note-call-effect(expression, effects)
         | .node-declare(row)
             . named = pattern-name(types, tree, row.left)
             if named
                 blocked += named
-
-────────────────────
-_ do block-names
-    - root SyntaxId
-    - blocked [Atom]
-
-` Notes each name written under a node as changed.
-for node in tree.subtree-start(root) .. < root + 1
-    do match? tree.nodes[node]
-        | .node-identifier(row)
-            blocked += row.name
 
 ────────────────────
 _ do note-call-effect
@@ -1287,11 +1256,11 @@ _ do loop-take LoopTake
 ` pattern written as one, or one a declaration is written with.
 if transformed
     = .take-arms
-if names-whole(pattern)
+if tree.names-whole(pattern)
     = .take-whole
 if matched
     = .take-fitted
-if has-arms(pattern)
+if tree.has-arms(pattern)
     = .take-unshaped
 do match? tree.nodes[pattern]
     | .node-type-tuple(row)
@@ -1304,34 +1273,6 @@ do match? tree.nodes[pattern]
         if !reads-name(capture.type)
             = .take-converted
 = .take-declared
-
-────────────────────
-_ names-whole Bool
-    - pattern SyntaxId
-
-` Whether a pattern of a loop is its item whole under a name, or is not written.
-|? pattern == 0
-    true
-??
-    match tree.nodes[pattern]
-        | .node-identifier
-            true
-        | .node-type-capture(capture)
-            capture.type == 0
-        ??
-            false
-
-────────────────────
-_ has-arms Bool
-    - pattern SyntaxId
-
-match tree.nodes[pattern]
-    | .node-type-or
-        true
-    | .node-type-transform
-        true
-    ??
-        false
 
 ────────────────────
 _ do match-item TypeId
@@ -1510,16 +1451,6 @@ if slot != no-slot && item != no-type && item != invalid-type
     frame.assign(slot + loop-state-count - 1, item)
 
 ────────────────────
-_ do next-clause SyntaxId
-    - clause SyntaxId
-
-` The clause written after a clause, or none.
-do match? tree.nodes[clause]
-    | .node-clause(row)
-        = row.next
-= 0
-
-────────────────────
 _ do check-clause
     - id SyntaxId
     - body SyntaxId
@@ -1600,21 +1531,6 @@ do match? tree.nodes[syntax]
                 facts.set-node-type(instance, syntax, constructed)
             = LoopContainer(constructed, no-type)
 = LoopContainer(infer(syntax), no-type)
-
-────────────────────
-_ is-simple-loop-pattern Bool
-    - pattern SyntaxId
-
-|? pattern == 0
-    true
-??
-    match tree.nodes[pattern]
-        | .node-identifier
-            true
-        | .node-type-capture(capture)
-            capture.type == 0
-        ??
-            false
 
 ────────────────────
 + do iteration-container TypeId
@@ -1716,22 +1632,6 @@ _ counts-indices Bool
 ` Whether a loop over a container counts through the indices of an index span, as
 ` TypeScript's loop over what is indexable does, by its length and its `[]`.
 types.intrinsic-of(container) == .index-span && !slice-through-call(syntax)
-
-────────────────────
-+ is-index-reader Bool
-    - kind IntrinsicKind
-
-` Whether a value reads indices: an index span, or a selection of a table's rows by one.
-kind == .index-span || kind == .table-selection || kind == .immutable-table-selection
-
-────────────────────
-_ is-table-container Bool
-    - kind IntrinsicKind
-
-table || spans || .immutable-table-selection == kind || .index-span == kind
-
-.. table = kind == .table || kind == .immutable-table
-.. spans = kind == .table-span || kind == .immutable-table-span
 
 ────────────────────
 _ do note-iterator-witness

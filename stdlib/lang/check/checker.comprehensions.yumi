@@ -58,19 +58,6 @@ _ Comprehensions is facet of Checker
     sees Streams
 
 ────────────────────
-+ do is-piped-row Bool
-    - body RowRange'SyntaxId
-    - statement SyntaxId
-
-for position in 0 .. < body.count - 1
-    if tree.children[body.start + position] == statement
-        do match? tree.nodes[tree.children[body.start + position + 1]]
-            | .node-pipeline-expression(row)
-                = row.left == 0
-        = false
-= false
-
-────────────────────
 + do infer-comprehension TypeId
     - id SyntaxId
     - loop SyntaxId
@@ -129,7 +116,7 @@ if decl == 0
 if target == no-type || target == invalid-type
     =
 . wanted = types.optional-inner(target)
-. bullets = written-bullets(expr)
+. bullets = tree.written-bullets(expr)
 if bullets == 0
     =
 do match? types.rows[wanted]
@@ -140,20 +127,6 @@ do match? types.rows[wanted]
             bullet-lists += bullets
             bullet-items += item
             bullet-builds += nested-decl-of(bullets) != 0 && list-of(item) == wanted
-
-────────────────────
-_ do written-bullets SyntaxId
-    - expr SyntaxId
-
-. bullets = expr
-do match? tree.nodes[bullets]
-    | .node-argument(row)
-        bullets = if row.name then 0 else row.expr
-do match? tree.nodes[bullets]
-    | .node-block(row)
-        bullets = if row.body.count == 1 then tree.children[row.body.start] else 0
-=? bullets if bullets != 0 && tree.nodes[bullets] is .node-bullet-expression
-= 0
 
 ────────────────────
 _ do bullet-item TypeId
@@ -292,21 +265,10 @@ if decl == 0
 facts.set-node-type(instance, id, intern-nested(decl))
 . callee = demand-nested(decl, no-type)
 . produced = calls.generator-call(id, callee)
-. site = bullet-site(id, consumer)
+. site = tree.bullet-site(id, consumer)
 if site != id
     facts.set-node-type(instance, site, produced)
 = produced
-
-────────────────────
-_ bullet-site SyntaxId
-    - id SyntaxId
-    - consumer SyntaxId
-
-match tree.nodes[id]
-    | .node-bullet-expression(row)
-        if row.next != 0 then row.next else if consumer != 0 then consumer else id
-    ??
-        id
 
 ────────────────────
 + do check-bullets
@@ -317,7 +279,7 @@ match tree.nodes[id]
 ` bullet's own facts sit where the reference shifts them, the consumer being the closure's
 ` enclosing frame's pipeline when the list feeds one.
 . bullet = id
-. site = bullet-site(id, consumer-of(id))
+. site = tree.bullet-site(id, tree.consumer-of(id))
 . wanted = if outer then outer.bullet-item(id) else no-type
 building-list = outer && outer.builds-bullets(id)
 built-item = wanted
@@ -377,20 +339,7 @@ if !outer
     = 0
 do match? tree.nodes[frame.declaration.syntax]
     | .node-bullet-expression
-        = consumer-of(frame.declaration.syntax)
-= 0
-
-────────────────────
-_ do consumer-of SyntaxId
-    - id SyntaxId
-
-` The pipeline whose left operand is the bullet list, if one consumes it.
-. total = tree.nodes.length
-for candidate in id + 1 .. < total
-    do match? tree.nodes[candidate]
-        | .node-pipeline-expression(row)
-            if row.left == id
-                = candidate as SyntaxId
+        = tree.consumer-of(frame.declaration.syntax)
 = 0
 
 ────────────────────
@@ -501,7 +450,7 @@ if op == .stream-pattern-pipe-op
 . source = infer-pipeline-source(left, id)
 if source == invalid-type
     = invalid-type
-. site = source-site(left, id)
+. site = tree.source-site(left, id)
 . with-atom = program.store-atom("with")
 do match op
     |= .pipe-forward-op
@@ -865,19 +814,6 @@ do match? tree.nodes[left]
 = infer(left)
 
 ────────────────────
-_ source-site SyntaxId
-    - left SyntaxId
-    - id SyntaxId
-
-` The reference converts a pipeline's left value where that value was produced: at the left
-` operand, which for a bullet list is where its shifted first bullet lands.
-match tree.nodes[left]
-    | .node-bullet-expression
-        bullet-site(left, id)
-    ??
-        left
-
-────────────────────
 _ do infer-pipe-forward TypeId
     - id SyntaxId
     - source TypeId
@@ -1076,7 +1012,7 @@ facts.set-node-type(instance, id, closure-of-self())
 check-loop(loop, LoopContainer(stream, item), body, true)
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        if ends-subscription(row.clause)
+        if tree.ends-subscription(row.clause)
             demand-unsubscribe(loop)
 
 ────────────────────
@@ -1108,21 +1044,6 @@ do calls.operator-call(frame.declaration.syntax, channel, program.store-atom("$o
 facts.set-node-type(instance, loop, container)
 note-poll()
 check-loop(loop, LoopContainer(container, no-type), body, true, false, true)
-
-────────────────────
-+ do pipeline-of SyntaxId
-    - id SyntaxId
-
-for node in id + 1 .. < (tree.nodes.length as SyntaxId)
-    if tree.subtree-start(node) > id
-        continue
-    do match? tree.nodes[node]
-        | .node-iterator-expression(row)
-            do match? tree.nodes[row.loop]
-                | .node-loop-syntax(loop)
-                    if tree.subtree-start(loop.container) > id || id > loop.container
-                        = node
-= 0
 
 ────────────────────
 + do follow-pipeline

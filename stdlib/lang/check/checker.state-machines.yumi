@@ -205,7 +205,7 @@ while fill != no-instance
         | .decl-class(class)
             content = class.content
     for machine in owner.content-machines(content)
-        if names-root(owner, machine, roots)
+        if owner.names-root(machine, roots)
             if instances.rows[fill].state == .instance-in-progress
                 decline(id)
                 = null
@@ -222,18 +222,6 @@ while fill != no-instance
             decline(id)
             = null
 = no-instance
-
-────────────────────
-_ do names-root Bool
-    - owner AST
-    - machine SyntaxId
-    - roots [Atom]
-
-` Whether a machine has a case at its root of one of some names.
-for item in owner.state-items(owner.state-body(machine))
-    if owner.nodes[item] is .node-state-case && roots.find(owner.state-name(item)!) != null
-        = true
-= false
 
 ────────────────────
 _ do inherited-cases
@@ -706,33 +694,12 @@ _ fixed-payload TypeId
 ` or without a trigger.
 |? !source
     types.void-type
-|? gives-nothing(source)
+|? tree.gives-nothing(source)
     types.type-row(.uint8)
 ??
     no-type
 
 .. source = tree.payload-source(machining.items, tree.state-name(machining.cases[position])!)
-
-────────────────────
-+ do gives-nothing Bool
-    - source StateSource
-
-` Whether a source of a case's payload gives no value, as the reference finds none there: a
-` case one of whose names neither its trigger, if it has one, nor its owner's trigger captures.
-if !(tree.nodes[source.node] is .node-state-case)
-    = false
-. trigger = tree.state-trigger(source.node)
-. captures [Atom]
-if trigger != 0
-    tree.pattern-names(tree.trigger-pattern(trigger), captures)
-if source.owner != 0
-    tree.pattern-names(tree.trigger-pattern(tree.state-trigger(source.owner)), captures)
-for target in tree.children[tree.state-targets(source.node)]
-    do match? tree.nodes[target]
-        | .node-identifier(named)
-            if captures.find(named.name) == null
-                = true
-= false
 
 ────────────────────
 _ do foresee-activations Bool
@@ -1186,7 +1153,7 @@ _ do watched-stream TypeId
     - trigger SyntaxId
     - written SyntaxId
 
-if !tracks-reads(tree, written)
+if !tree.tracks-reads(written)
     . message = "A \"whenever\" trigger fires as what it reads with \"#\" changes, and this one reads nothing with \"#\", so it would never fire; write \"#\" before what it follows, as in \"whenever #feed\""
     frame.diagnose(trigger, .stated, program.store-atom(message))
     = no-type
@@ -1696,7 +1663,7 @@ for type in given
 . name = tree.state-name(machining.cases[position])!
 . best = tree.payload-source(machining.items, name)
 for source in tree.payload-sources(machining.items, name)
-    if (best && source.node == best.node) || gives-nothing(source)
+    if (best && source.node == best.node) || tree.gives-nothing(source)
         continue
     . other = source-given(source.node)
     if other.length != given.length

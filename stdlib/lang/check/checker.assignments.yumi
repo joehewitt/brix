@@ -54,18 +54,6 @@ _ Assignments is facet of Checker
     sees Tables
 
 ────────────────────
-+ do assigning-line SyntaxId
-    - body SyntaxId
-
-` The first line of a block that assigns, or none.
-do match? tree.nodes[body]
-    | .node-block(row)
-        for statement in tree.children[row.body]
-            if tree.nodes[statement] is .node-assign
-                = statement
-= 0
-
-────────────────────
 _ do is-query-property Bool
     - receiver TypeId
     - name Atom
@@ -138,17 +126,6 @@ types.env-release(env)
 = "$lead; declare a getter for the types that are $shown to answer, as in \"+ get $name ${type-source(types, stated)}\""
 
 ────────────────────
-+ writes-type Bool
-    - pattern SyntaxId
-
-` Whether a declaration's pattern writes the type of what it declares.
-match tree.nodes[pattern]
-    | .node-type-capture(row)
-        row.type != 0
-    ??
-        false
-
-────────────────────
 _ assigns-early Bool
     - lhs SyntaxId
 
@@ -181,27 +158,6 @@ do match? tree.nodes[lhs]
 if loop == 0 || facts.plan-of(instance, loop) != .plan-range-loop
     = false
 = op == .eq-op || !(calls.has-operator(target, program.store-atom("$op"), value) • arg-syntax rhs)
-
-────────────────────
-_ is-identifier-syntax Bool
-    - expr SyntaxId
-
-match tree.nodes[expr]
-    | .node-identifier
-        true
-    ??
-        false
-
-────────────────────
-+ assigns Bool
-    - expr SyntaxId
-
-` An arrow body that is an assignment gives the value assigned.
-match tree.nodes[expr]
-    | .node-assign
-        true
-    ??
-        false
 
 ────────────────────
 + do merge-assignments
@@ -614,7 +570,7 @@ if stores-loop-constant(lhs, op, target, value, rhs)
     frame.diagnose(id, .stated, program.store-atom("Illegal to update const variables"))
     = invalid-type
 note-escape(rhs)
-if op == .eq-op && is-identifier-syntax(lhs)
+if op == .eq-op && tree.is-identifier-syntax(lhs)
     calls.note-context-cast(rhs, target, .cast-assignment)
 . result = assign-into(id, lhs, op, target, rhs, value)
 check-zone-store(id, lhs, rhs, value)
@@ -1055,7 +1011,7 @@ if name == types.length-atom! && !property-named(receiver, name)
         frame.diagnose(lhs, .stated, program.store-atom("Value has no constant form"))
         = true
     = false
-if kind == .struct && !holds-struct(object-syntax)
+if kind == .struct && !tree.holds-struct(object-syntax)
     . stored = property-named(receiver, name)
     if stored && types.properties[stored].storage-kind == .storage-eager
         . shown = type-display(types, receiver)
@@ -1075,20 +1031,6 @@ if !field || types.properties[field].storage-kind != .storage-eager
 message ++= "write $owner = $owner.${name.text} = value"
 frame.diagnose(id, .stated, program.store-atom(message), receiver)
 = true
-
-────────────────────
-_ holds-struct Bool
-    - object-syntax SyntaxId
-
-` Whether a struct whose field is assigned is held where the change stays: not one a cast or
-` a call gives.
-match tree.nodes[object-syntax]
-    | .node-cast-expression
-        false
-    | .node-call-expression
-        false
-    ??
-        true
 
 ────────────────────
 _ is-row-cursor Bool
@@ -1212,7 +1154,7 @@ if numeric && !calls.has-operator(target, token, given)
         = target
     if promoted != target
         conversions.convert(id, id, promoted, target, .reason-assignment, true, given == target)
-        if lhs == id || is-identifier-syntax(lhs)
+        if lhs == id || tree.is-identifier-syntax(lhs)
             facts.set-node-type(instance, id, promoted)
             = promoted
     else if in-place
@@ -1276,7 +1218,7 @@ _ names-variable Bool
     - id SyntaxId
 
 ` Whether an expression is the name of a local or of a global.
-|? !is-identifier-syntax(id)
+|? !tree.is-identifier-syntax(id)
     false
 ??
     kind == .resolve-slot || kind == .resolve-global
@@ -1311,7 +1253,7 @@ for item in tree.children[items]
                 if resolution.kind == .resolve-slot
                     frame.assign
                         - resolution.slot
-                        - assigned-part(item, written-part(rhs, position), field)
+                        - assigned-part(item, tree.written-part(rhs, position), field)
     position += 1
 = value
 
@@ -1329,18 +1271,6 @@ _ do assigned-part TypeId
 if conversions.convert(item, written, field, target, .reason-assignment) == invalid-type
     = target
 = if is-numeric(types, field) && is-numeric(types, target) then target else field
-
-────────────────────
-_ written-part SyntaxId
-    - rhs SyntaxId
-    - position U32
-
-` The item written at a position of a tuple written as a value, or none.
-match tree.nodes[rhs]
-    | .node-tuple-syntax(row)
-        if position < row.items.count then tree.children[row.items.start + position] else 0
-    ??
-        0
 
 ────────────────────
 _ do infer-index-assign TypeId
@@ -1376,7 +1306,7 @@ if form == .chain-absent || absent-after(object-syntax, object)
 object = link-receiver(object-syntax, object, own, optional)
 if refuses-write(id, object, true)
     = invalid-type
-if object == types.string-type && !holds-text(object-syntax)
+if object == types.string-type && !tree.holds-text(object-syntax)
     . message = "Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds"
     frame.diagnose(id, .stated, program.store-atom(message))
     = invalid-type
@@ -1497,24 +1427,6 @@ if kind != .table && kind != .table-span
 . row = types.intrinsic-of(row-struct-of(object))
 = given-table && (row == .struct || row == .union) && row-struct-of(given) == row-struct-of(object)
     .. given-table = given-kind == .table-span || given-kind == .table
-
-────────────────────
-_ holds-text Bool
-    - object-syntax SyntaxId
-
-` Whether a text whose item is assigned is held where the new text is stored: not a literal, a
-` text joined from parts, or one a cast or a call gives.
-match tree.nodes[object-syntax]
-    | .node-string-syntax
-        false
-    | .node-binary-expression
-        false
-    | .node-cast-expression
-        false
-    | .node-call-expression
-        false
-    ??
-        true
 
 ────────────────────
 _ do store-through

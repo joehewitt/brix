@@ -72,6 +72,20 @@ hash-for(name) /xor/ hash-for(arity)
 name == other.name && arity == other.arity
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do redeclares-class Bool
+    - classes Map'ClassName'Bool
+    - class ClassDecl
+
+` Whether a class has the name and the number of type parameters of one its module declares
+` before it, which `classes` holds, and holds from now on. The reference takes the later of
+` the two wherever the name is written, which is not modeled.
+. key = ClassName(class.name, class.type-args.count)
+if classes[key] ?? false
+    = true
+classes[key] = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
 _ Declarations is facet of Checker
     sees Assignments
     sees Comprehensions
@@ -267,7 +281,7 @@ _ do note-value-shape
 if value == 0
     =
 for node in tree.subtree-start(value) .. < value + 1
-    if !tests-nothing(node)
+    if !tree.tests-nothing(node)
         instances.rows[instance].branches = true
     do match? tree.nodes[node]
         | .node-identifier(row)
@@ -277,82 +291,15 @@ for node in tree.subtree-start(value) .. < value + 1
             .. this-slot = bindings.slots[resolution.slot].kind == .slot-this
             if resolution.kind == .resolve-member
                 facts.value-reads.append
-                    - ValueRead(instance, row.name, node, evaluated-surely(value, node))
+                    - ValueRead(instance, row.name, node, tree.evaluated-surely(value, node))
         | .node-get-expression(row)
             do match? tree.nodes[row.object]
                 | .node-identifier
                     . resolution = bindings.resolution-of(frame.binding, row.object)
                     if resolution.kind == .resolve-slot && this-object
                         facts.value-reads.append
-                            - ValueRead(instance, row.name, node, evaluated-surely(value, node))
+                            - ValueRead(instance, row.name, node, tree.evaluated-surely(value, node))
                     .. this-object = bindings.slots[resolution.slot].kind == .slot-this
-
-────────────────────
-_ tests-nothing Bool
-    - node SyntaxId
-
-` Whether a node of a value evaluates all it holds whenever it is evaluated: a name, a literal,
-` a call, a block, which evaluates its lines in order, a read or an operator that tests
-` nothing.
-match tree.nodes[node]
-    | .node-integer-syntax
-        true
-    | .node-block
-        true
-    | .node-float-syntax
-        true
-    | .node-string-syntax
-        true
-    | .node-identifier
-        true
-    | .node-call-expression
-        true
-    | .node-argument
-        true
-    | .node-get-expression(row)
-        !row.is-optional
-    | .node-index-expression(row)
-        !row.is-optional
-    | .node-tuple-syntax
-        true
-    | .node-unary-expression
-        true
-    | .node-cast-expression
-        true
-    | .node-type-identifier
-        true
-    | .node-type-arguments
-        true
-    | .node-binary-expression(row)
-        no-short-circuit && row.op != .if-op && row.op != .else-op
-
-        .. no-short-circuit = row.op != .and-op && row.op != .or-op && row.op != .coalesce-op
-    ??
-        false
-
-────────────────────
-_ do evaluated-surely Bool
-    - value SyntaxId
-    - node SyntaxId
-
-` Whether a node of a value is evaluated whenever the value is: each node around it that tests
-` something holds it in the part evaluated before the test, the left side of `&&`, `||` or
-` `??`, or the object an optional read or index reads from.
-for around in node + 1 .. < value + 1
-    if tree.subtree-start(around) > node || tests-nothing(around)
-        continue
-    . first = match tree.nodes[around]
-        | .node-binary-expression(row)
-            if row.op != .if-op then row.lhs else 0
-        | .node-get-expression(row)
-            row.object
-        | .node-index-expression(row)
-            row.object
-        ??
-            0
-    if first == 0 || node < tree.subtree-start(first) || node > first
-        = false
-= true
 
 ────────────────────
 _ do early-union-of TypeId
@@ -441,7 +388,7 @@ note-unit-errors(unit, site)
 . decls = program.modules[module].decls
 . previous = facts.initializer
 facts.initializer = this
-. declaring = declaring-type-names()
+. declaring = tree.declaring-type-names()
 . classes = Map'ClassName'Bool()
 . suffixes = Map'Atom'Atom()
 for index in 0 .. < decls.length
@@ -1089,7 +1036,7 @@ while level && level != invalid-type
     for position in start .. < end
         . facet = facets.class-facets[position]
         for member in target.member-pool[class.members]
-            . (named, _, site) = member-name(target, member)
+            . (named, _, site) = target.member-name(member)
             . facet-module = facets.modules[facet]
             if named && declares-name(facet-module, facets.decls[facet], named, true) && !overriding
                 . message = "${class.name.text} can't declare ${named.text}, since facet ${facet-name-of(facet)} of ${class-name-of(ref)} declares it"
@@ -1128,12 +1075,6 @@ do match? decl
 = false
 
 ────────────────────
-_ is-overridable-kind Bool
-    - kind DeclKind
-
-kind == .function-decl || kind == .getter-decl || kind == .setter-decl
-
-────────────────────
 _ path-file String
     - path String
 
@@ -1141,27 +1082,6 @@ _ path-file String
     path[it! + 1 ...]
 ??
     path
-
-────────────────────
-_ facet-state-message String
-    - state FacetState
-    - name String
-    - owner String
-    - family String
-
-match state
-    |= .facet-owner-missing
-        "\"$owner\" names no class or facet that $name can be part of"
-    |= .facet-owner-not-class
-        "A facet is part of a class or of another facet of one, and \"$owner\" is neither"
-    |= .facet-owner-generic
-        "$name can't be part of $owner, since a class that takes type arguments has no facets"
-    |= .facet-outside-family
-        "$name is a facet of $owner, so it is declared in the file family of $family, in a module named after it"
-    |= .facet-cycle
-        "$name is part of itself, through the facets it is part of"
-    ??
-        "$name has no owner"
 
 ────────────────────
 _ do check-facet-interfaces
@@ -1246,7 +1166,7 @@ _ do check-facet-names
 . target = program.modules[module]
 . (start, end) = facets.class-range(owner-ref.module, owner-ref.decl)
 for member in target.member-pool[facet.members]
-    . (named, is-shared, site) = member-name(target, member)
+    . (named, is-shared, site) = target.member-name(member)
     if !named
         continue
     . declared = named
@@ -1333,28 +1253,6 @@ for interface in program.modules[module].syntax-pool[class.interfaces]
             . text = if base == no-type || base == invalid-type then "$lead; a type is built on one type, written in its header, as in \"+ ${class.name.text} is $shown\"" else "$lead; ${class.name.text} is built on ${type-short-name(types, base)}, and a type is built on one type"
             frame.diagnose(interface, .stated, program.store-atom(text))
 types.env-release(env)
-
-────────────────────
-_ is-illegal-base Bool
-    - kind IntrinsicKind
-
-match kind
-    |= .bool
-        true
-    |= .optional
-        true
-    |= .void
-        true
-    |= .closure
-        true
-    |= .capture
-        true
-    |= .binding
-        true
-    |= .type-info
-        true
-    ??
-        false
 
 ────────────────────
 _ do check-property
@@ -1759,20 +1657,6 @@ _ same-atom Bool
     left == right
 
 ────────────────────
-_ do redeclares-class Bool
-    - classes Map'ClassName'Bool
-    - class ClassDecl
-
-` Whether a class has the name and the number of type parameters of one its module declares
-` before it, which `classes` holds, and holds from now on. The reference takes the later of
-` the two wherever the name is written, which is not modeled.
-. key = ClassName(class.name, class.type-args.count)
-if classes[key] ?? false
-    = true
-classes[key] = true
-= false
-
-────────────────────
 _ do check-type-params
     - fn FunctionDecl
 
@@ -1802,32 +1686,6 @@ for child in tree.children-of(id)
     if repeats-param(child, names)
         = true
 = false
-
-────────────────────
-_ do declaring-type-names [SyntaxId]
-
-. found [SyntaxId]
-for id in 1u32 .. < tree.nodes.length
-    do match? tree.nodes[id]
-        | .node-type-identifier(row)
-            if row.is-declare
-                found += id as SyntaxId
-= found
-
-────────────────────
-_ do declares-within Bool
-    - declaring [SyntaxId]
-    - range SyntaxRange
-
-. low = 0
-. high = declaring.length
-while low < high
-    . middle = (low + high) / 2
-    if declaring[middle] < range.start
-        low = middle + 1
-    else
-        high = middle
-= low < declaring.length && declaring[low] < range.start + range.count
 
 ────────────────────
 _ do check-module-property

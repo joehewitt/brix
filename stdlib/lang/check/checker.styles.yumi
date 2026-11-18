@@ -177,9 +177,9 @@ for position in 0 .. < chain.length
             for member in owner.member-pool[class.members]
                 do match? owner.decls[member]
                     | .decl-style-rule(rule)
-                        . applying = this-rule && applies-rules(owner.tree, rule.syntax)
+                        . applying = this-rule && owner.tree.applies-rules(rule.syntax)
                             .. this-rule = rule.name.text == "This"
-                        if rule.name.text == "This" && !rule-takes-nothing(owner.tree, rule.syntax)
+                        if rule.name.text == "This" && !owner.tree.rule-takes-nothing(rule.syntax)
                             decline(site)
                             =
                         if rule.name.text == "This"
@@ -210,7 +210,7 @@ for position in 0 .. < chain.length
                                 order = next
                                 continue
                             . ungated [StyleWhen]
-                            for branch in rule-whens(owner.tree, rule-body(owner.tree, rule.syntax))
+                            for branch in owner.tree.rule-whens(owner.tree.rule-body(rule.syntax))
                                 if !gate-when(site, level, ref.module, branch, ungated)
                                     =
                             . count = facts.style-declaration-count(unit)
@@ -804,7 +804,7 @@ while level && types.intrinsic-of(level) == .class
             for member in owner.member-pool[declared.members]
                 do match? owner.decls[member]
                     | .decl-style-rule(rule)
-                        if rule.name.text == "This" && applies-rules(owner.tree, rule.syntax)
+                        if rule.name.text == "This" && owner.tree.applies-rules(rule.syntax)
                             = true
     level = types.base-of(level)
 = false
@@ -2064,15 +2064,6 @@ if intrinsic-is-numeric(kind) && kind != .cpointer && kind != .number
 if boxed-style(kind)
     = if demand-style-coding(type, false) then 2 else U32.max
 = U32.max
-
-────────────────────
-_ boxed-style Bool
-    - kind IntrinsicKind
-
-` Whether a style value of a kind is kept in a box the runtime holds a handle to, as the
-` reference's `styleValueClass` says of a value that is no number, object or union: a tuple, a
-` struct or a string.
-kind == .tuple || kind == .struct || kind == .string
 
 ────────────────────
 _ do demand-style-coding Bool
@@ -3526,7 +3517,7 @@ do match? owner.decls[row.initializer]
     | .decl-style-rule(rule)
         do match? owner.tree.nodes[rule.syntax]
             | .node-rule-syntax(declared)
-                if gives && holds-rules(owner.tree, rule.syntax)
+                if gives && owner.tree.holds-rules(rule.syntax)
                     if values != U32.max
                         decline(id)
                         = U32.max
@@ -3558,16 +3549,16 @@ do match? owner.decls[row.initializer]
                     - made
                     - unit
                     - index
-                    - rule-content(owner.tree, declared.body)
+                    - owner.tree.rule-content(declared.body)
                     - gates
                 if generated == U32.max
                     = U32.max
                 next += generated
-                for branch in rule-whens(owner.tree, declared.body)
+                for branch in owner.tree.rule-whens(declared.body)
                     . inner = gate-when(id, made, row.module, branch, gates)
                     if !inner
                         = U32.max
-                    for nested in when-applications(owner.tree, branch)
+                    for nested in owner.tree.when-applications(branch)
                         next = apply-inner
                             - id
                             - made
@@ -3587,7 +3578,7 @@ do match? owner.decls[row.initializer]
                         - made
                         - unit
                         - index
-                        - when-content(owner.tree, branch)
+                        - owner.tree.when-content(branch)
                         - inner
                     if gated-content == U32.max
                         = U32.max
@@ -3609,7 +3600,7 @@ _ do values-live (Bool, Bool)
 . unit = if around then facts.style-applications[outer].unit else no-instance
 . written-tree = if around then program.modules[instances.rows[unit].module].tree else tree
 . binding = if around then instances.rows[unit].binding else frame.binding
-. rooted = !around && roots-values(written-tree, written)
+. rooted = !around && written-tree.roots-values(written)
 . live = false
 . local = false
 do match? written-tree.nodes[written]
@@ -3632,18 +3623,6 @@ do match? written-tree.nodes[written]
                                     local = true
                             .. not-this = bindings.slots[resolution.slot].kind != .slot-this
 = (live, local)
-
-────────────────────
-_ do roots-values Bool
-    - written AST
-    - application SyntaxId
-
-` Whether an application written after `•` is written on the root `<This` of a class's markup,
-` whose values an instance of their own types (`check-root-values`).
-do match? written.nodes[written.holder-of(application)]
-    | .node-markup(row)
-        = written.names-this(row.type-id)
-= false
 
 ────────────────────
 _ do declares-only Bool
@@ -3673,13 +3652,13 @@ do match written.nodes[body]
 . found SyntaxId = 0
 for line in lines
     . kind = written.nodes[line]
-    if found == 0 && undeclared && !(kind is .node-rule-syntax) && !generates(written, line)
+    if found == 0 && undeclared && !(kind is .node-rule-syntax) && !written.generates(line)
         found = line
     .. undeclared = !(kind is .node-assign) && !(kind is .node-style-when)
 for line in lines
     if found == 0 && written.nodes[line] is .node-rule-syntax
         found = line
-for branch in rule-whens(written, body)
+for branch in written.rule-whens(body)
     for line in written.when-lines(branch)
         if found == 0 && written.nodes[line] is .node-rule-syntax
             found = line
@@ -3693,29 +3672,6 @@ facts.record-diagnostic
     - program.store-atom("Conditionally applied style rules may only contain style declarations")
     - no-type
     - no-type
-= false
-
-────────────────────
-_ do holds-rules Bool
-    - written AST
-    - rule SyntaxId
-
-` Whether a style rule applies rules after its name or holds rules written in it, in its body or
-` in that of one of its `when`s.
-do match? written.nodes[rule]
-    | .node-rule-syntax(declared)
-        if declared.style-rule-applications.count != 0
-            = true
-        . body = declared.body
-        do match? written.nodes[body]
-            | .node-block(block)
-                for statement in written.children[block.body]
-                    if written.nodes[statement] is .node-rule-syntax
-                        = true
-        for branch in rule-whens(written, body)
-            for line in written.when-lines(branch)
-                if written.nodes[line] is .node-rule-syntax
-                    = true
 = false
 
 ────────────────────
@@ -4335,7 +4291,7 @@ for position in 0 .. < count
             if rule.name != name
                 continue
             named = true
-            if rule-takes(owner.tree, rule.syntax) != given.length
+            if owner.tree.rule-takes(rule.syntax) != given.length
                 continue
             . wanted = scope-argument-types(scope)
             if !wanted
@@ -4388,7 +4344,7 @@ while frame != U32.max
     . owner = program.modules[held.module]
     do match? owner.decls[held.decl]
         | .decl-style-rule(rule)
-            if held.gate == 0 && rule-takes(owner.tree, rule.syntax) != 0
+            if held.gate == 0 && owner.tree.rule-takes(rule.syntax) != 0
                 if use.values == U32.max || facts.scope-values[use.values].frame != frame
                     = false
                 valued += 1
@@ -4441,7 +4397,7 @@ _ do bring-scopes Bool
 . first SyntaxId = 0
 do match? owner.decls[row.initializer]
     | .decl-style-rule(rule)
-        . body = rule-body(owner.tree, rule.syntax)
+        . body = owner.tree.rule-body(rule.syntax)
         do match? owner.tree.nodes[body]
             | .node-block(block)
                 for statement in owner.tree.children[block.body]
@@ -4458,7 +4414,7 @@ do match? owner.decls[row.initializer]
                             - cell
                             - values
                             - outer-cells
-        for branch in rule-whens(owner.tree, body)
+        for branch in owner.tree.rule-whens(body)
             . gate = U32.max
             . held = U32.max
             . links = U32.max
@@ -4767,7 +4723,7 @@ do match? program.modules[owner].decls[decl]
                                     - cell
                                     - framed
                                     - outer-cells
-                for branch in rule-whens(written, body)
+                for branch in written.rule-whens(body)
                     . gate = U32.max
                     . held = U32.max
                     . links = U32.max
@@ -5121,7 +5077,7 @@ do match? written.nodes[body]
     | .node-block(block)
         for statement in written.children[block.body]
             lines += statement
-for branch in rule-whens(written, body)
+for branch in written.rule-whens(body)
     for statement in written.when-lines(branch)
         lines += statement
 . own [TypeId]
@@ -5191,12 +5147,12 @@ for unit in applied
         | .decl-style-rule(rule)
             do match? written.nodes[rule.syntax]
                 | .node-rule-syntax(declared)
-                    if rule-content(written, declared.body).length != 0
+                    if written.rule-content(declared.body).length != 0
                         = false
-                    for branch in rule-whens(written, declared.body)
-                        if when-content(written, branch).length != 0
+                    for branch in written.rule-whens(declared.body)
+                        if written.when-content(branch).length != 0
                             = false
-                    weight += rule-whens(written, declared.body).length as U32
+                    weight += written.rule-whens(declared.body).length as U32
 = weight > 1
 
 ────────────────────
@@ -5219,7 +5175,7 @@ while level && types.intrinsic-of(level) == .class
                     | .decl-style-rule(rule)
                         if rule.name == name
                             named = true
-                            if rule-takes-nothing(owner.tree, rule.syntax)
+                            if owner.tree.rule-takes-nothing(rule.syntax)
                                 = (level, DeclRef(ref.module, member), true)
     level = types.base-of(level)
 = (no-type, DeclRef(0, 0), named)
@@ -5286,7 +5242,7 @@ for part in sheet-parts(class-ref(types, level))
                 if rule.name != name
                     continue
                 named = true
-                if rule-takes(owner.tree, rule.syntax) != given.length
+                if owner.tree.rule-takes(rule.syntax) != given.length
                     continue
                 . written = DeclRef(part.module, member)
                 . wanted = rule-argument-types(written)
@@ -5307,17 +5263,6 @@ for part in sheet-parts(class-ref(types, level))
                     chosen = written
                     kind = closeness
 = (found, chosen, kind, named, missed)
-
-────────────────────
-+ rule-takes U32
-    - written AST
-    - syntax SyntaxId
-
-match written.nodes[syntax]
-    | .node-rule-syntax(row)
-        row.args.count
-    ??
-        0
 
 ────────────────────
 _ do report-argument-types Bool
@@ -5363,90 +5308,6 @@ do match? written.nodes[argument]
             = (missing, "Type not found")
         = (row.pattern, "Invalid argument")
 = (0, "")
-
-────────────────────
-_ rule-takes-nothing Bool
-    - written AST
-    - syntax SyntaxId
-
-match written.nodes[syntax]
-    | .node-rule-syntax(row)
-        row.args.count == 0
-    ??
-        false
-
-────────────────────
-_ do applies-rules Bool
-    - written AST
-    - syntax SyntaxId
-
-` Whether a style rule applies rules, after its name or in the body of a `when`.
-do match? written.nodes[syntax]
-    | .node-rule-syntax(row)
-        if row.style-rule-applications.count != 0
-            = true
-        for branch in rule-whens(written, row.body)
-            if when-applications(written, branch).length != 0
-                = true
-= false
-
-────────────────────
-+ rule-body SyntaxId
-    - written AST
-    - syntax SyntaxId
-
-match written.nodes[syntax]
-    | .node-rule-syntax(row)
-        row.body
-    ??
-        0
-
-────────────────────
-+ do rule-whens [SyntaxId]
-    - written AST
-    - body SyntaxId
-
-` The `when`s of the body of a style rule, in the order written.
-. whens [SyntaxId]
-if body == 0
-    = whens
-do match? written.nodes[body]
-    | .node-block(block)
-        for statement in written.children[block.body]
-            if written.nodes[statement] is .node-style-when
-                whens += statement
-= whens
-
-────────────────────
-_ do rule-content [SyntaxId]
-    - written AST
-    - body SyntaxId
-
-` The lines of the body of a style rule that generate content, in the order written: markup
-` elements that bind a slot.
-. lines [SyntaxId]
-do match? written.nodes[body]
-    | .node-block(block)
-        for line in written.children[block.body]
-            if generates(written, line)
-                lines += line
-= lines
-
-────────────────────
-_ when-content [SyntaxId]
-    - written AST
-    - branch SyntaxId
-
-` The lines of the body of a `when` of a style rule that generate content, in the order written.
-each in written.when-lines(branch) when generates(written, each)
-
-────────────────────
-_ when-applications [SyntaxId]
-    - written AST
-    - branch SyntaxId
-
-` The rules the body of a `when` of a style rule applies, in the order written.
-each in written.when-lines(branch) when written.nodes[each] is .node-style-rule-application
 
 ────────────────────
 _ do overlay-rule Bool
@@ -5650,7 +5511,7 @@ do match? tree.nodes[syntax]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     type-sheet-line(statement, sheet, styles)
-                for branch in rule-whens(tree, rule.body)
+                for branch in tree.rule-whens(rule.body)
                     for statement in tree.when-lines(branch)
                         type-sheet-line(statement, sheet, styles)
 
@@ -5684,7 +5545,7 @@ _ do sheet-value-typed Bool
     - sheet TypeId
     - declared TypeId
 
-if tree.is-inherit(value) || reads-tracked(value) || reads-slots(value) || reads-member
+if tree.is-inherit(value) || tree.reads-tracked(value) || reads-slots(value) || reads-member
     = false
 .. reads-member = reads-sheet-member(value, sheet)
 for node in tree.subtree-start(value) .. value
@@ -5719,7 +5580,7 @@ _ do assign-rule-arguments Bool
 do match? tree.nodes[syntax]
     | .node-rule-syntax(rule)
         for arg in tree.children[rule.args]
-            . declared = argument-type-syntax(tree, arg)
+            . declared = tree.argument-type-syntax(arg)
             . named SyntaxId = 0
             do match? tree.nodes[arg]
                 | .node-argument-decl(row)
@@ -5845,7 +5706,7 @@ do match? tree.nodes[syntax]
                     if !declare-unit-style(statement, syntax, receiver, styles, order)
                         =
                     order += 1
-                for branch in rule-whens(tree, rule.body)
+                for branch in tree.rule-whens(rule.body)
                     for statement in tree.when-lines(branch)
                         do match? tree.nodes[statement]
                             | .node-style-rule-application
@@ -5961,8 +5822,8 @@ _ do type-applied-values
 . writer = rule-writer(receiver)
 for nested in tree.children[rule.style-rule-applications]
     applications += nested
-for branch in rule-whens(tree, rule.body)
-    for nested in when-applications(tree, branch)
+for branch in tree.rule-whens(rule.body)
+    for nested in tree.when-applications(branch)
         applications += nested
 for nested in applications
     do match? tree.nodes[nested]
@@ -6011,7 +5872,7 @@ _ do update-unit-property Bool
 ` gives it values that do (`values-live`). A property a setter answers, a getter, and one of an array are declined.
 . place = property-named(receiver, name)
 . property = types.properties[place!]
-. live = reads-tracked(line.rhs) || reads-slots(line.rhs)
+. live = tree.reads-tracked(line.rhs) || reads-slots(line.rhs)
 if property.storage-kind == .storage-getter || is-hidden(property, name, .setter-decl)
     decline(statement)
     = false
@@ -6148,7 +6009,7 @@ do match? tree.nodes[statement]
         if !style-value-ready(property.type) || !demand-style-sites()
             decline(statement)
             = false
-        . live = reads-tracked(line.rhs) || reads-slots(line.rhs)
+        . live = tree.reads-tracked(line.rhs) || reads-slots(line.rhs)
         if live && (reads-rule-values(line.rhs) || !demand-style-authors(receiver))
             decline(statement)
             = false
@@ -6431,21 +6292,6 @@ if runtime.site-inherit == no-instance
     scratch.types.rewind(mark)
     facts.style-runtime = runtime
 = runtime.site-inherit != no-instance
-
-────────────────────
-_ do reads-tracked Bool
-    - value SyntaxId
-
-` Whether a value reads something tracked.
-for node in tree.subtree-start(value) .. value
-    do match? tree.nodes[node]
-        | .node-identifier(row)
-            if row.is-tracked
-                = true
-        | .node-get-expression(row)
-            if row.is-tracked
-                = true
-= false
 
 ────────────────────
 _ do reads-slots Bool
@@ -7782,37 +7628,15 @@ if left.count != right.count
 for offset in 0 .. < left.count
     . mine = written-type-name
         - left-tree
-        - rule-argument-type(left-tree, left-tree.children[left.start + offset])
+        - left-tree.rule-argument-type(left-tree.children[left.start + offset])
     . theirs = written-type-name
         - right-tree
-        - rule-argument-type(right-tree, right-tree.children[right.start + offset])
+        - right-tree.rule-argument-type(right-tree.children[right.start + offset])
     if !mine || !theirs
         = (false, false)
     if mine != theirs
         = (false, true)
 = (true, true)
-
-────────────────────
-_ do rule-argument-type SyntaxId
-    - written AST
-    - argument SyntaxId
-
-` The type written for a value a style rule takes, or the pattern that takes it where it is
-` written with none.
-. pattern = argument
-do match? written.nodes[argument]
-    | .node-argument-decl(row)
-        pattern = row.pattern
-do match? written.nodes[pattern]
-    | .node-type-capture(capture)
-        = capture.type
-= pattern
-
-────────────────────
-+ is-negated-test Bool
-    - op Operator
-
-op == .is-not-op || op == .is-not-exactly-op || op == .is-not-similar-op
 
 ────────────────────
 _ do choose-updater Bool
@@ -7842,17 +7666,6 @@ revise-application(index)
 = true
 
 ────────────────────
-+ do in-gated Bool
-    - node SyntaxId
-    - conditions [SyntaxId]
-
-` Whether a node is written in one of the conditions given.
-for condition in conditions
-    if tree.subtree-start(condition) <= node && node <= condition
-        = true
-= false
-
-────────────────────
 + do root-applications Bool
     - owner ModuleId
     - outlet SyntaxId
@@ -7874,28 +7687,6 @@ do match? written.nodes[outlet]
             if use.scope.own != .scope-pending
                 rule-scopes += use
         = true
-= false
-
-────────────────────
-+ do in-applied-value Bool
-    - id SyntaxId
-
-for node in id + 1 .. < (tree.nodes.length as SyntaxId)
-    if tree.subtree-start(node) <= id && tree.nodes[node] is .node-style-rule-application
-        = true
-= false
-
-────────────────────
-+ do in-application Bool
-    - element SyntaxId
-    - id SyntaxId
-
-` Whether a node is written in what a rule a markup element applies after `•` is given.
-do match? tree.nodes[element]
-    | .node-markup(row)
-        for application in tree.children[row.style-rule-applications]
-            if tree.subtree-start(application) <= id && id <= application
-                = true
 = false
 
 ────────────────────
