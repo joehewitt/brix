@@ -2117,30 +2117,10 @@ _ do untracked
 do match? tree.nodes[id]
     | .node-identifier(row)
         =? if !row.is-tracked
-=? if tree.in-applied-value(id) || reads-slot-scope(id)
+=? if tree.in-applied-value(id) || tree.reads-slot-scope(id)
 . shown = name.text
 . message = "\"#$shown\" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write \"$shown\" to read it plainly, or read \"#$shown\" in the live value and pass it in as an argument"
 frame.diagnose(id, .stated, program.store-atom(message))
-
-────────────────────
-_ do reads-slot-scope Bool
-    - id SyntaxId
-
-. object SyntaxId = 0
-do match? tree.nodes[id]
-    | .node-get-expression(row)
-        object = row.object
-=? false if object == 0
-. scope = tree.identifier-name(object)
-=? false if !scope
-for node in id + 1 .. < (tree.nodes.length as SyntaxId)
-    if tree.subtree-start(node) <= id
-        do match? tree.nodes[node]
-            | .node-markup(row)
-                do match? tree.nodes[row.slot-parameter]
-                    | .node-markup-slot-parameter(written)
-                        =? true if tree.identifier-name(written.name) == scope
-= false
 
 ────────────────────
 _ do pulled Bool

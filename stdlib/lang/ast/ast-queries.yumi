@@ -2683,3 +2683,145 @@ match? nodes[id]
         row.name
     | .node-ref-identifier(row)
         row.name
+
+────────────────────
++ filled-name Atom?
+    - line SyntaxId
+
+match nodes[line]
+    | .node-markup(row)
+        identifier-name(row.slot-binding)
+    | .node-markup-slot-forward(row)
+        identifier-name(row.slot-binding)
+    ??
+        null
+
+────────────────────
++ do reads-slot-scope Bool
+    - id SyntaxId
+
+. object SyntaxId = 0
+do match? nodes[id]
+    | .node-get-expression(row)
+        object = row.object
+=? false if object == 0
+. scope = identifier-name(object)
+=? false if !scope
+for node in id + 1 .. < (nodes.length as SyntaxId)
+    if subtree-start(node) <= id
+        do match? nodes[node]
+            | .node-markup(row)
+                do match? nodes[row.slot-parameter]
+                    | .node-markup-slot-parameter(written)
+                        =? true if identifier-name(written.name) == scope
+= false
+
+────────────────────
++ do takes-all String?
+    - pattern SyntaxId
+
+if pattern == 0
+    = "??"
+do match? nodes[pattern]
+    | .node-type-wildcard
+        = "| _"
+    | .node-type-capture(row)
+        . name = identifier-name(row.id)
+        if row.type == 0 && name
+            = "| ${name.text}"
+= null
+
+────────────────────
++ name-text String
+    - id SyntaxId
+
+if name then name.text else ""
+
+.. name = identifier-name(id)
+
+────────────────────
++ uncovered-text String
+    - read SyntaxId
+
+` The error for an action that reads a name some way its pattern passes doesn't capture.
+"Capture ${name-text(read)} holds no value on some ways this arm matches; capture it in every alternative"
+
+────────────────────
++ bound U64
+    - id SyntaxId
+
+` The code point a bound of a range of characters is written as.
+match nodes[id]
+    | .node-integer-syntax(row)
+        parse-integer-literal(row.value).value
+    ??
+        0
+
+────────────────────
++ do negative-literal Bool
+    - id SyntaxId
+
+` Whether a node is a negative number written in source.
+do match? nodes[id]
+    | .node-integer-syntax(row)
+        = parse-integer-literal(row.value).negative
+    | .node-unary-expression(row)
+        if row.op == .negative-op
+            do match? nodes[row.operand]
+                | .node-integer-syntax
+                    = true
+= false
+
+────────────────────
++ do chosen-line SyntaxId
+    - control SyntaxId
+    - name Atom
+
+for arm in region-arms(control)
+    do match? nodes[region-arm-body(arm)]
+        | .node-block(block)
+            for line in children[block.body]
+                do match? nodes[line]
+                    | .node-markup(row)
+                        if identifier-name(row.slot-binding) == name
+                            = line
+= 0
+
+────────────────────
++ do fills-name Bool
+    - control SyntaxId
+    - name Atom
+
+=? false if !holds-fills(control)
+= chosen-line(control, name) != 0
+
+────────────────────
++ is-written-zero Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-integer-syntax(row)
+        !row.unit && parse-integer-literal(row.value).value == 0
+    ??
+        false
+
+────────────────────
++ switch-number U64
+    - expr SyntaxId
+
+match nodes[expr]
+    | .node-integer-syntax(row)
+        parse-integer-literal(row.value).value
+    ??
+        U64.max
+
+────────────────────
++ stream-bound U64
+    - id SyntaxId
+
+` The number a bound of a pattern's range or count is written as.
+match nodes[id]
+    | .node-integer-syntax(row)
+        parse-integer-literal(row.value).value
+    ??
+        0

@@ -600,7 +600,7 @@ do match? tree.nodes[id]
             = false
         for position in rule-arming.capture-base .. < capture-sites.length
             if capture-slots[position] == slot && capture-accumulating[position]
-                frame.diagnose(id, .stated, program.store-atom("Capture ${name-text(row.name)} mixes ordinary and accumulating capture modes"))
+                frame.diagnose(id, .stated, program.store-atom("Capture ${tree.name-text(row.name)} mixes ordinary and accumulating capture modes"))
                 = false
         . valued = stream-valued(row.pattern) || takes-item(row.pattern)
         . optional = types.optional-of(types.string-type)
@@ -647,11 +647,11 @@ do match? tree.nodes[id]
                     .. other-arm = top-arm(capture-sites[position]) != top-arm(row.name)
                     .. unrepeated = capture-repeats[position] == 0
                 if !alternatives(capture-sites[position])
-                    frame.diagnose(id, .stated, program.store-atom("Capture ${name-text(row.name)} is captured twice on one way through the pattern"))
+                    frame.diagnose(id, .stated, program.store-atom("Capture ${tree.name-text(row.name)} is captured twice on one way through the pattern"))
                     = false
                 if known != type && !apart
                     . shown = "${type-short-name(types, known)} in one alternative and ${type-short-name(types, type)} in another"
-                    frame.diagnose(id, .stated, program.store-atom("Capture ${name-text(row.name)} holds $shown"))
+                    frame.diagnose(id, .stated, program.store-atom("Capture ${tree.name-text(row.name)} holds $shown"))
                     = false
         if valued
             facts.set-plan(instance, row.name, .plan-stream-value)
@@ -741,7 +741,7 @@ if inner == invalid-type
 if slot == no-slot
     decline(id)
     = false
-. text = name-text(name)
+. text = tree.name-text(name)
 for position in rule-arming.capture-base .. < capture-sites.length
     if capture-slots[position] == slot && !capture-accumulating[position]
         frame.diagnose
@@ -778,14 +778,6 @@ capture-accumulating += true
 capture-patterns += pattern
 capture-repeats += 0
 = type-captures(pattern, 0, 0, true)
-
-────────────────────
-_ name-text String
-    - id SyntaxId
-
-if name then name.text else ""
-
-.. name = tree.identifier-name(id)
 
 ────────────────────
 _ do accumulates Bool
@@ -1038,13 +1030,6 @@ for node in tree.subtree-start(body) .. < body + 1
             if capture-sites.length != rule-arming.capture-base && reads-captures(node)
                 = node
 = 0
-
-────────────────────
-_ uncovered-text String
-    - read SyntaxId
-
-` The error for an action that reads a name some way its pattern passes doesn't capture.
-"Capture ${name-text(read)} holds no value on some ways this arm matches; capture it in every alternative"
 
 ────────────────────
 _ slice-read-text String
@@ -1678,7 +1663,7 @@ if rolls-back
 if spans-source(rule-arming.target) && !rule-arming.span
     decline(id)
     = invalid-type
-. forwards-it = forwarding && name-text(tree.forwarded-read(body)) == "it"
+. forwards-it = forwarding && tree.name-text(tree.forwarded-read(body)) == "it"
     .. forwarding = helping.helper != null && tree.forwarded-read(body) != 0
 . it-wanted = types.string-type
 if forwards-it && non-text-target && source-candidates(rule-arming.target).length != 0
@@ -1786,7 +1771,7 @@ if value == no-type || narrowing.exits(body)
 . uncovered = uncovered-read(pattern, body)
 if uncovered != 0
     if tree.nodes[uncovered] is .node-identifier
-        frame.diagnose(uncovered, .stated, program.store-atom(uncovered-text(uncovered)))
+        frame.diagnose(uncovered, .stated, program.store-atom(tree.uncovered-text(uncovered)))
     else
         decline(id)
     = invalid-type
@@ -2411,7 +2396,7 @@ if count > 1
     for choice in [found, second]
         . parts [String]
         for offset in 0 .. < positions.length
-            parts += "${name-text(capture-sites[positions[offset]])}=${choice-key}"
+            parts += "${tree.name-text(capture-sites[positions[offset]])}=${choice-key}"
                 .. choice-key = type-key(types, choice[offset])
         options += ", ".join(parts)
     frame.diagnose
@@ -3445,7 +3430,7 @@ do match? tree.nodes[id]
             if text-items()
                 = types.string-type
             if is-integer(stream-view.item)
-                if !item-holds(bound(row.first)) || !item-holds(bound(row.last))
+                if !item-holds(tree.bound(row.first)) || !item-holds(tree.bound(row.last))
                     = report-unheld(id)
                 = stream-view.item
     | .node-stream-predicate(row)
@@ -4757,7 +4742,7 @@ _ do accumulator-type TypeId
 
 ` The list the pattern being typed keeps for a name it accumulates, where the name was typed.
 for position in rule-arming.capture-base .. < capture-sites.length
-    if capture-accumulating[position] && name-text(capture-sites[position]) == name
+    if capture-accumulating[position] && tree.name-text(capture-sites[position]) == name
         = facts.node-type(instance, capture-sites[position])
 = no-type
 
@@ -4769,7 +4754,7 @@ _ do accumulated-type TypeId
 ` The list a pattern keeps of what a name it accumulates in a part of its own adds, or none.
 do match? tree.nodes[id]
     | .node-stream-capture(row)
-        if row.accumulating && name-text(row.name) == name
+        if row.accumulating && tree.name-text(row.name) == name
             = facts.node-type(instance, row.name)
         = accumulated-type(row.pattern, name)
     | .node-stream-and(row)
@@ -5792,17 +5777,6 @@ _ item-holds Bool
 ` their type fits, and over items of a byte, which hold the UTF-8 of text, one that is ASCII.
 literal-fits-target(types, IntegerLiteral(point, false, false), stream-view.item) && ascii-or-wide
 .. ascii-or-wide = point < 0x80 || types.completion-of(stream-view.item).bit-size > 8
-
-────────────────────
-_ bound U64
-    - id SyntaxId
-
-` The code point a bound of a range of characters is written as.
-match tree.nodes[id]
-    | .node-integer-syntax(row)
-        parse-integer-literal(row.value).value
-    ??
-        0
 
 ────────────────────
 _ do counts Bool
