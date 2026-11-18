@@ -3601,16 +3601,22 @@ guiPresentCanvas(
 - (void)textInputInsert:(NSString*)text replacementRange:(NSRange)replacementRange {
     NSString* before = self.textInputBefore ?: @"";
     uint32_t replaced = 0;
+    uint32_t length = 0;
     if (!self.markedText && replacementRange.location != NSNotFound &&
         replacementRange.location < before.length) {
-        NSRange start = [before rangeOfComposedCharacterSequenceAtIndex:replacementRange.location];
-        replaced = guiCodePointCount([before substringFromIndex:start.location]);
-        before = [before substringToIndex:start.location];
+        NSUInteger end = MIN(NSMaxRange(replacementRange), before.length);
+        NSRange span = end > replacementRange.location
+            ? [before rangeOfComposedCharacterSequencesForRange:
+                NSMakeRange(replacementRange.location, end - replacementRange.location)]
+            : NSMakeRange([before rangeOfComposedCharacterSequenceAtIndex:replacementRange.location].location, 0);
+        replaced = guiCodePointCount([before substringFromIndex:span.location]);
+        length = guiCodePointCount([before substringWithRange:span]);
+        before = [before substringToIndex:span.location];
     }
     self.markedText = nil;
     self.textInputBefore = [before stringByAppendingString:text];
     self.textInputSelected = @"";
-    [self emitTextActionKind:0 text:text start:replaced length:0];
+    [self emitTextActionKind:0 text:text start:replaced length:length];
 }
 
 - (void)textInputCommand:(SEL)selector {
