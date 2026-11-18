@@ -174,7 +174,7 @@ kept for a meaning to come.
 | `print?` | `(print? value:Expr)` | Print a value unless it is null. | [Optionals: Steps that skip null](optionals.md#steps-that-skip-null) |
 | `with` | `(with value:Expr)` | The first row of a `match`: the helper object its grammars call. | [Grammars: Helpers](grammars.md#helpers) |
 | `header` | `(header value:Expr)` | Starts a section with a value. Each value row after it, up to the next header, is handed to that value. | [Functions: Value bodies](functions.md#value-bodies) |
-| `paragraph` | `(paragraph line:Line*)` | A text body, one item for each line. | [Text: Text bodies](text.md#text-bodies) |
+| `paragraph` | `(paragraph line:Line*)` | Text written as lines, one item for each line, joined with line feeds: a text body, or a text block anywhere a value goes. | [Text: Text bodies](text.md#text-bodies) |
 
 ## Assignment
 

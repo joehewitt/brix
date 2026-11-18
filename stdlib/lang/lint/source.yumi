@@ -195,8 +195,14 @@ char == '━' || char == '─' || char == '═'
 . is-expecting = false
 . is-next-text = false
 . is-text = false
+. block-indent = -1
 for line in lines
     . trimmed = line.trim()
+    if block-indent >= 0
+        if trimmed.length == 0 || indent-level(line) > block-indent
+            text += true
+            continue
+        block-indent = -1
     if is-text
         is-text = !is-template-boundary(trimmed)
         text += is-text
@@ -212,8 +218,25 @@ for line in lines
             is-next-text = true
         else if is-divider-line(trimmed)
             is-expecting = false
+        else if opens-text-block(trimmed)
+            block-indent = indent-level(line)
         text += false
 = text
+
+━━━━━━━━━━━━━━━━━━━━
+_ opens-text-block Bool
+    - trimmed String
+
+trimmed.length > 2 && trimmed.ends-with(" ¶") && !trimmed.starts-with("`") && !trimmed.starts-with("//")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do indent-level Size
+    - line String
+
+. spaces Size = 0
+while spaces < line.length && line[spaces] == ' '
+    spaces += 1
+= spaces / 4
 
 ━━━━━━━━━━━━━━━━━━━━
 _ is-template-header Bool

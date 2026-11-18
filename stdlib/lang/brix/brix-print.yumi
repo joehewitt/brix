@@ -1804,6 +1804,25 @@ for c in text
 = rest
 
 ────────────────────
+_ do quoted-lines
+    - items ImmutableTableSpan'SourceNode
+
+put("\"")
+for index in 1 .. < items.length
+    if index > 1
+        put("\\n")
+    . line = items[index]
+    match line
+        | .string(_, text)
+            put(brix-escaped(text, true))
+        | .list(_, start, count)
+            if store.is-form(line, "str")
+                interpolated-parts(store.nodes[start .. < start + count], 1, true)
+        ??
+            braced(line)
+put("\"")
+
+────────────────────
 _ do interpolated
     - items ImmutableTableSpan'SourceNode
     - origin Size
@@ -1811,6 +1830,16 @@ _ do interpolated
 
 if is-quoted
     put("\"")
+interpolated-parts(items, origin, is-quoted)
+if is-quoted
+    put("\"")
+
+────────────────────
+_ do interpolated-parts
+    - items ImmutableTableSpan'SourceNode
+    - origin Size
+    - is-quoted Bool
+
 for index in origin .. < items.length
     . part = items[index]
     . is-joined = index + 1 < items.length && continues(items[index + 1])
@@ -1830,8 +1859,6 @@ for index in origin .. < items.length
             embedded(part, store.nodes[start .. < start + count], is-joined)
         ??
             braced(part)
-if is-quoted
-    put("\"")
 
 ────────────────────
 _ do embedded
@@ -1939,6 +1966,12 @@ match items
         put("()")
     | [.atom(_, "call"), _, ...]
         call(node, items, 1, minimum, is-tail)
+    | [.atom(_, "paragraph"), ...]
+        if is-tail
+            put("¶")
+            hold(node, 1)
+        else
+            quoted-lines(items)
     | [.atom(_, "scope"), value, ...]
         . is-wrapped = minimum > brix-level-named
         if is-wrapped

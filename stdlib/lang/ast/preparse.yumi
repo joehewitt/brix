@@ -41,6 +41,9 @@ input = input[0 .. < byte-count]
 . expecting-text = false
 . is-paragraph = false
 . prefix-next-line = false
+. block-indent = -1
+. block-end Index = 0
+. block-line Index = 0
 
 ` Process the split lines plus the sentinel line that the grammar expects.
 for line-no in 0 .. < line-count + 1
@@ -50,6 +53,28 @@ for line-no in 0 .. < line-count + 1
         while line-end < input.size && input[line-end] != 10
             line-end += 1
         source-cursor = line-end + 1
+
+    if block-indent >= 0
+        . is-blank = is-blank-line(input, line-start, line-end)
+        if line-no < line-count && (is-blank || parse-indent(input, line-start, line-end) > block-indent)
+            . text-start = output.length
+            if !is-blank
+                output.append(input, line-start + (block-indent + 1) * indent-size, line-end)
+                output.mark-literal-closes(text-start)
+                block-end = output.length
+                block-line = line-no
+            previous-line-start = text-start
+            previous-line-end = output.length
+            output.append('\n')
+            continue
+        output.insert('≥', block-end)
+        if previous-line-start > block-end
+            previous-line-start += 1
+        if previous-line-end >= block-end
+            previous-line-end += 1
+        last-text-end = block-end + 1
+        last-text-line = block-line
+        block-indent = -1
 
     . prefix-line = prefix-next-line
     prefix-next-line = false
@@ -184,7 +209,13 @@ for line-no in 0 .. < line-count + 1
                 is-paragraph = true
 
         . current-line-start = output.length
-        if output-kind == 0
+        . block-at = if output-kind == 0 && !prefix-line && !is-paragraph then find-block-marker(input, first-content, line-end) else null
+        if block-at
+            output.append(input, line-start, block-at + 2)
+            block-end = output.length
+            block-line = line-no
+            block-indent = parse-indent(input, line-start, line-end)
+        else if output-kind == 0
             if prefix-line
                 output.append('Æ')
             output.append(input, line-start, line-end)
@@ -213,6 +244,11 @@ for line-no in 0 .. < line-count + 1
     previous-line-start = output.length
     previous-line-end = output.length
     output.append('\n')
+
+if block-indent >= 0
+    output.insert('≥', block-end)
+    if previous-line-end >= block-end
+        previous-line-end += 1
 
 for _ in 0 .. < indent-level
     output.insert('≥', previous-line-end)
@@ -381,6 +417,31 @@ while cursor < end && is-whitespace(input[cursor])
 =? if cursor >= end
 
 = access-index
+
+━━━━━━━━━━━━━━━━━━━━
+_ do find-block-marker Index?
+    - input ImmutableArray'Byte
+    - start Index
+    - end Index
+
+. last = end
+while last > start && is-whitespace(input[last - 1])
+    last -= 1
+=? if last - start < 4
+=? if input[last - 2] != 0xC2 || input[last - 1] != 0xB6
+=? if !is-whitespace(input[last - 3])
+=? if input[start] == 47 && input[start + 1] == 47
+= last - 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do is-blank-line Bool
+    - input ImmutableArray'Byte
+    - start Index
+    - end Index
+
+for cursor in start .. < end
+    =? false if !is-whitespace(input[cursor])
+= true
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do append-paragraph-line

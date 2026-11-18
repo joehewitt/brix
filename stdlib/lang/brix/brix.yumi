@@ -610,7 +610,8 @@ _ accepts Bool
     - node ImmutableTableRow'SourceNode
 
 . holder = holder-of(node)
-= holder != null && store.is-form(holder, "block") && store.count(holder) <= held-start
+= holder != null && is-opening && store.count(holder) <= held-start
+    .. is-opening = store.is-form(holder, "block") || store.is-form(holder, "paragraph")
 
 ────────────────────
 + is-arm Bool
@@ -1705,6 +1706,19 @@ rows += SourceOutlineRow
     - !printer.has-text
     - if is-preamble then SourceRowZone.preamble else zone
 =? if !holder
+if store.is-form(holder, "paragraph")
+    for line in store.listed(holder, start)
+        printer.scan-line(line)
+        rows += SourceOutlineRow
+            - line.index as U32
+            - brix-mode-text
+            - indent + 1
+            - false
+            - 0
+            - held
+            - !printer.has-text
+            - zone
+    =
 . inner = nested-mode(node, holder, mode)
 if armed
     for item in store.listed(armed, 1)

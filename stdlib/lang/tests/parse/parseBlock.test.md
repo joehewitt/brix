@@ -1071,3 +1071,161 @@ do without cancel
     </Block>
 </Do>
 ```
+
+### A row that ends in `¶` takes the rows indented below it as the lines of a text. The text keeps blank rows between lines and the spaces past the block's margin, and lines that look like comments or dividers are text.
+
+```yumi
+. greeting = ¶
+    Hello $name,
+
+      indented ` text
+    ━━━━━━━━━━━━━━━━━━━━
+
+. after = 1
+```
+
+```brix
+(main
+  (let greeting
+    (paragraph
+      (str "Hello " name ",")
+      (blank)
+      "  indented ` text"
+      "━━━━━━━━━━━━━━━━━━━━"
+    )
+  )
+  (blank)
+  (let after 1)
+)
+```
+
+```output
+<Declaration>
+    <TypeCapture>
+        <Id name="greeting"/>
+    </TypeCapture>
+    <BinaryExpression operator="++">
+        <BinaryExpression operator="++">
+            <String text="Hello "/>
+            <Id name="name"/>
+        </BinaryExpression>
+        <String text=",
+
+  indented ` text
+━━━━━━━━━━━━━━━━━━━━"/>
+    </BinaryExpression>
+</Declaration>
+<Declaration>
+    <TypeCapture>
+        <Id name="after"/>
+    </TypeCapture>
+    <Integer value="1"/>
+</Declaration>
+```
+
+### A text block may end an argument row, an item row or the right side of an operator. One with no rows below it is empty.
+
+```yumi
+show
+    - ¶
+        one
+    - 2
+. items = List'String
+    * ¶
+        x
+. joined = "a: " ++ ¶
+    b
+. empty = ¶
+```
+
+```brix
+(main
+  (call show
+    (block
+      (arg
+        (paragraph
+          "one"
+        )
+      )
+      (arg 2)
+    )
+  )
+  (let items
+    (call (of List String)
+      (block
+        (item
+          (paragraph
+            "x"
+          )
+        )
+      )
+    )
+  )
+  (let joined
+    (++ "a: "
+      (paragraph
+        "b"
+      )
+    )
+  )
+  (let empty (paragraph))
+)
+```
+
+```output
+<CallExpression>
+    <Id name="show"/>
+    <Argument>
+        <String text="one"/>
+    </Argument>
+    <Argument>
+        <Integer value="2"/>
+    </Argument>
+</CallExpression>
+<Declaration>
+    <TypeCapture>
+        <Id name="items"/>
+    </TypeCapture>
+    <CallExpression>
+        <TypeArguments>
+            <TypeId name="List"/>
+            <TypeId name="String"/>
+        </TypeArguments>
+        <Argument>
+            <Block>
+                <Feed>
+                    <String text="x"/>
+                </Feed>
+            </Block>
+        </Argument>
+    </CallExpression>
+</Declaration>
+<Declaration>
+    <TypeCapture>
+        <Id name="joined"/>
+    </TypeCapture>
+    <BinaryExpression operator="++">
+        <String text="a: "/>
+        <String text="b"/>
+    </BinaryExpression>
+</Declaration>
+<Declaration>
+    <TypeCapture>
+        <Id name="empty"/>
+    </TypeCapture>
+    <String text=""/>
+</Declaration>
+```
+
+### A `¶` inside a row is refused: a text block ends its row.
+
+```yumi crash
+. label = show(¶, 1)
+```
+
+```output
+Exception: A ¶ text block ends its row, and its text is on the rows indented below it. To give one as an argument, write the arguments one to a row, as in "- ¶"
+<no file:2>
+    . label = show(¶, 1)
+                   ^
+```

@@ -234,6 +234,7 @@ A row begins with a mark that says what it is, followed by a space.
 | `\|\| pattern`, `\|\|= value`, `\|\|? condition` | Arms whose values keep their own types. | `(case-union …)`, `(case-union= …)`, `(case-union? …)` |
 | `?! error if condition` | A check. | `(throw error (if condition))` |
 | `* value`, `** values` | Items of a list built below it. | `(item value)`, `(spread values)` |
+| `… ¶` at the end of a row | A text block: the rows indented below are its lines. | `(paragraph line…)` |
 | `?> condition`, `*> value` | Pipe stages, flush below a value. | `(pipe ?> condition)`, `(pipe *> value)` |
 | `• name value` | A named argument. | `(:name value)` |
 | `- value` under a call | One argument. | `(arg value)` |
@@ -254,6 +255,7 @@ A row begins with a mark that says what it is, followed by a space.
   - A bullet at the end of a line takes the indented block below as its value, except on an `if`,
     `else`, `while`, `match` or `for` line, whose block is its body.
   - A list built from `*` rows below a builder.
+  - A text block on the rows below a row that ends in `¶`.
   - Pipe stages, flush below the value they take.
   - A text continues on the next line after a `\` at the end of a line.
 - **One-line bodies.** A colon puts a body of one step on the same line, as in `if n > 9: -- "big"`

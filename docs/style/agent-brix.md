@@ -290,7 +290,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(print? value:Expr)` is Step, Value, Before. Print a value unless it is null.
 - `(with value:Expr)` is Step, Value, Row, Case. The first row of a `match`: the helper object its grammars call.
 - `(header value:Expr)` is Step, Value, Child. Starts a section with a value. Each value row after it, up to the next header, is handed to that value.
-- `(paragraph line:Line*)` is Step, Value. A text body, one item for each line.
+- `(paragraph line:Line*)` is Step, Value, Expr. Text written as lines, one item for each line, joined with line feeds: a text body, or a text block anywhere a value goes.
 
 ### Assignment
 

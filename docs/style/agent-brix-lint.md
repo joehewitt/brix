@@ -82,7 +82,8 @@ exception.
 ### `layout/depth`
 
 Brix only. A row nested more than five levels deep is reported once where the nesting starts. Move
-the inner rows into a function of their own.
+the inner rows into a function of their own. The rows of a `¶` text block are text and do not
+count.
 
 ### `layout/divider-length`
 
@@ -93,8 +94,9 @@ containing malformed dividers.
 ### `layout/line-length`
 
 Break long calls into block-call form or name a complex input with a lazy. The text body of a `¶`
-template is exempt: lay it out as the text it produces, and never wrap it with line continuations
-to fit the limit. Ignore an unbreakable literal or protocol token when splitting it would change the
+template and the rows of a `¶` text block are exempt: lay them out as the text they produce, and
+never wrap them with line continuations to fit the limit. Write a long quoted text as a text block
+instead. Ignore an unbreakable literal or protocol token when splitting it would change the
 value, and intentional golden input where physical line length is what the test covers.
 
 Finding:

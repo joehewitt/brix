@@ -250,14 +250,48 @@ pear × 2
   body is trimmed, but white space an inserted value gives is kept, so a body can end in spaces or
   a line break on purpose.
 - **Converters.** A type's `to String` may have a paragraph body, as `Item` does here.
-- **Only bodies.** A paragraph is a function body, not a value: ``(paragraph …) cannot be the
-  `value` of (let …), which takes Expr or Block.`` A line cannot be a bare call either; put it in
-  a `str` form.
+- **Lines.** A line cannot be a bare call; put it in a `str` form.
 
 A quoted text or a `str` form suits a short message. A text body pays off once the text has
 several lines, indentation or repeated parts. A value that has several text forms can have a text
 body for each, named for what it gives, rather than one `to String`. A document that code will
 read or change is better built as markup (see Markup) or by a library for its format.
+
+### Text blocks
+
+A paragraph is also a value, anywhere one goes: a local, an argument, an item, an operand or a
+markup attribute. It gives a `String` with its lines joined by line feeds, as a text body does.
+
+```brix
+(main
+  (let name "Ann")
+  (let letter
+    (paragraph
+      (str "Dear " name ",")
+      (blank)
+      "Your order has shipped."
+    )
+  )
+  (print letter)
+  (print (call framed (paragraph "one" "two")))
+)
+
+(fn-expr + framed _
+  (param text String)
+  (str "<" text ">")
+)
+```
+
+```output
+Dear Ann,
+
+Your order has shipped.
+<one
+two>
+```
+
+A long text that is one value, such as a description, reads better as a text block with a row
+for each of its lines than as one long quoted text.
 
 ### Text bodies inside text bodies
 
@@ -361,6 +395,20 @@ and a blank row, every row up to the next divider is text, written without quote
 escapes, and `$name` and `${…}` insert values. The escapes of a quoted text still apply, so `\$`
 writes a dollar sign and `\\` a backslash. A `════` divider ends the text and begins the lazy
 bindings.
+
+A text block is a row that ends in `¶`, as in `. letter = ¶`{.rows}, and the rows indented below
+it are its lines, written as a text body's are:
+
+- **Lines.** Each row below the `¶` row is a line, up to the first row that is not indented
+  deeper. Spaces past the block's margin, one level deeper than the `¶` row, stay in the line.
+- **Blank rows.** A blank row between lines is an empty line. Blank rows after the last line
+  belong to the code below.
+- **Only text.** A row of the block that looks like a comment, a divider or code is text.
+- **At the end of a row.** The `¶` ends its row: `A ¶ text block ends its row, and its text is on
+  the rows indented below it`. To give a block as an argument, write the arguments one to a row,
+  as in `- ¶`{.rows}.
+- **Long lines.** A line stays one row however long it is, as its line breaks are part of the
+  text. The line-length lint does not measure the rows of a block, and the editor wraps them.
 
 ## Characters
 

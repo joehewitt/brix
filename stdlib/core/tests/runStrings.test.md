@@ -642,6 +642,48 @@ Foo BAR baz
 ```
 ````
 
+### A text block is a text written on the rows below a row that ends in `¶`, one line for each row, joined with line feeds. A blank row between lines is an empty line, and blank rows after the last line belong to the code below. Spaces past the block's margin are kept, and inserts and escapes work as in a text body.
+
+```yumi
+. name = "Ann"
+. letter = ¶
+    Dear $name,
+
+      Your total is \$${2 + 3}.
+    ` not a comment
+    ━━━━━━━━━━━━━━━━━━━━
+
+. empty = ¶
+-- letter
+-- "[$empty]"
+-- shout
+    - ¶
+
+        two
+-- "joined: " ++ ¶
+    a
+    b
+
+━━━━━━━━━━━━━━━━━━━━
++ shout String
+    - text String
+
+"<$text>"
+```
+
+```output
+Dear Ann,
+
+  Your total is $5.
+` not a comment
+━━━━━━━━━━━━━━━━━━━━
+[]
+<
+two>
+joined: a
+b
+```
+
 ### A paragraph with no body is empty, and the member after its divider stays a member.
 
 ```yumi
