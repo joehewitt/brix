@@ -407,6 +407,36 @@ end
 written
 ```
 
+### A reader of a SyncBufferedChannel cancelled while it waits leaves the values written before it ends to other readers
+
+```yumi
+. numbers SyncBufferedChannel'Int
+. reader = do new
+    for n in numbers
+        -- "reader took $n"
+yield-once()
+reader.cancel-later()
+numbers <- 1
+numbers <- 2
+reader.wait()
+numbers.close()
+for n in numbers
+    -- "left $n"
+
+━━━━━━━━━━━━━━━━━━━━
++ do yield-once
+
+. done = Semaphore()
+do new
+    done.post()
+done.wait()
+```
+
+```output
+left 1
+left 2
+```
+
 ### Reads drain what an AsyncBufferedChannel buffered before it closed, and later writes are dropped
 
 ```yumi

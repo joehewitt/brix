@@ -191,7 +191,15 @@ else if !is-closed
     . was-canceled = reader.task.suspend()
     if was-canceled
         mutex.lock()
-        readers.remove(reader)
+        if reader.is-queued
+            readers.remove(reader)
+        else if reader.message != null
+            . next = readers.pop-first()
+            if next
+                next.message = reader.message
+                next.task.resume-later()
+            else
+                buffer.push-first(reader.message!)
         mutex.unlock()
     check-task-cancelation(was-canceled)
 
