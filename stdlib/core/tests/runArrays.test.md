@@ -1596,6 +1596,37 @@ for chunk in kept
 true
 ```
 
+### A delimiter read or a split of a chunked stream panics on an empty delimiter, as a string split does.
+
+```yumi
+/core/tests/support/byte-source
+/core/tokenstream
+
+for text in ["", "a;b"]
+    . split = do new
+        . stream = ChunkedTokenStream'Byte(TestByteSource(text as Byte[]))
+        -- ", ".join(stream.split(""))
+    catch failure
+        -- failure
+    split.wait()
+    . read = do new
+        . stream = ChunkedTokenStream'Byte(TestByteSource(text as Byte[]))
+        -- stream.read("")
+    catch failure
+        -- failure
+    read.wait()
+. stream = ChunkedTokenStream'Byte(TestByteSource("a;;b" as Byte[]))
+-- "[${"][".join(stream.split(";"))}]"
+```
+
+```output
+Stream delimiter must not be empty
+Stream delimiter must not be empty
+Stream delimiter must not be empty
+Stream delimiter must not be empty
+[a][][b]
+```
+
 ### Arena allocation returns raw pointers and honors raw alignment.
 
 ```yumi
