@@ -1,4 +1,4 @@
-`benchmark.meta description: Offscreen Metal frames scrolling a 1200x900 CodeEditor one and two rows at a time through 4,000 lines of plain text, first sharp, then under the scroll blur filter sized from each frame's distance, with the first blurred frame timed on its own.
+`benchmark.meta description: Offscreen Metal frames scrolling a 1200x900 CodeEditor one and three rows at a time through 4,000 lines of plain text, first sharp, then under the scroll blur filter sized from each frame's distance, with GPU time taken from the three-row frames and the first blurred frame timed on its own.
 `benchmark.meta timing: not-recommended
 `benchmark.meta profiles: gui-metal
 
@@ -18,6 +18,7 @@ _ code-scroll-line-count Size = 4000
 _ code-scroll-start-line Size = 200
 _ code-scroll-warmup Size = 12
 _ code-scroll-frames Size = 60
+_ code-scroll-long-step Size = 3
 
 . root = CodeScrollBenchRoot()
 markup-mount-root(root, root)
@@ -94,7 +95,8 @@ scene.frame-metal(renderer)
 renderer.finish()
 for index in 0 .. < code-scroll-warmup + code-scroll-frames
     . before = code.text-scroll.y
-    line += if index % 2 == 0 then 2 else 1
+    . step = if index % 2 == 0 then code-scroll-long-step else 1
+    line += step
     . started = monotonic-time-nanoseconds()
     code.scroll-to-line(line)
     root.update-layout()
@@ -116,7 +118,7 @@ for index in 0 .. < code-scroll-warmup + code-scroll-frames
     if index >= code-scroll-warmup
         pass.cpu += spent
         pass.draw-calls += renderer.draw-calls as Size
-        if renderer.gpu-nanos >= 0
+        if step == code-scroll-long-step && renderer.gpu-nanos >= 0
             pass.gpu += renderer.gpu-nanos as U64
 ?! Panic("Code scroll frames reported no GPU time")
     if pass.gpu.length == 0
