@@ -110,13 +110,19 @@ every row it makes fits:
 
 - a call that is the whole value of its row gets its arguments one to a row;
 - a quoted text, or the last operand of `++` when it is one, becomes a text block;
-- `if … then … else …` chains that compare one subject with `==` become a `match` of that subject
-  in a `let`, a lazy or a return, and other chains become a decision table in a `let` or a lazy;
 - `=? value if condition` becomes `if condition` with `= value` below it;
-- the value of a `let` or a lazy declared without a type moves to the row below.
+- an `if … then … else …` chain that compares one subject with `==` becomes a `match` of that
+  subject, and another chain becomes a decision table, in a `let`, a lazy, a property or global
+  declaration, a return, or an assignment to a local;
+- the value of a `let`, a lazy, a property or global declaration, or an assignment to a local moves
+  to the row below.
 
-It leaves a row alone when the rewrite would change typing, such as a decision table or a value
-below an assignment or a declared type, and in a `.bx` file when the rows it would make start a new
+An assignment is to a local when it names a local or parameter declared before it and only blocks
+of statements, such as bodies, branches, arms and loops, hold it within the declaration's block.
+The fix leaves other assignments alone, such as those to a property, a setter, a member, an
+indexed element or a markup attribute, where a decision table or a value below can change how the
+value is typed. It also leaves a row holding `if … else null`, which
+`style/no-redundant-null-fallback` rewrites first, and in a `.bx` file, rows that would start a new
 run nested past the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
 arithmetic or list with lazies, or move code into a function.
 

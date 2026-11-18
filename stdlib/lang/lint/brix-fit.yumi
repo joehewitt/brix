@@ -23,6 +23,7 @@ _ store SourceStore
 _ max Size
 _ depth Size?
 _ printer BrixPrinter
++ scope ImmutableTableRow'SourceNode? = null
 
 ────────────────────
 + This
@@ -79,6 +80,15 @@ _ do candidates [ImmutableTableRow'SourceNode]
     - node ImmutableTableRow'SourceNode
 
 . made [ImmutableTableRow'SourceNode]
+=? made if has-null-fallback(node, false)
+. items = store.listed(node)
+if store.is-form(node, "prop")
+    . last = items[items.length - 1]
+    =? made if items.length < 4 || !store.is-form(last, "=") || store.count(last) != 2
+    for value in values(store.item(last, 1), true, true)
+        . given = List'(ImmutableTableRow'SourceNode)(store.item(last, 0), value)
+        made += with-value(node, items, items.length - 1, store.with-items(last, given))
+    = made
 . spot = slot(node) ?? 0
 if spot == 0
     . call = block-call(node)
@@ -89,22 +99,99 @@ if spot == 0
         made += exit
     = made
 . head = store.head(node) ?? ""
-. is-binding = head == "let" || head == "lazy"
-. items = store.listed(node)
-. value = items[spot]
+. is-held = head == "let" || head == "lazy" || (head == "=" && is-local(node))
+for value in values(items[spot], is-held || head == "return", is-held)
+    made += with-value(node, items, spot, value)
+= made
+
+────────────────────
+_ do values [ImmutableTableRow'SourceNode]
+    - value ImmutableTableRow'SourceNode
+    - decides Bool
+    - lowers Bool
+
+. made [ImmutableTableRow'SourceNode]
 . text = text-block(value)
 if text
-    made += with-value(node, items, spot, text)
+    made += text
 . call = block-call(value)
 if call
-    made += with-value(node, items, spot, call)
-. choice = if is-binding || head == "return" then decision(value, is-binding) else null
+    made += call
+. choice = if decides then decision(value) else null
 if choice
-    made += with-value(node, items, spot, choice)
-. is-typed = spot == 3 && !(store.is-atom(items[2]) && store.text(items[2]) == "_")
-if is-binding && !is-typed && !store.is-form(value, "block")
-    made += with-value(node, items, spot, store.list(List'(ImmutableTableRow'SourceNode)(store.atom("block"), value)))
+    made += choice
+if lowers && !store.is-form(value, "block")
+    made += store.list(List'(ImmutableTableRow'SourceNode)(store.atom("block"), value))
 = made
+
+────────────────────
+_ do has-null-fallback Bool
+    - node ImmutableTableRow'SourceNode
+    - is-coalesced Bool
+
+=? false if store.is-atom(node) || store.is-text(node)
+. items = store.listed(node)
+=? false if items.length < 2
+. is-fallback = store.is-form(node, "if-expr") && items.length == 4 && is-null(items[3])
+=? true if is-fallback && !is-coalesced
+. is-coalescing = store.is-form(node, "??")
+= some(1 .. < items.length) • where has-null-fallback(items[each], is-coalescing && each < items.length - 1)
+
+────────────────────
+_ is-null Bool
+    - node ImmutableTableRow'SourceNode
+
+store.is-atom(node) && store.text(node) == "null"
+
+────────────────────
+_ do is-local Bool
+    - node ImmutableTableRow'SourceNode
+
+. target = store.item(node, 1)
+. root = scope
+=? false if !root || !store.is-atom(target)
+= visible(root, node.id, store.text(target), false) ?? false
+
+────────────────────
+_ do visible Bool?
+    - node ImmutableTableRow'SourceNode
+    - id U32
+    - name String
+    - known Bool
+
+=? known if node.id == id
+=? null if store.is-atom(node) || store.is-text(node)
+. holds = holds-statements(node)
+. seen = known && holds
+for item in store.listed(node)
+    . found = visible(item, id, name, seen)
+    =? found if found != null
+    if holds && declares(item, name)
+        seen = true
+= null
+
+────────────────────
+_ holds-statements Bool
+    - node ImmutableTableRow'SourceNode
+
+is-body || is-branch || is-arm || is-loop || is-guarded
+
+.. head = store.head(node) ?? ""
+.. is-body = head == "fn-do" || head == "main" || head == "block" || head == "do" || head == "=>"
+.. is-branch = head == "if" || head == "else-if" || head == "else" || head.starts-with("match")
+.. is-arm = head.starts-with("case") || head == "default"
+.. is-loop = head == "for" || head == "while" || head.starts-with("subscribe")
+.. is-guarded = head == "do-use" || head == "do-new-thread" || head == "on-error" || head == "finally"
+
+────────────────────
+_ declares Bool
+    - node ImmutableTableRow'SourceNode
+    - name String
+
+is-binding && store.is-atom(target) && store.text(target) == name
+
+.. is-binding = (store.is-form(node, "let") || store.is-form(node, "param")) && store.count(node) >= 2
+.. target = store.item(node, 1)
 
 ────────────────────
 _ do with-value ImmutableTableRow'SourceNode
@@ -231,7 +318,6 @@ items ++= parts
 ────────────────────
 _ do decision ImmutableTableRow'SourceNode?
     - node ImmutableTableRow'SourceNode
-    - is-binding Bool
 
 =? null if !store.is-form(node, "if-expr") || store.count(node) != 4
 . tests [ImmutableTableRow'SourceNode]
@@ -243,7 +329,6 @@ while store.is-form(rest, "if-expr") && store.count(rest) == 4
     rest = store.item(rest, 3)
 . subject = subject-of(tests)
 . is-match = subject != null && !mentions-it(node)
-=? null if !is-match && !is-binding
 . arms = List'(ImmutableTableRow'SourceNode)(store.atom(if is-match then "match" else "block"))
 if subject && is-match
     arms += subject
@@ -357,15 +442,18 @@ _ do fitted-units [BrixFitted]
 
 . store = brix.store
 . units [ImmutableTableRow'SourceNode]
+. scopes [ImmutableTableRow'SourceNode]
 . mains [Bool]
 for root in brix.roots
     . node = store.node(root)
     if store.is-form(node, "main")
         for item in store.listed(node, 1)
             units += item
+            scopes += node
             mains += true
     else
         units += node
+        scopes += node
         mains += false
 . owners [U32 = Index]
 for index in 0 .. < units.length
@@ -378,6 +466,7 @@ for index in 0 .. < units.length
         if shape.columns > max && !shape.is-text && owners[shape.id] == index
             held += shape
     if held.length != 0
+        fitter.scope = scopes[index]
         . fit = fit-unit(store, fitter, units[index], mains[index], held, max, depth)
         if fit
             found += fit
