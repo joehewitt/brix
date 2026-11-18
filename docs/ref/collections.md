@@ -396,8 +396,9 @@ true
   function of its index, read as `each`. `(call (of Array Int) items)`{.brix} copies a list,
   `(call (of Array Char) text)`{.brix} holds the characters of a text, and
   `(call (of Array Byte) text)`{.brix} its UTF-8 bytes.
-- **Fixed length.** An array never grows. `resize` and `grow` give a new array, and `+=` does not
-  add an item.
+- **Fixed length.** An array never grows. `resize` and `grow` give a new array with storage of
+  its own, so the array resized and every array sharing its storage keep their items, and `+=`
+  does not add an item.
 - **Sharing.** Assigning an array shares its storage. `(call (. a copy))`{.brix} makes an array
   with storage of its own.
 - **Casting.** `(as a ([] U32))`{.brix} reads the same storage as items of another type, so

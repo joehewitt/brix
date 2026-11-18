@@ -664,11 +664,11 @@ replace(normal, context, other)
 ?! Panic("Array size overflow")
     if new-size != 0 && new-size > Size.max / Value.size
 
-. replacement = Backing.resize'Value(storage, context, size, new-size)
-if new-size < size || (replacement as Pointer).address != data.address
-    C:brixArrayViewsInvalidate(data, byte-size)
-
-= This(replacement as CPointer'Value, new-size)
+. replacement = This(context, new-size)
+. kept = if new-size < size then new-size else size
+C:brixArrayCopySlice(replacement.data, data, kept * Value.size)
+C:brixArrayViewsInvalidate(data, byte-size)
+= replacement
 
 ────────────────────
 + do copy

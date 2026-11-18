@@ -27,8 +27,8 @@ Empty source arrays produce empty views and empty materializations.
 
 Each view retains a backing token instead of a pointer to the source handle. GC-backed storage
 remains reachable when a view outlives its source variable. The token records arena identity and
-generation for arena-backed storage. Replacing storage, relocating or shrinking it during resize,
-and resetting, rewinding, or releasing its arena invalidate affected views. Same-size element
+generation for arena-backed storage. Replacing storage, resizing it into new storage, and
+resetting, rewinding, or releasing its arena invalidate affected views. Same-size element
 writes remain visible through live views. Invalidated views raise `Stale array view` before
 access; iteration validates before entering its body.
 

@@ -3607,6 +3607,52 @@ value = v
 true
 ```
 
+### Resizing an array leaves an array sharing its storage whole.
+
+```yumi
+/BxGC/BxGC.h
+
+. alias = shrunk-alias()
+C:brixCollect()
+-- alias.size, alias[0].value, alias[7].value
+
+━━━━━━━━━━━━━━━━━━━━
++ do shrunk-alias
+
+. buffer = Array'GCNode(8)
+for i in 0 .. < 8
+    buffer[i] = GCNode(i)
+. alias = buffer
+buffer = buffer.resize(2)
+buffer[0] = GCNode(9)
+= alias
+
+━━━━━━━━━━━━━━━━━━━━
++ GCNode
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+```
+
+```output
+(8, 0, 7)
+```
+
+```yumi
+. parent = Array'Int([1, 2, 3, 4])
+. grown = parent[0 .. < 2].resize(3)
+-- parent[0], parent[2], grown[2]
+```
+
+```output
+(1, 3, 0)
+```
+
 ```yumi
 /BxGC/BxGC.h
 
