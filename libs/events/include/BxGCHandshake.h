@@ -75,8 +75,9 @@ extern "C" BRIX_WITHOUT_GC void brixGCEnterFFI(void);
 extern "C" BRIX_WITHOUT_GC void brixGCLeaveFFI(void);
 extern "C" BRIX_WITHOUT_GC void brixGCEnterZone(void);
 extern "C" BRIX_WITHOUT_GC void brixGCLeaveZone(void);
-// Native frameworks that invoke managed function pointers from an outer FFI call or GC-free zone
-// must bracket the callback so its live stack participates in phase-change handshakes.
+// Native code that invokes managed function pointers, from an outer FFI call, a GC-free zone or a
+// thread with no task, must bracket the callback so its live stack participates in phase-change
+// handshakes for the whole outermost callback.
 extern "C" BRIX_WITHOUT_GC void brixGCEnterManagedCallback(void);
 extern "C" BRIX_WITHOUT_GC void brixGCLeaveManagedCallback(void);
 extern "C" BRIX_WITHOUT_GC void brixGCEnterForeignCallback(void);
@@ -93,11 +94,11 @@ BRIX_WITHOUT_GC void brixGCRegisterTask(BxTask* task);
 BRIX_WITHOUT_GC void brixGCUnregisterTask(BxTask* task);
 BRIX_WITHOUT_GC void brixGCRegisterThread(BxThread* thread);
 BRIX_WITHOUT_GC void brixGCUnregisterThread(BxThread* thread);
-// Generated thread-local init/flush callbacks can execute managed code before a worker owns a
-// task. Bracket those taskless callbacks so a scheduler handshake either waits for their final
-// publication or completes before they begin.
-BRIX_WITHOUT_GC void brixGCBeginThreadLocalCallback(BxThread* thread);
-BRIX_WITHOUT_GC void brixGCEndThreadLocalCallback(BxThread* thread);
+// Managed code that runs on the calling OS thread without a task, such as generated thread-local
+// init/flush callbacks on a worker or a native callback on a thread a C library created, is
+// bracketed so a handshake either waits for its final publication or completes before it begins.
+BRIX_WITHOUT_GC void brixGCBeginThreadLocalCallback(void);
+BRIX_WITHOUT_GC void brixGCEndThreadLocalCallback(void);
 extern "C" BRIX_WITHOUT_GC bool brixGCThreadHasLocalCallbackRegistration(void);
 BRIX_WITHOUT_GC void brixGCSetTaskState(BxTask* task, uint32_t state);
 BRIX_WITHOUT_GC void brixGCSetTaskStateAndContext(

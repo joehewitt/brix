@@ -1050,3 +1050,59 @@ Exception: No C function "strlen" accepts (U64); it is declared as "strlen(CPoin
 0
 true
 ```
+
+### A collection waits while a thread C created runs a callback, after a callback nested in it has returned, and not once it has returned
+
+```yumi
+/pthread.h
+/stdlib.h
+/unistd.h
+/BxGC/BxGC.h
+
+. flags = C:calloc(3, 4) as CPointer'I32
+. handle = C:calloc(1, 8) as CPointer'Pointer
+C:pthread_create(handle as Pointer, null, run as Start, flags as Pointer)
+while flags[0] == 0
+    C:usleep(1000)
+C:brixCollect()
+-- flags[1] == 1
+C:pthread_join(handle[0], null)
+-- flags[2]
+C:brixCollect()
+
+━━━━━━━━━━━━━━━━━━━━
+_ Start is (*C) Pointer
+    - context Pointer
+
+━━━━━━━━━━━━━━━━━━━━
+_ Compare is (*C) I32
+    - a CPointer'I32
+    - b CPointer'I32
+
+━━━━━━━━━━━━━━━━━━━━
+_ ascending I32
+    - a CPointer'I32
+    - b CPointer'I32
+
+a[0] - b[0]
+
+━━━━━━━━━━━━━━━━━━━━
+_ do run Pointer
+    - context Pointer
+
+. flags = context as CPointer'I32
+. kept = [5, 6, 7]
+. values = Array'I32([3, 1, 2])
+C:qsort(values, values.length, I32.size, ascending as Compare)
+C:brixCollect()
+flags[0] = 1
+C:usleep(30000)
+flags[2] = (kept[0] + kept[1] + kept[2] + values[0]) as I32
+flags[1] = 1
+= null
+```
+
+```output
+true
+19
+```

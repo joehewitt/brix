@@ -72,7 +72,7 @@ static pthread_cond_t gGCHandshakeCond = PTHREAD_COND_INITIALIZER;
 static uint32_t gGCHandshakeReason = 0;
 static uint64_t gGCHandshakeEpoch = 0;
 static BxTask* gGCHandshakeOwnerTask = NULL;
-static BxThread* gGCHandshakeOwnerThread = NULL;
+static const void* gGCHandshakeOwnerThread = NULL;
 static size_t gGCHandshakeTasksWaited = 0;
 static uint64_t gGCHandshakeSlowestTaskNanos = 0;
 static size_t gGCHandshakeReportCount = 0;
@@ -95,7 +95,7 @@ struct BxGCHandshakeTaskRecord {
 };
 static std::vector<BxGCHandshakeTaskRecord> gGCHandshakeTasks;
 static std::vector<BxThread*> gGCThreads;
-static std::vector<BxThread*> gGCThreadLocalCallbacks;
+static std::vector<const void*> gGCThreadLocalCallbacks;
 static thread_local uint32_t gGCThreadLocalCallbackDepth = 0;
 static thread_local uint32_t gGCRuntimeCriticalDepth = 0;
 static thread_local uint32_t gGCBlockingDepth = 0;
@@ -110,6 +110,7 @@ static thread_local uint32_t gGCManagedCallbackDepth = 0;
 static thread_local BxGCManagedCallbackKind gGCManagedCallbackKind =
     BxGCManagedCallbackNone;
 static thread_local std::vector<uint64_t> gGCManagedCallbackRegisters;
+static thread_local uint64_t gGCTasklessCallbackAllocationControl = 0;
 
 struct BxGCHandshakeWaitSample {
     size_t recordIndex;
@@ -548,9 +549,14 @@ brixGCAllTasksAcknowledgedLocked(BxTask* currentTask) {
     return true;
 }
 
+static const void*
+brixGCCurrentThreadIdentity() {
+    return &gGCThreadLocalCallbackDepth;
+}
+
 static bool
-brixGCThreadLocalCallbacksStableLocked(BxThread* currentThread) {
-    for (BxThread* thread : gGCThreadLocalCallbacks) {
+brixGCThreadLocalCallbacksStableLocked(const void* currentThread) {
+    for (const void* thread : gGCThreadLocalCallbacks) {
         if (thread != currentThread) {
             return false;
         }
@@ -559,7 +565,7 @@ brixGCThreadLocalCallbacksStableLocked(BxThread* currentThread) {
 }
 
 static bool
-brixGCHandshakeReadyLocked(BxTask* currentTask, BxThread* currentThread) {
+brixGCHandshakeReadyLocked(BxTask* currentTask, const void* currentThread) {
     return brixGCAllTasksAcknowledgedLocked(currentTask) &&
         brixGCThreadLocalCallbacksStableLocked(currentThread);
 }
@@ -733,7 +739,7 @@ brixGCAcknowledgeRunningTask(BxTask* task, uint32_t reason, uint64_t epoch) {
 static void
 brixGCHandshakeBeginInternal(uint32_t reason, uint64_t reportAfterUsec) {
     BxTask* currentTask = brixGCActiveTask();
-    BxThread* currentThread = brixGetActiveThread();
+    const void* currentThread = brixGCCurrentThreadIdentity();
 
     // The owner does not execute the ordinary safepoint acknowledgement path. Donate its
     // buffered pointer publications before it becomes the scanning owner for this epoch.
@@ -925,18 +931,10 @@ brixGCUnregisterThread(BxThread* thread) {
 }
 
 void
-brixGCBeginThreadLocalCallback(BxThread* thread) {
-    if (!thread) {
-        return;
-    }
-
+brixGCBeginThreadLocalCallback() {
+    const void* thread = brixGCCurrentThreadIdentity();
     pthread_mutex_lock(&gGCHandshakeLock);
-    bool alreadyRegistered = gGCThreadLocalCallbackDepth != 0 &&
-        std::find(
-            gGCThreadLocalCallbacks.begin(),
-            gGCThreadLocalCallbacks.end(),
-            thread) != gGCThreadLocalCallbacks.end();
-    while (!alreadyRegistered &&
+    while (gGCThreadLocalCallbackDepth == 0 &&
             brixGCHandshakeActiveLocked() &&
             thread != gGCHandshakeOwnerThread) {
         pthread_cond_wait(&gGCHandshakeCond, &gGCHandshakeLock);
@@ -948,11 +946,8 @@ brixGCBeginThreadLocalCallback(BxThread* thread) {
 }
 
 void
-brixGCEndThreadLocalCallback(BxThread* thread) {
-    if (!thread) {
-        return;
-    }
-
+brixGCEndThreadLocalCallback() {
+    const void* thread = brixGCCurrentThreadIdentity();
     pthread_mutex_lock(&gGCHandshakeLock);
     auto found = std::find(
         gGCThreadLocalCallbacks.rbegin(),
@@ -1653,13 +1648,10 @@ brixGCEnterManagedCallback() {
         return;
     }
 
-    uint32_t previousDepth = gGCManagedCallbackDepth++;
-    if (previousDepth == 0) {
-        BxThread* thread = brixGetActiveThread();
-        if (thread) {
-            brixGCBeginThreadLocalCallback(thread);
-            gGCManagedCallbackKind = BxGCManagedCallbackTaskless;
-        }
+    if (gGCManagedCallbackDepth++ == 0) {
+        brixGCBeginThreadLocalCallback();
+        brixGCRevalidateThreadAllocation(&gGCTasklessCallbackAllocationControl);
+        gGCManagedCallbackKind = BxGCManagedCallbackTaskless;
     }
 }
 
@@ -1689,10 +1681,8 @@ brixGCLeaveManagedCallback() {
             BxTaskGCStateInZone,
             task ? task->getGCBlockingContextSnapshot() : NULL);
     } else if (kind == BxGCManagedCallbackTaskless) {
-        BxThread* thread = brixGetActiveThread();
-        if (thread) {
-            brixGCEndThreadLocalCallback(thread);
-        }
+        brixGCRuntimeFlushWriteBarrierBuffer();
+        brixGCEndThreadLocalCallback();
     }
 }
 

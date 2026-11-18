@@ -167,6 +167,9 @@ local, a parameter, or a struct local. A pointer local declared with no value st
   `/core/intrinsics`. The object must stay referenced from Brix while C holds it; see
   [What the collector follows](#what-the-collector-follows).
 - **Panics** in a callback end the task as anywhere else.
+- **Threads C creates.** C may call a callback on a thread of its own, with no task. The
+  collector does not start or finish a step while such a callback runs, so a long one, or one that
+  blocks, holds the collector until it returns.
 
 ### How a C call runs
 

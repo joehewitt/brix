@@ -79,7 +79,7 @@ BxThread::~BxThread() {
     if (taskless) {
         // Keep teardown in the taskless-callback participant set until the thread-local root can
         // no longer be snapshotted. MarkSetup must not retain a base that teardown then frees.
-        brixGCBeginThreadLocalCallback(this);
+        brixGCBeginThreadLocalCallback();
     }
     flushThreadLocals(false);
     brixSetActiveGCThreadCacheIfAvailable(NULL);
@@ -93,7 +93,7 @@ BxThread::~BxThread() {
     }
     brixGCUnregisterThread(this);
     if (taskless) {
-        brixGCEndThreadLocalCallback(this);
+        brixGCEndThreadLocalCallback();
     }
     brixRemoveSignalStack(signalStack);
 }
@@ -127,11 +127,11 @@ BxThread::initializeThreadLocals() {
     if (init) {
         bool taskless = activeTask == NULL;
         if (taskless) {
-            brixGCBeginThreadLocalCallback(this);
+            brixGCBeginThreadLocalCallback();
         }
         init();
         if (taskless) {
-            brixGCEndThreadLocalCallback(this);
+            brixGCEndThreadLocalCallback();
         }
     }
 }
@@ -152,11 +152,11 @@ BxThread::flushThreadLocalCallback(bool bracketTasklessCallback) {
     }
     bool taskless = bracketTasklessCallback && activeTask == NULL;
     if (taskless) {
-        brixGCBeginThreadLocalCallback(this);
+        brixGCBeginThreadLocalCallback();
     }
     brixGetThreadLocalFlush()();
     if (taskless) {
-        brixGCEndThreadLocalCallback(this);
+        brixGCEndThreadLocalCallback();
     }
 }
 
