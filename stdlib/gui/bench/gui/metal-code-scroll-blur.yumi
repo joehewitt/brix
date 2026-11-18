@@ -1,0 +1,158 @@
+`benchmark.meta description: Offscreen Metal frames scrolling a 1200x900 CodeEditor one and two rows at a time through 4,000 lines of plain text, first sharp, then under the scroll blur filter sized from each frame's distance, with the first blurred frame timed on its own.
+`benchmark.meta timing: not-recommended
+`benchmark.meta profiles: gui-metal
+
+/code/code-session
+/core/markup
+/graphics/color
+/graphics/primitives
+/graphics/shader
+/gui
+/gui/code-editor
+/gui/metal
+/gui/scene
+/stream/sort
+/time/timer
+
+_ code-scroll-line-count Size = 4000
+_ code-scroll-start-line Size = 200
+_ code-scroll-warmup Size = 12
+_ code-scroll-frames Size = 60
+
+. root = CodeScrollBenchRoot()
+markup-mount-root(root, root)
+root.markup-batch-queue.checkpoint()
+root.code.show(CodeSession("\n".join(code-scroll-line(each) in 0 .. < code-scroll-line-count)))
+root.markup-batch-queue.checkpoint()
+root.layout(Rect(0, 0, 1200, 900))
+. scene = DisplayScene(2, white)
+. renderer = MetalOffscreenRenderer(1200, 900, 2, white)
+. checksum Size
+do use renderer
+    scene.build(root)
+    scene.commit()
+    scene.frame-metal(renderer)
+    renderer.finish()
+    . sharp = code-scroll-pass(root, scene, renderer, false)
+    . blurred = code-scroll-pass(root, scene, renderer, true)
+    ?! Panic("Blurred code scroll frames drew no filter pass")
+        if blurred.draw-calls <= sharp.draw-calls
+    //gui.bench.metal.code-scroll-cpu-p50-ns += code-scroll-percentile(sharp.cpu, 50)
+    //gui.bench.metal.code-scroll-cpu-p99-ns += code-scroll-percentile(sharp.cpu, 99)
+    //gui.bench.metal.code-scroll-gpu-p50-ns += code-scroll-percentile(sharp.gpu, 50)
+    //gui.bench.metal.code-blur-cpu-p50-ns += code-scroll-percentile(blurred.cpu, 50)
+    //gui.bench.metal.code-blur-cpu-p99-ns += code-scroll-percentile(blurred.cpu, 99)
+    //gui.bench.metal.code-blur-gpu-p50-ns += code-scroll-percentile(blurred.gpu, 50)
+    //gui.bench.metal.code-blur-first-cpu-ns += blurred.first
+    checksum = (blurred.top as Int) + sharp.draw-calls + blurred.draw-calls
+scene.close()
+root.close()
+markup-release(root)
+-- "bench-result gui/metal-code-scroll-blur checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodeScrollBenchRoot is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This • flex-col
+    <CodeEditor code • flex:1
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
+_ CodeScrollPass
+
++ cpu [U64]
++ gpu [U64]
++ draw-calls Size
++ first U64
++ top Length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do code-scroll-pass CodeScrollPass
+    - root CodeScrollBenchRoot
+    - scene DisplayScene
+    - renderer MetalOffscreenRenderer
+    - blurs Bool
+
+. pass = CodeScrollPass()
+. code = root.code
+. line = code-scroll-start-line
+code.scroll-to-line(line)
+root.update-layout()
+scene.update(root)
+scene.commit()
+scene.frame-metal(renderer)
+renderer.finish()
+for index in 0 .. < code-scroll-warmup + code-scroll-frames
+    . before = code.text-scroll.y
+    line += if index % 2 == 0 then 2 else 1
+    . started = monotonic-time-nanoseconds()
+    code.scroll-to-line(line)
+    root.update-layout()
+    . moved = code.text-scroll.y - before
+    if blurs
+        code.filters = code-scroll-blurs(moved, 0, 0)
+        root.markup-batch-queue.checkpoint()
+    scene.update(root)
+    scene.commit()
+    scene.frame-metal(renderer)
+    . spent = monotonic-time-nanoseconds() - started
+    renderer.finish()
+    ?! Panic("Code scroll frame did not move")
+        if moved <= 0
+    ?! Panic("Code scroll frame skipped Metal operations")
+        if renderer.skipped-ops != 0
+    if index == 0
+        pass.first = spent
+    if index >= code-scroll-warmup
+        pass.cpu += spent
+        pass.draw-calls += renderer.draw-calls as Size
+        if renderer.gpu-nanos >= 0
+            pass.gpu += renderer.gpu-nanos as U64
+?! Panic("Code scroll frames reported no GPU time")
+    if pass.gpu.length == 0
+pass.top = code.text-scroll.y
+if blurs
+    code.filters = List'ShaderFilter()
+    root.markup-batch-queue.checkpoint()
+= pass
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-scroll-line String
+    - index Size
+
+match index % 6
+    |= 0
+        "━━━━━━━━━━━━━━━━━━━━"
+    |= 1
+        "+ do bench-step-$index Size"
+    |= 2
+        "    - offset Size = $index"
+    |= 3
+        ""
+    |= 4
+        ". total = offset * $index + measure(items[$index % 16], scale)"
+    ??
+        "= total + clamp(offset - $index, 0, limit) // checked"
+
+━━━━━━━━━━━━━━━━━━━━
+_ code-scroll-percentile U64
+    - values [U64]
+    - percentile Size
+
+|? !values
+    0
+??
+    sorted[index]
+
+.. sorted = sort(values) • using :: left, right => if left < right then .lesser else .greater
+.. index = ((sorted.length - 1) * percentile) / 100
