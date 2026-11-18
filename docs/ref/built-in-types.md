@@ -573,7 +573,7 @@ change to the collection, until `unobserve-collection`. A mutation's `kind` is `
 | `map`, `filter`, `map-filter`, `tap` | The functions pipeline stages `*>`, `?>`, `?*>` and `*\|>` call. | Streams |
 | `map-do` | Runs a step for each item now. | Streams |
 | `flat-map` | The items of a stream of streams. | Streams |
-| `publisher` | A stream as a broadcaster. | Streams |
+| `publisher` | A stream as a broadcaster, which closes when the stream ends. | Streams |
 | `observe-collection`, `unobserve-collection` | Watch a collection's changes. | [Watching a collection](#watching-a-collection) |
 | `identity` | Gives its argument. | |
 | `type-identity` | A predicate that tests whether a value is of a type. | [Type information](#type-information) |

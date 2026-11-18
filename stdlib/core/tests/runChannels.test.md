@@ -321,6 +321,51 @@ true
 true
 ```
 
+### Publishing a finite stream closes the broadcaster once its subscribers get every item
+
+```yumi
+. gate SyncBufferedChannel'Bool
+drain(gate, 2)
+drain(gate, 0)
+for n in publisher([3, 4])
+    -- n
+-- "list done"
+
+━━━━━━━━━━━━━━━━━━━━
++ do drain
+    - gate SyncBufferedChannel'Bool
+    - count Int
+
+. pub = publisher(gated(gate, count))
+. reader = pub as Iterable'Int
+reader.begin-iterating()
+gate <- true
+. item = <- reader
+while item
+    -- item
+    item = <- reader
+-- pub.is-closed
+
+━━━━━━━━━━━━━━━━━━━━
++ do gated
+    - gate SyncBufferedChannel'Bool
+    - count Int
+
+<- gate
+for n in 0 .. < count
+    <= n + 1
+```
+
+```output
+1
+2
+true
+true
+3
+4
+list done
+```
+
 ### await hands each result across threads, including when the producer posts before the waiter parks.
 
 ```yumi
