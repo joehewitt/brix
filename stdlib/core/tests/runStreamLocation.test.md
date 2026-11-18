@@ -318,6 +318,26 @@ c
 Stream mark is no longer valid
 ```
 
+### A bulk read whose refill releases as much as the source gives still reads its full count.
+
+```yumi
+/core/tests/support/byte-source
+/core/tokenstream
+
+. data = TestByteSource'Byte(("x" * 8192) as Byte[])
+data.chunk-limit = 1024
+. stream = ChunkedTokenStream'Byte(data)
+-- stream.read(1024, Byte[1024])
+-- stream.read(2048, Byte[2048])
+-- stream.read(3072, Byte[3072])
+```
+
+```output
+1024
+2048
+3072
+```
+
 ## Pattern Backtracking
 
 ### The first alternative consumes "ab\nc" before failing; the second should restart at (0, 0).
