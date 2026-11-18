@@ -14,6 +14,7 @@
 /graphics/outline
 /graphics/point
 /graphics/primitives
+/graphics/shader
 /graphics/text
 /gui
 /gui/clipboard
@@ -231,6 +232,7 @@ _ source-add-caret-gap Length = 3
 + find CodeFind?
 + definition-key KeyCombo?
 + top-inset Length = 0
++ blurs-scrolling = false
 + event modified-changed Bool
 + event save-requested SourceSession
 + event definition-requested SourcePoint
@@ -260,12 +262,16 @@ _ edit-stamp U64
 _ marked-stamp U64
 _ is-marking = false
 _ shown-folds U64?
+_ scroll-filters [ShaderFilter]
+_ scroll-blur-from Length
+_ event scroll-blur-settled Bool
 
 . rebase < baseline
 . inset-changed < top-inset
 
 • This • code-editor-text flex-row
     focus-mode = FocusMode.input
+    filters = #scroll-filters
     when #is-control-hovered
         cursor = CursorStyle.pointing-hand
     when #has-link
@@ -767,6 +773,36 @@ clear-link()
 widen()
 number-rows()
 invalidate-paint()
+
+────────────────────
+_ scroll-blur ~>
+
+~> scroll-resting
+    then scroll-blurring(change.old-position.y) for change on region.scroll-changed when blurs-scrolling && change.cause.is-direct
+
+~> scroll-blurring(from)
+    do scroll-blur-from = from
+
+    do finally
+        scroll-filters = List'ShaderFilter()
+
+    for tick on frames
+        step-scroll-blur()
+
+    then scroll-resting on scroll-blur-settled
+
+────────────────────
+_ do step-scroll-blur
+
+. top = region.scroll-y
+. moved = top - scroll-blur-from
+scroll-blur-from = top
+if moved == 0 || !blurs-scrolling
+    scroll-blur-settled <- true
+    =
+. stuck = stuck-rows()
+. still-top = if stuck.length > 0 then top-inset else 0
+scroll-filters = code-scroll-blurs(moved, still-top, code-stuck-height(stuck, source-row-length))
 
 ────────────────────
 _ do refresh
