@@ -741,7 +741,7 @@ present()
 _ entries = List'StyleMotionRun()
 _ layers = List'StyleMotionLayer()
 _ tracks = List'KeyframeTrack()
-_ waiters = List'Semaphore()
+_ ended Completion'Bool?
 
 ────────────────────
 + This
@@ -794,9 +794,9 @@ is-scrubbed = true
 + do wait
 
 =? if is-done
-. signal = Semaphore()
-waiters += signal
-signal.wait()
+. done = ended ?? Completion'Bool()
+ended = done
+done.await()
 
 ────────────────────
 + do cancel
@@ -847,9 +847,8 @@ signal()
 _ do signal
 
 host.play-ended(this)
-for waiter in waiters
-    waiter.post()
-waiters = List'Semaphore()
+ended?.finish(true)
+ended = null
 
 ────────────────────
 _ do iterations Size?
