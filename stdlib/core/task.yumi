@@ -338,25 +338,31 @@ C:brixUnlockMutex(native)
 + is-finished = false
 + is-abandoned = false
 
-_ task = Task()
+_ waiters = List'U64()
 
 ────────────────────
 + do await Value?
 
-if !is-finished
-    . was-canceled = task.suspend()
-    is-abandoned = was-canceled
-    check-task-cancelation(was-canceled)
+=? value if is-finished
+. task = Task()
+waiters += task.handle
+while !is-finished
+    if task.suspend()
+        if !is-finished && waiters.length == 1
+            is-abandoned = true
+        waiters -= task.handle
+        check-task-cancelation(true)
 = value
 
 ────────────────────
 + do finish
     - result Value?
 
-=? if is-abandoned
 value = result
 is-finished = true
-task.resume-later()
+for waiter in waiters
+    C:brixResumeTaskLater(waiter)
+waiters.clear()
 
 ━━━━━━━━━━━━━━━━━━━━
 + extend Semaphore'Void

@@ -295,6 +295,8 @@ awaited 36
 - **`Semaphore`** passes one value from a task that calls `post` to one that calls `await`. Each
   `post` waits until a task takes its value.
 - **`Completion`** holds a value that one task finishes with `finish` and others `await`.
+  `finish` wakes every task waiting in `await` and no other, and a task cancelled while it waits
+  stops waiting.
 
 ## Workers
 

@@ -3767,6 +3767,28 @@ cleanup saw Task terminated
 cleanup done
 ```
 
+### Finishing a completion wakes only the tasks that await it: another task may await it, and its creator's unrelated wait is left alone.
+
+```yumi
+. completion = Completion'Int()
+. gate = Semaphore'Int()
+. other = do new
+    -- "other awaited ${completion.await()}"
+do new
+    completion.finish(41)
+    do new
+        gate.post(7)
+-- "gate ${gate.await()}"
+-- "main awaited ${completion.await()}"
+other.wait()
+```
+
+```output
+other awaited 41
+gate 7
+main awaited 41
+```
+
 ### `cancel-later` cancels a task without yielding to it: the active task goes on, and the task ends at its wait once its turn comes.
 
 ```yumi
