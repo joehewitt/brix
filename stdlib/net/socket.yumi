@@ -172,7 +172,10 @@ _ socket TCP'Token
 _ ssl CPointer'I8
 _ read-bio CPointer'I8
 _ write-bio CPointer'I8
-_ util-buf = Byte[4096]
+_ read-buf = Byte[4096]
+_ write-buf = Byte[4096]
+_ write-lock = Mutex()
+_ is-flushing = false
 
 ────────────────────
 + This ?! Error
@@ -259,10 +262,10 @@ if r != 1
 ────────────────────
 _ do read-to-bio Bool
 
-. read-size = socket.read(util-buf.size, util-buf)
+. read-size = socket.read(read-buf.size, read-buf)
 =? if read-size == 0
 
-C:BIO_write(read-bio, util-buf, read-size)
+C:BIO_write(read-bio, read-buf, read-size)
     ?! IOError("Unable to write to SSL")
         if it == -1
 
@@ -271,16 +274,15 @@ C:BIO_write(read-bio, util-buf, read-size)
 ────────────────────
 _ do flush-writes
 
-while true
-    . pending = C:BIO_ctrl_pending(write-bio)
-    if pending > 0
-        . bio-read-size = C:BIO_read(write-bio, util-buf, util-buf.size)
-            ?! IOError("Unable to write to SSL")
-                if it == -1
-        if bio-read-size > 0
-            socket.write(util-buf, bio-read-size)
-    else
-        break
+use write-lock
+is-flushing = true
+do finally is-flushing = false
+while C:BIO_ctrl_pending(write-bio) > 0
+    . bio-read-size = C:BIO_read(write-bio, write-buf, write-buf.size)
+        ?! IOError("Unable to write to SSL")
+            if it == -1
+    if bio-read-size > 0
+        socket.write(write-buf, bio-read-size)
 
 ────────────────────
 _ do flush-reads Size?
@@ -294,7 +296,8 @@ if read-size > 0
 . err = C:SSL_get_error(ssl, read-size) as SSLErrorCode
 =? if err == .want-read
 if err == .want-write
-    flush-writes()
+    if !is-flushing
+        flush-writes()
     = null
 else if err == .zero-return
     = 0
