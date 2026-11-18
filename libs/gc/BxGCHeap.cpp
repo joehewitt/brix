@@ -381,11 +381,13 @@ GCHeap::findLargeSpanForAllocationLocked(SizeClass sizeClass) {
     while (large) {
         GCSpan* span = static_cast<GCSpan*>(large);
         large = span->listNext;
-        unsigned char reuse = span->reuseState();
+        if (span->sizeClass.size != sizeClass.size || !span->canAllocateNow()) {
+            continue;
+        }
+        unsigned char reuse = span->rawReuseState;
         bool canReuse = reuse == kSpanReuseNew || reuse == kSpanReuseActive ||
-            reuse == kSpanReuseReset;
-        if (span->sizeClass.size == sizeClass.size && span->canAllocateNow() &&
-                !span->isFull() && canReuse) {
+            reuse == kSpanReuseSwept || reuse == kSpanReuseReset;
+        if (canReuse && !span->isFull()) {
             // Exact slot geometry is required, then highest occupancy is the best fit: it
             // consumes the least remaining capacity and packs survivors before sparse spans.
             if (!best || span->objectsUsed > best->objectsUsed) {
