@@ -176,13 +176,13 @@ extern "C" BRIX_WITHOUT_GC bool brixMachSendParcel(
 extern "C" BRIX_WITHOUT_GC bool brixMachReceiveParcel(
     uint32_t port, uint32_t* ports, int32_t portCapacity, void* bytes, int64_t byteCapacity, int32_t* counts);
 
-extern "C" BxSemaphore* brixNewSemaphore();
+extern "C" BRIX_WITHOUT_BLOCKING BxSemaphore* brixNewSemaphore();
 extern "C" BRIX_WITHOUT_BLOCKING bool brixWaitForSemaphore(
     BxSemaphore* sem, void* buf, size_t capacity, BxTaskMutex* mutex);
 extern "C" BRIX_WITHOUT_BLOCKING void brixPostSemaphore(
     BxSemaphore* sem, void* data, size_t sizeOfData);
 
-extern "C" BxTaskMutex* brixNewMutex();
+extern "C" BRIX_WITHOUT_BLOCKING BxTaskMutex* brixNewMutex();
 extern "C" BRIX_WITHOUT_BLOCKING void brixLockMutex(BxTaskMutex* mutex);
 extern "C" void brixUnlockMutex(BxTaskMutex* mutex);
 

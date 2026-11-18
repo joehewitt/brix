@@ -966,12 +966,13 @@ Exception: storing a managed pointer is not allowed in a GC-free zone (entered a
 ```yumi compile-error
 /BxEvents/BxEvents.h
 
--- direct()
+-- direct(C:brixNewMutex())
 
 ━━━━━━━━━━━━━━━━━━━━
 + do direct Int without suspend
+    - native CPointer'Char8
 
-lock(C:brixNewMutex())
+lock(native)
 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -983,7 +984,7 @@ C:brixLockMutex(native)
 
 ```output
 Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:brixLockMutex(native)
-<no file:16>
+<no file:17>
     C:brixLockMutex(native)
     ^^^^^^^^^^^^^^^^^^^^^^^
 ```
@@ -1006,10 +1007,12 @@ Exception: cannot suspend under 'without suspend': direct (without suspend) → 
 + Impl
     is Source
 
+_ native CPointer'Char8 = C:brixNewMutex()
+
 ────────────────────
 + do take Int
 
-C:brixLockMutex(C:brixNewMutex())
+C:brixLockMutex(native)
 = 1
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -1020,10 +1023,10 @@ C:brixLockMutex(C:brixNewMutex())
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:brixLockMutex(C:brixNewMutex())
-<no file:20>
-    C:brixLockMutex(C:brixNewMutex())
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:brixLockMutex(native)
+<no file:22>
+    C:brixLockMutex(native)
+    ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A runtime function that makes text allocates

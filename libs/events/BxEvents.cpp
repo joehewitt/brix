@@ -1479,18 +1479,10 @@ brixCancelTimerEventListener(BxSemaphore* sem) {
 
 // =============================================================================================
 
-// static void
-// brixSemaphoreFinalizer(void* obj, void* clientData) {
-//     BxSemaphore* sem = static_cast<BxSemaphore*>(obj);
-//     sem->~BxSemaphore();
-// }
-
 extern "C" BxSemaphore*
 brixNewSemaphore() {
-    // BxSemaphore* sem = new BxSemaphore();
-    BxSemaphore* sem = static_cast<BxSemaphore*>(BX_MALLOC(sizeof(BxSemaphore)));
+    BxSemaphore* sem = reinterpret_cast<BxSemaphore*>(brixAllocObject(sizeof(BxSemaphore)));
     new (sem) BxSemaphore();
-    // GC_REGISTER_FINALIZER(sem, brixSemaphoreFinalizer, 0, 0, 0);
     return sem;
 }
 
@@ -1507,19 +1499,10 @@ brixPostSemaphore(BxSemaphore* sem, void* data, size_t sizeOfData) {
 
 // *************************************************************************************************
 
-static void
-brixMutexFinalizer(void* obj, void* clientData) {
-    BxTaskMutex* mutex = static_cast<BxTaskMutex*>(obj);
-    mutex->~BxTaskMutex();
-}
-
 extern "C" BxTaskMutex*
 brixNewMutex() {
-    BxTaskMutex* mutex = static_cast<BxTaskMutex*>(BX_MALLOC(sizeof(BxTaskMutex)));
+    BxTaskMutex* mutex = reinterpret_cast<BxTaskMutex*>(brixAllocObject(sizeof(BxTaskMutex)));
     new (mutex) BxTaskMutex();
-#ifdef BX_ENABLE_GC
-    GC_REGISTER_FINALIZER(mutex, brixMutexFinalizer, 0, 0, 0);
-#endif
     return mutex;
 }
 

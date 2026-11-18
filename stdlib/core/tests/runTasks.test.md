@@ -2279,6 +2279,72 @@ process.kill()
 read 0
 ```
 
+### A semaphore that only its parked waiters still hold keeps working across collections.
+
+```yumi
+/BxGC/BxGC.h
+
+. results = SyncChannel'Int()
+. sem = start-waiter(results)
+. canceled = do new
+    Semaphore'Int().await()
+C:brixCollect()
+sem.post(41)
+canceled.cancel-later()
+C:brixCollect()
+C:brixCollect()
+canceled.wait()
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ do start-waiter Semaphore'Int
+    - results SyncChannel'Int
+
+. sem = Semaphore'Int()
+do new
+    results <- (sem.await() ?? 0) + 1
+= sem
+```
+
+```output
+42
+```
+
+### Copies of a mutex lock it for two contending tasks after the original is dropped.
+
+```yumi
+/BxGC/BxGC.h
+
+. results = SyncChannel'String()
+start-contenders(results)
+C:brixCollect()
+-- <- results
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ do start-contenders
+    - results SyncChannel'String
+
+. m = Mutex()
+. first = m
+. second = m
+first.lock()
+do new
+    second.lock()
+    results <- "second"
+    second.unlock()
+do new
+    C:brixCollect()
+    results <- "first"
+    first.unlock()
+```
+
+```output
+first
+second
+```
+
+
 ### A task whose cancellation reaches its root ends quietly after its cleanups run.
 
 ```yumi
