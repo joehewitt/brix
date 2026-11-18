@@ -36,20 +36,22 @@ any(stream) • where each == contained
     - with Selector'Item'Result
 
 . sources SyncChannel'(SyncBufferedChannel'Item)
-
-do new
-    . latest Optional'(SyncBufferedChannel'Item)
+. switcher = do new
+    . latest Task?
+    do finally
+        do without cancel
+            latest?.close()
     for stream in streams
-        latest?.close()
+        latest?.cancel()
         . output = SyncBufferedChannel'Item()
-        do new
-            for item in stream when !output.is-closed
+        latest = do new
+            do finally output.close()
+            for item in stream
                 output <- item
-            output.close()
-
-        latest = output
         sources <- output
     sources.close()
+    latest?.wait()
+do finally switcher.close()
 
 for source in sources
     for item in source
