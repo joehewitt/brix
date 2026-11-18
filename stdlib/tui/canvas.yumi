@@ -47,7 +47,8 @@ _ has-transparent-cells = false
     - size PSize
     - is-transparent = false
 
-. length = size.width * size.height
+?! Panic("canvas size must not be negative") if size.width < 0 || size.height < 0
+. length = (size.width as Size) * size.height
 
 width = size.width
 height = size.height
@@ -306,8 +307,8 @@ copy(Rect(0, 0, width, height), source)
 
 for y in min-y .. < max-y
     . count = max-x - min-x
-    . source-index = y * source.width + min-x
-    . target-index = y * width + min-x
+    . source-index = source.buffer-index(min-x, y)
+    . target-index = buffer-index(min-x, y)
     for x in 0 .. < count
         text-buffer[target-index + x] = source.text-buffer[source-index + x]
         set-display-width-cell(target-index + x, y, source.display-width-buffer[source-index + x])
@@ -349,8 +350,8 @@ for y in min-y .. < max-y
     for x in min-x .. < max-x
         . source-x = x - origin-x
         . source-y = y - origin-y
-        . source-index = source-y * source.width + source-x
-        . target-index = y * width + x
+        . source-index = source.buffer-index(source-x, source-y)
+        . target-index = buffer-index(x, y)
         . coverage =
             |? source.has-transparent-cells
                 source.coverage-buffer[source-index]
@@ -557,8 +558,8 @@ _ do is-same-cell
 =? if point.x >= previous.width
 =? if point.y >= previous.height
 
-. index = point.y * width + point.x
-. previous-index = point.y * previous.width + point.x
+. index = buffer-index(point.x, point.y)
+. previous-index = previous.buffer-index(point.x, point.y)
 
 =? if text-buffer[index] != previous.text-buffer[previous-index]
 =? if display-width-buffer[index] != previous.display-width-buffer[previous-index]
@@ -728,8 +729,9 @@ _ do clear-display-run
 text-ptr?[0 .. < clear-count] = ' '
 fg-ptr?[0 .. < clear-count] = default-text-color
 
+. row-start = buffer-index(start, y)
 for i in 0 .. < clear-count
-    set-display-width-cell(y * width + start + i, y, 1)
+    set-display-width-cell(row-start + i, y, 1)
 
 ────────────────────
 _ do paint-display-cell
@@ -738,7 +740,7 @@ _ do paint-display-cell
     - y Coord
     - display-width Coord
 
-. index = y * width + x
+. index = buffer-index(x, y)
 text-buffer[index] = char
 set-display-width-cell(index, y, display-width as U8)
 fg-buffer[index] = state.text-color
@@ -801,7 +803,7 @@ if width <= 0
 if start >= width
     start = width - 1
 
-while start > 0 && display-width-buffer[y * width + start] == 0
+while start > 0 && display-width-buffer[buffer-index(start, y)] == 0
     start -= 1
 
 = start
@@ -815,7 +817,7 @@ if width <= 0
     = 0
 
 . end = min(x, width)
-while end < width && display-width-buffer[y * width + end] == 0
+while end < width && display-width-buffer[buffer-index(end, y)] == 0
     end += 1
 
 = end
@@ -892,7 +894,7 @@ _ do mark-coverage-cell
 
 =? if !has-transparent-cells
 
-. index = y * width + x
+. index = buffer-index(x, y)
 if index < coverage-buffer.size
     coverage-buffer[index] = coverage-buffer[index] /or/ mask
 
@@ -918,11 +920,17 @@ _ get-pointer
     - x Coord
     - y Coord
 
-|? increment < buf.size
+|? x >= 0 && y >= 0 && increment < buf.size
     buf + increment
 
-.. increment = row-offset + x
-.. row-offset = y * width
+.. increment = buffer-index(x, y)
+
+────────────────────
+_ buffer-index Index
+    - x Coord
+    - y Coord
+
+(y as Index) * width + x
 
 ────────────────────
 _ get-content-bounds
