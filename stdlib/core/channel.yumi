@@ -65,7 +65,7 @@ if is-closed
 
 //this:channel.write -> $?{message}, get-current-task-id()
 
-. reader = readers.pop-first()
+. reader = pop-live-reader()
 if reader
     reader.message = message
     mutex.unlock()
@@ -101,7 +101,13 @@ else if !is-closed
     . was-canceled = reader.task.suspend()
     if was-canceled
         mutex.lock()
-        readers.remove(reader)
+        if reader.is-queued
+            readers.remove(reader)
+        else if reader.message != null
+            . next = pop-live-reader()
+            if next
+                next.message = reader.message
+                next.task.resume-later()
         mutex.unlock()
     check-task-cancelation(was-canceled)
 
@@ -110,6 +116,14 @@ else if !is-closed
     = reader.message
 else
     mutex.unlock()
+
+────────────────────
+_ do pop-live-reader IOWaiter'Message?
+
+. reader = readers.pop-first()
+while reader && reader.task.is-cancel-in-force
+    reader = readers.pop-first()
+= reader
 
 ━━━━━━━━━━━━━━━━━━━━
 + SyncBufferedChannel'Message

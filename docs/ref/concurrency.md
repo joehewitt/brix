@@ -446,6 +446,9 @@ drained
 | `(call (. channel close))`{.brix} | Closes the channel. |
 
 - **Several readers** of one `SyncChannel` or `SyncBufferedChannel` each take different values.
+- **Cancelled readers.** A write to a `SyncChannel` passes over a reader cancelled while it waits
+  and goes to the next reader, or waits for one. A value a `SyncBufferedChannel` gave such a reader
+  goes to the next reader or back to the front of its queue.
 - **Hand-offs.** On the main queue, a write to a `SyncChannel` that a task is waiting to read lets
   the reader run first, and the writer goes on after it.
 - **Streams.** A channel is a stream, so a function that takes a stream takes a channel. A stream

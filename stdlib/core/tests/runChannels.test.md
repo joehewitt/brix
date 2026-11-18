@@ -437,6 +437,37 @@ left 1
 left 2
 ```
 
+### A write to a SyncChannel passes over a reader cancelled while it waits and goes to the next
+
+```yumi
+. numbers SyncChannel'Int
+. cancelled = do new
+    for n in numbers
+        -- "cancelled reader took $n"
+yield-once()
+. other = do new
+    -- "other took ${<- numbers}"
+yield-once()
+cancelled.cancel-later()
+numbers <- 1
+-- "written"
+numbers.close()
+other.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do yield-once
+
+. done = Semaphore()
+do new
+    done.post()
+done.wait()
+```
+
+```output
+other took 1
+written
+```
+
 ### Reads drain what an AsyncBufferedChannel buffered before it closed, and later writes are dropped
 
 ```yumi
