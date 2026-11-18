@@ -20,6 +20,7 @@ _ websocket-guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 _ boundary-8bit = 126
 _ boundary-16bit = 65535
 _ control-limit U64 = 125
+_ unread-message-cost Size = 64
 
 ━━━━━━━━━━━━━━━━━━━━
 + WebSocketHandler is () Void ?! Error
@@ -59,10 +60,11 @@ _ receiver Task
 _ keeper Task?
 _ outgoing = SyncBufferedChannel'Frame()
 
+_ unread WebSocketBudget
 as Iterable'ReadableData for
-_ binary-incoming Frame<>
+_ binary-incoming WebSocketInbox'Frame
 as Iterable'String for
-_ text-incoming String<>
+_ text-incoming WebSocketInbox'String
 
 ────────────────────
 + This ?! Error
@@ -94,6 +96,7 @@ if failure
 protocol = handshake.header("Sec-WebSocket-Protocol")
 //this:network.web.socket.open -> ""
 
+open-inboxes()
 sender = do new send-frames()
 receiver = do new receive-frames(stream)
 
@@ -107,6 +110,7 @@ receiver = do new receive-frames(stream)
     - ping-interval Seconds
     - limit = websocket-message-limit
 
+open-inboxes()
 sender = do new send-frames()
 receiver = do new receive-frames(stream)
 keeper = do new keep-alive(ping-interval)
@@ -159,6 +163,13 @@ begin-closing(code, reason)
 receiver.wait()
 watchdog.cancel()
 sender.wait()
+
+────────────────────
+_ do open-inboxes
+
+unread = WebSocketBudget(limit)
+binary-incoming = WebSocketInbox'Frame(unread)
+text-incoming = WebSocketInbox'String(unread)
 
 ────────────────────
 _ do send-frame
@@ -266,13 +277,81 @@ pending = if message.is-fin then null else message
 _ do deliver WebSocketClose?
     - message Frame
 
+. size = message.payload.size
 if message.op == OpCode.text
     . text = catch? decode-utf8(message.payload)
     =? WebSocketClose.invalid-data if !text
-    text-incoming <- text
+    =? WebSocketClose.policy-violation if !unread.claim(size)
+    text-incoming.push(text, size)
 else
-    binary-incoming <- message
+    =? WebSocketClose.policy-violation if !unread.claim(size)
+    binary-incoming.push(message, size)
 = null
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebSocketBudget
+
+_ lock = Mutex()
+_ capacity Size
+_ used Size = 0
+
+────────────────────
++ This
+    - limit Size
+
+capacity = limit + unread-message-cost
+
+────────────────────
++ do claim Bool
+    - size Size
+
+use lock
+. cost = size + unread-message-cost
+=? false if cost > capacity - used
+used += cost
+= true
+
+────────────────────
++ do release
+    - size Size
+
+use lock
+used -= size + unread-message-cost
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebSocketDelivery'Message is (message Message, size Size)
+
+━━━━━━━━━━━━━━━━━━━━
+_ WebSocketInbox'Message
+    is Iterable'Message
+    is Closable
+
+_ budget WebSocketBudget
+_ deliveries = SyncBufferedChannel'(WebSocketDelivery'Message)()
+
+────────────────────
++ This
+    - budget WebSocketBudget
+
+────────────────────
++ do push
+    - message Message
+    - size Size
+
+deliveries <- WebSocketDelivery(message, size)
+
+────────────────────
++ do <- this Message?
+
+. delivery = <- deliveries
+=? null if !delivery
+budget.release(delivery.size)
+= delivery.message
+
+────────────────────
++ do close
+
+deliveries.close()
 
 ━━━━━━━━━━━━━━━━━━━━
 + is-websocket-request Bool
