@@ -94,9 +94,12 @@ animator-of(animation) != null
 + do wait
     - span Duration
 
-. signal = Semaphore()
-start(null, FrameWait(span, signal))
-signal.wait()
+. done = Completion'Bool()
+. waiting = FrameWait(span, done)
+start(null, waiting)
+do finally
+    cancel(waiting)
+done.await()
 
 ────────────────────
 + do tick
@@ -230,13 +233,12 @@ _ FrameWait
     is FrameAnimation
 
 + span Nanoseconds
-+ signal Semaphore
-+ is-signaled = false
++ done Completion'Bool
 
 ────────────────────
 + This
     - span
-    - signal
+    - done
 
 ────────────────────
 + do advance Bool
@@ -249,9 +251,8 @@ finish()
 ────────────────────
 + do finish
 
-=? if is-signaled
-is-signaled = true
-signal.post()
+=? if done.is-finished
+done.finish(true)
 
 ━━━━━━━━━━━━━━━━━━━━
 + FrameTicks
