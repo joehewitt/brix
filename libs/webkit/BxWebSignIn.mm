@@ -74,7 +74,6 @@ webSignInRunCallback(void* closure) {
         record->callback(record->context, record->status, record->text.c_str());
     }
     delete record;
-    brixTerminateActiveTask();
 }
 
 static void

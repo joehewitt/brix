@@ -94,7 +94,6 @@ fileDialogRunCallback(void* closure) {
         record->callback(record->context, paths.data(), static_cast<int32_t>(paths.size()));
     }
     delete record;
-    brixTerminateActiveTask();
 }
 
 static void

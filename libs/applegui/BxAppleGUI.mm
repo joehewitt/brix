@@ -281,7 +281,6 @@ struct BxGuiInputCallbackRecord : BxGuiCallbackRecord {
 static void
 guiFinishCallbackTask(BxGuiCallbackRecord* record) {
     delete record;
-    brixTerminateActiveTask();
 }
 
 struct BxGuiActionCallbackRecord : BxGuiCallbackRecord {

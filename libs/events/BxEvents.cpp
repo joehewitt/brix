@@ -553,6 +553,7 @@ brixRunMainTaskQueueHost(
 struct BxNativeTaskStart {
     BxTaskStartFunc func;
     void* closure;
+    BxTaskLocalFunc taskLocalInit;
 };
 
 static void
@@ -560,9 +561,13 @@ startNativeTask(void* closure) {
     BxNativeTaskStart* start = static_cast<BxNativeTaskStart*>(closure);
     BxTaskStartFunc func = start->func;
     void* funcClosure = start->closure;
+    BxTaskLocalFunc taskLocalInit = start->taskLocalInit;
     delete start;
-    gTaskLocalInit();
+    if (taskLocalInit) {
+        taskLocalInit();
+    }
     func(funcClosure);
+    brixTerminateActiveTask();
 }
 
 extern "C" bool
@@ -571,10 +576,7 @@ brixScheduleMainTaskFromNative(BxTaskStartFunc func, void* closure) {
     if (!mainQueue || !func || brixProcessTerminationRequested()) {
         return false;
     }
-    if (!gTaskLocalInit) {
-        return mainQueue->startTaskIfRunning(func, closure, gTaskLocalSize);
-    }
-    BxNativeTaskStart* start = new BxNativeTaskStart{func, closure};
+    BxNativeTaskStart* start = new BxNativeTaskStart{func, closure, gTaskLocalInit};
     if (!mainQueue->startTaskIfRunning(startNativeTask, start, gTaskLocalSize)) {
         delete start;
         return false;
@@ -601,7 +603,6 @@ runTaskFinishCallback(void* closure) {
     BxTaskFinishCallback* record = static_cast<BxTaskFinishCallback*>(closure);
     record->callback(record->context);
     releaseTaskFinishCallback(record);
-    brixTerminateActiveTask();
 }
 
 static void
@@ -632,11 +633,7 @@ brixRunMainTaskFromNativeUntilDeadline(
     if (!mainQueue || !thread || !func || brixProcessTerminationRequested()) {
         return BxMainTaskDeadlineFailed;
     }
-    if (!gTaskLocalInit) {
-        return mainQueue->runHostedTaskUntilDeadline(
-            thread, func, closure, gTaskLocalSize, deadlineNanos);
-    }
-    BxNativeTaskStart* start = new BxNativeTaskStart{func, closure};
+    BxNativeTaskStart* start = new BxNativeTaskStart{func, closure, gTaskLocalInit};
     uint32_t result = mainQueue->runHostedTaskUntilDeadline(
         thread, startNativeTask, start, gTaskLocalSize, deadlineNanos);
     if (result == BxMainTaskDeadlineFailed) {

@@ -226,7 +226,6 @@ webViewRunEventCallback(void* closure) {
             record->second.c_str());
     }
     delete record;
-    brixTerminateActiveTask();
 }
 
 struct BxWebViewScriptState {
@@ -280,7 +279,6 @@ webViewRunScriptCallback(void* closure) {
         record->callback(record->context, record->succeeded, record->text.c_str());
     }
     delete record;
-    brixTerminateActiveTask();
 }
 
 static void

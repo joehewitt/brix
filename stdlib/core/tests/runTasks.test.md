@@ -1059,6 +1059,70 @@ initialized
 main
 ```
 
+### A native main task that returns ends its task, and the main queue runs on.
+
+```yumi
+/BxEvents/BxEvents.h
+
+label = "main"
+C:brixScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+C:brixScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+done.wait()
+done.wait()
+-- label
+
++ done = Semaphore()
++ @task label = "initialized"
+
+━━━━━━━━━━━━━━━━━━━━
++ NativeTaskStart is (*C) Void
+    - closure Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ do native-task
+    - closure Pointer
+
+-- label
+done.post()
+```
+
+```output
+initialized
+initialized
+main
+```
+
+### A native main task that returns ends its task without task-local initializers too.
+
+```yumi
+/BxEvents/BxEvents.h
+
+C:brixScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+C:brixScheduleMainTaskFromNative(native-task as NativeTaskStart, Pointer())
+done.wait()
+done.wait()
+-- "main"
+
++ done = Semaphore()
+
+━━━━━━━━━━━━━━━━━━━━
++ NativeTaskStart is (*C) Void
+    - closure Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ do native-task
+    - closure Pointer
+
+-- "native"
+done.post()
+```
+
+```output
+native
+native
+main
+```
+
 ### Arena handles and allocation pointers may cross a quiescent task handoff.
 
 ```yumi
