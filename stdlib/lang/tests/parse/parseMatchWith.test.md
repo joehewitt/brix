@@ -576,7 +576,7 @@ result ~ Binding in input
 </Iterator>
 ```
 
-## Stream pattern first
+## Grammar first
 
 ```yumi
 ~ Binding

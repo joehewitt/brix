@@ -152,7 +152,7 @@ do match? nodes[id]
     | .node-pipeline-expression(row)
         links.one(row.left)
         links.one(row.right)
-    | .node-bullet-expression(row)
+    | .node-feed-expression(row)
         links.one(row.item)
         links.one(row.next)
     | .node-markup-head(row)
@@ -500,7 +500,7 @@ subtree-starts[id]
 + do stream-statement SyntaxId
     - body SyntaxId
 
-` The stream pattern a match body runs on its subject: the body itself, or the one statement of a
+` The grammar a match body runs on its subject: the body itself, or the one statement of a
 ` block beside the lazy locals declared for it. None for any other body.
 do match? nodes[body]
     | .node-stream-match
@@ -990,7 +990,7 @@ if pattern == 0 || !gather-arms(pattern, arms)
 ` The bodies of the arms of a match that, written as a line of markup content, run as content
 ` of the element around it, as the arms of an `if` do: those of a match on a subject with no
 ` helper that fills no slot, or of a table of conditions, every arm of which has a body or
-` raises. A match on a stream pattern, or one an arm of which tests and gives no body, gives its
+` raises. A match on a grammar, or one an arm of which tests and gives no body, gives its
 ` value instead.
 . bodies [SyntaxId]
 . pattern SyntaxId = 0
@@ -1305,28 +1305,28 @@ do match? nodes[rule]
 = false
 
 ────────────────────
-+ do piped-bullet SyntaxId
++ do piped-feed SyntaxId
     - pipe SyntaxId
 
-` The bullet a stream piped through a pattern reads, where it is one bullet alone that gives
+` The feed a stream piped through a pattern reads, where it is one feed alone that gives
 ` every item of what it writes: the reference evaluates what it writes inside the generator
 ` the pipe is, at its first pull. None for any other pipe.
 . left SyntaxId = 0
 do match? nodes[pipe]
     | .node-pipeline-expression(row)
-        if row.op == .stream-pattern-pipe-op
+        if row.op == .grammar-pipe-op
             left = row.left
     | .node-binary-expression(row)
-        if row.op == .stream-pattern-pipe-op
+        if row.op == .grammar-pipe-op
             left = row.lhs
 do match? nodes[left]
-    | .node-bullet-expression(row)
-        if row.is-multi && !row.is-optional && row.next == 0
+    | .node-feed-expression(row)
+        if row.is-spread && !row.is-optional && row.next == 0
             = left
 = 0
 
 ────────────────────
-+ do listed-bullets SyntaxId
++ do listed-feeds SyntaxId
     - consumer SyntaxId
 
 . written SyntaxId = 0
@@ -1347,7 +1347,7 @@ do match? nodes[written]
 do match? nodes[written]
     | .node-block(row)
         written = if row.body.count == 1 then children[row.body.start] else 0
-=? written if written != 0 && nodes[written] is .node-bullet-expression
+=? written if written != 0 && nodes[written] is .node-feed-expression
 = 0
 
 ────────────────────
@@ -1399,7 +1399,7 @@ for node in clause + 1 .. < nodes.length
 + do lazies-only Bool
     - body SyntaxId
 
-` Whether the body of an arm of a stream pattern only declares lazy locals, which the arm's
+` Whether the body of an arm of a grammar only declares lazy locals, which the arm's
 ` pattern reads: such an arm gives what its pattern gives, as one with no body does.
 do match? nodes[body]
     | .node-declare(row)
@@ -1417,10 +1417,10 @@ do match? nodes[body]
 = false
 
 ────────────────────
-+ is-stream-pattern Bool
++ is-grammar Bool
     - id SyntaxId
 
-` Whether a node is a stream pattern, as the pattern of a loop over what a stream matches is.
+` Whether a node is a grammar, as the pattern of a loop over what a stream matches is.
 match nodes[id]
     | .node-stream-match
         true
@@ -1499,7 +1499,7 @@ match tree.nodes[parent]
         child == row.next
     | .node-clause(row)
         child == row.next
-    | .node-bullet-expression(row)
+    | .node-feed-expression(row)
         child == row.next
     | .node-structure-match(row)
         child == row.pattern

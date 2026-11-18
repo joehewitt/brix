@@ -19,7 +19,7 @@ Some modules are imported into every module without being named:
 - **Always**: `core` and the core modules for errors, numbers, strings, types, backing storage,
   arrays, function types, collections, lists, maps, ranges, streams, channels, events, tracked
   values, parsing and tasks.
-- **In a module that writes stream patterns**: `core/tokenstream` and `core/patterns`.
+- **In a module that writes grammars**: `core/tokenstream` and `core/patterns`.
 - **In a module that writes markup**: `core/markup`.
 - **In a module that declares or extends a style sheet**: `core/style`.
 - **In a program's entry module, and in a module that writes probes, when probes are compiled
@@ -49,7 +49,7 @@ These core modules must be imported by name:
 | `/core/animatable` | `Animatable`: the interface of values that motion can move between. |
 | `/core/list-cursor` | `ListCursor`: a position in a list that steps and wraps. |
 | `/core/dom` | `Node`: a generic tree of content nodes. |
-| `/core/pattern-helpers` | Helpers for stream patterns that keep state while they match. |
+| `/core/pattern-helpers` | Helpers for grammars that keep state while they match. |
 | `/core/intrinsics` | Low-level operations, such as counting leading zero bits. |
 
 ### stream
@@ -124,7 +124,7 @@ format is its own module.
 | `/data/json` | `JSON`, `parse-json` and `to-json`. |
 | `/data/jsonl` | JSON Lines. |
 | `/data/jsonrpc` | JSON-RPC requests and responses. |
-| `/data/csv` | A stream pattern for CSV files. |
+| `/data/csv` | A grammar for CSV files. |
 | `/data/markdown` | Parsing Markdown into a tree of nodes. |
 | `/data/sexp` | S-expressions. |
 | `/data/source-tree`, `/data/source-sexp` | An editable tree of source text. |

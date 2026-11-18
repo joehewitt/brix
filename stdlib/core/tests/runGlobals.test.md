@@ -1161,7 +1161,7 @@ Stack trace:
   4  __source__:brix.main no file
 ```
 
-### A module that runs no code of its own gives a global no code reads its value as the program starts, though converting the items its bullets yield to a list may panic.
+### A module that runs no code of its own gives a global no code reads its value as the program starts, though converting the items its feeds yield to a list may panic.
 
 ```yumi
 ./lib/items

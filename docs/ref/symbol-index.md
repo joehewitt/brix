@@ -46,10 +46,10 @@ are given.
 | `->`, `*->` | `(-> value target)` | Sends a value, or each value, on to a target. | [Targets](streams.md#targets) |
 | `<*` | `(<* pattern)` | Every match of a pattern, in a comprehension. | [Comprehensions](streams.md#comprehensions) |
 | `\|` | `(\| a b)` | Alternatives in a pattern, and a pattern in a comprehension. | [Kinds of pattern](patterns.md#kinds-of-pattern), [Comprehensions](streams.md#comprehensions) |
-| `~` | `(~ subject pattern)` | Matches a stream pattern. | [Matching text](stream-patterns.md#matching-text) |
-| `~>` | `(~> source \rule)` | Reads records with a rule. | [Reading records](stream-patterns.md#reading-records) |
-| `!`, `&`, `{}` in a stream pattern | `(! p)`, `(& p)`, `({} p 2 4)` | Not followed by, followed by, and a count. | [Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `\{ test }` | `(\{} test)` | A test on the next item. | [In rows](stream-patterns.md#in-rows) |
+| `~` | `(~ subject pattern)` | Matches a grammar. | [Matching text](grammars.md#matching-text) |
+| `~>` | `(~> source \rule)` | Reads records with a rule. | [Reading records](grammars.md#reading-records) |
+| `!`, `&`, `{}` in a grammar | `(! p)`, `(& p)`, `({} p 2 4)` | Not followed by, followed by, and a count. | [Grammar pieces](grammars.md#grammar-pieces) |
+| `\{ test }` | `(\{} test)` | A test on the next item. | [In rows](grammars.md#in-rows) |
 | `/`, `*/`, `\`, `*\`, `++`, `--` in a pattern | `(/ a b)` | Tree relations. Reserved. | [Kinds of pattern](patterns.md#kinds-of-pattern) |
 | `?!` | `(throw error (if condition))` | Raises an error, in rows. | [Raising](errors.md#raising) |
 | `#` | `#name` | A tracked read. | [Tracked reads](reactivity.md#tracked-reads) |
@@ -75,7 +75,7 @@ are given.
 | `:` before a value | `(:name value)` | A named argument. | [Calls](functions.md#calls) |
 | `name:` | `(text: "Hi")` | A labeled part of a form, such as an attribute. | [Attributes](markup.md#attributes) |
 | `@` | `@inline` | An annotation. | [Annotations](functions.md#annotations) |
-| `\` | `\num` | A stream-pattern rule used as a value. | [Rules](stream-patterns.md#rules) |
+| `\` | `\num` | A grammar rule used as a value. | [Rules](grammars.md#rules) |
 | `0x`, `0b`, `0o`, `'` | `0xff`, `1'000` | Integers in other bases, and a digit separator. | [Integers](literals.md#integers) |
 | A suffix | `200u8`, `3km` | A literal's type, or its unit. | [Suffixes](literals.md#suffixes), [Unit literals](units.md#unit-literals) |
 | `"` | `"text"` | Text. | [Text](literals.md#text) |
@@ -98,7 +98,7 @@ are given.
 | `\|= value`, `\|? condition`, `??` | `(case= …)`, `(case? …)`, `(default …)` | Arms taken on equality, on a condition, and otherwise. | [Decision tables](control-flow.md#decision-tables) |
 | `\|\| pattern`, `\|\|= value`, `\|\|? condition` | `(case-union …)` | Arms whose values keep their own types. | [Arms that keep their type](patterns.md#arms-that-keep-their-type) |
 | `?! error if condition` | `(throw error (if condition))` | A check. | [Raising](errors.md#raising) |
-| `* value`, `** values` | `(bullet value)`, `(bullet* values)` | Items of a list built below a value. | [Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
+| `* value`, `** values` | `(item value)`, `(spread values)` | Items of a list built below a value. | [Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
 | `?> condition`, `*> value` | `(pipe ?> condition)` | Pipe stages below a value. | [Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
 | `• name value` | `(:name value)` | A named argument. | [Calls](functions.md#calls) |
 | `- value` under a call | `(arg value)` | One argument. | [Calls](functions.md#calls) |

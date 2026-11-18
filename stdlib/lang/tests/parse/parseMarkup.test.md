@@ -354,16 +354,16 @@ foo = <Foo
 
 ```brix
 (main
-  (bullet (<> Foo))
+  (item (<> Foo))
 )
 ```
 
 ```output
-<Bullet>
+<Feed>
     <Markup>
         <TypeId name="Foo"/>
     </Markup>
-</Bullet>
+</Feed>
 ```
 
 ```yumi
@@ -641,7 +641,7 @@ foo • with <Foo
 ```
 
 ```output
-Exception: Markup cannot be written inside an expression. Give it as a row: an argument row, as in "- <Text", a named argument, as in "• title <Text", or a bullet, as in "* <Text"; or name it first, as in ". label = <Text"
+Exception: Markup cannot be written inside an expression. Give it as a row: an argument row, as in "- <Text", a named argument, as in "• title <Text", or an item, as in "* <Text"; or name it first, as in ". label = <Text"
 <no file:2>
     . label = show(<Text "x")
                    ^

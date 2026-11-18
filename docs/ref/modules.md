@@ -126,7 +126,7 @@ Exception: Function "sqrt" not found; it is declared in /math, which this module
   `core/channel`, `core/event`, `core/tracker`, `core/parsing` and `core/task`. That is where
   `true`, `false`, `null`, `String`, `List`, `print` and `request-process-termination` come from.
   Importing one of them by name changes nothing.
-- **Imported on use.** A module that writes stream patterns, markup or styles imports the core
+- **Imported on use.** A module that writes grammars, markup or styles imports the core
   modules that support them without writing them.
 - **The rest by name.** Other modules under `core`, such as `/core/table`, are imported like any
   library. The Standard library lists them.

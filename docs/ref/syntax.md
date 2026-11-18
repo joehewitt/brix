@@ -15,8 +15,8 @@ I made several unsual choices for Yumi's syntax:
 Interesting features:
 
 1. Lazy variables
-2. Stream pipelines (bullets)
-3. Stream pattern matching (PEG grammars)
+2. Stream pipelines
+3. Grammars (PEG)
 4. Stream generics
 5. Probes
 6. Units

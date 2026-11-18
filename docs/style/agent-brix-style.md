@@ -139,7 +139,7 @@ match item
 
 ## YS-04: Construct Pure Collections And Text As Values
 
-Use streams, comprehensions, filters, reducers, bullet expressions, `join of`, and templates for
+Use streams, comprehensions, filters, reducers, feed expressions, `join of`, and templates for
 pure collection and text construction. Use an imperative accumulator only when mutation or measured
 cost is the point of the code.
 
@@ -297,9 +297,9 @@ Correct:
 500ms
 ```
 
-## YS-09: Use Stream Patterns For Natural Text Grammars
+## YS-09: Use Grammars For Structured Text
 
-When structured text is naturally described as a grammar, use a `~` stream-pattern function rather
+When structured text is naturally described as a grammar, use a `~` grammar function rather
 than manual splitting, cursor movement, or indexing. Keep direct string operations when the input is
 not meaningfully grammatical.
 

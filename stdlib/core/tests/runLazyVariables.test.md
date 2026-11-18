@@ -2242,7 +2242,7 @@ closed false
 true
 ```
 
-### A lazy local whose value pipes a list through a function, read by a list of bullets, is evaluated where the list reads it, and the function reads the arguments of the one that declares the local.
+### A lazy local whose value pipes a list through a function, read by a list of feeds, is evaluated where the list reads it, and the function reads the arguments of the one that declares the local.
 
 ```yumi
 -- matches(["a", "bb", "c", "b"], "b", true)

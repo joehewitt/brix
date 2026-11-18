@@ -285,7 +285,7 @@ _ Scoping is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ Streaming is Tuple
 
-` The stream pattern the walker emits. `pattern-helper` is the helper the pattern is run with, of
+` The grammar the walker emits. `pattern-helper` is the helper the pattern is run with, of
 ` the type `pattern-helper-type`, or no type where it has none, and `helper-argument` says the
 ` function takes it as an argument. `marks-argument` says the function takes where to give back
 ` the rollback mark it holds, `marked-argument`. `rollback-mark` is the local that holds the
@@ -579,9 +579,9 @@ _ BoundValue is Tuple
 
 ` A value a pattern gave a name while the arm it is in is emitted: the slot of the name, the
 ` type of the value and the value, the case of a row the name stands for, or the place a
-` stream pattern keeps what the name captured. `it` is bound to what a pattern is given while
+` grammar keeps what the name captured. `it` is bound to what a pattern is given while
 ` the pattern is tested, and to what the pattern passed in the body of its arm; `location` to
-` where an arm of a stream pattern was while its expression is emitted.
+` where an arm of a grammar was while its expression is emitted.
 
 + slot SlotId
 + type TypeId
@@ -631,7 +631,7 @@ _ SharedArm is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ StreamRun is Tuple
 
-` What the parts of a stream pattern run over: the node of the pattern; the stream and its
+` What the parts of a grammar run over: the node of the pattern; the stream and its
 ` type; the buffer of its view, its type, and the address its items start at; the cursor the
 ` pattern starts at and the count of items, as indexes; the locals that keep how far the
 ` pattern read and the farthest cursor a part of it failed at; the layouts of an index, of an
@@ -662,7 +662,7 @@ _ StreamRun is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ StreamPart is Tuple
 
-` What a part of a stream pattern gives where it passes: the cursor where it ended, and its
+` What a part of a grammar gives where it passes: the cursor where it ended, and its
 ` value, of no type where it gives none (see `emit-stream-part`).
 
 + ending Operand
@@ -672,13 +672,13 @@ _ StreamPart is Tuple
 + bare-part StreamPart
     - ending Operand
 
-` A part of a stream pattern that ends at a cursor and gives no value.
+` A part of a grammar that ends at a cursor and gives no value.
 StreamPart(ending, Typed(make-operand(.operand-void, 0), no-type))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ StreamCapture is Tuple
 
-` Where a stream pattern keeps what a name it captures matched: the slot of the name, where
+` Where a grammar keeps what a name it captures matched: the slot of the name, where
 ` the type pass recorded the call that makes its text, the locals of the cursors its text
 ` begins and ends at and, for an optional name, of whether it holds any; for a name that
 ` holds what a rule gave, the local that holds it; its type, and the run of the pattern. A
@@ -810,7 +810,7 @@ ranges += ItemRange(first, last)
 ━━━━━━━━━━━━━━━━━━━━
 _ FirstItems is Tuple
 
-` What the reference knows of the items a part of a stream pattern may start with, as it
+` What the reference knows of the items a part of a grammar may start with, as it
 ` judges which alternatives of a choice to skip: whether it knows them, whether the part may
 ` pass where it reads none, and the ranges they lie in, in order and apart; and how far past
 ` where the part is tried it counts the part as read where it is skipped, `no-probe` where it
@@ -1348,7 +1348,7 @@ _ FunctionEmitter
 ` `use-flags` and goes on to `use-body`. `cleanup-raised` is the cell of the flag that says a
 ` cleanup run on a way out no panic made has raised one, and `landings` counts the checks emitted,
 ` so that a cleanup with none is known. `line-shift` is how many lines below where it is written an
-` instruction of the function is located, and `lowered` the bullet whose own instructions are
+` instruction of the function is located, and `lowered` the feed whose own instructions are
 ` located one line further down. `placing` says an instruction whose source is in a module other
 ` than the function's is located in that module's file, as none is otherwise. `lazy-open` are the
 ` lazy locals whose values are being evaluated. `lent-lazies` are the lazy locals declared inside
@@ -1373,10 +1373,10 @@ _ FunctionEmitter
 ` one, in the function generated for it, which is given an item and the stream. `given-pipe` is a
 ` stream piped through a pattern, in the function generated for it, which is given the stream's
 ` value and yields what each match gives. `poll-landings` counts the checks of `landings` that a
-` loop's poll made. `bullets` is the first bullet of a list, in the function generated for it, which
-` yields what each bullet gives. `piped` is the pipe whose right side the function being emitted was
+` loop's poll made. `feeds` is the first feed of a list, in the function generated for it, which
+` yields what each feed gives. `piped` is the pipe whose right side the function being emitted was
 ` generated for: it is given the item, or the value piped, after the environment it was written in.
-` `piped-site` is where the type pass keeps what converts a list of bullets or a pipe that is piped
+` `piped-site` is where the type pass keeps what converts a list of feeds or a pipe that is piped
 ` forward into a call, until that call reads it. `open-turns` are the loops whose turn is being
 ` emitted and has an environment of its own, innermost last. `turn` and `turn-place` are those of
 ` the one `find-captured` found a slot in, when it is one of these. `rebindings` are the cells a
@@ -1567,7 +1567,7 @@ _ machining Machining
 _ machine-entering [SyntaxId]
 _ given-pipe SyntaxId = 0
 _ lowered SyntaxId = 0
-_ bullets SyntaxId = 0
+_ feeds SyntaxId = 0
 _ spreading SyntaxId = 0
 _ built-list Operand
 _ built-item TypeId = no-type
@@ -2460,10 +2460,10 @@ _ can-use Bool
 ` Whether a `use` has a shape here: reading its own facts, and wherever `do finally` has one.
 ` One that keeps its object in a cell needs a function whose head clears the flags of its
 ` cells. In a generator, only one that keeps its object has a shape, which its slot keeps,
-` and not in the loop of a comprehension or a list of bullets.
+` and not in the loop of a comprehension or a list of feeds.
 allowed && !is-free(unit.instance) && (stepping || !kept || use-head != no-block)
 .. allowed = unit.reading == unit.instance && !scoping.cleaning && !builds && !initializes && (!stepping || generates)
-.. generates = kept && given-loop == 0 && bullets == 0
+.. generates = kept && given-loop == 0 && feeds == 0
 
 ────────────────────
 _ do use-cell UseCell
@@ -5217,10 +5217,10 @@ _ do keep-given
 ` of the loop, converted as the type pass recorded for the loop's container, where the
 ` body of the generator finds it, or, for a loop over the rows of a table, in the slot after
 ` its item, where the loop finds its rows when it begins. That of a stream piped through a
-` pattern keeps the value piped so, but for a bullet the pipe reads alone, which it is given
+` pattern keeps the value piped so, but for a feed the pipe reads alone, which it is given
 ` nothing for.
 if given-pipe != 0
-    if tree.piped-bullet(given-pipe) != 0
+    if tree.piped-feed(given-pipe) != 0
         if instances.signatures[unit.instance].args.count != 0
             refuse(.refused-function, declared)
         =
@@ -7116,8 +7116,8 @@ _ do emit-body
 ` The body of an instance: one the compiler generates, or one written in source. That of a
 ` function of an interface run for a value of a type that is none is given its receiver as
 ` the interface, as the type pass typed it. The function generated for a comprehension is
-` a nested function whose body is the comprehension's loop; the one for a list of bullets
-` yields what the bullets give; and the one for the right side of a pipe gives the value
+` a nested function whose body is the comprehension's loop; the one for a list of feeds
+` yields what the feeds give; and the one for the right side of a pipe gives the value
 ` written there, or runs it for nothing where the pipe only taps. A function written
 ` with no body gives what the type it returns makes with nothing written. A class's `close`
 ` closes the live actions the object owns where its body ends; one that returns early, or is
@@ -7212,12 +7212,12 @@ do match? program.modules[row.module].decls[row.decl]
                     body = fn.syntax
                     imperative = true
                     given-pipe = fn.syntax
-        if fn.kind == .bullet-decl
+        if fn.kind == .feed-decl
             owned = false
             unit = unit.received = true
             body = fn.syntax
             imperative = true
-            bullets = fn.syntax
+            feeds = fn.syntax
         if fn.kind == .live-decl
             owned = false
             unit = unit.received = true
@@ -7431,8 +7431,8 @@ if body == 0
     . made = default-value(unwritten, returns-type, layout-of(returns-type, declared), declared)
     return-value(made.operand, declared)
     =
-if bullets != 0
-    emit-built-bullets(declared, bullets)
+if feeds != 0
+    emit-built-feeds(declared, feeds)
     =
 if imperative
     emit-block(body)
@@ -7992,7 +7992,7 @@ _ do emit-steps
 ` A step of a generator that raises answers its optional or an error, as a function that
 ` raises does, and has finished where an error leaves it.
 ` A body written as an expression has no shape yet. Neither
-` has the loop of a comprehension or a list of bullets that checks anything but a loop's
+` has the loop of a comprehension or a list of feeds that checks anything but a loop's
 ` own poll for a panic, where functions of several instances share its name: TypeScript
 ` numbers the names in a stack trace in the order it compiles in. A stack trace through
 ` such a function is the one TypeScript prints with no inlining, which runs it as it is.
@@ -8022,8 +8022,8 @@ if given-loop != 0
     emit-given(body)
 else if given-pipe != 0
     emit-pattern-pipe(given-pipe)
-else if bullets != 0
-    emit-bullets(bullets)
+else if feeds != 0
+    emit-feeds(feeds)
 else
     emit-block(body)
 close-cleanups(mark)
@@ -8079,8 +8079,8 @@ if step.polls && budget == no-local
 scoping = scoping.block-base = mark
 if given-loop != 0
     emit-given(body)
-else if bullets != 0
-    emit-bullets(bullets)
+else if feeds != 0
+    emit-feeds(feeds)
 else
     emit-block(body)
 close-cleanups(mark)
@@ -8223,7 +8223,7 @@ _ do give-item
     - item Typed
 
 ` What a loop with no body does with each item: the loop of a pipe that writes each item gives it to
-` the write recorded at the pipe, and the loop of a bullet yields it, converted as recorded at
+` the write recorded at the pipe, and the loop of a feed yields it, converted as recorded at
 ` `site`.
 if writes.length == 0 || writes[writes.length - 1].pipe != loop
     if spreading != 0 && spreading == loop
@@ -8344,7 +8344,7 @@ _ do add-helper-argument
     - helper TypeId
     - site SyntaxId
 
-` Adds the argument a function a stream pattern calls is given the helper of the pattern
+` Adds the argument a function a grammar calls is given the helper of the pattern
 ` calling it in, after where it keeps the farthest cursor, and runs its pattern under it.
 streaming = streaming.pattern-helper = make-operand(.operand-argument, ir.arguments.length)
 streaming = streaming.pattern-helper-type = helper
@@ -8386,7 +8386,7 @@ _ do match-direct
     - unread Bool = false
     - observes Bool = true
 
-` The body of a function a stream pattern calls, from the arguments at `first` on: the
+` The body of a function a grammar calls, from the arguments at `first` on: the
 ` address the stream's items start at, the cursor to start from, the count of items, and
 ` where to keep where it ended, how far it read and the farthest cursor a part failed at.
 ` Its arms are tried in turn from the cursor, and the first that passes gives what it gave,
@@ -8488,7 +8488,7 @@ _ do direct-run StreamRun
     - views FactId
     - extends FactId
 
-` What the pattern of a function a stream pattern calls runs over: the address the stream's
+` What the pattern of a function a grammar calls runs over: the address the stream's
 ` items start at and their count as it is given them, kept in locals of their own where the
 ` stream may give more input and the type pass recorded the calls that ask it for more.
 . nothing = make-operand(.operand-void, 0)
@@ -8723,7 +8723,7 @@ _ do return-from
 ` the error in its place where it holds one. A return written in a cleanup has no shape. A function
 ` that yields has finished where it returns: the value written is evaluated and given to
 ` no one. `defaulted` is a return written with no value and no condition. A panic the
-` conversion of a returned match raises is raised at the stream pattern the match runs. A
+` conversion of a returned match raises is raised at the grammar the match runs. A
 ` `close` that closes what the object owns closes it as it returns, after the cleanups and
 ` after the value it returns is made, as the reference closes it before each return. In the
 ` body of a rule of a class, one with no value leaves only the body, after the cleanups opened
@@ -10100,7 +10100,7 @@ return-value(value.operand, kept.syntax)
 ────────────────────
 _ do emit-stream-action
 
-` The function the reference runs an action of a stream pattern in, which a panic in it
+` The function the reference runs an action of a grammar in, which a panic in it
 ` shows. It is given what the arm binds that the action reads, in the order the type pass
 ` recorded them: `location`, `it` and the names the match captures. It binds each, runs the
 ` action and answers its value, or in an instance that raises errors its value or one of
@@ -10248,7 +10248,7 @@ _ do direct-arguments Bool
     - helper TypeId = no-type
     - marked Bool = false
 
-` Adds the arguments every function a stream pattern calls takes after the stream and those
+` Adds the arguments every function a grammar calls takes after the stream and those
 ` written: the address the items start at, the cursor and the count of items, and the
 ` addresses of where it ended, how far it read and the farthest cursor a part failed at; then
 ` the helper of the pattern calling it, where it is given one; then where to keep the rollback
@@ -10420,7 +10420,7 @@ _ do action-call Typed
     - arm SyntaxId
     - result TypeId
 
-` The call of the function the reference runs an action of a stream pattern in, made where the
+` The call of the function the reference runs an action of a grammar in, made where the
 ` arm runs and given what the arm binds that the action reads; its value is converted as the
 ` arm's would be. The call is checked, which the type pass must have said of the caller too.
 ` An arm emitted again, as one of a local rule called twice is, calls the one function, where
@@ -11101,8 +11101,8 @@ do match tree.nodes[id]
         value = emit-stream(id, row.expr).operand
     | .node-argument(row)
         value = emit-argument-value(id, row)
-    | .node-bullet-expression
-        . listed = emit-bullet-list(id)
+    | .node-feed-expression
+        . listed = emit-feed-list(id)
         value = listed.operand
         type = listed.type
     | .node-anonymous-case(row)
@@ -14653,7 +14653,7 @@ if op == .else-op
     do match? tree.nodes[lhs]
         | .node-binary-expression(row)
             = emit-choice(id, row.lhs, row.rhs, rhs)
-if forward-pipe || write-pipe || op == .stream-pattern-pipe-op || pipes-stream(op)
+if forward-pipe || write-pipe || op == .grammar-pipe-op || pipes-stream(op)
     = emit-pipe(id, op, lhs, rhs)
 .. forward-pipe = op == .pipe-forward-op || op == .pipe-closure-op
 .. write-pipe = op == .pipe-write-all-op || op == .pipe-write-each-op
@@ -16714,7 +16714,7 @@ _ do emit-arm Bool ?! Refused
     - entered LocalId = no-local
     - unread Bool = false
 
-` One arm of a stream pattern, tried from a cursor. An arm with no pattern reads nothing and
+` One arm of a grammar, tried from a cursor. An arm with no pattern reads nothing and
 ` always passes. An arm that runs an expression binds `it` to the text its pattern matched, or
 ` to what a rule its pattern calls gave, where the expression reads it, or to the span of what
 ` it matched where the type pass kept `it` as one, and `location` to where
@@ -16934,7 +16934,7 @@ while inlining.length != kept
 _ do open-marks
     - body SyntaxId
 
-` Gives a body of a stream pattern that the type pass found holds a rollback mark the local
+` Gives a body of a grammar that the type pass found holds a rollback mark the local
 ` that holds it, which holds none as the body begins. A body that holds none has no such local,
 ` nor has one whose marks no arm of the program asks a helper for: it would never hold one.
 ` What emits a body inside another sets the other's aside.
@@ -19896,7 +19896,7 @@ _ do call-instance Typed
 ` there, which runs where it is called. A callee that returns a panic has stepped out
 ` of the zone, so the landing pad is always outside it, and a caller outside the zone ends
 ` the zone it entered before it lands. The slots of globals `do with` binds set
-` for the call are put back on both ways out of it. Only a stream pattern calls a rule a
+` for the call are put back on both ways out of it. Only a grammar calls a rule a
 ` module declares, which `calls-rule` says, and its function for a set of collectors is the
 ` `variant` where one is given, as is its function for a pattern that may raise errors, which
 ` answers with `held`.

@@ -117,7 +117,7 @@ refuse(.refused-statement, id)
 ` Evaluates the container of a loop, once, and keeps it in the first of the loop's slots,
 ` converted as the type pass recorded where it is written, and answers its type. The loop of
 ` a comprehension keeps its container already: the function generated for it was given the
-` container where it was called. So does the loop of a bullet, which kept it where the bullet
+` container where it was called. So does the loop of a feed, which kept it where the feed
 ` began, as `kept` says.
 holding = make-operand(.operand-void, 0)
 if facts.plan-of(unit.reading, loop) == .plan-table-loop && kept
@@ -340,10 +340,10 @@ _ protocol-calls FactId
     - loop SyntaxId
 
 ` The calls the type pass recorded for the protocol of a loop, in the order the loop makes
-` them: at the header of a loop, and for a bullet that gives every item of a container from
-` the first the type pass kept for it, beside others where it kept them, as at a bullet that
-` also keeps those of the first bullet of its list.
-|? facts.bullet-site(unit.reading, loop) != loop || start != no-fact
+` them: at the header of a loop, and for a spread of a container from
+` the first the type pass kept for it, beside others where it kept them, as at a feed that
+` also keeps those of the first feed of its list.
+|? facts.feed-site(unit.reading, loop) != loop || start != no-fact
     start
 ??
     facts.first-call(unit.reading, loop)
@@ -431,8 +431,8 @@ if slot == no-slot
     - kept Bool = false
 
 ` A loop over the container of each of its headers, by the protocol the type pass planned
-` for each: by its indexes, by a cursor, or as a stream. A bullet that gives every item of
-` a container is such a loop of one header, whose container the bullet keeps already (`kept`).
+` for each: by its indexes, by a cursor, or as a stream. A spread of
+` a container is such a loop of one header, whose container the feed keeps already (`kept`).
 ` 1. Every container is evaluated, in the order written, and then each is begun. From there
 `    on, telling the streams among them that the loop has ended is a cleanup: it runs
 `    however the loop is left, as the body of a `do finally` written there would.
@@ -440,7 +440,7 @@ if slot == no-slot
 `    and a container with no more ends the loop. The header takes the item and tests its
 `    clause; an item that does not match, or a `when` that fails, reads that header again.
 ` 3. The body runs. `continue` goes to the first head, as the end of the body does. The
-`    body of a comprehension's loop is an expression, and is yielded, and a bullet has no
+`    body of a comprehension's loop is an expression, and is yielded, and a feed has no
 `    body and yields the item.
 ` In a cleanup being run, a check made in the loop lands where the cleanup ends, as in the rest
 ` of it, leaving its streams unended, as TypeScript's does (`end-in-cleanup`). A header that
@@ -537,7 +537,7 @@ for position in 0 .. < chain.length
 if first == given-loop
     emit-yield(body, body, false)
 else if tree.gives-items(first, body)
-    give-item(first, facts.bullet-site(unit.reading, first), state(last, first))
+    give-item(first, facts.feed-site(unit.reading, first), state(last, first))
 else if body != 0
     emit-block(body)
 close-turns(turns)
@@ -582,7 +582,7 @@ landing = caught
 ` is held. By its indexes: the length is read once, by the getter the type pass recorded
 ` for it or as the field of an array a constant fact names, and the count of items read
 ` starts at none. By a cursor: the container gives the state the cursor starts at. As a
-` stream: the container is told that the loop begins. As a stream pattern: the stream the
+` stream: the container is told that the loop begins. As a grammar: the stream the
 ` pattern reads the container through is made and kept.
 . nothing = make-operand(.operand-void, 0)
 . plan = facts.plan-of(unit.reading, loop)
@@ -638,7 +638,7 @@ call-protocol(loop, begins, state(slot, loop).operand, type, nothing)
 ` container's `[]`. By a cursor: the container's function takes the state and gives the
 ` next with an item, or with none. As a stream: the container gives an item, or nothing,
 ` which is converted as the type pass said where a property the container delegates to gives
-` it. As a stream pattern: the pattern matches once more on the stream kept for it.
+` it. As a grammar: the pattern matches once more on the stream kept for it.
 ` The calls are made at `place`, the loop's first header, where TypeScript makes the reads of
 ` every header.
 . nothing = make-operand(.operand-void, 0)
@@ -709,7 +709,7 @@ _ do read-step Typed
     - type TypeId
     - done IRBlockId
 
-` One pass of a loop whose header is a stream pattern, as the reference makes it: the stream
+` One pass of a loop whose header is a grammar, as the reference makes it: the stream
 ` kept for the loop is asked whether it has more, and the loop ends where it has not; it
 ` gives its view, and the pattern is matched from where the view starts, as a rule's arms
 ` are, without reading the rest, asking the stream for more input where a part reads past
@@ -746,7 +746,7 @@ ir.start-block(reading)
 . stuck = ir.reserve-block()
 branch(compare(loop, .compare-greater, load-local(attempt-end, loop), run.start), moved, stuck)
 ir.start-block(stuck)
-raise-text(loop, "Stream pattern loop made no input progress")
+raise-text(loop, "Grammar loop made no input progress")
 ir.start-block(moved)
 = value
 
@@ -754,7 +754,7 @@ ir.start-block(moved)
 + stream-maker FactId
     - site SyntaxId
 
-` The call the type pass recorded at a stream pattern or a loop's header that makes the
+` The call the type pass recorded at a grammar or a loop's header that makes the
 ` stream it reads its subject through; none where the subject is a stream already.
 if first != no-fact && facts.calls[first].form == .call-constructor then first else no-fact
 
@@ -977,7 +977,7 @@ for back in 0 .. < stream-loops.length
 ` that starts at a written 0 only counts up. A range written with
 ` `..` takes its end as an item and stops after it, and any other stops before its end. In
 ` a function that yields, the index, the end and the way it counts are kept in the loop's
-` slots, and read again on each pass. The loop of a bullet that gives every item of a range
+` slots, and read again on each pass. The loop of a spread of a range
 ` has no body, and yields the item.
 ` 1. The head polls, then tests the index against the end.
 ` 2. Inside, the item is the index, the clause is tested, and the body runs.
@@ -1167,7 +1167,7 @@ open-turn(loop, item, type)
 loops += EmittedLoop(loop, step, done, item, type, open-cleanups.length, kept)
 emit-clause(clause, step, done)
 if tree.gives-items(loop, body)
-    give-item(loop, facts.bullet-site(unit.reading, loop), read-item(loop, loop, type))
+    give-item(loop, facts.feed-site(unit.reading, loop), read-item(loop, loop, type))
 else if body != 0
     emit-block(body)
 close-turns(turns)

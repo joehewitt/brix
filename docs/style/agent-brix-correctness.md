@@ -92,7 +92,7 @@ calls may leave out. A required parameter may follow one that may be null, but n
 written default.
 
 Every word except `in`, `on`, `and`, `or`, `do`, `for`, `while`, `if` and `else` may name a local or
-a parameter, including `from`, `to`, `at`, `before` and `after`. A stream pattern's capture is never
+a parameter, including `from`, `to`, `at`, `before` and `after`. A grammar's capture is never
 named `with`, which starts the helper of a pipe such as `source ~> \record with Helper(scratch)`.
 
 ## Calls
@@ -122,7 +122,7 @@ A constant a C header defines is such an integer, so `. offset I16 = C:SEEK_END`
 suffix fixes the type, as in `5i32`, `5u8` and `5u` for a `U64`. A float written with no suffix is
 a `Float`, except in place of or beside an `F32`, so `. half F32 = 0.5` and `half * 0.5` stay in
 `F32`. A range of such integers is of the type a loop's pattern states, as in
-`for i U8 in 0 .. < 3`, and a range a bullet spreads is of the type of the list's items.
+`for i U8 in 0 .. < 3`, and a range a spread gives is of the type of the list's items.
 
 Arithmetic and bitwise operators on two values of one integer type stay in that type and wrap,
 so `200u8 + 100u8` is `44u8`. Two integer types are brought to the wider, as in

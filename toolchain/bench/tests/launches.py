@@ -77,7 +77,7 @@ class BenchmarkLaunches(unittest.TestCase):
         ])
         probes = os.path.join(bench.root, 'fake-case.probes')
         metrics_path = os.path.join(bench.root, 'fake-case.metrics.json')
-        result = bench.run(PROBES_ENABLED='stream-pattern', PROBES_PATH=probes, BRIX_BENCH_METRICS_PATH=metrics_path)
+        result = bench.run(PROBES_ENABLED='grammar', PROBES_PATH=probes, BRIX_BENCH_METRICS_PATH=metrics_path)
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stderr, '')

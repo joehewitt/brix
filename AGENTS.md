@@ -39,8 +39,8 @@ Writing:
 Running:
 
 - Run the file or single case for what you changed, and nothing broader.
-- After a compiler or runtime change, run `suite:core` once before handoff. After a grammar or
-  parser change, also run `suite:parse` once.
+- After a compiler or runtime change, run `suite:core` once before handoff. After a change to the
+  Yumi or Brix grammar or the parser, also run `suite:parse` once.
 - After a change to the Yumi grammar, the Brix reader, printer, converter or editor grammar, or the
   form catalog, run `bin/brix brix-sweep` once. It converts every `.yumi` file to Brix, checks that
   each reads back the same, and builds the compiler from its Brix.

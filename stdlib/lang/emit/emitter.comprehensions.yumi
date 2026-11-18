@@ -140,7 +140,7 @@ _ do call-generated Typed
     - converts Bool = false
 
 ` A call of the function generated for what is written at a node, a comprehension, a list
-` of bullets or the right side of a pipe, which the type pass recorded there. It is given
+` of feeds or the right side of a pipe, which the type pass recorded there. It is given
 ` the environment in force, which the function reads the locals it captures from, and
 ` then the value written at `given-site`, where it takes one, evaluated here, and where it
 ` `converts`, converted as the type pass recorded for it as an argument. One written in
@@ -200,32 +200,32 @@ takes-result = false
 = answer
 
 ────────────────────
-+ do emit-bullet-list Typed
++ do emit-feed-list Typed
     - id SyntaxId
 
-` A list of bullets written as a value: a call of the function generated for it, which the
-` type pass recorded at the first bullet, and which gives the generator.
+` A list of feeds written as a value: a call of the function generated for it, which the
+` type pass recorded at the first feed, and which gives the generator.
 = call-generated(id, 0)
 
 ────────────────────
-+ do emit-bullets
++ do emit-feeds
     - first SyntaxId
 
-` The body of the function generated for a list of bullets: each bullet in turn yields
+` The body of the function generated for a list of feeds: each feed in turn yields
 ` its item, converted as the type pass recorded for the list at the item; one written
 ` `*?` yields what an optional holds, where it holds anything; and one written `**`
-` yields every item of what it writes, by the loop the type pass planned at the bullet.
+` yields every item of what it writes, by the loop the type pass planned at the feed.
 ` An item written as a cast keeps the cast's conversion where the list's is kept, so only
 ` the conversions of what the item gave are made. One written `*?` whose item is no
 ` optional has no shape yet.
-. bullet = first
-while bullet != 0
+. feed = first
+while feed != 0
     . next SyntaxId = 0
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
             next = row.next
-            if row.is-multi
-                emit-spread(bullet, row.item, row.is-optional)
+            if row.is-spread
+                emit-spread(feed, row.item, row.is-optional)
             else
                 . value = convert-matched
                     - row.item
@@ -233,27 +233,27 @@ while bullet != 0
                     - emit-expression(row.item)
                     - no-type
                 if row.is-optional && !types.is-optional(value.type)
-                    refuse(.refused-expression, bullet)
-                yield-item(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
-    bullet = next
+                    refuse(.refused-expression, feed)
+                yield-item(facts.feed-site(unit.reading, feed), value, row.is-optional)
+    feed = next
 
 ────────────────────
-+ do emit-built-bullets
++ do emit-built-feeds
     - declared SyntaxId
     - first SyntaxId
 
-. list = build-bullets(first, first, returns-type, .reason-return)
+. list = build-feeds(first, first, returns-type, .reason-return)
 return-value(list.operand, declared)
 
 ────────────────────
-+ do emit-listed-bullets Typed
++ do emit-listed-feeds Typed
     - id SyntaxId
     - first SyntaxId
 
-= build-bullets(id, first, facts.node-type(unit.reading, id), .reason-element)
+= build-feeds(id, first, facts.node-type(unit.reading, id), .reason-element)
 
 ────────────────────
-_ do build-bullets Typed ?! Refused
+_ do build-feeds Typed ?! Refused
     - home SyntaxId
     - first SyntaxId
     - listed TypeId
@@ -275,47 +275,47 @@ spreading = 0
 . count U32 = 0
 . room U32 = 0
 . leading = true
-. bullet = first
-while bullet != 0
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
-            leading = leading && !row.is-multi && !row.is-optional
+. feed = first
+while feed != 0
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
+            leading = leading && !row.is-spread && !row.is-optional
             if leading
                 count += 1
-            else if !row.is-multi
+            else if !row.is-spread
                 room += 1
-    bullet = tree.next-bullet(bullet)
+    feed = tree.next-feed(feed)
 . mark = open-cleanups.length
 . own-scoping = scoping
 scoping = scoping.block-base = mark
 . start = given.length
-bullet = first
+feed = first
 for _ in 0 .. < count
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
             . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
-            . site = facts.bullet-site(unit.reading, bullet)
+            . site = facts.feed-site(unit.reading, feed)
             . converted = built-value(site, value)
             if converted.type != built-item
                 refuse(.refused-conversion, site)
             given += Typed(apart(converted, row.item, count > 1), converted.type)
-    bullet = tree.next-bullet(bullet)
+    feed = tree.next-feed(feed)
 . list = build-list(home, RowRange'SyntaxId(0, count), listed, start, false, first, room)
 drop-given(start)
 built-list = list.operand
-while bullet != 0
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
-            if row.is-multi
-                spreading = bullet
-                emit-spread(bullet, row.item, row.is-optional)
+while feed != 0
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
+            if row.is-spread
+                spreading = feed
+                emit-spread(feed, row.item, row.is-optional)
                 spreading = 0
             else
                 . value = convert-matched(row.item, .reason-explicit, emit-expression(row.item), no-type)
                 if row.is-optional && !types.is-optional(value.type) && reason == .reason-return
-                    refuse(.refused-expression, bullet)
-                append-built(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
-    bullet = tree.next-bullet(bullet)
+                    refuse(.refused-expression, feed)
+                append-built(facts.feed-site(unit.reading, feed), value, row.is-optional)
+    feed = tree.next-feed(feed)
 . built = close-value(list, mark, own-scoping, home)
 built-list = outer-list
 built-item = outer-item
@@ -326,42 +326,42 @@ spreading = outer-spreading
 
 ────────────────────
 _ do emit-spread
-    - bullet SyntaxId
+    - feed SyntaxId
     - item SyntaxId
     - optional Bool
 
-` A bullet that gives every item of what it writes. Of a range of integers written there,
+` A spread of what it writes. Of a range of integers written there,
 ` the loop that counts through it. Of a container, a loop over it by the protocol the type
-` pass planned at the bullet, whose slots keep the container, converted first to the iterable
+` pass planned at the feed, whose slots keep the container, converted first to the iterable
 ` it is read as where it is not one: `**?` reads what an optional holds and gives nothing
 ` where it holds none. Each item is yielded as it is read. What the
-` loop does at the bullet is located on the line under it where the type pass noted that.
-. plan = facts.plan-of(unit.reading, bullet)
+` loop does at the feed is located on the line under it where the type pass noted that.
+. plan = facts.plan-of(unit.reading, feed)
 if plan == .plan-range-loop && !optional
     do match? tree.nodes[item]
         | .node-range-expression(range)
-            emit-range-loop(bullet, range.op, range.left, range.right, 0, 0)
+            emit-range-loop(feed, range.op, range.left, range.right, 0, 0)
             =
 if plan != .plan-index-loop && plan != .plan-cursor-loop && plan != .plan-stream-loop
-    refuse(.refused-expression, bullet)
+    refuse(.refused-expression, feed)
     =
-. slot = loop-slots(bullet)
+. slot = loop-slots(feed)
 . held = convert(item, .reason-explicit, emit-expression(item))
 . beyond = no-block
 if optional && types.is-optional(held.type)
     . wrapped = held.type
     . given = ir.reserve-block()
     beyond = ir.reserve-block()
-    branch(present(bullet, held).operand, given, beyond)
+    branch(present(feed, held).operand, given, beyond)
     ir.start-block(given)
-    held = payload(bullet, Typed(held.operand, wrapped))
-. site = facts.bullet-site(unit.reading, bullet)
+    held = payload(feed, Typed(held.operand, wrapped))
+. site = facts.feed-site(unit.reading, feed)
 if site != 0
     held = convert(site, .reason-operand, held)
-keep-state(slot, held.operand, held.type, bullet)
+keep-state(slot, held.operand, held.type, feed)
 . shifted = lowered
-lowered = if facts.is-bullet-below(unit.reading, bullet) then bullet else 0
-emit-headed(bullet, item, 0, 0, true)
+lowered = if facts.is-feed-below(unit.reading, feed) then feed else 0
+emit-headed(feed, item, 0, 0, true)
 lowered = shifted
 if beyond != no-block
     jump(beyond)
@@ -373,7 +373,7 @@ if beyond != no-block
 
 ` The body of the function generated for a stream piped through a pattern, as the reference
 ` makes it: the stream the pattern reads the value piped through is made, once, of what a
-` bullet the pipe reads alone writes where it reads one, evaluated then and converted as the
+` feed the pipe reads alone writes where it reads one, evaluated then and converted as the
 ` type pass recorded. Then on each pass a stream the type pass found the function makes for
 ` itself is released, where it can be; the stream is asked whether it has more, and the
 ` function ends where it has not; it is marked, and the pattern matched from where it is, as
@@ -405,8 +405,8 @@ if right == 0 || result == no-type || result == invalid-type || marks == no-fact
     refuse(.refused-statement, pipe)
     =
 . slot = loop-slots(pipe)
-do match? tree.nodes[tree.piped-bullet(pipe)]
-    | .node-bullet-expression(row)
+do match? tree.nodes[tree.piped-feed(pipe)]
+    | .node-feed-expression(row)
         . written = convert(row.item, .reason-argument, emit-expression(row.item))
         keep-state(slot, written.operand, written.type, pipe)
 . container = state(slot, pipe)
@@ -458,7 +458,7 @@ if helper != 0
 . stuck = ir.reserve-block()
 branch(compare(pipe, .compare-greater, ended.operand, began.operand), moved, stuck)
 ir.start-block(stuck)
-raise-text(right, "Stream pattern pipeline made no input progress")
+raise-text(right, "Grammar pipeline made no input progress")
 ir.start-block(moved)
 yield-item(right, Typed(value.operand, result), false)
 jump(root)
@@ -510,18 +510,18 @@ _ do emit-stream-pipe Typed
 ` stream, given the stream on the left and the function generated for the right side as a
 ` value of the function type it takes.
 ` 1. The stream is evaluated, and converted as the type pass recorded where its facts are
-`    kept: at the left side, or for a list of bullets at the bullet after the first, or at
+`    kept: at the left side, or for a list of feeds at the feed after the first, or at
 `    the pipe where there is none, for a reason of its own apart from the pipe's value.
 ` 2. The function is the environment its body is given (`nested-environment`), converted as
 `    recorded at the pipe.
 ` A stack trace through the function on the right is the one TypeScript prints with no
 ` inlining. The answer has the type the function called returns: the type pass keeps the
-` type of a list of one bullet at the pipe that reads it.
+` type of a list of one feed at the pipe that reads it.
 . nothing = make-operand(.operand-void, 0)
 . fact = own-call(id)
 . site = left
 do match? tree.nodes[left]
-    | .node-bullet-expression(row)
+    | .node-feed-expression(row)
         site = if row.next != 0 then row.next else id
 . outside = unit.reading != unit.instance
 if fact == no-fact || (holds-environment && shared-slot() == no-slot) || receiving
@@ -647,17 +647,17 @@ if answer.type != facts.node-type(unit.reading, id)
 ` A value piped forward into the function written on the right, as the last argument of the
 ` call the type pass recorded at the pipe; a stream piped through the function written on
 ` the right, which maps, filters or taps its items, or through a pattern, as a comprehension
-` is called, given what is piped as the type pass cast it, but for a bullet that function
+` is called, given what is piped as the type pass cast it, but for a feed that function
 ` evaluates; a value given whole to the function
 ` generated for the right side; or a value written whole, or each of its items, to what is
-` on the right. Any other pipe has no shape yet. A list of bullets piped
-` forward has what converts it kept at the bullet after the first, beside what converts
-` the yields of bullets, and a list of one bullet at the pipe, apart from what converts the
+` on the right. Any other pipe has no shape yet. A list of feeds piped
+` forward has what converts it kept at the feed after the first, beside what converts
+` the yields of feeds, and a list of one feed at the pipe, apart from what converts the
 ` pipe's value.
 if pipes-stream(op)
     = emit-stream-pipe(id, left)
-if op == .stream-pattern-pipe-op
-    = emit-comprehension-call(id, if tree.piped-bullet(id) == 0 then left else 0, true)
+if op == .grammar-pipe-op
+    = emit-comprehension-call(id, if tree.piped-feed(id) == 0 then left else 0, true)
 if op == .pipe-closure-op
     = emit-piped(id, left)
 if op == .pipe-write-all-op
@@ -667,9 +667,9 @@ if op == .pipe-write-each-op
 if op != .pipe-forward-op
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
-=? emit-listed-bullets(id, tree.listed-bullets(id)) if facts.plan-of(unit.reading, id) == .plan-built-bullets
+=? emit-listed-feeds(id, tree.listed-feeds(id)) if facts.plan-of(unit.reading, id) == .plan-built-feeds
 do match? tree.nodes[left]
-    | .node-bullet-expression(row)
+    | .node-feed-expression(row)
         piped-site = if row.next != 0 then row.next else id
     | .node-pipeline-expression(row)
         if pipes-stream(row.op)

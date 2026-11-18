@@ -724,7 +724,7 @@ for index in 0 .. < captured.count
 
 ` Whether a nested function holds the state of a global `do with` binds where nothing writes
 ` it: one that is neither a lambda, a comprehension nor a spawned task's body, a list of
-` bullets or the right side of a pipe, which has no shape for it. The body of a `do without gc`
+` feeds or the right side of a pipe, which has no shape for it. The body of a `do without gc`
 ` block holding one is not built (`lay-capture`).
 if facts.stack-holds.length == 0 || copies-in(instance)
     = false
@@ -1191,7 +1191,7 @@ has-stop && is-owned && machine.outer == 0 && machine.refined == no-instance
     - instance InstanceId
     - arm SyntaxId
 
-` The function an action of a stream pattern runs in, or none.
+` The function an action of a grammar runs in, or none.
 stream-action-rows[pair-key(instance, arm)] ?? no-function
 
 ────────────────────
@@ -1683,13 +1683,13 @@ if index != U32.max then event-numbers[index] else U32.max
     - syntax SyntaxId
 
 ` The key a metric of the profile is declared under: the one its probe is written with, or for a
-` stream pattern the counter the reference names for its results.
+` grammar the counter the reference names for its results.
 do match? program.modules[instances.rows[instance].module].tree.nodes[syntax]
     | .node-probe-counter(row)
         = row.key.text
     | .node-probe-group(row)
         = if row.key then row.key.text else ""
-= "stream-pattern.capture-results"
+= "grammar.capture-results"
 
 ────────────────────
 + do probe-site ProbeSite?
@@ -2841,7 +2841,7 @@ _ do lay-environment LayoutId
 
 ` The environment of an instance's own scope: the link, then each local the scope holds, and
 ` each item that `each` or `it` names there, as the instance types it, the `location` of an
-` arm of a stream pattern and the list of subscribers of locals read tracked among them, and
+` arm of a grammar and the list of subscribers of locals read tracked among them, and
 ` the receiver of a member where nested functions read it, as the member sees it: a function
 ` of an interface run for a value of a type that is none sees the interface.
 ` A lazy local is followed by the byte that says whether it has its value, unless it is held
@@ -4437,7 +4437,7 @@ _ do number-closures
 ` Numbers the closures that share a name in the order they are written: of those of one name
 ` in a module the first written has the name, and a stack trace prints the second as `name2`.
 ` One written in a function made more than once is counted for each, by instance. The
-` functions generated for comprehensions, lists of bullets and the right sides of pipes are
+` functions generated for comprehensions, lists of feeds and the right sides of pipes are
 ` closures the type pass typed, and are numbered among them. The body of a spawned task is
 ` named `Fork`, or `Spin` where it runs in parallel, and that of a `do without gc` block
 ` `GCFreeRegion`, and numbered so among the closures of that name.
@@ -4591,7 +4591,7 @@ pair-key(decl, enclosing) /xor/ ((module as Size) /lshift/ 56)
 ────────────────────
 _ do declare-stream-actions
 
-` Declares the function the reference runs an action of a stream pattern in, for each such
+` Declares the function the reference runs an action of a grammar in, for each such
 ` action of an emitted instance that may panic, which the function shows. It is named
 ` `stream-action`, and `number-made` numbers it. One the type pass is not sure the reference
 ` runs so is refused. They are declared in the order of their instances' ranks.
@@ -8809,9 +8809,9 @@ if compares-interfaces(instance, syntax, plan)
     mark(kinds, instances.report.panic)
     mark(kinds, instances.report.source)
 if plan == .plan-stream-loop || plan == .plan-cursor-loop
-    reach-loop-panic(kinds, instance, facts.bullet-site(instance, syntax))
+    reach-loop-panic(kinds, instance, facts.feed-site(instance, syntax))
 if plan == .plan-index-loop || is-place-loop-plan(plan)
-    reach-loop-panic(kinds, instance, facts.bullet-site(instance, syntax))
+    reach-loop-panic(kinds, instance, facts.feed-site(instance, syntax))
 
 ────────────────────
 _ do construct
@@ -9493,7 +9493,7 @@ _ do reach-loop-panic
 
 ` Adds what a loop over a container calls where a function of the container's protocol
 ` raises an error: the panic the loop makes of it, and the text of the error. The calls
-` are read where the type pass kept them, which for a bullet is beside others.
+` are read where the type pass kept them, which for a feed is beside others.
 . call = facts.first-call(instance, loop)
 while call != no-fact
     . callee = facts.calls[call].callee
@@ -10304,7 +10304,7 @@ _ do callee-name String
 
 ` The name of an instance's function alone. A closure's is the variable it is written for,
 ` numbered where it is not the first closure of that name; the functions generated for
-` comprehensions, lists of bullets and the right sides of pipes are named and numbered so.
+` comprehensions, lists of feeds and the right sides of pipes are named and numbered so.
 if instance == no-instance
     = "?"
 . row = instances.rows[instance]

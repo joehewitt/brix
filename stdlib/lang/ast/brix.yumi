@@ -1536,7 +1536,7 @@ _ do stream-match-block SyntaxId ?! YumiSyntaxError
 
 . close = tape.close-of(index)
 . loc = located(begin, index)
-. matched = stream-pattern(index + 2)
+. matched = grammar(index + 2)
 . item = tape.after(index + 2)
 =? tree.append(ASTStreamMatch(loc, matched)) if item >= close
 . kind = head(item)
@@ -1567,7 +1567,7 @@ if kind == .in-label-head || kind == .on-label-head
 = tree.append(ASTStreamMatch(loc, tree.append(ASTStreamTransform(loc, matched, body, is-rollback))))
 
 ────────────────────
-_ do stream-pattern SyntaxId ?! YumiSyntaxError
+_ do grammar SyntaxId ?! YumiSyntaxError
     - index Index
 
 . begin = begin-at(index)
@@ -1582,33 +1582,33 @@ if tape.is-atom(index)
 . first = index + 2
 do match? kind
     |= .seq-head
-        . accumulated = stream-pattern(first)
+        . accumulated = grammar(first)
         . item = tape.after(first)
         while item < close
-            . right = stream-pattern(item)
+            . right = grammar(item)
             accumulated = tree.append(ASTStreamAnd(loc, accumulated, right))
             item = tape.after(item)
         = accumulated
     |= .alternative-head
-        . accumulated = stream-pattern(first)
+        . accumulated = grammar(first)
         . item = tape.after(first)
         while item < close
-            . right = stream-pattern(item)
+            . right = grammar(item)
             accumulated = tree.append(ASTStreamOr(loc, accumulated, right))
             item = tape.after(item)
         = accumulated
     |= .optional-head
-        = tree.append(ASTStreamUnary(loc, .zero-or-one-op, stream-pattern(first)))
+        = tree.append(ASTStreamUnary(loc, .zero-or-one-op, grammar(first)))
     |= .multiply-head
-        = tree.append(ASTStreamUnary(loc, .zero-or-more-op, stream-pattern(first)))
+        = tree.append(ASTStreamUnary(loc, .zero-or-more-op, grammar(first)))
     |= .add-head
-        = tree.append(ASTStreamUnary(loc, .one-or-more-op, stream-pattern(first)))
+        = tree.append(ASTStreamUnary(loc, .one-or-more-op, grammar(first)))
     |= .lookahead-head
-        = tree.append(ASTStreamUnary(loc, .positive-lookahead-op, stream-pattern(first)))
+        = tree.append(ASTStreamUnary(loc, .positive-lookahead-op, grammar(first)))
     |= .not-head
-        = tree.append(ASTStreamUnary(loc, .negative-lookahead-op, stream-pattern(first)))
+        = tree.append(ASTStreamUnary(loc, .negative-lookahead-op, grammar(first)))
     |= .predicate-head
-        . operand = stream-pattern(first)
+        . operand = grammar(first)
         . low = tape.after(first)
         . high = tape.after(low)
         . low-id = expression(low)
@@ -1630,7 +1630,7 @@ do match? kind
                 - atom-at(first, if is-accumulating then 3 else 0)
                 - false
         = tree.append
-            - ASTStreamCapture(loc, name, stream-pattern(tape.after(first)), is-accumulating)
+            - ASTStreamCapture(loc, name, grammar(tape.after(first)), is-accumulating)
     |= .call-head
         = stream-call(first, tape.after(first), close, loc, true)
     |= .of-head
@@ -1704,7 +1704,7 @@ if kind == .into-head
     =? tree.append(ASTStreamCollectorMapping(loc, null, atom-at(first, 0))) if lacks-second
     .. lacks-second = second >= tape.close-of(index)
     = tree.append(ASTStreamCollectorMapping(loc, atom-at(first, 0), atom-at(second, 0)))
-=? tree.append(ASTStreamCallExpressionArgument(MatchLocation(), tree.append(ASTStreamMatch(loc, stream-pattern(index + 2))))) if kind == .tilde-head
+=? tree.append(ASTStreamCallExpressionArgument(MatchLocation(), tree.append(ASTStreamMatch(loc, grammar(index + 2))))) if kind == .tilde-head
 = tree.append(ASTStreamCallExpressionArgument(MatchLocation(), expression(index)))
 
 ────────────────────
@@ -2317,9 +2317,9 @@ do match? kind
     |= .pipe-head
         . op = brix-binary-operator(brix-head(bytes, tape.start(first), tape.end(first)))
         . loc = located(begin, index)
-        if op == .stream-pattern-pipe-op
+        if op == .grammar-pipe-op
             . pattern-index = tape.after(first)
-            . matched = stream-pattern(pattern-index)
+            . matched = grammar(pattern-index)
             . rest = tape.after(pattern-index)
             . has-helper = rest < close && head(rest) == .with-head
             . helper = if has-helper then expression(rest + 2) else 0
@@ -2704,7 +2704,7 @@ _ do conditional-match SyntaxId ?! YumiSyntaxError
 
 . marked = condition + 2
 . is-stream = head(marked) == .tilde-head
-. matched = if is-stream then stream-pattern(marked + 2) else pattern(marked + 2)
+. matched = if is-stream then grammar(marked + 2) else pattern(marked + 2)
 . subject = expression(tape.after(marked))
 = make-conditional-match-block
     - tree
@@ -2883,7 +2883,7 @@ _ do selected SyntaxId ?! YumiSyntaxError
     - loc MatchLocation
 
 . kind = head(index)
-=? tree.append(ASTStreamMatch(loc, tree.append(ASTStreamTransform(loc, stream-pattern(index + 2), value, false)))) if kind == .tilde-head
+=? tree.append(ASTStreamMatch(loc, tree.append(ASTStreamTransform(loc, grammar(index + 2), value, false)))) if kind == .tilde-head
 ?! unsupported-error(index) if kind != .alternative-head && kind != .every-match-head
 = tree.append
     - ASTStructureMatch(loc, tree.append(ASTTypeTransform(loc, value, pattern(index + 2), false)))
@@ -2892,7 +2892,7 @@ _ do selected SyntaxId ?! YumiSyntaxError
 _ do loop-pattern SyntaxId ?! YumiSyntaxError
     - index Index
 
-=? stream-pattern(index + 2) if head(index) == .tilde-head
+=? grammar(index + 2) if head(index) == .tilde-head
 if head(index) == .alternative-head && count-from(index + 2, tape.close-of(index)) == 1
     = tree.append(ASTStructureMatch(located(begin-at(index), index), pattern(index + 2)))
 = pattern(index)
@@ -3183,12 +3183,12 @@ do match? kind
     |= .header-head
         = tree.append
             - ASTHeaderExpression(located(begin, index), expression(first), RowRange'SyntaxId())
-    |= .bullet-head
+    |= .item-head
         = tree.append
-            - ASTBulletExpression(located(begin, index), multi(first), 0, false, is-optional(index))
-    |= .bullet-many-head
+            - ASTFeedExpression(located(begin, index), multi(first), 0, false, is-optional(index))
+    |= .spread-head
         = tree.append
-            - ASTBulletExpression(located(begin, index), multi(first), 0, true, is-optional(index))
+            - ASTFeedExpression(located(begin, index), multi(first), 0, true, is-optional(index))
     |= .tilde-head
         = stream-match-block(index, begin)
     |= .machine-head
@@ -3856,11 +3856,11 @@ _ do binary SyntaxId ?! YumiSyntaxError
 operand = tape.after(operand)
 while operand < close
     . next = tape.after(operand)
-    if op == .stream-pattern-pipe-op && next < close && head(next) == .with-head
+    if op == .grammar-pipe-op && next < close && head(next) == .with-head
         . stage = tree.append
             - ASTStreamMatch
                 - located(begin-at(operand), operand)
-                - stream-pattern(operand)
+                - grammar(operand)
                 - false
                 - expression(next + 2)
         accumulated = binary-op(tree, located(begin, index), op, accumulated, stage)
@@ -3921,9 +3921,9 @@ _ do binary-right SyntaxId ?! YumiSyntaxError
     - op Operator
 
 =? reduce-type(index) if op == .as-op
-=? tree.append(ASTStreamMatch(loc, stream-pattern(index), false, 0)) if is-pattern-pipe
+=? tree.append(ASTStreamMatch(loc, grammar(index), false, 0)) if is-pattern-pipe
 .. loc = located(begin-at(index), index)
-.. is-pattern-pipe = op == .stream-pattern-pipe-op
+.. is-pattern-pipe = op == .grammar-pipe-op
 if op == .is-op || op == .is-not-op || is-exact-test || is-similar-test
     =? pattern(index) if tape.is-text(index) || atom-is(index, "_") || head(index) == .list-head || head(index) == .map-head || head(index) == .all-head || is-remainder-atom(index)
 .. is-exact-test = op == .is-exactly-op || op == .is-not-exactly-op
@@ -4409,7 +4409,7 @@ MatchLocation(begin, TokenLocation(end.line, end.column - 1))
 _ inline-markup-error YumiSyntaxError
     - index Index
 
-YumiSyntaxError(MatchLocation(place, place), "(<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or a bullet, as in (bullet (<> …)); or name it with (let name (<> …)) first.")
+YumiSyntaxError(MatchLocation(place, place), "(<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or an item, as in (item (<> …)); or name it with (let name (<> …)) first.")
 
 .. place = tape.token-location(index)
 
@@ -4581,7 +4581,7 @@ match kind
     |= .backward-pipe-head
         .pipe-backward-op
     |= .stream-pipe-head
-        .stream-pattern-pipe-op
+        .grammar-pipe-op
     ??
         .no-op
 

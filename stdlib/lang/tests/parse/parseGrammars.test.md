@@ -1,4 +1,4 @@
-# Stream patterns
+# Grammars
 
 Patterns
 

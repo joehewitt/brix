@@ -218,4 +218,4 @@ result ~ Binding in input
 
 ## Structural pattern first
 
-## Stream pattern first
+## Grammar first

@@ -90,7 +90,7 @@ being a single expression:
 - **A decision table**: `(case? condition value)`{.brix} arms, each with a condition and the value
   it gives, and a `(default value)`{.brix} arm for every other case. A `match` is a table over one
   subject. See Control flow.
-- **Bullets**: rows such as `(bullet item)`{.brix}, each adding items to the list the function
+- **Feeds**: rows such as `(item value)`{.brix}, each adding items to the list the function
   gives. See Streams.
 - **A pipeline**: a value followed by stage rows such as `(pipe ?> condition)`{.brix} and
   `(pipe *> value)`{.brix}, each working on the result of the row above. See Streams.
@@ -122,9 +122,9 @@ being a single expression:
 
 (fn-expr + steps (list String)
   (param verbose Bool)
-  (bullet "start")
-  (bullet? (only-if "trace" (if verbose)))
-  (bullet "stop")
+  (item "start")
+  (item? (only-if "trace" (if verbose)))
+  (item "stop")
 )
 
 (fn-expr + doubled-evens (list Int)
@@ -557,8 +557,8 @@ true
   `(arg value)`{.brix}, as the call of `clamp` does.
 - **A block as an argument.** An argument by name can take a `block` as its value, as in
   `(:name (block step value))`{.brix}: steps, then the value as the last row.
-- **Bullets as the argument.** A call whose `block` holds bullets gives the list they build as its
-  argument, as in `(call (. ", " join) (block (bullet "a") (bullet "b")))`{.brix}.
+- **Feeds as the argument.** A call whose `block` holds feeds gives the list they build as its
+  argument, as in `(call (. ", " join) (block (item "a") (item "b")))`{.brix}.
 - **Callbacks that read `each`.** An argument by name for a parameter of a function type can be an
   expression that reads `each`, as in `(call some scores (:where (> each 30)))`{.brix}. The
   expression becomes the body of a function whose parameter is `each`. A callback given by position
@@ -915,13 +915,13 @@ functions of other modules are not part of it.
 ## Annotations
 
 An annotation is a word starting with `@`, written after a function's result and error types.
-Fields and stream pattern rules take annotations of their own, described with them.
+Fields and grammar rules take annotations of their own, described with them.
 
 | Annotation | Meaning |
 | --- | --- |
 | `@inline` | Put the function's body in place of each call to it. |
 | `@live` | Keep state across the runs of the live value that calls the function. See Reactivity. |
-| `@rollback` | On a stream pattern rule or action: undo the changes it made through the match's helper when the match goes back past it. See Stream patterns. |
+| `@rollback` | On a grammar rule or action: undo the changes it made through the match's helper when the match goes back past it. See Grammars. |
 
 A function that calls itself, directly or through other functions, cannot be inlined. The
 compiler calls it as usual and, with `--warnings`, reports each call it could not inline.

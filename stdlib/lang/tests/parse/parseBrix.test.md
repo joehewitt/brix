@@ -409,7 +409,7 @@ Exception: (without …) cannot be a `row` of (do …), which takes Step. This b
 ```
 
 ```output
-Exception: (<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or a bullet, as in (bullet (<> …)); or name it with (let name (<> …)) first.
+Exception: (<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or an item, as in (item (<> …)); or name it with (let name (<> …)) first.
 <no file:3>
       (call show (<> Text (text: "x")))
                  ^

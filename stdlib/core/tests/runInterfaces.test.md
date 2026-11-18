@@ -2456,7 +2456,7 @@ a
 inner
 ```
 
-### Bullet pipelines over interface-typed lists map, filter, test, and pick items.
+### Feed pipelines over interface-typed lists map, filter, test, and pick items.
 
 ```yumi
 . nodes [Named] = List'Named()
@@ -8410,7 +8410,7 @@ total += count
 1
 ```
 
-### A function that answers an interface's with bullets gives a generator, which a call through the interface collects into the list the interface's function answers.
+### A function that answers an interface's with feeds gives a generator, which a call through the interface collects into the list the interface's function answers.
 
 ```yumi
 . maker Shows'Record = Maker()

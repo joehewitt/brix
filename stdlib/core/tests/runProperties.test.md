@@ -3445,7 +3445,7 @@ mark last
 as7last
 ```
 
-### A constructor gives a property the value of a lazy local that is a list of bullets reading an argument.
+### A constructor gives a property the value of a lazy local that is a list of feeds reading an argument.
 
 ```yumi
 . m = Message("hi")

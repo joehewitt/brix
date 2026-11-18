@@ -1,4 +1,4 @@
-# Bullets
+# Feeds
 
 ```yumi
 * foo
@@ -8,22 +8,22 @@
 
 ```brix
 (main
-  (bullet foo)
-  (bullet bar)
-  (bullet baz)
+  (item foo)
+  (item bar)
+  (item baz)
 )
 ```
 
 ```output
-<Bullet>
+<Feed>
     <Id name="foo"/>
-    <Bullet>
+    <Feed>
         <Id name="bar"/>
-        <Bullet>
+        <Feed>
             <Id name="baz"/>
-        </Bullet>
-    </Bullet>
-</Bullet>
+        </Feed>
+    </Feed>
+</Feed>
 ```
 
 ```yumi
@@ -33,18 +33,18 @@
 
 ```brix
 (main
-  (bullet? foo)
-  (bullet*? bar)
+  (item? foo)
+  (spread? bar)
 )
 ```
 
 ```output
-<Bullet optional="true">
+<Feed optional="true">
     <Id name="foo"/>
-    <Bullet multi="true" optional="true">
+    <Feed spread="true" optional="true">
         <Id name="bar"/>
-    </Bullet>
-</Bullet>
+    </Feed>
+</Feed>
 ```
 
 ```yumi
@@ -55,22 +55,22 @@
 
 ```brix
 (main
-  (bullet foo)
-  (bullet* bar)
-  (bullet baz)
+  (item foo)
+  (spread bar)
+  (item baz)
 )
 ```
 
 ```output
-<Bullet>
+<Feed>
     <Id name="foo"/>
-    <Bullet multi="true">
+    <Feed spread="true">
         <Id name="bar"/>
-        <Bullet>
+        <Feed>
             <Id name="baz"/>
-        </Bullet>
-    </Bullet>
-</Bullet>
+        </Feed>
+    </Feed>
+</Feed>
 ```
 
 ```yumi
@@ -80,16 +80,16 @@
 
 ```brix
 (main
-  (bullet foo)
+  (item foo)
   (pipe |> bar)
 )
 ```
 
 ```output
 <Pipeline op="|>">
-    <Bullet>
+    <Feed>
         <Id name="foo"/>
-    </Bullet>
+    </Feed>
     <Id name="bar"/>
 </Pipeline>
 ```
@@ -234,7 +234,7 @@ source
 
 ```brix
 (main
-  (bullet
+  (item
     (call (in foo set)
       (:with
         (block
@@ -243,12 +243,12 @@ source
       )
     )
   )
-  (bullet bar)
+  (item bar)
 )
 ```
 
 ```output
-<Bullet>
+<Feed>
     <CallExpression>
         <Iterator>
             <In>
@@ -262,10 +262,10 @@ source
             </Block>
         </Argument>
     </CallExpression>
-    <Bullet>
+    <Feed>
         <Id name="bar"/>
-    </Bullet>
-</Bullet>
+    </Feed>
+</Feed>
 ```
 
 ```yumi

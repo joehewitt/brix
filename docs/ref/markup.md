@@ -109,7 +109,7 @@ An element is a value. It can be written wherever a row can:
 - a positional argument written as a row, `(call show (block (arg (<> Text))))`{.brix}, in rows
   `- <Text`{.rows} below the call;
 - a named argument, `(call show (:t (<> Text)))`{.brix}, in rows `show • t <Text`{.rows};
-- an item of a list built from bullets, `(bullet (<> Text))`{.brix}, in rows `* <Text`{.rows};
+- an item of a list built from feeds, `(item (<> Text))`{.brix}, in rows `* <Text`{.rows};
 - the value of a `match` arm.
 
 It cannot be written inside an expression: among the arguments in `(call …)`, the items of
@@ -142,7 +142,7 @@ rows belong to the body around the element, so the names given there do too, whi
 A row `(= price 4)`{.brix} in an element's body is an attribute: it sets the element's property
 `price`, or fills a constructor parameter of that name.
 
-- **Values** may be any expression: a block of bullets, a tuple, a function value, or another
+- **Values** may be any expression: a block of feeds, a tuple, a function value, or another
   element.
 - **What the value can read.** The value is worked out outside the element, so it reads the names
   around the element, not the element's own members. It cannot read the element by its name:
@@ -269,7 +269,7 @@ A `match` or a table written as a row there runs the arm it takes as an `if` run
 the element nothing itself, so its arms need give no value and it is written with no `do`. An arm
 that raises raises there. Written with `do`, the match makes the elements of its arm without adding
 them, as `do` does any row. A `match?`, or a table with no default row, that takes no arm gives no
-children. A match on a stream pattern, or with an arm written with no body, gives its value as any
+children. A match on a grammar, or with an arm written with no body, gives its value as any
 row does.
 
 ## Markup that follows state

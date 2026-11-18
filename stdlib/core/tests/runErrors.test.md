@@ -384,7 +384,7 @@ list error true
 stream error true
 ```
 
-### A fallible bullet pipeline can be collected through a named tuple stream.
+### A fallible feed pipeline can be collected through a named tuple stream.
 
 ```yumi
 . values = Map'String'Float
@@ -1179,7 +1179,7 @@ result=true
 raised=false
 ```
 
-### Recursive local stream patterns tell authors to declare errors on the enclosing function.
+### Recursive local grammars tell authors to declare errors on the enclosing function.
 
 ```yumi crash
 -- catch? parse("a!") ?? "error"
@@ -1214,13 +1214,13 @@ match text
 ```
 
 ```output
-Exception: ParserError can leave recursive function items before its errors are inferred; For a local '.. name ~' stream pattern, declare ?! ParserError on the enclosing '+ name ~ ...' function so generated pattern helpers inherit the result ABI.
+Exception: ParserError can leave recursive function items before its errors are inferred; For a local '.. name ~' grammar, declare ?! ParserError on the enclosing '+ name ~ ...' function so generated pattern helpers inherit the result ABI.
 <no file:16>
             ~ head \item tail \items?
                    ^^^^^
 ```
 
-### Recursive local stream patterns inherit declared result errors from the enclosing function.
+### Recursive local grammars inherit declared result errors from the enclosing function.
 
 ```yumi
 -- catch? parse("aaa") ?? "error"

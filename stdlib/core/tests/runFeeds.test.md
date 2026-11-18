@@ -1,4 +1,4 @@
-# Bullets
+# Feeds
 
 ```yumi
 --
@@ -143,7 +143,7 @@ for item in items
 2, 6, 10
 ```
 
-### Optional chaining in bullet
+### Optional chaining in feed
 
 ```yumi
 . foo = [1, 2, 3] if 5 > 6
@@ -957,7 +957,7 @@ first 1
 second b
 ```
 
-### A list of bullets kept in a local and read by a loop, one of a single bullet, one read in a function, and one a function returns, read by `<-`.
+### A list of feeds kept in a local and read by a loop, one of a single feed, one read in a function, and one a function returns, read by `<-`.
 
 ```yumi
 . source =
@@ -1008,7 +1008,7 @@ y
 unknown
 ```
 
-### A list of bullets a method returns, which reads the receiver and an argument, and one that reads a local as it is when the items are read.
+### A list of feeds a method returns, which reads the receiver and an argument, and one that reads a local as it is when the items are read.
 
 ```yumi
 . box = Box(3)
@@ -1069,7 +1069,7 @@ this.n = n
 51
 ```
 
-### A list of bullets given to a function as a block: joined, with a range among the bullets, and made a list.
+### A list of feeds given to a function as a block: joined, with a range among the feeds, and made a list.
 
 ```yumi
 -- ", ".join
@@ -1095,7 +1095,7 @@ this.n = n
 (4, 9)
 ```
 
-### Bullets that give every item of a range: up, down, empty, with ends that are arguments, two in a row, and of bytes.
+### Spreads of a range: up, down, empty, with ends that are arguments, two in a row, and of bytes.
 
 ```yumi
 . source =
@@ -1156,7 +1156,7 @@ for b in bytes
 1515
 ```
 
-### Bullets that give what an optional holds, `*?`: where it holds a value, where it holds none, and alone in a list that yields nothing.
+### Feeds that give what an optional holds, `*?`: where it holds a value, where it holds none, and alone in a list that yields nothing.
 
 ```yumi
 . source =
@@ -1204,7 +1204,7 @@ a
 b
 ```
 
-### Bullets of several types yield the type they unify to, and bullets written where a list of a type is wanted are converted to it.
+### Feeds of several types yield the type they unify to, and feeds written where a list of a type is wanted are converted to it.
 
 ```yumi
 . floats =
@@ -1272,7 +1272,7 @@ for f in later
 1, 2, 3
 ```
 
-### A list of bullets left by `break` has finished, one never read runs nothing, and one read by `<-` past its end gives nothing.
+### A list of feeds left by `break` has finished, one never read runs nothing, and one read by `<-` past its end gives nothing.
 
 ```yumi
 . source =
@@ -1318,7 +1318,7 @@ unknown
 2
 ```
 
-### A list of bullets piped through a function over each item: mapped, filtered, mapped where a condition holds, and through several pipes in a row.
+### A list of feeds piped through a function over each item: mapped, filtered, mapped where a condition holds, and through several pipes in a row.
 
 ```yumi
 . doubled =
@@ -1605,7 +1605,7 @@ for item in items
 3
 ```
 
-### Bullets of texts piped through a function that reads a property of each.
+### Feeds of texts piped through a function that reads a property of each.
 
 ```yumi
 . words =
@@ -1630,7 +1630,7 @@ bb
 ccc
 ```
 
-### A list of several bullets piped forward into a function, alone and after other pipes.
+### A list of several feeds piped forward into a function, alone and after other pipes.
 
 ```yumi
 . mixed =
@@ -1662,7 +1662,7 @@ for item in items
 6
 ```
 
-### A pipe and a list of bullets written in a turn of a loop read the item of that turn.
+### A pipe and a list of feeds written in a turn of a loop read the item of that turn.
 
 ```yumi
 for round in 1 .. 2
@@ -1898,7 +1898,7 @@ for item in picked
 6
 ```
 
-### A panic under a list of bullets read by a loop of the same function.
+### A panic under a list of feeds read by a loop of the same function.
 
 ```yumi crash
 run()
@@ -1926,7 +1926,7 @@ if n == 2
 1
 ```
 
-### A panic under a list of bullets read through `join`.
+### A panic under a list of feeds read through `join`.
 
 ```yumi crash
 run()
@@ -1949,7 +1949,7 @@ if n == 2
 = n
 ```
 
-### A panic under a list of bullets a function returns, read by a loop.
+### A panic under a list of feeds a function returns, read by a loop.
 
 ```yumi crash
 run()
@@ -1982,7 +1982,7 @@ if n == 2
 1
 ```
 
-### A panic in the function of a pipe over a list of bullets, read by a loop of the same function.
+### A panic in the function of a pipe over a list of feeds, read by a loop of the same function.
 
 ```yumi crash
 run()
@@ -2135,7 +2135,7 @@ if n == 2
 3
 ```
 
-### A panic in the function of a filter that follows a map, after a list of bullets that calls a closure has been read.
+### A panic in the function of a filter that follows a map, after a list of feeds that calls a closure has been read.
 
 ```yumi crash
 run()
@@ -2241,7 +2241,7 @@ if n == 13
 2
 ```
 
-### Bullets of two pairs, neither the wider: the items have the pair of what the fields at each place join to.
+### Feeds of two pairs, neither the wider: the items have the pair of what the fields at each place join to.
 
 ```yumi
 . a =
@@ -2256,7 +2256,7 @@ for n, s in a
 2.5 b
 ```
 
-### Bullets of pairs with a float on either side have a float at both places.
+### Feeds of pairs with a float on either side have a float at both places.
 
 ```yumi
 . c =
@@ -2271,7 +2271,7 @@ for item in c
 (1, 2.5)
 ```
 
-### A bullet written `**` gives every item of a list, between two items.
+### A feed written `**` gives every item of a list, between two items.
 
 ```yumi
 . items = [4, 5, 6]
@@ -2291,7 +2291,7 @@ for item in all
 9
 ```
 
-### Two bullets written `**` over generators, with an item between them.
+### Two feeds written `**` over generators, with an item between them.
 
 ```yumi
 . all =
@@ -2354,7 +2354,7 @@ for item in all
 9
 ```
 
-### Three bullets written `**` over lists, one list twice.
+### Three feeds written `**` over lists, one list twice.
 
 ```yumi
 . words = ["a", "b"]
@@ -2456,7 +2456,7 @@ for index in 0 .. < limit
 after
 ```
 
-### A single `**` bullet over a list of values of an interface, mapped by a pipe and made a list.
+### A single `**` feed over a list of values of an interface, mapped by a pipe and made a list.
 
 ```yumi
 . nodes [Named] = List'Named()
@@ -2586,7 +2586,7 @@ if state >= limit
 9
 ```
 
-### Two `**` bullets over cursors: each begins from its own state.
+### Two `**` feeds over cursors: each begins from its own state.
 
 ```yumi
 . all =
@@ -2761,7 +2761,7 @@ for item in all
 -2
 ```
 
-### A function whose body is two `**` bullets answers a list.
+### A function whose body is two `**` feeds answers a list.
 
 ```yumi
 . picked = both([1, 2], [3])
@@ -2782,7 +2782,7 @@ for item in all
 3
 ```
 
-### A method whose body is bullets reads a property by its name and through `this`.
+### A method whose body is feeds reads a property by its name and through `this`.
 
 ```yumi
 . box = Box([5, 6])
@@ -2877,7 +2877,7 @@ for item in all
 2.5
 ```
 
-### Two `**` bullets over generators, mapped by a pipe.
+### Two `**` feeds over generators, mapped by a pipe.
 
 ```yumi
 . all =
@@ -2901,7 +2901,7 @@ b!
 c!
 ```
 
-### A single `**` bullet over a list written there, mapped and made a list.
+### A single `**` feed over a list written there, mapped and made a list.
 
 ```yumi
 . all =
@@ -2917,7 +2917,7 @@ c!
 2
 ```
 
-### Bullets with a `**` given to a function that takes a stream.
+### Feeds with a `**` given to a function that takes a stream.
 
 ```yumi
 . names = ["b", "a"]
@@ -2939,7 +2939,7 @@ for item in items
 3
 ```
 
-### A function whose body is bullets, with a list written between two items.
+### A function whose body is feeds, with a list written between two items.
 
 ```yumi
 for item in outer()
@@ -2960,7 +2960,7 @@ for item in outer()
 4
 ```
 
-### A `**` bullet between two items reads a generator that panics: the items before are printed.
+### A `**` feed between two items reads a generator that panics: the items before are printed.
 
 ```yumi crash
 . all =
@@ -2984,7 +2984,7 @@ for place in places
 10
 ```
 
-### The first bullet of a list is a `**` over a generator that panics on its second item.
+### The first feed of a list is a `**` over a generator that panics on its second item.
 
 ```yumi crash
 . all =
@@ -3007,7 +3007,7 @@ for place in places
 10
 ```
 
-### A single `**` bullet over a generator that panics, mapped by a pipe.
+### A single `**` feed over a generator that panics, mapped by a pipe.
 
 ```yumi crash
 . all =
@@ -3029,7 +3029,7 @@ for place in places
 11
 ```
 
-### A `**` bullet after an item, mapped by a pipe, over a generator that panics.
+### A `**` feed after an item, mapped by a pipe, over a generator that panics.
 
 ```yumi crash
 . all =
@@ -3059,7 +3059,7 @@ for place in places
 21
 ```
 
-### A stack trace through the first bullet of a list, a `**` over a generator that panics: the frame of the list is on the line under the bullet.
+### A stack trace through the first feed of a list, a `**` over a generator that panics: the frame of the list is on the line under the feed.
 
 ```yumi crash
 . spread-first =
@@ -3097,7 +3097,7 @@ Stack trace:
   10  __source__:brix.main no file
 ```
 
-### A stack trace through a `**` bullet after an item: the frame of the list is at the bullet.
+### A stack trace through a `**` feed after an item: the frame of the list is at the feed.
 
 ```yumi crash
 . spread-second =
@@ -3135,7 +3135,7 @@ Stack trace:
   10  __source__:brix.main no file
 ```
 
-### A stack trace through the first `**` bullet of a list in a function, with a line left empty under it.
+### A stack trace through the first `**` feed of a list in a function, with a line left empty under it.
 
 ```yumi crash
 -- gathered(1)
@@ -3181,7 +3181,7 @@ Stack trace:
   11  __source__:brix.main no file
 ```
 
-### A stack trace through the second of two `**` bullets over streams held in a list.
+### A stack trace through the second of two `**` feeds over streams held in a list.
 
 ```yumi crash
 . spread-held = [names([0]), names([7])]
@@ -3294,7 +3294,7 @@ tally 0 sees 6
 0
 ```
 
-### A list of one bullet is written whole to a fixed array, and the pipe gives the array.
+### A list of one feed is written whole to a fixed array, and the pipe gives the array.
 
 ```yumi
 . values [I32]
@@ -3312,7 +3312,7 @@ values += 7
 7
 ```
 
-### Multi bullet over a base class reads by the derived class
+### Spread over a base class reads by the derived class
 
 ```yumi
 . base Base = Derived()
@@ -3631,7 +3631,7 @@ true
 3
 ```
 
-### A list of one bullet piped into a function whose items are of another type.
+### A list of one feed piped into a function whose items are of another type.
 
 ```yumi
 -- List
@@ -3650,7 +3650,7 @@ for i in items
 n1, n2, n3
 ```
 
-### A list of one bullet piped into a function, its value declared.
+### A list of one feed piped into a function, its value declared.
 
 ```yumi
 . total = 
@@ -3672,7 +3672,7 @@ for i in items
 4
 ```
 
-### A list of one bullet piped into a parameter of a list type.
+### A list of one feed piped into a parameter of a list type.
 
 ```yumi
 . n =
@@ -3691,7 +3691,7 @@ for i in items
 4
 ```
 
-### A list of one optional bullet piped into a function.
+### A list of one optional feed piped into a function.
 
 ```yumi
 . maybe Int? = 5
@@ -3711,7 +3711,7 @@ for i in items
 n5
 ```
 
-### A list of one bullet piped into a function given a closure, in a function's body.
+### A list of one feed piped into a function given a closure, in a function's body.
 
 ```yumi
 -- List(evens())
@@ -3784,7 +3784,7 @@ nums()
 b, c
 ```
 
-### Lists of bullets as properties' defaults: each object gets its own list; `*?` and `**`.
+### Lists of feeds as properties' defaults: each object gets its own list; `*?` and `**`.
 
 ```yumi
 . a = App()
@@ -3825,7 +3825,7 @@ x, y
 1, 2, 3, 9
 ```
 
-### A derived class's bullet default calls a function; the base's default is kept.
+### A derived class's feed default calls a function; the base's default is kept.
 
 ```yumi
 . b = Derived()
@@ -3854,7 +3854,7 @@ x, y
 (4, 42, 5)
 ```
 
-### A constructor argument replaces a bullet default; its own default is a list.
+### A constructor argument replaces a feed default; its own default is a list.
 
 ```yumi
 . a = App([7])
@@ -3932,10 +3932,10 @@ Thing: 331
 ```
 
 ```yumi
--- bullet-deep()
+-- feed-deep()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-deep Int
++ do feed-deep Int
 
 . values =
     * 1
@@ -4075,7 +4075,7 @@ closed
 true
 ```
 
-### A list of bullets written in a lazy local that a generator reads first is given the environment that holds the local.
+### A list of feeds written in a lazy local that a generator reads first is given the environment that holds the local.
 
 ```yumi
 for line in request(["a", "b"])
@@ -4100,7 +4100,7 @@ a
 b
 ```
 
-### Bullet spreads whose items have different types each convert their items to the list's item type, and the list keeps them in the order they are written.
+### Spreads whose items have different types each convert their items to the list's item type, and the list keeps them in the order they are written.
 
 ```yumi
 . scopes = [Scope(1u32)]
@@ -4131,7 +4131,7 @@ b
 1, 1, 1, 2, 3
 ```
 
-### A range of integers written with no suffix that a bullet spreads holds the type of the list's items.
+### A range of integers written with no suffix that a spread gives holds the type of the list's items.
 
 ```yumi
 -- bytes()
@@ -4147,7 +4147,7 @@ b
 1, 2, 3, 4
 ```
 
-### A row a constructor takes from bullets whose value converts only when asked is reported where the value is written.
+### A row a constructor takes from feeds whose value converts only when asked is reported where the value is written.
 
 ```yumi compile-error
 . big = 9u64
@@ -4170,7 +4170,7 @@ Exception: Expected Number here, but this is U64, which becomes Number only when
                    ^^^
 ```
 
-### A List given bullets whose items raise: an error leaves the function, and a catch holds it. A global made so takes its items as its module starts.
+### A List given feeds whose items raise: an error leaves the function, and a catch holds it. A global made so takes its items as its module starts.
 
 ```yumi
 + labels [String] = List
@@ -4220,7 +4220,7 @@ io negative
 <a>, <b>
 ```
 
-### A List given bullets builds its items where it is written, as one given them as arguments does: the value of a property reads the object's members and what they track, and runs again as they change, as does an assignment that reads something tracked.
+### A List given feeds builds its items where it is written, as one given them as arguments does: the value of a property reads the object's members and what they track, and runs again as they change, as does an assignment that reads something tracked.
 
 ```yumi
 .. meter = Meter()
@@ -4263,7 +4263,7 @@ meter.other = 5
 3, 50, 8 | 3, 4, 5 | 3, 50
 ```
 
-### A List given bullets in the value of a property gives every item of what a multi bullet writes: as the constructor gives the value, as the value runs again on a change it tracks, and once for a lazy property, which keeps it.
+### A List given feeds in the value of a property gives every item of what a spread writes: as the constructor gives the value, as the value runs again on a change it tracks, and once for a lazy property, which keeps it.
 
 ```yumi
 . meter = Meter()

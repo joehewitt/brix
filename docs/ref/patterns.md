@@ -6,7 +6,7 @@ and names the parts the pattern names.
 
 This chapter covers `match`, every kind of pattern, the other places patterns are written, taking
 values apart into locals, and the rule that a `match` covers every case. Unions are covered in
-Unions and enums, and patterns over streams of text and bytes in Stream patterns.
+Unions and enums, and patterns over streams of text and bytes in Grammars.
 
 ## `match`
 
@@ -489,8 +489,8 @@ a photo in png
 README is something else
 ```
 
-Text patterns that read pieces, repeat, or choose between alternatives are stream patterns; see
-Stream patterns.
+Text patterns that read pieces, repeat, or choose between alternatives are grammars; see
+Grammars.
 
 ### Properties
 

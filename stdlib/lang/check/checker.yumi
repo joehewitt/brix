@@ -186,9 +186,9 @@ _ foreseen-union TypeId = no-type
 _ foreseen-sites [SyntaxId]
 _ foreseen-payloads [TypeId]
 _ unheld-cases [SyntaxId]
-_ bullet-lists [SyntaxId]
-_ bullet-items [TypeId]
-_ bullet-builds [Bool]
+_ feed-lists [SyntaxId]
+_ feed-items [TypeId]
+_ feed-builds [Bool]
 _ probing Bool
 _ deferring Bool
 _ watching-leaves U32
@@ -354,9 +354,9 @@ _ building SlotId = no-slot
 .. foreseen-sites = parts.foreseen-sites
 .. foreseen-payloads = parts.foreseen-payloads
 .. unheld-cases = parts.unheld-cases
-.. bullet-lists = parts.bullet-lists
-.. bullet-items = parts.bullet-items
-.. bullet-builds = parts.bullet-builds
+.. feed-lists = parts.feed-lists
+.. feed-items = parts.feed-items
+.. feed-builds = parts.feed-builds
 .. coded-rules = parts.coded-rules
 .. coded-typed = parts.coded-typed
 .. coded-streams = parts.coded-streams
@@ -882,7 +882,7 @@ if outer
     frame.adopt(outer.frame)
 else
     frame.binding = session.binder.bind(module, frame.decl)
-frame.open(frame.binding, bullets-consumer())
+frame.open(frame.binding, feeds-consumer())
 . receiver = logical-receiver(session, module, frame.decl, frame.self-type)
 . names-mark = scratch.names.mark
 . items-mark = scratch.types.mark
@@ -1496,7 +1496,7 @@ else
         discarding-block = if imperative-body then declaration.body else 0
             .. imperative-body = declaration.is-imperative || declaration.kind == .constructor-decl
         if !declaration.is-imperative
-            expect-bullets(declaration.body, declared)
+            expect-feeds(declaration.body, declared)
         value = check-statement(declaration.body)
         if discarding-block == declaration.body && !(tree.nodes[declaration.body] is .node-block)
             check-called(declaration.body, value)
@@ -4704,18 +4704,18 @@ do match tree.nodes[id]
             = no-type
         = infer(id, stated)
     | .node-pipeline-expression(row)
-        if frame.declaration.syntax == id && row.op == .stream-pattern-pipe-op
+        if frame.declaration.syntax == id && row.op == .grammar-pipe-op
             check-pattern-pipe(id, row.right)
             = no-type
         = infer(id, stated)
     | .node-binary-expression(row)
-        if frame.declaration.syntax == id && row.op == .stream-pattern-pipe-op
+        if frame.declaration.syntax == id && row.op == .grammar-pipe-op
             check-pattern-pipe(id, row.rhs)
             = no-type
         = infer(id, stated)
-    | .node-bullet-expression
+    | .node-feed-expression
         if frame.declaration.syntax == id
-            check-bullets(id)
+            check-feeds(id)
             = no-type
         = infer(id, stated)
     | .node-state-machine
@@ -6664,7 +6664,7 @@ _ do note-returned-match
     - declared TypeId
 
 ` A match that is returned is the value of the declared return type, and so are its arms,
-` and so is a stream pattern its body runs beside the lazy locals declared for it.
+` and so is a grammar its body runs beside the lazy locals declared for it.
 facts.set-node-type(instance, expr, declared)
 do match? tree.nodes[expr]
     | .node-match-expression(row)
@@ -6678,7 +6678,7 @@ _ do may-miss Bool
     - expr SyntaxId
     - declared TypeId
 
-` Whether a returned match runs a stream pattern no arm of which need pass, in a function
+` Whether a returned match runs a grammar no arm of which need pass, in a function
 ` that returns no optional. The reference types such a match as it does one that is not
 ` returned, an optional of what its arms give, and the return converts it as any optional,
 ` at the match and not at its arms.
@@ -6729,7 +6729,7 @@ if matched
     arms-expected = declared
 . value = if declared == no-type then returned-symbol(expr) else no-type
 if value == no-type
-    expect-bullets(expr, declared)
+    expect-feeds(expr, declared)
     value = infer-with-expected(expr, declared, Want().escaping(declared, expr))
 if !is-conditional
     value = returned-value(statement, value)
@@ -6981,9 +6981,9 @@ _ do note-yield
 ` where the function declares its items. The reference folds in the order of its blocks,
 ` which is the order written only outside loops: a fold that gives another type the other
 ` way round is noted, with whether any yield is in a loop (F12b-30). The yields of a list of
-` bullets are kept until the list is typed, and folded in the order of its blocks, which
-` visit each branch's failing successor first: a bullet that tests before it yields, a `**`
-` by its loop and a `*?` by its test, yields after everything the bullets after it yield. A
+` feeds are kept until the list is typed, and folded in the order of its blocks, which
+` visit each branch's failing successor first: a feed that tests before it yields, a `**`
+` by its loop and a `*?` by its test, yields after everything the feeds after it yield. A
 ` yield written as a number with no suffix, as such numbers or as a range of such integers, is
 ` kept with what it writes, which takes the type of the others as the items of a list do.
 giving = giving.yields = true
@@ -7830,8 +7830,8 @@ do match tree.nodes[id]
         = infer-stream(id, row.expr)
     | .node-argument(row)
         = infer-argument-value(id, row)
-    | .node-bullet-expression
-        = infer-bullets(id, 0)
+    | .node-feed-expression
+        = infer-feeds(id, 0)
     | .node-pipeline-expression(row)
         = infer-pipeline(id, row.op, row.left, row.right)
     | .node-anonymous-case(row)
@@ -10053,8 +10053,8 @@ do match? program.modules[owner].decls[property]
 _ do report-pattern-on
     - pattern SyntaxId
 
-` Reports a stream pattern written on a stream a subscription is given, which no match reads.
-. text = "A stream pattern matches items it reads with \"in\", not items a subscription with \"on\" is given; write \"in\" in place of \"on\""
+` Reports a grammar written on a stream a subscription is given, which no match reads.
+. text = "A grammar matches items it reads with \"in\", not items a subscription with \"on\" is given; write \"in\" in place of \"on\""
 frame.diagnose(pattern, .stated, program.store-atom(text))
 
 ────────────────────
@@ -10274,7 +10274,7 @@ _ do demand-nested InstanceId
     - second TypeId = no-type
 
 ` The one instance of a generated closure, keyed under this instance like a lambda's: a
-` comprehension's takes its container, a pipeline body its item, and a bullet list nothing.
+` comprehension's takes its container, a pipeline body its item, and a feed list nothing.
 ` Its closure type is interned here, before its body is typed, so that the types of every
 ` closure a function writes are rowed in the order the function is typed.
 intern-nested(decl)
@@ -10395,7 +10395,7 @@ for interface in types.interfaces-of(type)
 _ do first-set U32
     - id SyntaxId
 
-` What the reference knows of the first item a stream pattern reads, as it works it out to
+` What the reference knows of the first item a grammar reads, as it works it out to
 ` choose among arms: 1 where it knows what that item may be, and 2 more where the pattern may
 ` read none. A call, a test of a type, a predicate or text found as the pattern runs is not
 ` known, and a lookahead reads none and is not known either.
@@ -15235,7 +15235,7 @@ if op == .else-op
             = infer-choice(id, row.lhs, row.rhs, right, want)
 if op == .if-op
     = infer-conditional(id, left, right, want)
-if is-pipeline-nested(op) || op == .pipe-forward-op || writes || op == .stream-pattern-pipe-op
+if is-pipeline-nested(op) || op == .pipe-forward-op || writes || op == .grammar-pipe-op
     = infer-pipeline(id, op, left, right)
 .. writes = op == .pipe-write-all-op || op == .pipe-write-each-op
 
@@ -17817,7 +17817,7 @@ _ LoopSource is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ FirstItems is U8
 
-` What the reference knows of the item a part of a stream pattern starts with: it may start
+` What the reference knows of the item a part of a grammar starts with: it may start
 ` with anything, or it may match nothing; it starts with any item; it must start with one of
 ` certain characters; or it is shaped so that what the reference knows is not known here.
 
@@ -17920,7 +17920,7 @@ _ RuleStream is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ Valuing is Tuple
 
-` What the part of a stream pattern being typed gives: whether it gives no value of its own, and
+` What the part of a grammar being typed gives: whether it gives no value of its own, and
 ` the arm whose action is being typed.
 
 + unvalued Bool
@@ -17929,7 +17929,7 @@ _ Valuing is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ RuleArms is Tuple
 
-` The arms of a stream pattern and what they are converted to (`type-stream-arms`): the type
+` The arms of a grammar and what they are converted to (`type-stream-arms`): the type
 ` given them, whether they give a span of the source, whether they are a rule's, whether they
 ` give their text, the pattern whose names they capture and where its captures start, and the
 ` call a pattern argument casts.
@@ -17955,7 +17955,7 @@ _ StreamView is Tuple
 ━━━━━━━━━━━━━━━━━━━━
 _ Helping is Tuple
 
-` The helper a stream pattern runs under and how it rolls back: the helper and where it is given,
+` The helper a grammar runs under and how it rolls back: the helper and where it is given,
 ` whether anything in the pattern rolls back through it, whether the pattern is marked to roll
 ` back, the body a mark is taken around, and whether it types a span of the source.
 
@@ -18117,9 +18117,9 @@ _ CheckerKit
 + foreseen-sites [SyntaxId]
 + foreseen-payloads [TypeId]
 + unheld-cases [SyntaxId]
-+ bullet-lists [SyntaxId]
-+ bullet-items [TypeId]
-+ bullet-builds [Bool]
++ feed-lists [SyntaxId]
++ feed-items [TypeId]
++ feed-builds [Bool]
 + coded-rules [SyntaxId]
 + coded-typed [SyntaxId]
 + coded-streams [TypeId]
@@ -18246,9 +18246,9 @@ owner-declared.clear()
 foreseen-sites.clear()
 foreseen-payloads.clear()
 unheld-cases.clear()
-bullet-lists.clear()
-bullet-items.clear()
-bullet-builds.clear()
+feed-lists.clear()
+feed-items.clear()
+feed-builds.clear()
 coded-rules.clear()
 coded-typed.clear()
 coded-streams.clear()
@@ -18372,9 +18372,9 @@ match name.text
 _ optional-match-text String
     - form String
 
-` The error for a stream pattern loop or pipeline whose matches give an optional value, which
+` The error for a grammar loop or pipeline whose matches give an optional value, which
 ` the values it gives can't hold, since none of them ends it.
-"Stream pattern $form can't give an optional value; add an action that gives one"
+"Grammar $form can't give an optional value; add an action that gives one"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do owns-case Bool

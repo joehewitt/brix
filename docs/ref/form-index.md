@@ -55,7 +55,7 @@ kept for a meaning to come.
 | `constraint` | `(constraint op:Atom left:Type right:Any)` | A rule that a type parameter must meet. | [Functions: Constraints](functions.md#constraints) |
 | `iterates` | `(iterates name:Atom source:Expr)` | Makes the body of the function a loop over the source. The body runs for each item, and the function gives the stream of results. | [Streams: Functions whose body is a comprehension](streams.md#functions-whose-body-is-a-comprehension) |
 | `?!` | `(?! error:Type)` | An error the function can raise. | [Errors: Declaring errors](errors.md#declaring-errors) |
-| `over:` | `(over: type:Type)` | The item type of the stream the function matches. | [Stream patterns: Rules](stream-patterns.md#rules) |
+| `over:` | `(over: type:Type)` | The item type of the stream the function matches. | [Grammars: Rules](grammars.md#rules) |
 | `without` | `(without name:Name+)` | Keep the code from what is named, checked as the program compiles: `heap`, `suspend`, `gc`, `safepoints`, `probe-safepoints`, or an effect a library declares, whose doors it may not reach. On a C function, `gc` and `blocking` are promises the compiler trusts. In a `do`, `cancel` holds off cancellation. | [Functions: Without and with](functions.md#without-and-with) |
 | `claim` | `(claim function:Name)` | Claim the C function, such as `C:connect`, for the effect: only its doors may call it. | [Functions: Effects and doors](functions.md#effects-and-doors) |
 | `door` | `(door effect:Name)` | Make the function a door of the effect: one through which the program makes that kind of contact with the world, and the only kind of function that may call the C functions the effect claims. | [Functions: Effects and doors](functions.md#effects-and-doors) |
@@ -115,7 +115,7 @@ kept for a meaning to come.
 | `let` | `(let name:Local type:Type/Hole value:Expr/Block?)` | Introduce a local of the type, and set it now when a value follows. A `_` type leaves the type to the value, as a value that is itself a type needs: `(let kind _ I32)`. | [Control flow: Locals](control-flow.md#locals) |
 | `lazy` | `(lazy target:Binder/Pattern value:Expr/Block/Rule?)` | Name a value that is computed where it is first used. | [Functions: Lazy bindings](functions.md#lazy-bindings) |
 | `lazy` | `(lazy name:Local type:Type value:Expr/Block/Rule?)` | Name a value of the type that is computed where it is first used. | [Functions: Lazy bindings](functions.md#lazy-bindings) |
-| `pattern` | `(pattern mark:Atom* alternative:Stream*)` | A stream pattern rule. | [Stream patterns: Rules](stream-patterns.md#rules) |
+| `pattern` | `(pattern mark:Atom* alternative:Stream*)` | A grammar rule. | [Grammars: Rules](grammars.md#rules) |
 | `return` | `(return value:Expr/Block?)` | Leave the function, with a value when it returns one. | [Functions: Returns](functions.md#returns) |
 | `return?` | `(return? value:Expr/Block)` | Leave the function with the value, unless the value is null. | [Functions: Returns](functions.md#returns) |
 | `return-if` | `(return-if value:Expr? guard:Guard)` | Leave the function when the condition holds. | [Functions: Returns](functions.md#returns) |
@@ -172,7 +172,7 @@ kept for a meaning to come.
 | `caught` | `(caught error:Binder earlier:Binder+)` | An error together with the errors it replaced. | [Errors: Transforming errors](errors.md#transforming-errors) |
 | `print` | `(print value:Expr/Block?)` | Print a value. With no value it does nothing and stands for an empty body. | [Text: Printing](text.md#printing) |
 | `print?` | `(print? value:Expr)` | Print a value unless it is null. | [Optionals: Steps that skip null](optionals.md#steps-that-skip-null) |
-| `with` | `(with value:Expr)` | The first row of a `match`: the helper object its patterns call. | [Stream patterns: Helpers](stream-patterns.md#helpers) |
+| `with` | `(with value:Expr)` | The first row of a `match`: the helper object its grammars call. | [Grammars: Helpers](grammars.md#helpers) |
 | `header` | `(header value:Expr)` | Starts a section with a value. Each value row after it, up to the next header, is handed to that value. | [Functions: Value bodies](functions.md#value-bodies) |
 | `paragraph` | `(paragraph line:Line*)` | A text body, one item for each line. | [Text: Text bodies](text.md#text-bodies) |
 
@@ -182,7 +182,7 @@ kept for a meaning to come.
 | --- | --- | --- | --- |
 | `=` | `(= target:Target value:Expr/Block)` | Store a value. | [Control flow: Locals](control-flow.md#locals) |
 | `=` | `(= (\| pattern:Pattern+) value:Expr)` | True when the value fits the pattern. The pattern may name parts of the value. | [Patterns: Patterns outside match](patterns.md#patterns-outside-match) |
-| `=` | `(= (~ pattern:Stream+) value:Expr)` | True when the value's items fit the stream pattern. The pattern may name parts of what it matched. | [Stream patterns: Running patterns](stream-patterns.md#running-patterns) |
+| `=` | `(= (~ pattern:Stream+) value:Expr)` | True when the value's items fit the grammar. The grammar may name parts of what it matched. | [Grammars: Running grammars](grammars.md#running-grammars) |
 | `=?` | `(=? target:Target value:Expr/Block)` | Store a value unless the value is null. | [Optionals: Steps that skip null](optionals.md#steps-that-skip-null) |
 | `+=` | `(+= target:Target value:Expr/Block)` | Add to what is stored. | [Operators: Operators a type defines](operators.md#operators-a-type-defines) |
 | `+=?` | `(+=? target:Target value:Expr/Block)` | Add to what is stored, unless the value is null. | [Optionals: Steps that skip null](optionals.md#steps-that-skip-null) |
@@ -213,10 +213,10 @@ kept for a meaning to come.
 | `arg` | `(arg value:Expr/Block)` | One positional argument. | [Functions: Calls](functions.md#calls) |
 | `entry` | `(entry key:Expr value:Expr/Block?)` | One key and its value. | [Literals: Maps](literals.md#maps) |
 | `entry?` | `(entry? key:Expr value:Expr/Block)` | One key and its value, left out when the value is null. | [Literals: Maps](literals.md#maps) |
-| `bullet` | `(bullet value:Expr/Block)` | One item of a list being built. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
-| `bullet?` | `(bullet? value:Expr/Block)` | One item, left out when it is null. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
-| `bullet*` | `(bullet* value:Expr/Block)` | Every item of a collection. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
-| `bullet*?` | `(bullet*? value:Expr/Block)` | Every item of a collection, unless it is null. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
+| `item` | `(item value:Expr/Block)` | One item of a list being built. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
+| `item?` | `(item? value:Expr/Block)` | One item, left out when it is null. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
+| `spread` | `(spread value:Expr/Block)` | Every item of a collection. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
+| `spread?` | `(spread? value:Expr/Block)` | Every item of a collection, unless it is null. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
 | `pipe` | `(pipe stage:Atom value:Expr/Stream/Block? row:Row/Value*)` | One stage of a pipeline over the row above. | [Streams: Pipelines in rows of a block](streams.md#pipelines-in-rows-of-a-block) |
 | `scope` | `(scope value:Expr row:Row*)` | A value with the rows that complete it, such as the `lazy` names it uses. | [Functions: Lazy bindings](functions.md#lazy-bindings) |
 
@@ -326,7 +326,7 @@ kept for a meaning to come.
 | `*\|>` | `(*\|> left:Expr right:Expr+)` | Run a step for each item and pass the item on unchanged. | [Streams: Pipelines](streams.md#pipelines) |
 | `->` | `(-> left:Expr right:Expr+)` | Write the whole value to a target in one write. The result is the target. | [Streams: Targets](streams.md#targets) |
 | `*->` | `(*-> left:Expr right:Expr+)` | Write each item to a target, one write for each. | [Streams: Targets](streams.md#targets) |
-| `~>` | `(~> left:Expr right:Any+)` | Match a pattern again and again along a stream. The result is a stream of what each match produces. | [Stream patterns: Reading records](stream-patterns.md#reading-records) |
+| `~>` | `(~> left:Expr right:Any+)` | Match a grammar again and again along a stream. The result is a stream of what each match produces. | [Grammars: Reading records](grammars.md#reading-records) |
 | `/infix/` | `(/infix/ left:Expr right:Expr+)` | A named operator; the head is its name between slashes. | [Operators: Named operators](operators.md#named-operators) |
 
 ## Types as forms
@@ -334,7 +334,7 @@ kept for a meaning to come.
 | Head | Shape | Meaning | See |
 | --- | --- | --- | --- |
 | `of` | `(of base:Expr argument:Type+)` | A generic name with its type arguments. | [Types: Generic types](types.md#generic-types) |
-| `?` | `(? type:Any)` | An optional type, or an optional part of a stream pattern. | [Optionals: Optional types](optionals.md#optional-types) |
+| `?` | `(? type:Any)` | An optional type, or an optional part of a grammar. | [Optionals: Optional types](optionals.md#optional-types) |
 | `channel` | `(channel item:Type)` | A channel of values. | [Concurrency: Channels](concurrency.md#channels) |
 | `fn-type` | `(fn-type result:Type/Hole part:Raises/Header*)` | The type of a function. | [Functions: Function types](functions.md#function-types) |
 | `c-fn-type` | `(c-fn-type result:Type/Hole part:Raises/Header*)` | The type of a C function. | [Native code and memory: Callbacks](native-code-and-memory.md#callbacks) |
@@ -347,26 +347,26 @@ kept for a meaning to come.
 
 | Head | Shape | Meaning | See |
 | --- | --- | --- | --- |
-| `call` | `(call rule:Expr part:Stream*)` | A stream rule applied to arguments. | [Stream patterns: Rules](stream-patterns.md#rules) |
+| `call` | `(call rule:Expr part:Stream*)` | A stream rule applied to arguments. | [Grammars: Rules](grammars.md#rules) |
 | `call` | `(call callee:Expr part:Pattern*)` | A case of a union and patterns for the values it holds. | [Patterns: Union cases](patterns.md#union-cases) |
 | `list` | `(list item:Pattern*)` | A list whose items fit these patterns. `...` stands for the rest. | [Patterns: Lists](patterns.md#lists) |
 | `tuple` | `(tuple item:Pattern+)` | A tuple whose items fit these patterns. | [Patterns: Tuples](patterns.md#tuples) |
 | `=` | `(= key:Expr value:Pattern)` | An entry of a map whose value fits the pattern. | [Patterns: Maps](patterns.md#maps) |
-| `*` | `(* part:Stream+)` | The part, any number of times. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `+` | `(+ part:Stream+)` | The part, one or more times. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `!` | `(! part:Stream)` | Not followed by the part. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `&` | `(& part:Stream)` | Followed by the part, which is not consumed. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
+| `*` | `(* part:Stream+)` | The part, any number of times. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
+| `+` | `(+ part:Stream+)` | The part, one or more times. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
+| `!` | `(! part:Stream)` | Not followed by the part. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
+| `&` | `(& part:Stream)` | Followed by the part, which is not consumed. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
 | `all` | `(all part:Any+)` | Every part must fit. | [Patterns: Values and conditions](patterns.md#values-and-conditions) |
 | `\|` | `(\| part:Any+)` | Any one part must fit. | [Patterns: Values and conditions](patterns.md#values-and-conditions) |
-| `{}` | `({} part:Any+)` | A test on the matched value, or a repeat count in a stream pattern. | [Patterns: Values and conditions](patterns.md#values-and-conditions) |
-| `~` | `(~ pattern:Any part:Any*)` | A stream pattern and what its match produces. | [Stream patterns: Matching text](stream-patterns.md#matching-text) |
-| `seq` | `(seq part:Any+)` | Parts that must follow one another. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `chars` | `(chars set:Text)` | Any one character of the set. | [Stream patterns: Character sets](stream-patterns.md#character-sets) |
-| `\{}` | `(\{} test:Any)` | A test on the next item. | [Stream patterns: Pattern pieces](stream-patterns.md#pattern-pieces) |
-| `into` | `(into name:Atom+)` | Where a rule's captures go. | [Stream patterns: Rules](stream-patterns.md#rules) |
-| `of:` | `(of: source:Any)` | The value the pattern is matched against, once. | [Stream patterns: Running patterns](stream-patterns.md#running-patterns) |
-| `in:` | `(in: source:Any+)` | The source the pattern is matched along, again and again. The result is a stream of the matches. | [Stream patterns: Running patterns](stream-patterns.md#running-patterns) |
-| `on:` | `(on: source:Any+)` | The source of events the pattern is matched along, again and again. The result is a stream of the matches. Not supported yet. | [Stream patterns: Running patterns](stream-patterns.md#running-patterns) |
+| `{}` | `({} part:Any+)` | A test on the matched value, or a repeat count in a grammar. | [Patterns: Values and conditions](patterns.md#values-and-conditions) |
+| `~` | `(~ pattern:Any part:Any*)` | A grammar and what its match produces. | [Grammars: Matching text](grammars.md#matching-text) |
+| `seq` | `(seq part:Any+)` | Parts that must follow one another. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
+| `chars` | `(chars set:Text)` | Any one character of the set. | [Grammars: Character sets](grammars.md#character-sets) |
+| `\{}` | `(\{} test:Any)` | A test on the next item. | [Grammars: Grammar pieces](grammars.md#grammar-pieces) |
+| `into` | `(into name:Atom+)` | Where a rule's captures go. | [Grammars: Rules](grammars.md#rules) |
+| `of:` | `(of: source:Any)` | The value the grammar is matched against, once. | [Grammars: Running grammars](grammars.md#running-grammars) |
+| `in:` | `(in: source:Any+)` | The source the grammar is matched along, again and again. The result is a stream of the matches. | [Grammars: Running grammars](grammars.md#running-grammars) |
+| `on:` | `(on: source:Any+)` | The source of events the grammar is matched along, again and again. The result is a stream of the matches. Not supported yet. | [Grammars: Running grammars](grammars.md#running-grammars) |
 | `<*` | `(<* pattern:Any)` | Every match of a pattern. | [Streams: Comprehensions](streams.md#comprehensions) |
 | `/` | `(/ left:Pattern right:Pattern+)` | Reserved for the child relation between tree patterns. The compiler does not match it yet. | [Patterns: Kinds of pattern](patterns.md#kinds-of-pattern) |
 | `*/` | `(*/ left:Pattern right:Pattern+)` | Reserved for the descendant relation between tree patterns. The compiler does not match it yet. | [Patterns: Kinds of pattern](patterns.md#kinds-of-pattern) |

@@ -58,7 +58,7 @@ that `.release.json` pins (`toolchain/compiler.py`).
    as `emitter.loops.yumi`, each a facet of the walker that `sees` the sibling features it calls.
    A helper or state two features use stays in the core.
 3. There are two lowering modes, statement and expression. A subsystem (markup, styles, state
-   machines, stream patterns, reactivity) desugars, uses typed intrinsics, or uses a
+   machines, grammars, reactivity) desugars, uses typed intrinsics, or uses a
    whole-construct emitter shape. It never adds a third mode.
 4. Dependencies point one way. Modules in `emit` import no checker, dispatch, relations or
    binder. The backend imports nothing from `/lang/ast`, `/lang/check`, `/lang/ir` or

@@ -22,7 +22,7 @@
     (let spent
       (call List
         (block
-          (bullet* rows)
+          (spread rows)
           (pipe *> (call Expense ([] each 0) ([] each 1) ([] each 2) (as ([] each 3) Float)))
         )
       )
@@ -31,7 +31,7 @@
     ; each day on once, and `count` reads to the end and gives a number.
     (let days
       (block
-        (bullet* spent)
+        (spread spent)
         (pipe *> (. each day))
         (pipe |> distinct)
         (pipe |> count)
@@ -45,7 +45,7 @@
     (print "by category:")
     (let ranked
       (block
-        (bullet* spent)
+        (spread spent)
         (pipe *> (. each category))
         (pipe |> distinct)
         (pipe *> (call Subtotal each (call spent-on each spent)))
@@ -61,7 +61,7 @@
     (print "as the week went:")
     (let so-far
       (block
-        (bullet* spent)
+        (spread spent)
         (pipe *> (. each cost))
         (pipe |> (call scan 0.0 (:using (=> (sum cost) (+ sum cost)))))
       )
@@ -74,7 +74,7 @@
     ; `first` gives nothing when no row reaches it.
     (let dearest
       (block
-        (bullet* spent)
+        (spread spent)
         (pipe |> (call sort (:using by-cost) (:is-reverse true)))
         (pipe |> first)
       )
@@ -105,7 +105,7 @@
   (param category String)
   (param spent (list Expense))
   ; A function's body can be a pipeline, and what the last stage gives is its result.
-  (bullet* spent)
+  (spread spent)
   (pipe ?> (== (. each category) category))
   (pipe *> (. each cost))
   (pipe |> sum)

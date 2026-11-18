@@ -83,7 +83,7 @@ a generator maker to its resume implementation. Recursive generator cycles retai
 ordinary boundary without partial expansion. There is no yield-count, layout, nesting-depth,
 or instruction-count cutoff.
 
-Bullet expressions and comprehensions request fusion automatically. Their implicit map,
+Feed expressions and comprehensions request fusion automatically. Their implicit map,
 filter, and optional-map stages use the same generator lowering and fusion machinery.
 A fully consumed chain can feed a visible loop or list conversion without intermediate
 generator frames. List output storage remains. An escaping chain retains one outer

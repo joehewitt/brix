@@ -1,4 +1,4 @@
-`benchmark.meta description: Repeated bullet map/filter pipelines consumed by a loop.
+`benchmark.meta description: Repeated feed map/filter pipelines consumed by a materialized list.
 `benchmark.meta timing: recommended
 `benchmark.meta profiles: compile-timing,allocator
 
@@ -6,14 +6,14 @@
 
 . rounds = 40000
 . upper-bound = 256
-. checksum = bullet-checksum(rounds, upper-bound)
-?! Panic("bullet checksum mismatch")
+. checksum = feed-checksum(rounds, upper-bound)
+?! Panic("feed checksum mismatch")
     if checksum != rounds * 3 * 128 * 129
 
--- "bench-result compiler-shape/bullet-loop checksum=$checksum"
+-- "bench-result compiler-shape/feed-list checksum=$checksum"
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do bullet-checksum Int
+_ do feed-checksum Int
     - rounds Int
     - upper-bound Int
 
@@ -23,7 +23,8 @@ for round in 0 .. < rounds
         ** 1 .. upper-bound
         *> each * 3
         ?> each % 2 == 0
-    for value in values
+    . items = List(values)
+    for value in items
         total += value
 = total
 

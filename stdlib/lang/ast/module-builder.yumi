@@ -1004,7 +1004,7 @@ _ do scan-nested
 ` before the functions inside it, so a stack of the open subtrees names each owner; anything outside
 ` every function, such as a lambda in a property initializer, belongs to main. A second stack holds
 ` the declarations and assignments whose values are open, which name the nested functions written in
-` them. A bullet a stream piped through a pattern reads alone is no function: the pipe's evaluates
+` them. A feed a stream piped through a pattern reads alone is no function: the pipe's evaluates
 ` what it writes. A `for` block on a stream with one header is the subscriber its body runs as, a
 ` class's section of one too. An assignment whose value reads something tracked, which gives no
 ` property of a root `<This` its value, is run again by a function of its own (`add-live`), as is a
@@ -1075,11 +1075,11 @@ for _ in 0 .. < tree.root + 1
 . total = tree.root + 1
 . row-names = RowNames()
 for id in 1u32 .. < total
-    . listing = tree.listed-bullets(id)
+    . listing = tree.listed-feeds(id)
     if listing != 0
         listed[listing] = true
     do match? tree.nodes[id]
-        | .node-bullet-expression(row)
+        | .node-feed-expression(row)
             if row.next != 0
                 chained[row.next] = true
         | .node-markup(row)
@@ -1196,8 +1196,8 @@ for reverse in 1 .. < tree.root
                     - owner
                     - 0
                     - named
-        | .node-bullet-expression(row)
-            if row.item != 0 && !row.is-multi
+        | .node-feed-expression(row)
+            if row.item != 0 && !row.is-spread
                 inline[row.item] = true
             if !chained[id] && !piped[id] && !listed[id]
                 nested = add-nested-function
@@ -1209,9 +1209,9 @@ for reverse in 1 .. < tree.root
                     - RowRange'SyntaxId()
                     - id
                     - CompilationEffect.none
-                    - DeclKind.bullet-decl
+                    - DeclKind.feed-decl
                     - owner
-                    - last-bullet(tree, id)
+                    - last-feed(tree, id)
                     - named
         | .node-pipeline-expression(row)
             if is-pipeline-nested(row.op)
@@ -1228,11 +1228,11 @@ for reverse in 1 .. < tree.root
                     - owner
                     - 0
                     - named
-            else if row.op == .stream-pattern-pipe-op
+            else if row.op == .grammar-pipe-op
                 nested = add-pattern-pipe(tree, id, owner, named)
-                . bullet = tree.piped-bullet(id)
-                if bullet != 0
-                    piped[bullet] = true
+                . feed = tree.piped-feed(id)
+                if feed != 0
+                    piped[feed] = true
         | .node-binary-expression(row)
             if is-pipeline-nested(row.op)
                 nested = add-nested-function
@@ -1248,11 +1248,11 @@ for reverse in 1 .. < tree.root
                     - owner
                     - 0
                     - named
-            else if row.op == .stream-pattern-pipe-op
+            else if row.op == .grammar-pipe-op
                 nested = add-pattern-pipe(tree, id, owner, named)
-                . bullet = tree.piped-bullet(id)
-                if bullet != 0
-                    piped[bullet] = true
+                . feed = tree.piped-feed(id)
+                if feed != 0
+                    piped[feed] = true
         | .node-markup(row)
             for child in tree.children-of(id)
                 inline[child] = true
@@ -1715,19 +1715,19 @@ while node != 0
 = false
 
 ────────────────────
-_ do last-bullet SyntaxId
+_ do last-feed SyntaxId
     - tree AST
     - id SyntaxId
 
-. bullet = id
+. feed = id
 while true
-    do match tree.nodes[bullet]
-        | .node-bullet-expression(row)
+    do match tree.nodes[feed]
+        | .node-feed-expression(row)
             if row.next == 0
-                = bullet
-            bullet = row.next
+                = feed
+            feed = row.next
         ??
-            = bullet
+            = feed
 
 ────────────────────
 _ do reads-tracked Bool
@@ -2187,7 +2187,7 @@ _ is-generator-loop Bool
     - loop SyntaxId
 
 ` A comprehension in expression position compiles as a generator closure that takes its
-` container; a bullet body or markup child is a loop of its owner, and a subscription is not a
+` container; a feed body or markup child is a loop of its owner, and a subscription is not a
 ` generator.
 match tree.nodes[loop]
     | .node-loop-syntax(row)
@@ -2235,8 +2235,8 @@ _ do add-nested-function DeclId
     - named SyntaxId
 
 ` The subtree is the whole node, as for every function row; a task's worker expression sits
-` inside it although the spawning function evaluates it. A bullet list's later bullets follow
-` its first one in the tree, so its subtree runs through the last bullet of the chain. `named`
+` inside it although the spawning function evaluates it. A feed list's later feeds follow
+` its first one in the tree, so its subtree runs through the last feed of the chain. `named`
 ` is the declaration or assignment the function is written in.
 . shapes = store-arg-shapes(tree, args)
 . primary Atom?

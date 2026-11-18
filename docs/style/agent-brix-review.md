@@ -14,7 +14,7 @@ Read `docs/style/agent-brix-style.md` and inspect the changed code against every
 Cite each finding by stable rule ID and source location, for example:
 
 ```text
-[YS-04] This pure list construction uses a mutable accumulator; replace it with a bullet expression.
+[YS-04] This pure list construction uses a mutable accumulator; replace it with a feed expression.
 ```
 
 Consult the domain guides linked at the end of the style guide only when their domain matches the

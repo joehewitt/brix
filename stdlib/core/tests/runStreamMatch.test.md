@@ -1260,7 +1260,7 @@ foo
 a_, bob_, fred_, tom_
 ```
 
-### A stream pattern reads its items in a source; one written on a stream a subscription is given is an error.
+### A grammar reads its items in a source; one written on a stream a subscription is given is an error.
 
 ```yumi compile-error
 . events Int<>
@@ -1269,7 +1269,7 @@ a_, bob_, fred_, tom_
 ```
 
 ```output
-Exception: A stream pattern matches items it reads with "in", not items a subscription with "on" is given; write "in" in place of "on"
+Exception: A grammar matches items it reads with "in", not items a subscription with "on" is given; write "in" in place of "on"
 <no file:3>
     . pairs = ~ a . b . on events
               ^^^^^^^^^^^^^^^^^^
@@ -5424,7 +5424,7 @@ ab , cd
 ```
 
 ```output
-Exception: Stream pattern pipeline can't give an optional value; add an action that gives one
+Exception: Grammar pipeline can't give an optional value; add an action that gives one
 <no file:2>
     -- List("ab cd" ~> \word)
                    ^^^^^^^^^
@@ -5435,7 +5435,7 @@ Exception: Stream pattern pipeline can't give an optional value; add an action t
 ```
 
 ```output
-Exception: Stream pattern pipeline must consume input
+Exception: Grammar pipeline must consume input
 <no file:2>
     -- List("abc") ~> ""
                   ^^^^^^
@@ -5448,7 +5448,7 @@ Exception: Stream pattern pipeline must consume input
 ```
 
 ```output
-Exception: Stream pattern pipeline must consume input
+Exception: Grammar pipeline must consume input
 <no file:2>
     -- List("ab" ~> &"a")
                 ^^^^^^^^
@@ -5499,7 +5499,7 @@ attempt.wait()
 ```output
 [xy ][zz]
 [xy ][zz]
-Stream pattern loop made no input progress
+Grammar loop made no input progress
 ```
 
 ```yumi compile-error
@@ -5508,7 +5508,7 @@ for w in ~ "a"* in "aab"
 ```
 
 ```output
-Exception: Stream pattern loop must consume input
+Exception: Grammar loop must consume input
 <no file:2>
     for w in ~ "a"* in "aab"
                ^^^^
@@ -11263,7 +11263,7 @@ y
 z
 ```
 
-### A pipe that reads a bullet giving every item of a `use` uses the object in its generator, which ends the use where the generator ends.
+### A pipe that reads a spread of a `use` uses the object in its generator, which ends the use where the generator ends.
 
 ```yumi
 ** use Letters("abcd")

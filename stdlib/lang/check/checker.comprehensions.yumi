@@ -66,13 +66,13 @@ _ Comprehensions is facet of Checker
 
 ` A comprehension is a call of its generated closure with the container as the one argument, so
 ` a range literal is constructed; the closure instance is keyed like a lambda's, at the
-` comprehension, and yields the body. One whose header is a stream pattern reads a container
+` comprehension, and yields the body. One whose header is a grammar reads a container
 ` the reference finds no iterator for through its stream all the same, and one it makes no
 ` stream of is its error at the pattern. One on a stream, `<* x on s`, subscribes where it is
 ` written: see `infer-broadcaster`.
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        if row.is-subscriber && tree.is-stream-pattern(row.pattern)
+        if row.is-subscriber && tree.is-grammar(row.pattern)
             report-pattern-on(row.pattern)
             = invalid-type
         if row.is-subscriber && next == 0
@@ -83,7 +83,7 @@ do match? tree.nodes[loop]
         . container = loop-container(row.container, false, stated-item(row.pattern))
         if container.type == invalid-type
             = invalid-type
-        if tree.is-stream-pattern(row.pattern) && !iterates(container.type) && no-item
+        if tree.is-grammar(row.pattern) && !iterates(container.type) && no-item
             frame.diagnose(row.pattern, .stated, program.store-atom("Can't convert to iterable"))
             = invalid-type
         .. no-item = natural-item(container.type) == no-type
@@ -107,50 +107,50 @@ if decl == 0
 = demand-nested(decl, container)
 
 ────────────────────
-+ do expect-bullets
++ do expect-feeds
     - expr SyntaxId
     - target TypeId
 
-` A bullet list written where a list of a known item type is wanted casts each plain bullet
+` A feed list written where a list of a known item type is wanted casts each plain feed
 ` to that type, as the reference does for a typed list call and a list-returning function.
 if target == no-type || target == invalid-type
     =
 . wanted = types.optional-inner(target)
-. bullets = tree.written-bullets(expr)
-if bullets == 0
+. feeds = tree.written-feeds(expr)
+if feeds == 0
     =
 do match? types.rows[wanted]
     | .type-class(row)
         . listed = row.module == types.list-decl.module && row.decl == types.list-decl.decl
         if listed && row.args.count != 0
             . item = types.child-type(row.args, 0)
-            bullet-lists += bullets
-            bullet-items += item
-            bullet-builds += nested-decl-of(bullets) != 0 && list-of(item) == wanted
+            feed-lists += feeds
+            feed-items += item
+            feed-builds += nested-decl-of(feeds) != 0 && list-of(item) == wanted
 
 ────────────────────
-_ do bullet-item TypeId
-    - bullets SyntaxId
+_ do feed-item TypeId
+    - feeds SyntaxId
 
-for position in 0 .. < bullet-lists.length
-    if bullet-lists[position] == bullets
-        = bullet-items[position]
+for position in 0 .. < feed-lists.length
+    if feed-lists[position] == feeds
+        = feed-items[position]
 = no-type
 
 ────────────────────
-_ do builds-bullets Bool
-    - bullets SyntaxId
+_ do builds-feeds Bool
+    - feeds SyntaxId
 
-for position in 0 .. < bullet-lists.length
-    if bullet-lists[position] == bullets
-        = bullet-builds[position]
+for position in 0 .. < feed-lists.length
+    if feed-lists[position] == feeds
+        = feed-builds[position]
 = false
 
 ────────────────────
-+ do infer-listed-bullets TypeId
++ do infer-listed-feeds TypeId
     - id SyntaxId
     - callable SyntaxId
-    - bullets SyntaxId
+    - feeds SyntaxId
 
 types.clear-fault()
 . listed = types.evaluate-type(module, tree, callable, frame.env)
@@ -167,18 +167,18 @@ instances.mark-may-panic(instance)
 . syntax-start = scratch.syntax.mark
 . sites [SyntaxId]
 . valid = true
-. bullet = bullets
-while bullet != 0
+. feed = feeds
+while feed != 0
     . next = 0u32
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
-            . given = listed-item(bullet, row.item, row.is-multi, row.is-optional, wanted)
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
+            . given = listed-item(feed, row.item, row.is-spread, row.is-optional, wanted)
             valid = valid && given != invalid-type
             scratch.types.push(given)
-            scratch.syntax.push(if row.is-multi || row.is-optional then bullet else row.item)
-            sites += bullet
+            scratch.syntax.push(if row.is-spread || row.is-optional then feed else row.item)
+            sites += feed
             next = row.next
-    bullet = next
+    feed = next
 . item = wanted
 . given = types-start
 if valid && item == no-type
@@ -209,55 +209,55 @@ scratch.types.rewind(types-start)
 . list = list-of(item)
 calls.note-list(id, list)
 calls.note-append(id, list, item, .call-list-append)
-facts.set-plan(instance, id, .plan-built-bullets)
+facts.set-plan(instance, id, .plan-built-feeds)
 = list
 
 ────────────────────
 _ do listed-item TypeId
-    - bullet SyntaxId
+    - feed SyntaxId
     - item SyntaxId
     - multi Bool
     - optional Bool
     - wanted TypeId
 
-facts.set-bullet-site(instance, bullet, bullet, false)
-=? listed-spread(bullet, multi-bullet-container(item, wanted)) if multi && !optional
+facts.set-feed-site(instance, feed, feed, false)
+=? listed-spread(feed, spread-container(item, wanted)) if multi && !optional
 . plain = !multi && !optional
 . value = if plain && wanted != no-type then infer-with-expected(item, wanted) else infer(item)
 =? invalid-type if value == invalid-type
 if plain
-    =? conversions.convert(bullet, item, value, wanted, .reason-explicit) if wanted != no-type
+    =? conversions.convert(feed, item, value, wanted, .reason-explicit) if wanted != no-type
     = value
 . inner = types.optional-inner(value)
 =? inner if !multi
-= listed-spread(bullet, LoopContainer(inner, no-type))
+= listed-spread(feed, LoopContainer(inner, no-type))
 
 ────────────────────
 _ do listed-spread TypeId
-    - bullet SyntaxId
+    - feed SyntaxId
     - container LoopContainer
 
 =? invalid-type if container.type == invalid-type
 if container.item != no-type
-    plan-range-at(bullet, container.item)
+    plan-range-at(feed, container.item)
     = container.item
 . mark = facts.calls.length
-. iterated = iteration-container(container.type, bullet)
-. yielded = loop-item-type(iterated, bullet)
+. iterated = iteration-container(container.type, feed)
+. yielded = loop-item-type(iterated, feed)
 =? invalid-type if yielded == invalid-type
-plan-iteration-at(bullet, bullet, iterated, yielded, true)
-facts.set-protocol-start(instance, bullet, bullet, mark)
+plan-iteration-at(feed, feed, iterated, yielded, true)
+facts.set-protocol-start(instance, feed, feed, mark)
 = yielded
 
 ────────────────────
-+ do infer-bullets TypeId
++ do infer-feeds TypeId
     - id SyntaxId
     - consumer SyntaxId
 
-` A bullet list is a call of its generated closure, whose type the reference records at the
-` first bullet, yielding every item. The reference shifts the first bullet's location one line
-` when it declares the closure, so the facts of that bullet's own yield land on the next bullet
-` or on the pipeline consuming the list; `bullet-site` places them the same way.
+` A feed list is a call of its generated closure, whose type the reference records at the
+` first feed, yielding every item. The reference shifts the first feed's location one line
+` when it declares the closure, so the facts of that feed's own yield land on the next feed
+` or on the pipeline consuming the list; `feed-site` places them the same way.
 . decl = nested-decl-of(id)
 if decl == 0
     decline(id)
@@ -265,50 +265,50 @@ if decl == 0
 facts.set-node-type(instance, id, intern-nested(decl))
 . callee = demand-nested(decl, no-type)
 . produced = calls.generator-call(id, callee)
-. site = tree.bullet-site(id, consumer)
+. site = tree.feed-site(id, consumer)
 if site != id
     facts.set-node-type(instance, site, produced)
 = produced
 
 ────────────────────
-+ do check-bullets
++ do check-feeds
     - id SyntaxId
 
-` The closure's body: a bullet yields its item, an optional bullet only a present item, and a
-` multi bullet every item of its iterable, as the reference's generated yields do. The first
-` bullet's own facts sit where the reference shifts them, the consumer being the closure's
+` The closure's body: a feed yields its item, an optional feed only a present item, and a
+` spread every item of its iterable, as the reference's generated yields do. The first
+` feed's own facts sit where the reference shifts them, the consumer being the closure's
 ` enclosing frame's pipeline when the list feeds one.
-. bullet = id
-. site = tree.bullet-site(id, tree.consumer-of(id))
-. wanted = if outer then outer.bullet-item(id) else no-type
-building-list = outer && outer.builds-bullets(id)
+. feed = id
+. site = tree.feed-site(id, tree.consumer-of(id))
+. wanted = if outer then outer.feed-item(id) else no-type
+building-list = outer && outer.builds-feeds(id)
 built-item = wanted
 . plain [Bool]
 orders-yields = true
-while bullet != 0
+while feed != 0
     . next = 0u32
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
-            facts.set-bullet-site(instance, bullet, site, false)
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
+            facts.set-feed-site(instance, feed, site, false)
             . noted = ordered-yields.length
-            check-bullet
-                - bullet
+            check-feed
+                - feed
                 - site
                 - row.item
-                - row.is-multi
+                - row.is-spread
                 - row.is-optional
                 - wanted
-                - bullet == id
+                - feed == id
             if ordered-yields.length != noted
-                plain += !row.is-multi && !row.is-optional
+                plain += !row.is-spread && !row.is-optional
             next = row.next
-    bullet = next
-    site = bullet
+    feed = next
+    site = feed
 orders-yields = false
-fold-bullet-yields(plain)
+fold-feed-yields(plain)
 
 ────────────────────
-_ do fold-bullet-yields
+_ do fold-feed-yields
     - plain [Bool]
 
 for position in 0 .. < plain.length
@@ -331,35 +331,35 @@ ordered-sites.clear()
 ordered-literals.clear()
 
 ────────────────────
-+ do bullets-consumer SyntaxId
++ do feeds-consumer SyntaxId
 
-` The pipeline that consumes the bullet list this body is, where its first bullet's facts sit,
+` The pipeline that consumes the feed list this body is, where its first feed's facts sit,
 ` or nothing for any other body.
 if !outer
     = 0
 do match? tree.nodes[frame.declaration.syntax]
-    | .node-bullet-expression
+    | .node-feed-expression
         = tree.consumer-of(frame.declaration.syntax)
 = 0
 
 ────────────────────
-_ do check-bullet
-    - bullet SyntaxId
+_ do check-feed
+    - feed SyntaxId
     - site SyntaxId
     - item SyntaxId
-    - is-multi Bool
+    - is-spread Bool
     - is-optional Bool
     - wanted TypeId
     - is-first Bool
 
-` What a bullet yields is kept with where the reference places its yield, to be converted
+` What a feed yields is kept with where the reference places its yield, to be converted
 ` to the type of the list's items once that is known. A range of integers written with no
-` suffix that a multi bullet yields is of the type of the items wanted.
-if is-multi && !is-optional
-    check-multi-bullet
-        - bullet
+` suffix that a spread yields is of the type of the items wanted.
+if is-spread && !is-optional
+    check-spread
+        - feed
         - site
-        - multi-bullet-container(item, wanted)
+        - spread-container(item, wanted)
         - is-first
         - written-literal(item)
     =
@@ -367,17 +367,17 @@ if is-multi && !is-optional
 if value == invalid-type
     note-yield(value)
     =
-if wanted != no-type && !is-multi && !is-optional
+if wanted != no-type && !is-spread && !is-optional
     value = conversions.convert(item, item, value, wanted, .reason-explicit)
 if is-optional && types.is-optional(value)
     value = types.optional-inner(value)
-if !is-multi
+if !is-spread
     note-yield(value, site, false, if is-optional then 0 else written-literal(item))
     =
-check-multi-bullet(bullet, site, LoopContainer(value, no-type), is-first)
+check-spread(feed, site, LoopContainer(value, no-type), is-first)
 
 ────────────────────
-_ do multi-bullet-container LoopContainer
+_ do spread-container LoopContainer
     - item SyntaxId
     - wanted TypeId
 
@@ -394,25 +394,25 @@ do match? tree.nodes[item]
 = loop-container(item, true, wanted)
 
 ────────────────────
-_ do check-multi-bullet
-    - bullet SyntaxId
+_ do check-spread
+    - feed SyntaxId
     - site SyntaxId
     - container LoopContainer
     - is-first Bool
     - literal SyntaxId = 0
 
-` A multi bullet yields every item of its iterable through the loop the reference lowers it
+` A spread yields every item of its iterable through the loop the reference lowers it
 ` to, an integer range literal counting without a range, any other container through its
 ` iteration protocol with the yielded item converted to the generator's optional. The loop
-` is planned at the bullet, which has the slots of a loop, and polls; the calls of a
-` container's protocol stay where the reference keeps them, and the loop of the first bullet
-` of a list is located on the line under it, where the reference shifts that bullet.
+` is planned at the feed, which has the slots of a loop, and polls; the calls of a
+` container's protocol stay where the reference keeps them, and the loop of the first feed
+` of a list is located on the line under it, where the reference shifts that feed.
 if container.type == invalid-type
     note-yield(invalid-type)
     =
 if container.item != no-type
     note-yield(container.item, site, true, literal)
-    plan-range-at(bullet, container.item)
+    plan-range-at(feed, container.item)
     =
 . mark = facts.calls.length
 . iterated = iteration-container(container.type, site)
@@ -420,9 +420,9 @@ if container.item != no-type
 note-yield(yielded, site, true)
 if yielded == invalid-type
     =
-plan-iteration-at(bullet, site, iterated, yielded, true)
-facts.set-bullet-site(instance, bullet, site, is-first)
-facts.set-protocol-start(instance, bullet, site, mark)
+plan-iteration-at(feed, site, iterated, yielded, true)
+facts.set-feed-site(instance, feed, site, is-first)
+facts.set-protocol-start(instance, feed, site, mark)
 . wrapped = types.optional-of(yielded)
 if wrapped != yielded
     conversions.convert(site, 0, yielded, wrapped, .reason-join)
@@ -443,10 +443,10 @@ if left == 0
     = invalid-type
 if op == .pipe-write-each-op
     = infer-write-each(id, left, right)
-if op == .stream-pattern-pipe-op
+if op == .grammar-pipe-op
     = infer-pattern-pipe(id, left, right)
-. listing = tree.listed-bullets(id)
-=? infer-listed-bullets(id, right, listing) if listing != 0
+. listing = tree.listed-feeds(id)
+=? infer-listed-feeds(id, right, listing) if listing != 0
 . source = infer-pipeline-source(left, id)
 if source == invalid-type
     = invalid-type
@@ -494,15 +494,15 @@ _ do infer-pattern-pipe TypeId
 
 ` A stream piped through a pattern, `s ~> p`, as the reference lowers it: a call of the
 ` generator closure generated for it, given the left value, which yields what each match of
-` the pattern gives. The value is given as `pipe-source` casts it, and a bullet the pipe reads
+` the pattern gives. The value is given as `pipe-source` casts it, and a feed the pipe reads
 ` alone is given nothing: the closure evaluates what it writes. A pattern that may match
 ` without reading, where the reference knows what it reads first, is an error: the pipe would
 ` never end, and so is a value the reference makes no stream of, which the closure loops over
 ` through its stream, iterable or not. A cast value the reference describes has no shape here: it names the closure for
-` the cast, not for what it casts. Nor has any other list of bullets, whose yields the
+` the cast, not for what it casts. Nor has any other list of feeds, whose yields the
 ` reference types again for the item it prefers.
-. piped = tree.piped-bullet(id)
-if piped == 0 && tree.nodes[left] is .node-bullet-expression
+. piped = tree.piped-feed(id)
+if piped == 0 && tree.nodes[left] is .node-feed-expression
     decline(id)
     = invalid-type
 . source = if piped == 0 then infer(left) else no-type
@@ -513,7 +513,7 @@ do match? tree.nodes[right]
     | .node-stream-match(row)
         pattern = row.pattern
 if first-set(pattern) == 3 || tree.never-reads(pattern)
-    frame.diagnose(right, .stated, program.store-atom("Stream pattern pipeline must consume input"))
+    frame.diagnose(right, .stated, program.store-atom("Grammar pipeline must consume input"))
     = invalid-type
 . decl = nested-decl-of(id)
 if decl == 0
@@ -570,17 +570,17 @@ for item in preferred
 
 ────────────────────
 _ do piped-source TypeId
-    - bullet SyntaxId
+    - feed SyntaxId
     - pattern SyntaxId
 
-` What a bullet that a stream piped through a pattern reads alone writes, evaluated in the
+` What a feed that a stream piped through a pattern reads alone writes, evaluated in the
 ` closure and cast as the reference casts it, for each item the pattern prefers in turn: to
 ` what `source-for-item` finds for that item. One cast for none has no shape here: the
-` reference generates the bullet's own closure. The reference finds the cast of a `use` for
+` reference generates the feed's own closure. The reference finds the cast of a `use` for
 ` the type of what it uses, so one whose `begin-using` gives another type has none either.
 . item SyntaxId = 0
-do match? tree.nodes[bullet]
-    | .node-bullet-expression(row)
+do match? tree.nodes[feed]
+    | .node-feed-expression(row)
         item = row.item
 . value = infer(item)
 if value == invalid-type
@@ -588,11 +588,11 @@ if value == invalid-type
 do match? tree.nodes[item]
     | .node-use-expression(row)
         if tree.optional-chain-expr(row.expr) != 0 || facts.node-type(instance, row.expr) != value
-            decline(bullet)
+            decline(feed)
             = invalid-type
 . preferred [TypeId]
 if !preferred-items(pattern, preferred)
-    decline(bullet)
+    decline(feed)
     = invalid-type
 for preference in preferred
     . target = source-for-item(value, preference)
@@ -600,7 +600,7 @@ for preference in preferred
         if target != value && conversions.convert(item, item, value, target, .reason-argument) == invalid-type
             = invalid-type
         = target
-decline(bullet)
+decline(feed)
 = invalid-type
 
 ────────────────────
@@ -701,7 +701,7 @@ for decl in [types.iterable-decl, types.indexable-decl, types.stream-decl]
 ` where it is before the match and after it, to panic where a match read nothing. Each value a
 ` match gives is yielded; the closure ends where the stream has no more, or the pattern fails. A
 ` stream made of a value that is none is the closure's own, and where it can be released, it is
-` released first on each pass. A bullet the pipe reads alone is evaluated here, as `piped-source`
+` released first on each pass. A feed the pipe reads alone is evaluated here, as `piped-source`
 ` casts it. A helper the pipe is given with `with` is evaluated once, after the stream is made,
 ` and every match runs under it, as a match given one does. One that marks the records a pipe
 ` matches is asked to begin each record where the stream has more, before the stream is marked,
@@ -713,7 +713,7 @@ do match? tree.nodes[right]
     | .node-stream-match(row)
         pattern = row.pattern
         helper = row.helper
-. piped = tree.piped-bullet(id)
+. piped = tree.piped-feed(id)
 . container = if piped != 0 then piped-source(piped, pattern) else first-argument
     .. first-argument = instances.argument-type(instance, 0)
 if container == invalid-type
@@ -809,8 +809,8 @@ _ do infer-pipeline-source TypeId
     - id SyntaxId
 
 do match? tree.nodes[left]
-    | .node-bullet-expression
-        = infer-bullets(left, id)
+    | .node-feed-expression
+        = infer-feeds(left, id)
 = infer(left)
 
 ────────────────────

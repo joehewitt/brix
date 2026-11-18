@@ -2589,9 +2589,9 @@ for item in stream
 ```
 
 ```yumi
--- bullet-chain()
+-- feed-chain()
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-chain Int
++ do feed-chain Int
 
 . offset = 2
 . source =
@@ -2614,9 +2614,9 @@ for value in alias
 ```
 
 ```yumi
--- bullet-list()
+-- feed-list()
 ━━━━━━━━━━━━━━━━━━━━
-+ bullet-list List'Int
++ feed-list List'Int
 
 * 1
 ** 2 .. 4
@@ -2628,9 +2628,9 @@ for value in alias
 ```
 
 ```yumi
--- List(bullet-escaping())
+-- List(feed-escaping())
 ━━━━━━━━━━━━━━━━━━━━
-+ bullet-escaping
++ feed-escaping
 
 * 1
 ** 2 .. 4
@@ -2657,15 +2657,15 @@ for item in source
 ```
 
 ```yumi
--- bullet-partial()
+-- feed-partial()
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-partial Int
++ do feed-partial Int
 
 . factor = 2
 . values =
-    * bullet-effect(1)
-    ** bullet-cleanup()
-    * bullet-effect(9)
+    * feed-effect(1)
+    ** feed-cleanup()
+    * feed-effect(9)
     *> each * factor
 factor = 3
 -- "created"
@@ -2675,13 +2675,13 @@ for value in values
         = 17
 = 0
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-effect Int
++ do feed-effect Int
     - value Int
 
 -- "produce $value"
 = value
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-cleanup @inline
++ do feed-cleanup @inline
 
 do finally
     -- "closed"
@@ -2699,8 +2699,8 @@ closed
 ```
 
 ```yumi
-. state = BulletState(2)
-. values = bullet-lazy(state)
+. state = FeedState(2)
+. values = feed-lazy(state)
 -- "created"
 state.factor = 3
 for value in values
@@ -2708,28 +2708,28 @@ for value in values
     if value >= 6
         break
 ━━━━━━━━━━━━━━━━━━━━
-+ BulletState
++ FeedState
 + factor Int
 ────────────────────
 + This
     - factor
 ━━━━━━━━━━━━━━━━━━━━
-+ bullet-lazy
-    - state BulletState
++ feed-lazy
+    - state FeedState
 
-* bullet-lazy-value(1)
-** bullet-lazy-inner()
-* bullet-lazy-value(9)
+* feed-lazy-value(1)
+** feed-lazy-inner()
+* feed-lazy-value(9)
 *> each * state.factor
 ?> each > 0
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-lazy-value Int
++ do feed-lazy-value Int
     - value Int
 
 -- "produce $value"
 = value
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-lazy-inner @inline
++ do feed-lazy-inner @inline
 
 do finally
     -- "closed"
@@ -2746,9 +2746,9 @@ closed
 ```
 
 ```yumi
--- bullet-nested()
+-- feed-nested()
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-nested Int
++ do feed-nested Int
 
 . rows = each * 10 in 1 .. 3
 . values =
@@ -2766,28 +2766,28 @@ for value in values
 ```
 
 ```yumi
-. result = catch bullet-errors()
--- result is BulletFailure
+. result = catch feed-errors()
+-- result is FeedFailure
 ━━━━━━━━━━━━━━━━━━━━
-+ BulletFailure is Error
++ FeedFailure is Error
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-errors Int ?! BulletFailure
++ do feed-errors Int ?! FeedFailure
 
 . values =
     * 1
-    ** bullet-failure()
+    ** feed-failure()
     * 9
     *> each + 1
 for value in values
     -- value
 = 0
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-failure <Int> ?! BulletFailure @inline
++ do feed-failure <Int> ?! FeedFailure @inline
 
 do finally
     -- "closed"
 <= 2
-?! BulletFailure("failed")
+?! FeedFailure("failed")
 ```
 
 ```output
@@ -2799,32 +2799,32 @@ true
 
 ```yumi
 /BxGC/BxGC.h
-. values = bullet-managed(BulletBox("one"))
+. values = feed-managed(FeedBox("one"))
 C:brixGCCollect()
 for value in values
     C:brixGCCollect()
     -- value.text
 ━━━━━━━━━━━━━━━━━━━━
-+ BulletBox
++ FeedBox
 + text String
 ────────────────────
 + This
     - text
 ━━━━━━━━━━━━━━━━━━━━
-+ bullet-managed
-    - first BulletBox
++ feed-managed
+    - first FeedBox
 
-** bullet-boxes(first)
-* BulletBox("three")
+** feed-boxes(first)
+* FeedBox("three")
 *> each
 ?> each.text != ""
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-boxes @inline
-    - first BulletBox
++ do feed-boxes @inline
+    - first FeedBox
 
 <= first
 C:brixGCCollect()
-<= BulletBox("two")
+<= FeedBox("two")
 ```
 
 ```output
@@ -2840,10 +2840,10 @@ three
 . output = SyncBufferedChannel'Int()
 input <- 7
 input.close()
-for value in bullet-task-values(input, output)
+for value in feed-task-values(input, output)
     -- value
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-task-values
++ do feed-task-values
     - input SyncBufferedChannel'Int
     - output SyncBufferedChannel'Int
 
@@ -3123,15 +3123,15 @@ while index < count
 ```
 
 ```yumi
-./bullet-producer
+./feed-producer
 /core
 
--- bullet-module()
+-- feed-module()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ do bullet-module Int
++ do feed-module Int
 
-. values = bullet-values()
+. values = feed-values()
 . alias = values
 . total = 0
 for value in alias
@@ -3139,12 +3139,12 @@ for value in alias
 = total
 ```
 
-```yumi file=bullet-producer.yumi
+```yumi file=feed-producer.yumi
 
 /core
 
 ━━━━━━━━━━━━━━━━━━━━
-+ bullet-values @inline
++ feed-values @inline
 
 * 1
 ** 2 .. 12

@@ -400,7 +400,7 @@ else
 42
 ```
 
-### Lazy Bool dependencies used as conditional bullet guards should not be projected.
+### Lazy Bool dependencies used as conditional feed guards should not be projected.
 
 ```yumi
 -- ", ".join

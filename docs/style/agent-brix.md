@@ -96,7 +96,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - **Guarded**: A value written with `only-if`, which is null where its condition fails.
 - **Arg**: An argument of a call. Includes Expr.
 - **Row**: A row inside the `block` of a call: a step, or an argument such as `(arg value)` or `(:label value)`. Includes Step.
-- **Lead**: A row of an expression body before its value: an arm, a bullet or a pipe stage. Includes Case. Excludes Lazy and Let.
+- **Lead**: A row of an expression body before its value: an arm, a feed or a pipe stage. Includes Case. Excludes Lazy and Let.
 - **Result**: The value an arm gives: its last row. Includes Value.
 - **Given**: The value a call's block gives as an argument: its last row. Includes Value.
 - **Lazy**: A `lazy` binding.
@@ -110,7 +110,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - **Option**: A filter or key on a loop source.
 - **Case**: An arm of a `match`.
 - **Pattern**: A shape that a value is tested against. Includes Expr. Also written as an atom, `_`, a text.
-- **Stream**: A part of a stream pattern. Also written as anything.
+- **Stream**: A part of a grammar. Also written as anything.
 - **Child**: A row inside markup. Includes Step and Row and Value.
 - **Attr**: An attribute of a markup element.
 - **Use**: A style rule applied to an element or inside a rule.
@@ -126,7 +126,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - **Domain**: A style domain.
 - **Over**: The item type of a stream function.
 - **Raises**: An error a function can raise.
-- **Rule**: A stream pattern rule.
+- **Rule**: A grammar rule.
 - **Inline**: A one-step body written on the row of its form.
 - **Worker**: The worker a task runs on.
 - **Handler**: Rows that run when an error is raised.
@@ -231,7 +231,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(let name:Local type:Type/Hole value:Expr/Block?)` is Step, Member, Case, Let. Introduce a local of the type, and set it now when a value follows. A `_` type leaves the type to the value, as a value that is itself a type needs: `(let kind _ I32)`.
 - `(lazy target:Binder/Pattern value:Expr/Block/Rule?)` is Lazy, Case, Member, State, Binding. Name a value that is computed where it is first used.
 - `(lazy name:Local type:Type value:Expr/Block/Rule?)` is Lazy, Case, Member, State, Binding. Name a value of the type that is computed where it is first used.
-- `(pattern mark:Atom* alternative:Stream*)` is Rule. A stream pattern rule.
+- `(pattern mark:Atom* alternative:Stream*)` is Rule. A grammar rule.
 - `(return value:Expr/Block?)` is Step. Leave the function, with a value when it returns one.
 - `(return? value:Expr/Block)` is Step. Leave the function with the value, unless the value is null.
 - `(return-if value:Expr? guard:Guard)` is Step. Leave the function when the condition holds.
@@ -288,7 +288,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(caught error:Binder earlier:Binder+)` is Caught. An error together with the errors it replaced.
 - `(print value:Expr/Block?)` is Step, Value, Before. Print a value. With no value it does nothing and stands for an empty body.
 - `(print? value:Expr)` is Step, Value, Before. Print a value unless it is null.
-- `(with value:Expr)` is Step, Value, Row, Case. The first row of a `match`: the helper object its patterns call.
+- `(with value:Expr)` is Step, Value, Row, Case. The first row of a `match`: the helper object its grammars call.
 - `(header value:Expr)` is Step, Value, Child. Starts a section with a value. Each value row after it, up to the next header, is handed to that value.
 - `(paragraph line:Line*)` is Step, Value. A text body, one item for each line.
 
@@ -296,7 +296,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 
 - `(= target:Target value:Expr/Block)` is Step, Child, Style, Assign. Store a value.
 - `(= (| pattern:Pattern+) value:Expr)` is Expr. True when the value fits the pattern. The pattern may name parts of the value.
-- `(= (~ pattern:Stream+) value:Expr)` is Test. True when the value's items fit the stream pattern. The pattern may name parts of what it matched.
+- `(= (~ pattern:Stream+) value:Expr)` is Test. True when the value's items fit the grammar. The grammar may name parts of what it matched.
 - `(=? target:Target value:Expr/Block)` is Step, Assign. Store a value unless the value is null.
 - `(+= target:Target value:Expr/Block)` is Step, Assign. Add to what is stored.
 - `(+=? target:Target value:Expr/Block)` is Step, Assign. Add to what is stored, unless the value is null.
@@ -325,10 +325,10 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(arg value:Expr/Block)` is Row. One positional argument.
 - `(entry key:Expr value:Expr/Block?)` is Row, Arg. One key and its value.
 - `(entry? key:Expr value:Expr/Block)` is Row, Arg. One key and its value, left out when the value is null.
-- `(bullet value:Expr/Block)` is Row, Value, Case. One item of a list being built.
-- `(bullet? value:Expr/Block)` is Row, Value, Case. One item, left out when it is null.
-- `(bullet* value:Expr/Block)` is Row, Value, Case. Every item of a collection.
-- `(bullet*? value:Expr/Block)` is Row, Value, Case. Every item of a collection, unless it is null.
+- `(item value:Expr/Block)` is Row, Value, Case. One item of a list being built.
+- `(item? value:Expr/Block)` is Row, Value, Case. One item, left out when it is null.
+- `(spread value:Expr/Block)` is Row, Value, Case. Every item of a collection.
+- `(spread? value:Expr/Block)` is Row, Value, Case. Every item of a collection, unless it is null.
 - `(pipe stage:Atom value:Expr/Stream/Block? row:Row/Value*)` is Row, Value, Case, Step, Stage. One stage of a pipeline over the row above.
 - `(scope value:Expr row:Row*)` is Expr, Value, Step, Target. A value with the rows that complete it, such as the `lazy` names it uses.
 
@@ -434,13 +434,13 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(*|> left:Expr right:Expr+)` is Expr. Run a step for each item and pass the item on unchanged.
 - `(-> left:Expr right:Expr+)` is Expr, Step. Write the whole value to a target in one write. The result is the target.
 - `(*-> left:Expr right:Expr+)` is Expr, Step. Write each item to a target, one write for each.
-- `(~> left:Expr right:Any+)` is Expr. Match a pattern again and again along a stream. The result is a stream of what each match produces.
+- `(~> left:Expr right:Any+)` is Expr. Match a grammar again and again along a stream. The result is a stream of what each match produces.
 - `(/infix/ left:Expr right:Expr+)` is Expr. A named operator; the head is its name between slashes.
 
 ### Types As Forms
 
 - `(of base:Expr argument:Type+)` is Type, Expr, Key, Pattern, Stream. A generic name with its type arguments.
-- `(? type:Any)` is Type, Expr, Pattern, Stream. An optional type, or an optional part of a stream pattern.
+- `(? type:Any)` is Type, Expr, Pattern, Stream. An optional type, or an optional part of a grammar.
 - `(channel item:Type)` is Type. A channel of values.
 - `(fn-type result:Type/Hole part:Raises/Header*)` is Type. The type of a function.
 - `(c-fn-type result:Type/Hole part:Raises/Header*)` is Type. The type of a C function.
@@ -462,15 +462,15 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(& part:Stream)` is Stream. Followed by the part, which is not consumed.
 - `(all part:Any+)` is Pattern. Every part must fit.
 - `(| part:Any+)` is Pattern, Stream, Expr. Any one part must fit.
-- `({} part:Any+)` is Pattern, Stream, Expr. A test on the matched value, or a repeat count in a stream pattern.
-- `(~ pattern:Any part:Any*)` is Stream, Case, Value, Row, Step, Expr, Pattern. A stream pattern and what its match produces.
+- `({} part:Any+)` is Pattern, Stream, Expr. A test on the matched value, or a repeat count in a grammar.
+- `(~ pattern:Any part:Any*)` is Stream, Case, Value, Row, Step, Expr, Pattern. A grammar and what its match produces.
 - `(seq part:Any+)` is Stream. Parts that must follow one another.
 - `(chars set:Text)` is Stream. Any one character of the set.
 - `(\{} test:Any)` is Stream. A test on the next item.
 - `(into name:Atom+)` is Stream. Where a rule's captures go.
-- `(of: source:Any)` is Stream. The value the pattern is matched against, once.
-- `(in: source:Any+)` is Stream. The source the pattern is matched along, again and again. The result is a stream of the matches.
-- `(on: source:Any+)` is Stream. The source of events the pattern is matched along, again and again. The result is a stream of the matches.
+- `(of: source:Any)` is Stream. The value the grammar is matched against, once.
+- `(in: source:Any+)` is Stream. The source the grammar is matched along, again and again. The result is a stream of the matches.
+- `(on: source:Any+)` is Stream. The source of events the grammar is matched along, again and again. The result is a stream of the matches.
 - `(<* pattern:Any)` is Expr, Stream, Pattern. Every match of a pattern.
 - `(/ left:Pattern right:Pattern+)` is Pattern. Reserved for the child relation between tree patterns. The compiler does not match it yet.
 - `(*/ left:Pattern right:Pattern+)` is Pattern. Reserved for the descendant relation between tree patterns. The compiler does not match it yet.

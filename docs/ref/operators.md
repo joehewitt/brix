@@ -71,7 +71,7 @@ takes its operands first. In forms, nesting decides. From the loosest to the tig
 | `(?? a b)`{.brix} | Fallback; see Optionals. |
 | `(only-if value (if condition))`{.brix} | A value only where a condition holds; see Control flow. |
 | `(= a b)`{.brix} `(+= a b)`{.brix} `(-= a b)`{.brix} `(*= a b)`{.brix} `(/= a b)`{.brix} `(%= a b)`{.brix} `(%%= a b)`{.brix} `(++= a b)`{.brix} `(<-* a b)`{.brix}, and each with `?`, as in `(=? a b)`{.brix} | Assignment. |
-| `(\|> a b)`{.brix} `(\|=> a b)`{.brix} `(*> a b)`{.brix} `(?> a b)`{.brix} `(?*> a b)`{.brix} `(*\|> a b)`{.brix} `(-> a b)`{.brix} `(*-> a b)`{.brix} `(~> a \rule)`{.brix} | Pipelines and stages; see Streams, and Stream patterns for `~>`. |
+| `(\|> a b)`{.brix} `(\|=> a b)`{.brix} `(*> a b)`{.brix} `(?> a b)`{.brix} `(?*> a b)`{.brix} `(*\|> a b)`{.brix} `(-> a b)`{.brix} `(*-> a b)`{.brix} `(~> a \rule)`{.brix} | Pipelines and stages; see Streams, and Grammars for `~>`. |
 | `(or a b)`{.brix} | Either is true. |
 | `(and a b)`{.brix} | Both are true. |
 | `(< a b)`{.brix} `(> a b)`{.brix} `(<= a b)`{.brix} `(>= a b)`{.brix} | Order. |

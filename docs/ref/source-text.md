@@ -233,7 +233,7 @@ A row begins with a mark that says what it is, followed by a space.
 | `\|= value`, `\|? condition`, `??` | Arms taken on equality, on a condition, and otherwise. | `(case= …)`, `(case? …)`, `(default …)` |
 | `\|\| pattern`, `\|\|= value`, `\|\|? condition` | Arms whose values keep their own types. | `(case-union …)`, `(case-union= …)`, `(case-union? …)` |
 | `?! error if condition` | A check. | `(throw error (if condition))` |
-| `* value`, `** values` | Items of a list built below it. | `(bullet value)`, `(bullet* values)` |
+| `* value`, `** values` | Items of a list built below it. | `(item value)`, `(spread values)` |
 | `?> condition`, `*> value` | Pipe stages, flush below a value. | `(pipe ?> condition)`, `(pipe *> value)` |
 | `• name value` | A named argument. | `(:name value)` |
 | `- value` under a call | One argument. | `(arg value)` |

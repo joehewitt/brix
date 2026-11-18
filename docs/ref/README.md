@@ -35,7 +35,7 @@ covered here. The rest of the standard library is surveyed in its own chapter.
 13. [Collections](collections.md): lists, maps, arrays, views, tables, bitmaps and ranges as
     values.
 14. [Streams](streams.md): the stream family, generators, comprehensions, pipelines and targets.
-15. [Stream patterns](stream-patterns.md): grammars over text, bytes and other sequences.
+15. [Grammars](grammars.md): parsing text, bytes and other sequences.
 16. [Errors](errors.md): raising, propagation, `catch`, handlers, cleanup and panics.
 17. [Concurrency](concurrency.md): tasks, workers, channels and subscriptions.
 18. [Reactivity](reactivity.md): tracked reads, derived properties, rules, live statements and

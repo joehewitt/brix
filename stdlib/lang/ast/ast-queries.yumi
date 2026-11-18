@@ -740,7 +740,7 @@ match nodes[pattern]
 + do never-reads Bool
     - id SyntaxId
 
-` Whether a stream pattern matches without ever reading an item: one made only of lookaheads.
+` Whether a grammar matches without ever reading an item: one made only of lookaheads.
 do match? nodes[id]
     | .node-stream-match(row)
         = never-reads(row.pattern)
@@ -1081,12 +1081,12 @@ match nodes[callable]
         false
 
 ────────────────────
-+ bullet-site SyntaxId
++ feed-site SyntaxId
     - id SyntaxId
     - consumer SyntaxId
 
 match nodes[id]
-    | .node-bullet-expression(row)
+    | .node-feed-expression(row)
         if row.next != 0 then row.next else if consumer != 0 then consumer else id
     ??
         id
@@ -1095,7 +1095,7 @@ match nodes[id]
 + do consumer-of SyntaxId
     - id SyntaxId
 
-` The pipeline whose left operand is the bullet list, if one consumes it.
+` The pipeline whose left operand is the feed list, if one consumes it.
 . total = nodes.length
 for candidate in id + 1 .. < total
     do match? nodes[candidate]
@@ -1138,25 +1138,25 @@ for node in id + 1 .. < (nodes.length as SyntaxId)
     - id SyntaxId
 
 ` The reference converts a pipeline's left value where that value was produced: at the left
-` operand, which for a bullet list is where its shifted first bullet lands.
+` operand, which for a feed list is where its shifted first feed lands.
 match nodes[left]
-    | .node-bullet-expression
-        bullet-site(left, id)
+    | .node-feed-expression
+        feed-site(left, id)
     ??
         left
 
 ────────────────────
-+ do written-bullets SyntaxId
++ do written-feeds SyntaxId
     - expr SyntaxId
 
-. bullets = expr
-do match? nodes[bullets]
+. feeds = expr
+do match? nodes[feeds]
     | .node-argument(row)
-        bullets = if row.name then 0 else row.expr
-do match? nodes[bullets]
+        feeds = if row.name then 0 else row.expr
+do match? nodes[feeds]
     | .node-block(row)
-        bullets = if row.body.count == 1 then children[row.body.start] else 0
-=? bullets if bullets != 0 && nodes[bullets] is .node-bullet-expression
+        feeds = if row.body.count == 1 then children[row.body.start] else 0
+=? feeds if feeds != 0 && nodes[feeds] is .node-feed-expression
 = 0
 
 ────────────────────
@@ -1786,7 +1786,7 @@ match nodes[id]
 + do computed-counts Bool
     - id SyntaxId
 
-` Whether a stream pattern holds a count of a part whose bounds are not numbers written.
+` Whether a grammar holds a count of a part whose bounds are not numbers written.
 for node in subtree-start(id) .. < id + 1
     do match? nodes[node]
         | .node-stream-length(row)
@@ -1845,7 +1845,7 @@ do match? nodes[operand]
 + do holds-count Bool
     - id SyntaxId
 
-` Whether a part of a stream pattern counts a part, whose text the reference gives empty over
+` Whether a part of a grammar counts a part, whose text the reference gives empty over
 ` items that are no characters.
 for node in subtree-start(id) .. < id + 1
     if nodes[node] is .node-stream-length
@@ -1869,7 +1869,7 @@ for node in subtree-start(pattern) .. < pattern + 1
     - node SyntaxId
     - id SyntaxId
 
-` Whether a node lies in the action of an arm of a stream pattern written within an expression.
+` Whether a node lies in the action of an arm of a grammar written within an expression.
 for outer in node + 1 .. < id
     do match? nodes[outer]
         | .node-stream-transform(row)
@@ -1922,7 +1922,7 @@ for node in subtree-start(id) .. < id + 1
 + do optional-operand SyntaxId
     - id SyntaxId
 
-` The part an optional part of a stream pattern holds, or none for any other part.
+` The part an optional part of a grammar holds, or none for any other part.
 do match? nodes[id]
     | .node-stream-unary(row)
         if row.op == .zero-or-one-op
@@ -2252,11 +2252,11 @@ match nodes[argument]
         false
 
 ────────────────────
-+ next-bullet SyntaxId
-    - bullet SyntaxId
++ next-feed SyntaxId
+    - feed SyntaxId
 
-match nodes[bullet]
-    | .node-bullet-expression(row)
+match nodes[feed]
+    | .node-feed-expression(row)
         row.next
     ??
         0
@@ -2291,7 +2291,7 @@ body == 0 && !(nodes[loop] is .node-loop-syntax)
 + step-pattern SyntaxId
     - loop SyntaxId
 
-` The stream pattern a loop's header is written as, out of the match that holds it where one
+` The grammar a loop's header is written as, out of the match that holds it where one
 ` does.
 match nodes[loop]
     | .node-loop-syntax(row)
@@ -2465,7 +2465,7 @@ match nodes[id]
 + do optional-part Bool
     - id SyntaxId
 
-` Whether a part of a stream pattern is an optional part.
+` Whether a part of a grammar is an optional part.
 do match? nodes[id]
     | .node-stream-unary(row)
         = row.op == .zero-or-one-op
@@ -2612,14 +2612,14 @@ match nodes[id]
     - position U32
 
 =? children[written.start + position] if chain == 0
-. bullet = chain
+. feed = chain
 for _ in 0 .. < position
-    bullet = next-bullet(bullet)
-= match nodes[bullet]
-    | .node-bullet-expression(row)
+    feed = next-feed(feed)
+= match nodes[feed]
+    | .node-feed-expression(row)
         row.item
     ??
-        bullet
+        feed
 
 ────────────────────
 + matched-name SyntaxId

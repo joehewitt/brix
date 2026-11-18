@@ -265,14 +265,14 @@ use? foo
 
 ```brix
 (main
-  (bullet? foo)
+  (item? foo)
 )
 ```
 
 ```output
-<Bullet optional="true">
+<Feed optional="true">
     <Id name="foo"/>
-</Bullet>
+</Feed>
 ```
 
 ```yumi

@@ -5,7 +5,7 @@ Text is a `String`: a sequence of Unicode characters, stored as UTF-8. One chara
 operators of `String` and `Char`, converting to and from text, and atoms, which are names that
 compare by identity.
 
-Text patterns are in Patterns, and grammars over text in Stream patterns.
+Text patterns are in Patterns, and grammars over text in Grammars.
 
 ## Strings
 

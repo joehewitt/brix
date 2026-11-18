@@ -5,8 +5,8 @@ generators, comprehensions and channels, which make their items as they are read
 stream, a pipeline transforms one, and a target such as a list or a file takes its items.
 
 This chapter covers the kinds of stream, generators, comprehensions, reading streams, pipelines,
-targets, and making a type a stream. Loops are in Control flow, grammars over streams in Stream
-patterns, and channels in Concurrency.
+targets, and making a type a stream. Loops are in Control flow, grammars over streams in Grammars,
+and channels in Concurrency.
 
 ## The stream family
 
@@ -369,7 +369,7 @@ big 3, big 4
 ```
 
 - **`select`** puts the value before the pattern it is given for. In rows it is
-  `n * 10 | n Int in values`{.rows}. The pattern may also be `(<* pattern)` or a stream pattern,
+  `n * 10 | n Int in values`{.rows}. The pattern may also be `(<* pattern)` or a grammar,
   `(~ pattern)`, which is matched along the source again and again.
 - **`it` in a `select`** is the item only when the pattern is a condition, as in `big` above. With a
   type or a literal pattern, name the item: `(| (: n Int))`.
@@ -488,7 +488,10 @@ not do what their names suggest elsewhere:
 ## Pipelines
 
 A pipeline passes a value through stages. Each stage operator takes the value on its left and an
-expression on its right.
+expression on its right. The operators that work on a stream item by item make up stream
+pipelines: the stages `*>`, `?>`, `?*>`, `*|>` and `~>`, and the feeds that start a stream,
+`(item value)`{.brix} and `(spread items)`{.brix}, written `*` and `**` in rows; see
+[Pipelines in rows of a block](#pipelines-in-rows-of-a-block). `|>` and `|=>` take the whole value.
 
 ```brix
 (main
@@ -564,8 +567,8 @@ expression on its right.
   Mixed operators nest from the left.
 - **One pass.** A pipeline kept in a local is a `Generator`, so it can be read once. Declare a list
   type to keep the items instead: `(let kept (list Int) (*> items (* each 2)))`{.brix}.
-- **Records.** `(~> text \record)`{.brix} is a stage that reads one match of a stream pattern
-  after another; see Stream patterns.
+- **Records.** `(~> text \record)`{.brix} is a stage that reads one match of a grammar
+  after another; see Grammars.
 
 A stage runs only as items are read through it. Making the pipeline here runs no `record`, and a
 loop that stops early never runs it for the rest. A filter after `*|>` may still drop an item the
@@ -629,8 +632,8 @@ for each stage, holding the stage's operator and value.
   (print made)
   (let squares
     (block
-      (bullet 1)
-      (bullet* (.. 2 4))
+      (item 1)
+      (spread (.. 2 4))
       (pipe *> (* each each))
       (pipe |> List)
     )
@@ -653,15 +656,15 @@ for each stage, holding the stage's operator and value.
 2, 4, 6, 8
 ```
 
-- **Bullets** start a stream: `(bullet value)`{.brix} gives one item, `(bullet* items)`{.brix}
-  every item of a stream, `(bullet? value)`{.brix} one item when it is not `null`, and
-  `(bullet*? items)`{.brix} every item when the collection is not `null`. `bullet*` spreads one
-  level only: given a list of lists, it gives the lists.
+- **Feeds** start a stream: `(item value)`{.brix} gives one item, `(spread items)`{.brix}
+  every item of a stream, `(item? value)`{.brix} one item when it is not `null`, and
+  `(spread? items)`{.brix} every item when the collection is not `null`. `spread` goes one
+  level deep: given a list of lists, it gives the lists.
 - **Stage bodies.** A stage's value can be a `block` with rows of its own, and lazy bindings
   written under a stage are worked out for each item. To read an outer item inside an inner stage,
   bind it to a name in a lazy binding first, since the inner `each` hides it.
 
-For a short fixed list, a list literal is enough. Bullets pay off where a sequence mixes fixed
+For a short fixed list, a list literal is enough. Feeds pay off where a sequence mixes fixed
 items, items that may be missing, and items taken from elsewhere:
 
 ```brix
@@ -670,10 +673,10 @@ items, items that may be missing, and items taken from elsewhere:
   (let extras (list "timing" "memory"))
   (let menu
     (block
-      (bullet "status")
-      (bullet? (only-if "debug" (if include-debug)))
-      (bullet* extras)
-      (bullet "done")
+      (item "status")
+      (item? (only-if "debug" (if include-debug)))
+      (spread extras)
+      (item "done")
       (pipe |> List)
     )
   )

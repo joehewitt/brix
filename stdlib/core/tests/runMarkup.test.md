@@ -2540,7 +2540,7 @@ Exception: "when" state branches are only allowed in style rule bodies
         ^^^^^^^^^^
 ```
 
-### Markup list properties materialize heterogeneous union bullets once before initial assignment.
+### Markup list properties materialize heterogeneous union feeds once before initial assignment.
 
 ```yumi
 <MarkupListHost host

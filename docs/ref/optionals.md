@@ -415,8 +415,8 @@ Several steps take an optional and do nothing when it holds nothing:
 | `(return? value)`{.brix} | Return the value, unless it is `null`. |
 | `(yield? value)`{.brix} | Give the value to the stream, unless it is `null`. |
 | `(use? resource)`{.brix} | Use the resource, unless it is `null`. |
-| `(bullet? value)`{.brix} | Give the item, unless it is `null`. |
-| `(bullet*? items)`{.brix} | Give every item of a collection, unless it is `null`. |
+| `(item? value)`{.brix} | Give the item, unless it is `null`. |
+| `(spread? items)`{.brix} | Give every item of a collection, unless it is `null`. |
 
 ```brix
 (main

@@ -70,7 +70,7 @@ core makes visible.
 | `UnhandledErrorHandler` | The type of `unhandled-error`. | [Other types](#other-types) |
 | `TypeInfo`, `PropertyList`, `PropertyInfo`, `TypeRelation` | Types as values. | [Type information](#type-information) |
 | `Tuple`, `Struct`, `Union`, `Interface` | The bases that make a declaration a tuple, struct, union or interface. | Types |
-| `MatchLocation`, `TokenLocation`, `TokenStream` | Where a pattern matched, and resumable sources. | Stream patterns |
+| `MatchLocation`, `TokenLocation`, `TokenStream` | Where a pattern matched, and resumable sources. | Grammars |
 | `CPointer`, `Pointer`, `ConstArray`, `CFunction` | Pointers, constant data and C functions. | Native code and memory |
 | `GCBacking` | Where a collection's items are kept by default. | Types |
 

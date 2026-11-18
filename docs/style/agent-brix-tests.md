@@ -103,8 +103,8 @@ file, select it by its number or a line in it.
 ### Scope
 
 - Run the file or single case for what you changed, and nothing broader.
-- After a compiler or runtime change, run `suite:core` once before handoff. After a grammar or
-  parser change, also run `suite:parse` once.
+- After a compiler or runtime change, run `suite:core` once before handoff. After a change to the
+  Yumi or Brix grammar or the parser, also run `suite:parse` once.
 - Never run any other `suite:` selector, except `suite:scratch`, unless the user names it. This
   includes `suite:stdlib`, `suite:parity`, and `suite:other`, which holds the Python tests and the
   slow GC sanitizer runs.

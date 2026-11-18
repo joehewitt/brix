@@ -1444,7 +1444,7 @@ MatchLocation(TokenLocation(location.begin.line + 1, location.begin.column), loc
     - body SyntaxId?
     - errors ImmutableArray'SyntaxId = ImmutableArray'SyntaxId()
 
-?! YumiSyntaxError(location, "@rollback is only supported on stream-pattern functions")
+?! YumiSyntaxError(location, "@rollback is only supported on grammar functions")
     if has-annotation(annotations, "rollback")
 ?! YumiSyntaxError(location, "@live is not supported on getters")
     if has-annotation(annotations, "live")
@@ -1502,9 +1502,9 @@ sequence-singleton(tree, symbol)
 . variants = argument-variants ?? ImmutableArray'ArgumentVariant()
 . has-rollback = has-annotation(annotations, "rollback")
 if has-rollback && !key.pattern
-    ?! YumiSyntaxError(location, "@rollback is only supported on stream-pattern functions")
+    ?! YumiSyntaxError(location, "@rollback is only supported on grammar functions")
 if is-imperative && key.pattern
-    ?! YumiSyntaxError(location, "Stream-pattern functions do not support do")
+    ?! YumiSyntaxError(location, "Grammar functions do not support do")
 . is-constructor = key.names.length == 1 && key.names[0].text == "This" && !key.pattern
 . stream-argument SyntaxId?
 if key.pattern
@@ -1878,7 +1878,7 @@ for offset in 0 .. < block-body.count
         has-stream-match = true
         rooted-stream-match(tree, statement)
 if helper
-    ?! YumiSyntaxError(loc, "with helper requires stream-pattern arms", tree.source, source-path)
+    ?! YumiSyntaxError(loc, "with helper requires grammar arms", tree.source, source-path)
         if !has-stream-match
     .. source-path = tree.source-path
 . skipped U32 = if helper then 1 else 0
@@ -3382,8 +3382,8 @@ match nodes[left]
         auto-join-header(left, right)
     | .node-pipeline-expression
         auto-join-pipeline(left, right)
-    | .node-bullet-expression
-        auto-join-bullet(left, right)
+    | .node-feed-expression
+        auto-join-feed(left, right)
     | .node-structure-match
         auto-join-structure-match(left, right)
     | .node-stream-match
@@ -3508,19 +3508,19 @@ _ auto-join-pipeline SyntaxId?
     - right SyntaxId
 
 match? nodes[right]
-    | .node-bullet-expression
-        append-pipeline-bullet(left, right)
+    | .node-feed-expression
+        append-pipeline-feed(left, right)
     | .node-pipeline-expression
         set-pipeline-left(right, left)
 
 ────────────────────
-_ auto-join-bullet SyntaxId?
+_ auto-join-feed SyntaxId?
     - left SyntaxId
     - right SyntaxId
 
 match? nodes[right]
-    | .node-bullet-expression
-        append-bullet-join(left, right)
+    | .node-feed-expression
+        append-feed-join(left, right)
     | .node-pipeline-expression
         set-pipeline-left(right, left)
 
@@ -3607,11 +3607,11 @@ _ is-error-transformer-declaration Bool
             false
 
 ────────────────────
-_ append-pipeline-bullet SyntaxId
+_ append-pipeline-feed SyntaxId
     - left SyntaxId
     - right SyntaxId
 
-append(ASTBulletExpression(nodes.loc[left], left, right, true, false))
+append(ASTFeedExpression(nodes.loc[left], left, right, true, false))
 
 ────────────────────
 _ do set-pipeline-left SyntaxId
@@ -3630,28 +3630,28 @@ do match nodes[pipeline-id]
 = pipeline-id
 
 ────────────────────
-_ do append-bullet-join SyntaxId
+_ do append-feed-join SyntaxId
     - left SyntaxId
     - right SyntaxId
 
-append-bullet(left, right)
+append-feed(left, right)
 = left
 
 ────────────────────
-_ do append-bullet
+_ do append-feed
     - head SyntaxId
     - addition SyntaxId
 
 . current = head
 while current
     match nodes[current]
-        | .node-bullet-expression(bullet)
-            if bullet.next
-                current = bullet.next
+        | .node-feed-expression(feed)
+            if feed.next
+                current = feed.next
             else
-                bullet.next = addition
+                feed.next = addition
                 current = 0
-        ?! Panic("Expected a bullet syntax node")
+        ?! Panic("Expected a feed syntax node")
 
 ────────────────────
 + auto-join-passes-over Bool
@@ -3913,7 +3913,7 @@ _ has-auto-closure-each Bool
         | .node-pipeline-expression(row)
             !binds-each(row.op) && has-each
             .. has-each = has-auto-closure-each(row.left) || has-auto-closure-each(row.right)
-        | .node-bullet-expression(row)
+        | .node-feed-expression(row)
             has-auto-closure-each(row.item)
         | .node-unary-expression(row)
             has-auto-closure-each(row.operand)

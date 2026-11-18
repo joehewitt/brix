@@ -1763,7 +1763,7 @@ for position in initializer-positions
 _ do declare-capture
     - id SyntaxId
 
-` A name a stream pattern captures. A match keeps one slot for each name, which every place
+` A name a grammar captures. A match keeps one slot for each name, which every place
 ` that captures the name fills, as the reference's matchmaker keeps one. No capture is named
 ` `it`, which an action reads for what its arm matched.
 . name = tree.identifier-name(id)
@@ -2278,9 +2278,9 @@ do match tree.nodes[id]
             .. logical = row.op == .and-op || row.op == .or-op
         if short-circuit || row.op == .if-op
             branch-depth += 1
-        if tree.piped-bullet(id) == 0
+        if tree.piped-feed(id) == 0
             walk(row.lhs)
-        . streams = row.op == .stream-pattern-pipe-op
+        . streams = row.op == .grammar-pipe-op
         if streams
             stream-reach += 1
         if streams && nested-decl-for(id) != 0
@@ -2340,15 +2340,15 @@ do match tree.nodes[id]
         else
             walk-loop(row.loop, row.body)
         walk(row.next)
-    | .node-bullet-expression
+    | .node-feed-expression
         if nested-decl-for(id) != 0
-            walk-bullets(id)
+            walk-feeds(id)
         else
-            walk-bullet-items(id)
+            walk-feed-items(id)
     | .node-pipeline-expression(row)
-        if tree.piped-bullet(id) == 0
+        if tree.piped-feed(id) == 0
             walk(row.left)
-        . streams = row.op == .stream-pattern-pipe-op
+        . streams = row.op == .grammar-pipe-op
         if streams
             stream-reach += 1
         if streams && nested-decl-for(id) != 0
@@ -3019,11 +3019,11 @@ nested-marks.pop()
 _ is-owner-scanned-decl Bool
     - decl DeclId
 
-` A comprehension, bullet list, or pipeline body closure row: the reference compiler scans its
+` A comprehension, feed list, or pipeline body closure row: the reference compiler scans its
 ` body as part of its owner, so it gets an empty scan row of its own and no interval.
 match program.modules[module].decls[decl]
     | .decl-function(fn)
-        fn.kind == .iterator-decl || fn.kind == .bullet-decl || fn.kind == .pipeline-decl
+        fn.kind == .iterator-decl || fn.kind == .feed-decl || fn.kind == .pipeline-decl
     ??
         false
 
@@ -3438,41 +3438,41 @@ function-depth -= 1
 pop-scope()
 
 ────────────────────
-_ do walk-bullets Void
+_ do walk-feeds Void
     - id SyntaxId
 
-` A bullet list compiled as a generator closure: every bullet's item binds inside the closure's
+` A feed list compiled as a generator closure: every feed's item binds inside the closure's
 ` own scope and captures like a lambda body.
 push-scope(.scope-nested, id)
 function-depth += 1
 open-nested(id)
-walk-bullet-items(id)
+walk-feed-items(id)
 close-nested()
 function-depth -= 1
 pop-scope()
 
 ────────────────────
-_ do walk-bullet-items Void
+_ do walk-feed-items Void
     - id SyntaxId
 
-` The items along a bullet chain; the chain links are not walked as children. A bullet that
+` The items along a feed chain; the chain links are not walked as children. A feed that
 ` gives every item of what it writes is a loop, and has the slots of one.
-. bullet = id
-while bullet != 0
+. feed = id
+while feed != 0
     . next = 0u32
-    do match? tree.nodes[bullet]
-        | .node-bullet-expression(row)
+    do match? tree.nodes[feed]
+        | .node-feed-expression(row)
             walk(row.item)
-            if row.is-multi
-                declare-loop-state(bullet)
+            if row.is-spread
+                declare-loop-state(feed)
             next = row.next
-    bullet = next
+    feed = next
 
 ────────────────────
 _ do declare-loop-state
     - at SyntaxId
 
-` The hidden slots of a loop at a node that heads none: a bullet that gives every item of
+` The hidden slots of a loop at a node that heads none: a spread of
 ` what it writes, a pipe that writes each item of what it reads, or one that matches a
 ` pattern again and again on what it reads.
 . state = bindings.slots.length as SlotId
@@ -3488,14 +3488,14 @@ _ do walk-pattern-pipe Void
 
 ` A stream piped through a pattern, compiled as a generator closure given the stream: the
 ` pattern binds inside the closure's own scope, beside the hidden slots of the loop that
-` matches it again and again. What a bullet the pipe reads alone writes binds there too, as
+` matches it again and again. What a feed the pipe reads alone writes binds there too, as
 ` the closure evaluates it.
 push-scope(.scope-nested, id)
 function-depth += 1
 open-nested(id)
 declare-loop-state(id)
-do match? tree.nodes[tree.piped-bullet(id)]
-    | .node-bullet-expression(row)
+do match? tree.nodes[tree.piped-feed(id)]
+    | .node-feed-expression(row)
         walk(row.item)
 walk(pattern)
 close-nested()
@@ -3557,7 +3557,7 @@ do match? tree.nodes[id]
     | .node-loop-syntax(row)
         if !container-bound
             walk-source(row)
-        . streams = tree.is-stream-pattern(row.pattern)
+        . streams = tree.is-grammar(row.pattern)
         if streams
             stream-reach += 1
         push-scope(.scope-loop, id)
@@ -5143,7 +5143,7 @@ _ do rule-position Size?
     - name Atom
 
 ` The place of the rule a pattern calls by a name: the name declared last in reach that no
-` stream pattern captures, nor any other pattern of the match being read, as the reference
+` grammar captures, nor any other pattern of the match being read, as the reference
 ` calls rules by name and reads captures as values. A name an enclosing match captures is
 ` passed over too, where an argument of a call or a local rule's body is a match of its own.
 . position = lookup-position(name)
@@ -5168,7 +5168,7 @@ while position && bindings.slots[name-slots[position]].kind == .slot-pattern && 
 _ do is-closed Bool
     - capture SyntaxId
 
-` Whether a name was captured by a stream pattern that has been read to its end.
+` Whether a name was captured by a grammar that has been read to its end.
 for matched in closed-matches
     if tree.subtree-start(matched) <= capture && capture <= matched
         = true

@@ -630,12 +630,12 @@ Exception: Syntax error
 ```
 
 ```yumi
-//!stream-pattern do foo(1)
+//!grammar do foo(1)
 ```
 
 ```brix
 (main
-  (probe stream-pattern
+  (probe grammar
     (do
       (inline (call foo 1))
     )
@@ -644,7 +644,7 @@ Exception: Syntax error
 ```
 
 ```output
-<ProbeStatement key="stream-pattern">
+<ProbeStatement key="grammar">
     <Do>
         <CallExpression>
             <Id name="foo"/>
@@ -657,28 +657,28 @@ Exception: Syntax error
 ```
 
 ```yumi
-//stream-pattern.reads ++
-//this:stream-pattern.object-reads ++
-//stream-pattern.read-tokens += size
-//this:stream-pattern.object-tokens += size
+//grammar.reads ++
+//this:grammar.object-reads ++
+//grammar.read-tokens += size
+//this:grammar.object-tokens += size
 ```
 
 ```brix
 (main
-  (probe-count stream-pattern.reads)
-  (probe-count (: this stream-pattern.object-reads))
-  (probe-count stream-pattern.read-tokens size)
-  (probe-count (: this stream-pattern.object-tokens) size)
+  (probe-count grammar.reads)
+  (probe-count (: this grammar.object-reads))
+  (probe-count grammar.read-tokens size)
+  (probe-count (: this grammar.object-tokens) size)
 )
 ```
 
 ```output
-<ProbeCounter key="stream-pattern.reads"/>
-<ProbeCounter key="stream-pattern.object-reads" object="this"/>
-<ProbeCounter key="stream-pattern.read-tokens">
+<ProbeCounter key="grammar.reads"/>
+<ProbeCounter key="grammar.object-reads" object="this"/>
+<ProbeCounter key="grammar.read-tokens">
     <Id name="size"/>
 </ProbeCounter>
-<ProbeCounter key="stream-pattern.object-tokens" object="this">
+<ProbeCounter key="grammar.object-tokens" object="this">
     <Id name="size"/>
 </ProbeCounter>
 ```

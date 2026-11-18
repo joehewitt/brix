@@ -393,7 +393,7 @@ What the program needs belongs in ordinary code, where it runs in every build.
 | The `block` of a function value, before its answer | Yes |
 | An arm of a decision table, before the arm's result | Yes |
 | A value body without `before`, or after its value | No |
-| Between the bullets of a list body | No |
+| Between the feeds of a list body | No |
 | A `where` | No |
 | The value of a `let`, or any other value | No |
 | The members of a type | No |

@@ -53,7 +53,7 @@
   (prop + model String)
   (prop + messages (list ChatMessage)
     (block
-      (bullet (call ChatMessage "message-0" (. Speaker notice) "Welcome to ChatGPT"))
+      (item (call ChatMessage "message-0" (. Speaker notice) "Welcome to ChatGPT"))
     )
   )
   (prop + next-message-id _ (= 1))
@@ -362,10 +362,10 @@
 
 (fn-expr + chat-request _
   (param chat-messages (list ChatMessage))
-  (bullet (call AIMessage (. AIMessageRole system) system-prompt))
-  (bullet*
+  (item (call AIMessage (. AIMessageRole system) system-prompt))
+  (spread
     (block
-      (bullet* chat-messages)
+      (spread chat-messages)
       (pipe ?> (> (. each body length) 0))
       (pipe ?*>
         (match? (. each speaker)
@@ -384,8 +384,8 @@
     (lazy system-prompt
       (call (. "" join)
         (block
-          (bullet "You are ChatGPT inside Brix's terminal chat UI. ")
-          (bullet "Answer in clear, concise Markdown.")
+          (item "You are ChatGPT inside Brix's terminal chat UI. ")
+          (item "Answer in clear, concise Markdown.")
         )
       )
     )
@@ -399,7 +399,7 @@
   (where
     (lazy result
       (block
-        (bullet* (call (. text split) "\n"))
+        (spread (call (. text split) "\n"))
         (pipe *> (call wrap-message-line each safe-width))
         (pipe |> flat-map)
         (pipe |> List)
@@ -412,8 +412,8 @@
 (fn-expr + wrap-message-line _ @inline
   (param source-line String)
   (param width Size)
-  (bullet? (only-if "" (if (not source-line))))
-  (bullet*
+  (item? (only-if "" (if (not source-line))))
+  (spread
     (block
       (..< 0 (. source-line length) (by: width))
       (pipe *>

@@ -1,15 +1,15 @@
-# Stream patterns
+# Grammars
 
-A stream pattern describes a sequence of items: the characters of a text, the bytes of a file, or
-the values of a list or a stream. A `match` tests a value against patterns, a rule names a pattern
-so that others can use it, and `~>` reads one match after another from a stream. Together these
-are a grammar language for parsing.
+A grammar describes a sequence of items: the characters of a text, the bytes of a file, or
+the values of a list or a stream. A `match` tests a value against grammars, a rule names a grammar
+so that others can use it, and `~>` reads one match after another from a stream. A grammar may be
+as small as one arm or as large as a set of rules that call each other.
 
-Patterns match the way parsing expression grammars do. A choice takes the first alternative that
+Grammars match the way parsing expression grammars do. A choice takes the first alternative that
 matches and never comes back to try another, and a repetition takes as many items as it can.
 
-Structural patterns, which take apart one value, are in Patterns. This chapter covers patterns
-over sequences of items.
+Structural patterns, which take apart one value, are in Patterns. This chapter covers grammars,
+which match sequences of items.
 
 ## Matching text
 
@@ -40,9 +40,9 @@ not a version: 1.2
 not a version: v1.2.x
 ```
 
-- **Arms.** A `~` arm of a `match` holds a pattern, then an action: the rows that give the arm's
+- **Arms.** A `~` arm of a `match` holds a grammar, then an action: the rows that give the arm's
   value. The arms are tried in order, and the first that matches gives the value.
-- **The whole input.** An arm matches only when its pattern takes every item of the subject.
+- **The whole input.** An arm matches only when its grammar takes every item of the subject.
   `"v1.2.x"` fails the first arm, since `x` is not a number.
 - **Fallbacks.** A `default` arm gives a value when no `~` arm matches, and a `throw` arm raises an
   error. Without either, the `match` gives an optional, `null` when nothing matches.
@@ -51,9 +51,9 @@ not a version: v1.2.x
 - **Actions.** The action reads `it` as the whole text the arm matched. An arm with no action gives
   that text, converted to the `match`'s type.
 
-## Pattern pieces
+## Grammar pieces
 
-In this table, `\a`, `\b` and `\p` stand for any patterns.
+In this table, `\a`, `\b` and `\p` stand for any grammars.
 
 | Form | Matches |
 | --- | --- |
@@ -63,7 +63,7 @@ In this table, `\a`, `\b` and `\p` stand for any patterns.
 | `.` | Any one item. |
 | `(chars "a-z0-9_")`{.brix} | One character of a set; see [Character sets](#character-sets). |
 | `(\{} (> it 0))`{.brix} | One item for which the condition holds, read as `it`. |
-| `$name` | The value of `name`: the characters of a text, one item equal to a character or a number, or the items of a pattern value. |
+| `$name` | The value of `name`: the characters of a text, one item equal to a character or a number, or the items of a grammar value. |
 | `\rule` | What the rule matches; see [Rules](#rules). |
 | `Type` | A value of the type made by the type's stream constructor, or one item of the type. |
 | `/`, `//` | Spaces and tabs: any number with `/`, and at least one with `//`. |
@@ -85,7 +85,7 @@ In this table, `\a`, `\b` and `\p` stand for any patterns.
 - **Counts** in `{}` may be any expression, such as a number captured earlier.
 - **End of input** is `(! .)`{.brix}: no item follows.
 - **Tests and counts.** `(\{} test)`{.brix} matches one item for which the test holds, while
-  `({} \p n)`{.brix} repeats a pattern. A test written as a count, as in `(+ ({} (> it 0)))`, is
+  `({} \p n)`{.brix} repeats a grammar. A test written as a count, as in `(+ ({} (> it 0)))`, is
   refused.
 - **Guards.** A lookahead of a test that does not read `it`, as in
   `(& (\{} (<= size limit)))`{.brix}, is a guard: it tests its condition alone and needs no item.
@@ -145,7 +145,7 @@ These rules are always available over characters:
 | `(of \num Int)`{.brix} | A whole number of that type in decimal, such as `0`, `42` or `-7`, and gives it. |
 | `(of \dec Float)`{.brix} | A decimal number such as `2`, `-2.5` or `.5`, with no exponent, and gives it. |
 | `(of \hex U8)`{.brix} | From one hex digit to as many as the type holds, and gives the number. |
-| `(call \delimited "," pattern)`{.brix} | The pattern one or more times, with the delimiter and optional spaces between, and gives a list. |
+| `(call \delimited "," pattern)`{.brix} | The grammar one or more times, with the delimiter and optional spaces between, and gives a list. |
 
 ### In rows
 
@@ -215,7 +215,7 @@ name=x kind=none
 - **Captures in repetitions.** A capture inside a repeated part gives an array of what it matched
   each time, as `more` does above.
 - **Accumulating captures.** `(: ...name \p)`{.brix} adds what `\p` matches to one array for the
-  whole pattern, wherever it is nested. Parts that fail are taken back out.
+  whole grammar, wherever it is nested. Parts that fail are taken back out.
 - **Optional parts.** Each capture inside an optional part is optional.
 - **Choices.** A name captured in every alternative of a choice has the join of their types. A
   name captured in only some of them cannot be read.
@@ -267,7 +267,7 @@ name=x kind=none
 
 ## Rules
 
-A rule is a function whose body is pattern arms. Its header names the type of item it reads with
+A rule is a function whose body is grammar arms. Its header names the type of item it reads with
 `over:`, and its result type.
 
 ```brix
@@ -383,7 +383,7 @@ a, b, c
   capture missing`, and a caller's capture that is not accumulating gives `Collector mapping
   target outer is not an active accumulating capture`.
 
-### Patterns as arguments and types as patterns
+### Grammars as arguments and types as grammars
 
 ```brix
 (main
@@ -416,17 +416,17 @@ mismatched
 256
 ```
 
-- **Pattern arguments.** A `~` form as an argument, as in
-  `(call \delimited "," (~ Point))`{.brix}, passes a pattern, which the rule runs
+- **Grammar arguments.** A `~` form as an argument, as in
+  `(call \delimited "," (~ Point))`{.brix}, passes a grammar, which the rule runs
   where it reads the parameter, as `delimited` does.
-- **Stream constructors.** A constructor with an `over:` option and pattern arms, as `Point` has, is run by naming the type in a pattern. A type with none is an error there: `Type has no
+- **Stream constructors.** A constructor with an `over:` option and grammar arms, as `Point` has, is run by naming the type in a grammar. A type with none is an error there: `Type has no
   stream constructor for this stream item type`.
-- **Values in patterns.** `$name` matches the current value of `name`, so a rule can match a text
+- **Values in grammars.** `$name` matches the current value of `name`, so a rule can match a text
   it was given, or one it captured earlier.
 
 ## Other kinds of item
 
-A pattern can match any sequence, not only text.
+A grammar can match any sequence, not only text.
 
 ```brix
 (main
@@ -503,18 +503,18 @@ circle 1 then 2 squares
   that holds that case. It gives what the case holds, or the item itself where the case holds
   nothing. A type the union has as a case matches one item that holds it, and gives that value.
 
-## Running patterns
+## Running grammars
 
 | Form | Gives |
 | --- | --- |
 | A `match` with `~` arms | The value of the first arm that matches; see [Matching text](#matching-text). |
-| `(~ \record (of: subject))`{.brix} | The pattern's value when it matches the subject, or `null`. |
-| An `if` whose condition is `(= (~ \record) subject)`{.brix} | Runs its rows when the pattern matches, with its captures. |
+| `(~ \record (of: subject))`{.brix} | The grammar's value when it matches the subject, or `null`. |
+| An `if` whose condition is `(= (~ \record) subject)`{.brix} | Runs its rows when the grammar matches, with its captures. |
 | `(~ \record (in: source))`{.brix} | A stream of the values of one match after another. |
 | `(~> source \record)`{.brix} | A stream of one match after another; see [Reading records](#reading-records). |
 
-A pattern cannot be matched along the values a subscription is given: `(on: events)` in place of
-`(in: …)` is refused with `A stream pattern matches items it reads with "in", not items a
+A grammar cannot be matched along the values a subscription is given: `(on: events)` in place of
+`(in: …)` is refused with `A grammar matches items it reads with "in", not items a
 subscription with "on" is given; write "in" in place of "on"`.
 
 ```brix
@@ -557,19 +557,19 @@ none
 
 ### Subjects
 
-A pattern can match a text, an array or a list, a range, a generator, a stream parameter, a map's
+A grammar can match a text, an array or a list, a range, a generator, a stream parameter, a map's
 entries, a channel, or a file or socket, whose bytes are read as characters or bytes. A number is
 not a sequence: `Can't convert to iterable`.
 
 A `TokenStream`, from `/core/tokenstream`, is a source that remembers how far it has been read.
-A pattern matches only as much of it as it needs, and the rest stays for the next match. Over any
+A grammar matches only as much of it as it needs, and the rest stays for the next match. Over any
 other subject, a `match` arm must take the whole input. So a `match` over a channel gives its
 value only once the channel closes, since only then is it known that the input has ended.
 
 ### Reading records
 
 `(~> source \record)`{.brix} gives a stream of one match after another: each match starts where
-the last one ended. The stream is lazy, and ends at the first point where the pattern does not
+the last one ended. The stream is lazy, and ends at the first point where the grammar does not
 match.
 
 ```brix
@@ -648,12 +648,12 @@ done
 
 - **Stage rows.** In a block, a `pipe` row with `~>` reads records from the value
   above it, and its action gives each record's value; see Streams.
-- **Lookahead.** A record whose pattern ends in a repetition, rather than a closing item such as
+- **Lookahead.** A record whose grammar ends in a repetition, rather than a closing item such as
   `;`, needs the next item to see that the repetition has ended, so it is given only once that
   item arrives.
-- **Progress.** Each record must take at least one item. A pattern that can match nothing is an
-  error: `Stream pattern pipeline must consume input`. One that matches nothing at run time panics:
-  `Stream pattern pipeline made no input progress`.
+- **Progress.** Each record must take at least one item. A grammar that can match nothing is an
+  error: `Grammar pipeline must consume input`. One that matches nothing at run time panics:
+  `Grammar pipeline made no input progress`.
 - **Item type.** `~>` reads items of the type the rule declares. A text given to a rule over bytes
   must be converted: `(as text ([] Byte))`{.brix}.
 
@@ -701,7 +701,7 @@ Lines end at `"\n"`, `"\r\n"` or `"\r"`, and a column counts characters.
 
 ### Helpers
 
-A `with` form as a `match`'s first row, or after the pattern of `~>`, gives the match an object
+A `with` form as a `match`'s first row, or after the grammar of `~>`, gives the match an object
 that takes part in it. A helper implements one or more interfaces from `/core/parsing`, such as
 `PatternRecordBoundary`, whose `begin-pattern-record` runs before each record.
 

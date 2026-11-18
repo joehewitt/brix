@@ -91,7 +91,7 @@
 ```
 
 ```output
-Exception: Stream-pattern functions do not support do
+Exception: Grammar functions do not support do
 <no file:2>
     ━━━━━━━━━━━━━━━━━━━━
     ^^^^^^^^^^^^^^^^^^^
@@ -1481,7 +1481,7 @@ _ second Int
 ```
 
 ```output
-Exception: @rollback is only supported on stream-pattern functions
+Exception: @rollback is only supported on grammar functions
 <no file:2>
     ━━━━━━━━━━━━━━━━━━━━
     ^^^^^^^^^^^^^^^^^^^

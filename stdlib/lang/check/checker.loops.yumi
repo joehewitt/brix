@@ -194,7 +194,7 @@ loop-marks.pop()
 ` arm, is an error. Any other loop runs its headers and its body.
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        if row.is-subscriber && tree.is-stream-pattern(row.pattern)
+        if row.is-subscriber && tree.is-grammar(row.pattern)
             report-pattern-on(row.pattern)
             =
         if row.is-subscriber && (row.next != 0 || next != 0)
@@ -252,7 +252,7 @@ do match? tree.nodes[loop]
     | .node-loop-syntax(row)
         if !row.is-subscriber
             reject-keyed-clause(row.clause)
-        if tree.is-stream-pattern(row.pattern)
+        if tree.is-grammar(row.pattern)
             if check-pattern-header(loop, row.pattern, container.type)
                 check-loop-rest(loop, tested-clause(loop, row.clause), row.next, body, yields)
             =
@@ -404,7 +404,7 @@ _ do check-pattern-header Bool
     - written SyntaxId
     - container TypeId
 
-` A loop's header written as a stream pattern, as the reference runs it: the container is
+` A loop's header written as a grammar, as the reference runs it: the container is
 ` read through the stream a match would read it through, made once, by the calls recorded at
 ` the header, and each pass matches the pattern from where the last left the stream, as a
 ` rule's arms match, without reading the rest. The loop ends where the stream has no more or
@@ -426,7 +426,7 @@ if !iterates(container) && natural-item(container) == no-type
     frame.diagnose(written, .stated, program.store-atom("Can't convert to iterable"))
     = false
 if first-set(pattern) == 3 || tree.never-reads(pattern)
-    frame.diagnose(written, .stated, program.store-atom("Stream pattern loop must consume input"))
+    frame.diagnose(written, .stated, program.store-atom("Grammar loop must consume input"))
     = false
 . buffer = stream-view
 . read = record-stream-protocol(loop, container)
@@ -470,7 +470,7 @@ _ do plain-captures Bool
     - id SyntaxId
     - repeated Bool = false
 
-` Whether each name a stream pattern captures holds what one part of it gave, as the
+` Whether each name a grammar captures holds what one part of it gave, as the
 ` reference gives the body of a loop the names its header captures: none captured in a
 ` repeat or a count, nor one that accumulates, which the reference can not compile there,
 ` nor one that may hold nothing, which it gives the body as a value it can not read.
@@ -1276,11 +1276,11 @@ note-poll()
     - site SyntaxId
     - iterated TypeId
     - item TypeId
-    - is-bullet Bool
+    - is-feed Bool
 
 ` A loop at a node that heads none, over any other container: by the container's protocol,
 ` whose calls are kept at `site`, by its indexes where it has them, and polling.
-note-container-iteration(site, iterated, is-bullet, planned)
+note-container-iteration(site, iterated, is-feed, planned)
 if is-indexed(iterated, false)
     facts.set-plan(instance, planned, .plan-index-loop)
     if is-array-field(iterated, types.length-atom!)
@@ -1293,7 +1293,7 @@ note-poll()
 + do note-container-iteration
     - site SyntaxId
     - container TypeId
-    - is-bullet Bool
+    - is-feed Bool
     - planned SyntaxId
 
 ` The iteration protocol the reference's generic loop lowering calls on a container that is
@@ -1305,15 +1305,15 @@ note-poll()
 ` interface to a property is iterated by what the property holds, whose items are converted
 ` to the interface's at the loop, as the `as` that delegates it asks. A type iterated by an
 ` interface must answer the functions the interface requires, as where it is made one.
-` A multi bullet over a table also keeps the index cast of its counter at the bullet. The
-` loop is planned at `planned`, the header of a loop or the bullet, where the slots of the
+` A spread over a table also keeps the index cast of its counter at the feed. The
+` loop is planned at `planned`, the header of a loop or the feed, where the slots of the
 ` loop are.
 if container == invalid-type || container == no-type
     =
 . cursor = iterable-item(container, types.cursor-iterable-decl) != no-type
 . iterable = iterable-item(container, types.iterable-decl) != no-type
 . generated = same-decl(class-ref(types, container), types.generator-decl)
-if is-bullet && !cursor && !iterable && implements(container, types.indexable-decl)
+if is-feed && !cursor && !iterable && implements(container, types.indexable-decl)
     conversions.convert(site, site, types.size-type, types.index-type, .reason-argument)
 if cursor && !generated
     . cursor-interface = interface-of(container, types.cursor-iterable-decl)

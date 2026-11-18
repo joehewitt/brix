@@ -165,7 +165,7 @@ for id in 1 .. < total
 + do synthesized-locations [String = Bool]
     - tree AST
 
-` The locations of multi and optional bullets and of map and filter pipelines. The TypeScript
+` The locations of multi and optional feeds and of map and filter pipelines. The TypeScript
 ` compiler lowers each through nodes it synthesizes at that location, the loop item, the
 ` optional's capture, and the closure's argument, whose types have no source node on either
 ` side, so both oracles drop the type lines there.
@@ -173,8 +173,8 @@ for id in 1 .. < total
 . total = tree.nodes.length as SyntaxId
 for id in 1 .. < total
     do match? tree.nodes[id]
-        | .node-bullet-expression(row)
-            if row.is-multi || row.is-optional
+        | .node-feed-expression(row)
+            if row.is-spread || row.is-optional
                 locations[node-location-text(tree, id)] = true
         | .node-pipeline-expression(row)
             if is-pipeline-closure(row.op)
@@ -216,7 +216,7 @@ _ do instance-head String
 . owner-module = program.modules[module]
 do match? owner-module.decls[decl]
     | .decl-function(row)
-        if row.kind == .closure-decl || row.kind == .bullet-decl
+        if row.kind == .closure-decl || row.kind == .feed-decl
             . loc = owner-module.tree.nodes.loc[row.syntax]
             = "closure ${owner-module.name}:${loc.begin.line}:${loc.begin.column}"
         if row.kind == .iterator-decl || row.kind == .pipeline-decl

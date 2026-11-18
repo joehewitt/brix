@@ -128,9 +128,9 @@ if cursor < length
     cursor += 1
     if cursor > cursor-extent
         cursor-extent = cursor
-    //stream-pattern.reads ++
-    //stream-pattern.read-tokens ++
-    //stream-pattern.generic-buffer-reads ++
+    //grammar.reads ++
+    //grammar.read-tokens ++
+    //grammar.generic-buffer-reads ++
     = item
 
 ────────────────────
@@ -147,7 +147,7 @@ location-at(cursor-extent)
 ────────────────────
 + mark StreamMark
 
-//stream-pattern.marks ++
+//grammar.marks ++
 StreamMark(this as Pointer, cursor)
 
 ────────────────────
@@ -159,8 +159,8 @@ validate-stream-mark(mark, this as Pointer)
     if mark.cursor > cursor
 . distance = cursor - mark.cursor
 cursor = mark.cursor
-//stream-pattern.rewinds ++
-//stream-pattern.rewind-tokens += distance
+//grammar.rewinds ++
+//grammar.rewind-tokens += distance
 
 ────────────────────
 + do read Size
@@ -178,9 +178,9 @@ cursor += size
 if cursor > cursor-extent
     cursor-extent = cursor
 
-//stream-pattern.reads ++
-//stream-pattern.read-tokens += size
-//stream-pattern.generic-buffer-reads += size
+//grammar.reads ++
+//grammar.read-tokens += size
+//grammar.generic-buffer-reads += size
 = size
 
 ────────────────────
@@ -194,8 +194,8 @@ if probe-end - cursor < literal.size
     = false
 
 for i in 0 .. < literal.size
-    //stream-pattern.literal-compared-tokens ++
-    //stream-pattern.literal-compared-bytes += Token.size
+    //grammar.literal-compared-tokens ++
+    //grammar.literal-compared-bytes += Token.size
     if buffer[cursor + i] != literal[i]
         = false
 cursor = probe-end
@@ -240,29 +240,29 @@ _ do location-at TokenLocation
     - target Index
 
 ensure-locations-through(target)
-//stream-pattern.location-computations ++
+//grammar.location-computations ++
 
 if target == cached-location-target
-    //stream-pattern.location-cache-hits ++
+    //grammar.location-cache-hits ++
     = cached-location
 
 . line = cached-location-line
 if target > cached-location-target
     while line + 1 < line-start-count && line-starts[line + 1] <= target
         line += 1
-        //stream-pattern.location-forward-line-steps ++
+        //grammar.location-forward-line-steps ++
 else if target < line-starts[line]
     . low Index = 0
     . high Index = line-start-count
     while low + 1 < high
         . middle = (low + high) / 2
-        //stream-pattern.location-binary-search-comparisons ++
+        //grammar.location-binary-search-comparisons ++
         if line-starts[middle] <= target
             low = middle
         else
             high = middle
     line = low
-    //stream-pattern.location-backward-searches ++
+    //grammar.location-backward-searches ++
 
 . column = target - line-starts[line]
 if line == 0
@@ -316,7 +316,7 @@ for i in scan-start .. < target
     if is-line-feed || is-carriage-return
         append-line-start(i + 1)
 
-//stream-pattern.location-forward-tokens += target - scan-start
+//grammar.location-forward-tokens += target - scan-start
 location-scanned = target
 
 ────────────────────
@@ -352,9 +352,9 @@ if cursor < length
     cursor += 1
     if cursor > cursor-extent
         cursor-extent = cursor
-    //stream-pattern.reads ++
-    //stream-pattern.read-tokens ++
-    //stream-pattern.direct-buffer-reads ++
+    //grammar.reads ++
+    //grammar.read-tokens ++
+    //grammar.direct-buffer-reads ++
     = item
 
 ────────────────────
@@ -371,16 +371,16 @@ cursor += size
 if cursor > cursor-extent
     cursor-extent = cursor
 
-//stream-pattern.reads ++
-//stream-pattern.read-tokens += size
-//stream-pattern.direct-buffer-reads += size
+//grammar.reads ++
+//grammar.read-tokens += size
+//grammar.direct-buffer-reads += size
 = size
 
 ────────────────────
 + do match-literal Bool
     - literal Token[]
 
-//stream-pattern.literal-direct-compares ++
+//grammar.literal-direct-compares ++
 . probe-end = (if cursor + literal.size < length then cursor + literal.size else length)
 if probe-end > cursor-extent
     cursor-extent = probe-end
@@ -389,8 +389,8 @@ if probe-end - cursor < literal.size
     = false
 
 for i in 0 .. < literal.size
-    //stream-pattern.literal-compared-tokens ++
-    //stream-pattern.literal-compared-bytes += Token.size
+    //grammar.literal-compared-tokens ++
+    //grammar.literal-compared-bytes += Token.size
     if array-buffer[cursor + i] != literal[i]
         = false
 
@@ -405,10 +405,10 @@ validate-stream-mark(mark, this as Pointer)
 if !stable-source || mark.cursor > cursor
     = null
 
-//stream-pattern.capture-spans-created ++
-//stream-pattern.captures-elided ++
+//grammar.capture-spans-created ++
+//grammar.captures-elided ++
 if !reported-capture-source
-    //stream-pattern.capture-span-retained-source-bytes += array-buffer.size * Token.size
+    //grammar.capture-span-retained-source-bytes += array-buffer.size * Token.size
     reported-capture-source = true
 = CaptureSpan'Token(array-buffer, mark.cursor, cursor)
 
@@ -425,17 +425,17 @@ while cursor < length
     cursor += 1
     if cursor > cursor-extent
         cursor-extent = cursor
-    //stream-pattern.reads ++
-    //stream-pattern.read-tokens ++
-    //stream-pattern.direct-buffer-reads ++
+    //grammar.reads ++
+    //grammar.read-tokens ++
+    //grammar.direct-buffer-reads ++
     if !during(item)
         cursor -= 1
         break
 
-//stream-pattern.capture-spans-created ++
-//stream-pattern.captures-elided ++
+//grammar.capture-spans-created ++
+//grammar.captures-elided ++
 if !reported-capture-source
-    //stream-pattern.capture-span-retained-source-bytes += array-buffer.size * Token.size
+    //grammar.capture-span-retained-source-bytes += array-buffer.size * Token.size
     reported-capture-source = true
 = CaptureSpan'Token(array-buffer, start, cursor)
 
@@ -452,7 +452,7 @@ for i in scan-start .. < target
     if is-line-feed || is-carriage-return
         append-line-start(i + 1)
 
-//stream-pattern.location-forward-tokens += target - scan-start
+//grammar.location-forward-tokens += target - scan-start
 location-scanned = target
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -802,7 +802,7 @@ if amount
     reserve-tokens(amount)
     buffer[length .. < length + amount] = data[0 .. < amount]
     length += amount
-    //stream-pattern.refills ++
+    //grammar.refills ++
 
 ────────────────────
 _ do reserve-tokens
@@ -835,9 +835,9 @@ if cursor < length
     cursor += 1
     if cursor > cursor-extent
         cursor-extent = cursor
-    //stream-pattern.reads ++
-    //stream-pattern.read-tokens ++
-    //stream-pattern.direct-buffer-reads ++
+    //grammar.reads ++
+    //grammar.read-tokens ++
+    //grammar.direct-buffer-reads ++
     = item
 
 ────────────────────
@@ -865,9 +865,9 @@ if actual
 cursor += actual
 if cursor > cursor-extent
     cursor-extent = cursor
-//stream-pattern.reads ++
-//stream-pattern.read-tokens += actual
-//stream-pattern.direct-buffer-reads += actual
+//grammar.reads ++
+//grammar.read-tokens += actual
+//grammar.direct-buffer-reads += actual
 = actual
 
 ────────────────────
@@ -887,8 +887,8 @@ if probe-end - cursor < literal.size
     = false
 
 for i in 0 .. < literal.size
-    //stream-pattern.literal-compared-tokens ++
-    //stream-pattern.literal-compared-bytes += Token.size
+    //grammar.literal-compared-tokens ++
+    //grammar.literal-compared-bytes += Token.size
     if buffer[cursor + i] != literal[i]
         = false
 cursor = probe-end
@@ -919,7 +919,7 @@ while count < amount && !source-complete
     length += 1
     count += 1
 if count
-    //stream-pattern.refills ++
+    //grammar.refills ++
 
 ────────────────────
 _ do refill-from-generator
@@ -937,7 +937,7 @@ while count < amount && !source-complete
     length += 1
     count += 1
 if count
-    //stream-pattern.refills ++
+    //grammar.refills ++
 
 ────────────────────
 _ do refill-from-bytes
@@ -986,7 +986,7 @@ if !source-complete
 
     if decoded-count
         length += decoded-count
-        //stream-pattern.refills ++
+        //grammar.refills ++
 
 ────────────────────
 + do to Iterable''Item

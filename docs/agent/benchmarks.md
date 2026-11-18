@@ -97,7 +97,7 @@ choose which metric keys are visible and whether compiler probes, benchmark runt
 runtime probes are enabled.
 
 Use the `allocator` profile for allocation count and allocated bytes, and `stream` for
-stream-pattern counters.
+grammar counters.
 Choose profiles because their measurements can evaluate the claim, not because they are broadly
 available.
 

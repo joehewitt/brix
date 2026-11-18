@@ -187,12 +187,12 @@ bar |=> foo
 (main
   (let rows
     (block
-      (bullet* (.. 1 2))
+      (spread (.. 1 2))
       (pipe *>
         (block
           (call List
             (block
-              (bullet* (.. 1 2))
+              (spread (.. 1 2))
               (pipe *> (+ (* each 10) outer))
             )
           )
@@ -211,24 +211,24 @@ bar |=> foo
     </TypeCapture>
     <Block>
         <Pipeline op="*>">
-            <Bullet multi="true">
+            <Feed spread="true">
                 <RangeExpression operator="thru">
                     <Integer value="1"/>
                     <Integer value="2"/>
                 </RangeExpression>
-            </Bullet>
+            </Feed>
             <Block>
                 <CallExpression>
                     <TypeId name="List"/>
                     <Argument>
                         <Block>
                             <Pipeline op="*>">
-                                <Bullet multi="true">
+                                <Feed spread="true">
                                     <RangeExpression operator="thru">
                                         <Integer value="1"/>
                                         <Integer value="2"/>
                                     </RangeExpression>
-                                </Bullet>
+                                </Feed>
                                 <BinaryExpression operator="+">
                                     <BinaryExpression operator="*">
                                         <Id name="each"/>
@@ -281,16 +281,16 @@ values *|> action(each)
 
 ```brix
 (main
-  (bullet* values)
+  (spread values)
   (pipe *|> (call action each))
 )
 ```
 
 ```output
 <Pipeline op="*|>">
-    <Bullet multi="true">
+    <Feed spread="true">
         <Id name="values"/>
-    </Bullet>
+    </Feed>
     <CallExpression>
         <Id name="action"/>
         <Argument>

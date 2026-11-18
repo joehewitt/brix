@@ -6,7 +6,7 @@ Basic array use retains its existing optional-storage import boundary.
 `Array(items, capacity = 0)` and `ImmutableArray(items, capacity = 0)` consume a
 stream once, preserve its order, and infer its element type. The provider forms
 accept `Array(arena, items, capacity)` and `ImmutableArray(arena, items, capacity)`.
-Bullet streams can use these constructors as their final consumer.
+Feed streams can use these constructors as their final consumer.
 
 Capacity is a reservation hint. It does not change the number of returned
 items. The constructors use ArrayBuilder's ordinary growth and non-compacting

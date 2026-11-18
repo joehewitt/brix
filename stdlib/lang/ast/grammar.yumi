@@ -201,7 +201,7 @@ do finally
     ~ \do-block
     ~ \return-statement
     ~ \pipeline-statement
-    ~ \bullet-statement
+    ~ \feed-statement
     ~ \pattern-helper-clause
     ~ \call-argument-line
     ~ \declaration
@@ -1068,7 +1068,7 @@ do finally
 .. if-head SyntaxId ~
     ~ "if" // pattern \structure-match // "=" // subject \inline-expression body \block
         make-conditional-match-block(tree, location, pattern, subject, body, false, false)
-    ~ "if" // pattern \stream-pattern // "=" // subject \inline-expression body \block
+    ~ "if" // pattern \grammar // "=" // subject \inline-expression body \block
         make-conditional-match-block(tree, location, pattern, subject, body, true, false)
     ~ "if" // condition \if-condition body \block
         tree.append(ASTIfBlock(location, tree.syntax-or-invalid(condition), body, false, 0))
@@ -1088,7 +1088,7 @@ do finally
 .. while-block SyntaxId ~
     ~ "while" // pattern \structure-match // "=" // subject \inline-expression body \block
         make-conditional-match-block(tree, location, pattern, subject, body, false, true)
-    ~ "while" // pattern \stream-pattern // "=" // subject \inline-expression body \block
+    ~ "while" // pattern \grammar // "=" // subject \inline-expression body \block
         make-conditional-match-block(tree, location, pattern, subject, body, true, true)
     ~ "while" // condition \inline-expression body \block
         tree.append(ASTWhileBlock(location, condition, body, false))
@@ -1127,7 +1127,7 @@ do finally
 .. loop-pattern SyntaxId ~
     ~ pattern \structure-match
         tree.append(ASTStructureMatch(location, pattern))
-    ~ \stream-pattern
+    ~ \grammar
     ~ \structure-pattern
 
 .. loop-container ~
@@ -1350,7 +1350,7 @@ do finally
 
 .. pipeline-statement SyntaxId ~
     ~ "~>" // pattern \stream-and helper \pipeline-helper? body \stream-match-body-tail?
-        tree.append(ASTPipelineExpression(location, .stream-pattern-pipe-op, 0, stream-match))
+        tree.append(ASTPipelineExpression(location, .grammar-pipe-op, 0, stream-match))
             .. transformed
                 |? body
                     tree.append(ASTStreamTransform(location, pattern, body, false))
@@ -1360,9 +1360,9 @@ do finally
     ~ op \pipeline-operator expr \block-or-expression
         tree.append(ASTPipelineExpression(location, op, 0, expr))
 
-.. bullet-statement SyntaxId ~
-    ~ "*" is-multi "*"? is-optional "?"? expr \block-or-expression
-        tree.append(ASTBulletExpression(location, expr, 0, !!is-multi, !!is-optional))
+.. feed-statement SyntaxId ~
+    ~ "*" is-spread "*"? is-optional "?"? expr \block-or-expression
+        tree.append(ASTFeedExpression(location, expr, 0, !!is-spread, !!is-optional))
 
 .. call-argument-line SyntaxId ~
     ~ "•" // ab \ability // is-not \exclamation-optional n \name is-name \bool-argument-name(ab, n) value \bool-argument-value(is-not)
@@ -1585,10 +1585,10 @@ do finally
         tree.append(ASTTypeProperty(location, n))
 
 .. stream-match SyntaxId ~
-    ~ \stream-pattern
+    ~ \grammar
         tree.append(ASTStreamMatch(location, it))
 
-.. stream-pattern SyntaxId ~
+.. grammar SyntaxId ~
     ~ "~" // pattern \stream-and
         pattern
 
@@ -1666,7 +1666,7 @@ do finally
 .. stream-argument SyntaxId ~
     ~ mapping \stream-collector-mapping
         mapping
-    ~ pattern \stream-pattern
+    ~ pattern \grammar
         tree.append
             - ASTStreamCallExpressionArgument
                 - MatchLocation()
@@ -1883,7 +1883,7 @@ do finally
         false
 
 .. stream-match-block SyntaxId ~
-    ~ pattern \stream-pattern right \stream-match-right?
+    ~ pattern \grammar right \stream-match-right?
         make-stream-match-block(tree, location, pattern, right)
 
 .. stream-match-right StreamMatchRight ~
@@ -2356,7 +2356,7 @@ do finally
         .structure-partial(pattern)
     ~ "|" // pattern \structure-pattern
         .structure-partial(pattern)
-    ~ pattern \stream-pattern
+    ~ pattern \grammar
         .stream-partial(pattern)
 
 .. pipeline-expression SyntaxId ~
@@ -2368,7 +2368,7 @@ do finally
 
 .. pipeline-expression-tail ~
     ~ // "~>" // pattern \stream-and helper \pipeline-helper?
-        (.stream-pattern-pipe-op, tree.append(ASTStreamMatch(location, pattern, false, helper ?? 0)))
+        (.grammar-pipe-op, tree.append(ASTStreamMatch(location, pattern, false, helper ?? 0)))
     ~ // op \pipeline-operator // rhs \logical-or-expression
         (op, rhs)
 
@@ -2706,7 +2706,7 @@ do finally
 
 .. inline-markup-error SyntaxId ~
     ~ "<" [A-Z]
-        reject-syntax(tree, MatchLocation(location.begin, location.begin), "Markup cannot be written inside an expression. Give it as a row: an argument row, as in \"- <Text\", a named argument, as in \"• title <Text\", or a bullet, as in \"* <Text\"; or name it first, as in \". label = <Text\"")
+        reject-syntax(tree, MatchLocation(location.begin, location.begin), "Markup cannot be written inside an expression. Give it as a row: an argument row, as in \"- <Text\", a named argument, as in \"• title <Text\", or an item, as in \"* <Text\"; or name it first, as in \". label = <Text\"")
 
 .. primitive SyntaxId ~
     ~ \paren-expression

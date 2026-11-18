@@ -2600,7 +2600,7 @@ true
 end
 ```
 
-### A list of bullets whose bullet raises is a generator that raises.
+### A list of feeds whose feed raises is a generator that raises.
 
 ```yumi
 . r = catch run()
