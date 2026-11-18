@@ -23,10 +23,11 @@ Sequential parsing and generation use cursor adapters. `ByteReadable` and
 `ByteWritable` describe byte IO. `DataStream'T` provides a cursor over typed
 array data for sequential reads and writes. `ChunkedTokenStream'Token` adapts a
 byte-readable source into the `TokenStream` interface while preserving decoding,
-partial-token buffering, putback, and location behavior. Pulls, bulk reads and
-delimiter reads release consumed input into a fresh buffer when they refill, so a
-long-lived reader holds only what it has not read yet. Taking a `mark` keeps
-consumed input in place until the next `pattern-release`.
+partial-token buffering, putback, and location behavior. A refill outside a
+pattern releases consumed input into a fresh buffer when the buffer is full, so a
+long-lived reader holds only what it has not read yet. A `mark` holds input from
+its position onward until the next `pattern-release`; rewinding to a mark whose
+input was released panics.
 
 ## Endian
 

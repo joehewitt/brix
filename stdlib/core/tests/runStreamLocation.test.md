@@ -284,6 +284,40 @@ stream.rewind(begin)
 abc
 ```
 
+### A prefix release keeps a later mark on its own token and rejects a mark it discarded.
+
+```yumi
+/core/tests/support/byte-source
+/core/tokenstream
+
+. data = TestByteSource'Char("abcd".codepoints)
+data.rewind()
+. stream = ChunkedTokenStream'Char(data)
+. lost = stream.mark()
+<- stream
+<- stream
+. kept = stream.mark()
+stream.pattern-release()
+<- stream
+<- stream
+-- "${stream.capture-span(kept)!}"
+stream.rewind(kept)
+-- (<- stream)!
+-- stream.location
+. attempt = do new
+    stream.rewind(lost)
+catch failure
+    -- failure
+attempt.wait()
+```
+
+```output
+cd
+c
+(0, 3)
+Stream mark is no longer valid
+```
+
 ## Pattern Backtracking
 
 ### The first alternative consumes "ab\nc" before failing; the second should restart at (0, 0).
