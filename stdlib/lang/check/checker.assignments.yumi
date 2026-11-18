@@ -179,12 +179,12 @@ while position != 0
     if is-member-key(row.key) || seen.find(row.key) != null
         continue
     seen += row.key
-    . slot = row.key as SlotId
+    . slot = key-slot(row.key)
     if row.type == no-type || row.type == slot-known(slot)
         continue
     . probe = scratch.narrowings.mark
     narrowing.narrow-condition(condition, false)
-    . narrowed = frame.slot-type(slot)
+    . narrowed = frame.key-type(row.key)
     . cases = frame.narrowed-cases(row.key)
     frame.pop-narrowing(probe)
     if narrowed == row.type
@@ -572,8 +572,9 @@ if op == .eq-op && tree.is-identifier-syntax(lhs)
 check-zone-store(id, lhs, rhs, value)
 if !withheld
     note-replacement(id, target, if op == .eq-op then value else result)
-. slot = narrowing.condition-slot(lhs)
-if slot
+. key = narrowing.condition-slot(lhs)
+if key
+    . slot = key-slot(key)
     . settled = slot-known(slot)
     . held U64
     if op == .eq-op && withheld
@@ -586,8 +587,8 @@ if slot
         . current = frame.slot-type(slot)
         if current != no-type && current != invalid-type
             settled = current
-    frame.push-assigned(slot-key(slot), settled, held)
-    frame.reset-paths(slot-key(slot))
+    frame.push-assigned(key, settled, held)
+    frame.reset-paths(key)
     frame.note-assignment(id, slot, settled)
 if withheld && op == .eq-op
     = infer(lhs)
@@ -834,8 +835,8 @@ note-escape(rhs)
 if object-syntax == 0
     . resolution = bindings.resolution-of(frame.binding, lhs)
     if resolution.kind == .resolve-member
-        frame.push-assigned(member-key(resolution.decl), target)
-        frame.reset-paths(member-key(resolution.decl))
+        frame.push-assigned(member-key(resolution.module, resolution.decl), target)
+        frame.reset-paths(member-key(resolution.module, resolution.decl))
 else
     . shared = narrowing.receiver-member(object-syntax, name)
     . base = narrowing.base-key(object-syntax)

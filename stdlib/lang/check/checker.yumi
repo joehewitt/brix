@@ -5962,7 +5962,7 @@ _ key-declared TypeId
 ` type, and a property or a path the type it had where the flow first came to know something of
 ` it, or no type where the flow knows nothing of it.
 |? !is-member-key(key)
-    slot-known(key)
+    slot-known(key-slot(key))
 |? frame.is-stable-path(key)
     frame.path-declared-type(key)
 ??
@@ -6102,7 +6102,7 @@ do match? tree.nodes[syntax]
         if resolution.kind == .resolve-slot && !frame.is-captured(resolution.slot)
             = frame.slot-type(resolution.slot)
         if resolution.kind == .resolve-member
-            . key = member-key(resolution.decl)
+            . key = member-key(resolution.module, resolution.decl)
             if frame.knows-member(key) && !frame.is-doubted(key)
                 . held = frame.held-member(key)
                 if held != no-type
@@ -6222,7 +6222,7 @@ do match? tree.nodes[syntax]
             . known = frame.slot-type(resolution.slot)
             = known != no-type && known != invalid-type && !types.is-optional(known)
         if resolution.kind == .resolve-member
-            = member-holds(member-key(resolution.decl))
+            = member-holds(member-key(resolution.module, resolution.decl))
     | .node-get-expression(row)
         if row.is-optional
             = false
@@ -7255,7 +7255,7 @@ _ settled-now TypeId
 
 ` What a key is known as where the type pass stands: the type of a local, or what a member
 ` or a path is narrowed to, which is no type for one that is not narrowed.
-if is-member-key(key) then frame.held-member(key) else frame.slot-type(key)
+if is-member-key(key) then frame.held-member(key) else frame.key-type(key)
 
 ────────────────────
 _ do widen-settled
@@ -7268,7 +7268,7 @@ for row in settled
     . held = row.type
     . plain = no-type
     if !is-member-key(row.key)
-        plain = slot-known(row.key)
+        plain = slot-known(key-slot(row.key))
         if held == no-type
             held = plain
     if held != settled-now(row.key)
@@ -12487,11 +12487,11 @@ _ do read-member Found
 if receiver == no-type || receiver == invalid-type
     = Found(invalid-type)
 . resolution = bindings.resolution-of(frame.binding, id)
-if resolution.kind == .resolve-member && frame.is-doubted(member-key(resolution.decl))
+if resolution.kind == .resolve-member && frame.is-doubted(member-key(resolution.module, resolution.decl))
     decline(id)
     = Found(invalid-type)
 if resolution.kind == .resolve-member && frame.members-narrowed
-    . key = member-key(resolution.decl)
+    . key = member-key(resolution.module, resolution.decl)
     . narrowed = forced-member(id, key, want)
     if narrowed != no-type
         plan-case-read(id, narrowed-from(key, receiver, name), frame.narrowed-cases(key), narrowed)

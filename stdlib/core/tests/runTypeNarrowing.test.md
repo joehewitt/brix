@@ -263,6 +263,57 @@ Exception: "value" is String, which is never null, so it needs no "?"; write "va
        ^^^^^^^^^^^^^
 ```
 
+### A test of an implicit self property narrows no property of a class in another module.
+
+```yumi
+./lib/inherited
+
+. child = InheritingChild()
+child.total()
+child.caught = Caught()
+child.total()
+
+━━━━━━━━━━━━━━━━━━━━
++ Caught
+
+━━━━━━━━━━━━━━━━━━━━
++ InheritingChild is InheritedBase
+
++ caught Caught?
+
+────────────────────
++ do total
+
+if caught != null
+    -- p0 + p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9 + p10 + p11 + p12 + p13 + p14 + p15
+```
+
+```yumi file=lib/inherited.yumi
+━━━━━━━━━━━━━━━━━━━━
++ InheritedBase
+
++ p0 = 0
++ p1 = 1
++ p2 = 2
++ p3 = 3
++ p4 = 4
++ p5 = 5
++ p6 = 6
++ p7 = 7
++ p8 = 8
++ p9 = 9
++ p10 = 10
++ p11 = 11
++ p12 = 12
++ p13 = 13
++ p14 = 14
++ p15 = 15
+```
+
+```output
+120
+```
+
 ### The right side of && sees facts introduced by the left side.
 
 ```yumi

@@ -132,14 +132,15 @@ if body == 0
 for id in tree.subtree-start(body) .. body
     do match? tree.nodes[id]
         | .node-assign(row)
-            . slot = narrowing.condition-slot(row.lhs)
-            if !slot
+            . key = narrowing.condition-slot(row.lhs)
+            if !key
                 continue
+            . slot = key-slot(key)
             . declared = slot-known(slot)
             . settled = declared
             if row.op == .eq-op
                 settled = assigned-narrowing(declared, facts.node-type(instance, row.rhs))
-            . carried = frame.slot-type(slot)
+            . carried = frame.key-type(key)
             . typed = declared != no-type && declared != invalid-type
             if typed && settled != carried
                 if carried != declared && relies-on(slot, id, row.lhs)
@@ -147,7 +148,7 @@ for id in tree.subtree-start(body) .. body
                     . shown = if name then name.text else ""
                     . message = "Narrowing of '$shown' is used in the loop but does not hold when "
                     frame.diagnose(loop, .stated, program.store-atom(message ++ "the loop repeats"))
-                frame.push-assigned(slot-key(slot), declared)
+                frame.push-assigned(key, declared)
 leave-loop()
 
 ────────────────────
