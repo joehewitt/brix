@@ -816,7 +816,12 @@ _ do write-http-chunk
 
 if is-chunked
     output <- "${chunk-size-digits(size)}\r\n"
-output.write(data, size)
+. offset Size = 0
+while offset < size
+    . count = output.write(data + offset, size - offset)
+    ?! IOError("HTTP body write made no progress")
+        if count <= 0
+    offset += count
 if is-chunked
     output <- "\r\n"
 
