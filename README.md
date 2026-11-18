@@ -16,6 +16,6 @@ The compiler runs on Apple Silicon Macs and on aarch64 Linux. x86 support is pla
 
 Documentation is sparse at this point. The [language reference](docs/ref/README.md) was written by Claude and it's kind of a placeholder. Stay tuned for far better documentation.
 
-> [!INFO]
+> [!NOTE]
 > Follow @joehewitt on X for updates. 
 
