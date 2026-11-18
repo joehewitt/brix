@@ -312,7 +312,9 @@ while true
     write-http-response(connection, response, request.method == HTTPMethod.head, keeps-alive)
     match? request.body
         | reader HTTPBodyReader
-            reader.drain()
+            if !reader.is-complete
+                socket.read-deadline = Deadline(read-timeout)
+                reader.drain()
     =? if !keeps-alive
 
 ────────────────────

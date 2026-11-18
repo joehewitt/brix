@@ -373,6 +373,7 @@ _ consumed Size
 _ remaining Size
 _ needs-chunk-end = false
 _ is-done = false
+_ is-closed = false
 
 ────────────────────
 + This
@@ -389,7 +390,7 @@ match? framing
 ────────────────────
 + do close ?! Error
 
-is-done = true
+is-closed = true
 owner?.close()
 
 ────────────────────
@@ -407,7 +408,7 @@ false
     - size Size
     - buffer Byte[]
 
-=? 0 if is-done || size == 0
+=? 0 if is-done || is-closed || size == 0
 
 . count = read-framed(size, buffer)
 //this:network.http.response.body.chunk -> "", count, network-preview(buffer, count), network-is-truncated(count)
@@ -420,8 +421,7 @@ if is-done
 
 . buffer = Byte[http-transfer-size]
 while !is-done
-    . count = read(buffer.size, buffer)
-    if count == 0
+    if read-framed(buffer.size, buffer) == 0
         break
 
 ────────────────────
