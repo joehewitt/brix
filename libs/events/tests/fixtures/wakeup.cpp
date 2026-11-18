@@ -23,6 +23,7 @@ int lastWriter = -1;
 static std::function<void()> drainHook;
 void finalDrainRace() { if (drainHook) drainHook(); }
 BxTaskQueue* BxTask::getTaskQueue() { static BxTaskQueue queue; return &queue; }
+void brixProcessExited(int) {}
 extern "C" uint64_t brixMonotonicTimeNanoseconds() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
