@@ -98,9 +98,10 @@ machining = machining.refined = no-instance
 . refined = inherited-machine(id, items, store) if row && store
 if !row || !store
     decline(id)
-else if refined && machine-shape(id, items, store)
+else if refined
     machining = machining.refined = refined
-    union = type-machine(id, items, row, store)
+    if machine-shape(id, items, store)
+        union = type-machine(id, items, row, store)
 . answered = if union != no-type && machining.refined == no-instance then union else types.void-type
 instances.set-returns(instance, answered, answered, .return-declared)
 finish-errors(frame)
@@ -406,7 +407,7 @@ _ do entries-settle Bool
 ` case again, as the reference checks them from its first case and from each case written in
 ` it. Where one does, it is the reference's error at the decision.
 . roots [SyntaxId]
-. initial = tree.initial-case(items)
+. initial = entered-case(0, items)
 if initial != 0
     roots += initial
 for node in tree.explicit-cases(items)
@@ -434,7 +435,7 @@ for transition in tree.immediate-transitions(body)
         = false
     if tree.state-trigger(transition) == 0
         = true
-. initial = tree.initial-case(body)
+. initial = entered-case(node, body)
 if initial == 0
     = true
 . path [SyntaxId]
@@ -556,7 +557,7 @@ for position in 0 .. < machining.cases.length
     machining.kept-types += unknown
 do foresee-activations()
 early-union(id, row, store)
-note-starts(items)
+note-starts(0, items)
 type-machine-body(0, items)
 . progress = true
 while progress
@@ -787,11 +788,12 @@ settle-given(position, targets)
 
 ────────────────────
 _ do note-starts
+    - owner SyntaxId
     - items [SyntaxId]
 
 ` The cases and continuations a body enters as it is entered, and so as the machine starts:
 ` its first case and those its immediate transitions enter, and so on in each of theirs.
-. initial = tree.initial-case(items)
+. initial = entered-case(owner, items)
 if initial != 0
     note-start(initial)
 for transition in tree.immediate-transitions(items)
@@ -809,7 +811,7 @@ if tree.nodes[node] is .node-state-continuation
     if target != 0
         note-start(target)
         =
-note-starts(tree.state-items(tree.state-body(node)))
+note-starts(node, tree.state-items(tree.state-body(node)))
 
 ────────────────────
 _ do activation-known Bool
@@ -1009,8 +1011,10 @@ _ do type-entered
 ` immediate transitions always passes (`always-passes`), its immediate transitions, each with
 ` its condition, or its subject matched by its pattern, and what it gives, then the stream of
 ` each of its groups (`type-group`).
-. initial = if owner == 0 || !tree.always-passes(items) then tree.initial-case(items) else 0
+. initial = if owner == 0 || !tree.always-passes(items) then entered-case(owner, items) else 0
 if initial != 0 && tree.enters-initial(machining.items, owner)
+    if !initial-given(initial)
+        =
     type-targets(initial)
 for transition in tree.immediate-transitions(items)
     . trigger = tree.state-trigger(transition)
@@ -1026,6 +1030,59 @@ for transition in tree.immediate-transitions(items)
     type-targets(transition)
 for head in tree.group-heads(items)
     type-group(owner, head)
+
+────────────────────
+_ do entered-case SyntaxId
+    - owner SyntaxId
+    - items [SyntaxId]
+
+` The case a body of a case, or the root for none, enters first: its first case with no
+` trigger, unless a machine this one refines enters a case of its own there, which the cases
+` this one adds there come after.
+=? 0 if inherits-initial(owner)
+= tree.initial-case(items)
+
+────────────────────
+_ do inherits-initial Bool
+    - owner SyntaxId
+
+` Whether a machine this one refines writes a case with no trigger in the body of a case, or
+` at the root for none.
+=? false if machining.refined == no-instance
+. path = tree.case-path(machining.items, owner)
+=? false if owner != 0 && path.length == 0
+. above = facts.machine-of(machining.refined)
+while above
+    . piece = program.modules[above.module].tree
+    . body = above.syntax
+    for node in path
+        . name = tree.state-name(node)!
+        . found SyntaxId = 0
+        if body != 0
+            for child in piece.child-cases(piece.state-items(piece.state-body(body)))
+                if piece.state-name(child)! == name
+                    found = child
+        body = found
+    if body != 0 && piece.initial-case(piece.state-items(piece.state-body(body))) != 0
+        = true
+    above = if above.refined != no-instance then facts.machine-of(above.refined) else null
+= false
+
+────────────────────
+_ do initial-given Bool
+    - initial SyntaxId
+
+` Whether each name a machine's first case is given, where it is entered, names a value: one
+` that names none is a payload nothing gives, the reference's error at the name.
+for target in tree.children[tree.state-targets(initial)]
+    . resolution = bindings.resolution-of(frame.binding, target)
+    . unresolved = resolution.kind == .resolve-unresolved && resolution.slot == no-slot
+    if tree.nodes[target] is .node-identifier && unresolved
+        . name = tree.state-name(initial)!
+        . message = "Initial state case '${name.text}' cannot take a payload, since nothing enters it to give it one; give it values, or write a case with no payload before it"
+        frame.diagnose(target, .stated, program.store-atom(message))
+        = false
+= true
 
 ────────────────────
 + do type-trigger-pattern

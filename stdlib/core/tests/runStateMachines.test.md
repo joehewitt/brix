@@ -5350,6 +5350,77 @@ Exception: Refined state case 'busy' cannot change its trigger or payload
     ^^^^^^^^^^^^^
 ```
 
+### A case a refinement adds under a case may come first with a payload, as the base's first case is the one entered there.
+
+```yumi
+. pet = Dog()
+-- pet.body
+pet.chases <- "cat"
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
++ event calls String
+
+────────────────────
++ body ~>
+
+~> free
+    then answering(who) for who on calls
+
+    ~> idle
+
+    ~> answering(who)
+        do
+            -- "answering ${who}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Dog is Animal
+
++ event chases String
+
+────────────────────
++ body ~>
+
+~> free
+    then chasing(quarry) for quarry on chases
+
+    ~> chasing(quarry)
+        do
+            -- "chasing ${quarry}"
+```
+
+```output
+idle
+chasing cat
+```
+
+### A machine's first case is entered with no transition to give it a payload, so a name it holds is rejected.
+
+```yumi crash
+. pet = Animal()
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
++ event calls String
+
+────────────────────
++ body ~>
+
+~> free
+    then answering(who) for who on calls
+
+    ~> answering(who)
+```
+
+```output
+Exception: Initial state case 'answering' cannot take a payload, since nothing enters it to give it one; give it values, or write a case with no payload before it
+<no file:15>
+        ~> answering(who)
+                     ^^^
+```
+
 ### An inherited anonymous machine's root transition on an event of its own class fires on an object of a subclass.
 
 ```yumi

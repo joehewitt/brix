@@ -2829,7 +2829,7 @@ _ do walk-entered Void
 ` which one over a stream that is only iterable reads by.
 . initial = if owner == 0 || !tree.always-passes(items) then tree.initial-case(items) else 0
 if initial != 0 && tree.enters-initial(machine-roots[machine-roots.length - 1], owner)
-    walk-targets(initial)
+    walk-targets(initial, true)
 for transition in tree.immediate-transitions(items)
     . trigger = tree.state-trigger(transition)
     . subject = tree.trigger-subject(trigger)
@@ -2851,10 +2851,17 @@ for head in tree.group-heads(items)
 ────────────────────
 _ do walk-targets Void
     - transition SyntaxId
+    - initial Bool = false
 
 ` What a transition gives the case it enters, then what each name the case keeps reads there.
+` A name a first case is given where it is entered (`initial`) that nothing declares is no error
+` here: only the type pass knows whether a machine this one refines enters a case of its own
+` first, where the name names what the case holds.
+. quiet = quiet-name
 for target in tree.children[tree.state-targets(transition)]
+    quiet-name = if initial then target else quiet
     walk(target)
+quiet-name = quiet
 . cases = machine-cases[machine-cases.length - 1]
 . position = tree.case-position(cases, tree.state-name(transition)!)
 if position == null

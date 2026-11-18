@@ -315,6 +315,10 @@ empty
   and in `match` arms.
 - **Types.** A payload's types are those of the values its transitions give. A transition that gives
   values of other types is an error where it gives them, as an argument of the wrong type is.
+- **The first case.** Nothing enters a body's first case with a transition, so it holds values
+  only where its head gives them, as `(state (call counting 0))`{.brix} does. A name there that
+  names no value is an error: `Initial state case 'answering' cannot take a payload, since nothing
+  enters it to give it one; give it values, or write a case with no payload before it`.
 - **Count.** A transition gives a case as many values as it holds: `Case "held" holds one value,
   and this transition gives none; give it one value`.
 - **Captures.** A pattern on a case's trigger may bind names the case does not hold. They last for
@@ -770,4 +774,6 @@ make one machine.
 - A refined case keeps its trigger and payload: `Refined state case 'busy' cannot change its trigger
   or payload`.
 - Only a machine can be refined: `Inherited property 'body' is not a state machine`.
+- Where the base writes a first case in a case, it stays the first, so a case the refinement adds
+  there may come first and hold a payload.
 - Transitions on one source at several levels are one group, the base's first.
