@@ -192,7 +192,12 @@ data as CPointer'T
 Array'Byte'Backing(this.data as CPointer'Byte, this.byte-size)
 
 ────────────────────
-+ get immutable ImmutableArray'Value'Backing
++ to ImmutableArray'Value'Backing @inline
+
+ImmutableArray'Value'Backing(data, size)
+
+────────────────────
++ get immutable ImmutableArray'Value'Backing @inline
 
 ImmutableArray'Value'Backing(data, size)
 
@@ -275,6 +280,28 @@ this[normal] = other
     if other.size < len
 
 C:brixArrayCopySlice(data + start, other.data, len * item-size)
+
+.. normal = range.forward()
+.. start = normal.start
+.. end = normal.end
+.. out-index = if end > 0 then end - 1 else end
+.. len = end - start
+.. item-size = Value.size
+
+────────────────────
++ do this[range Range'Index] = other ImmutableArray'Value''OtherBacking
+    - OtherBacking is StorageBacking
+
+?! Panic("Only increments of 1 are currently supported")
+    if normal.increment != 1
+?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
+    if (start as UInt) > (size as UInt) || end > size || end < start
+?! Panic("Array size overflow")
+    if len != 0 && len > Size.max / item-size
+?! OutOfBoundsError("Source array too short ($other.size / $len)")
+    if other.size < len
+
+C:brixArrayCopySlice(data + start, other.storage as CPointer'Value, len * item-size)
 
 .. normal = range.forward()
 .. start = normal.start
@@ -691,12 +718,22 @@ storage = Backing.allocate'Item(Void(), 0)
 storage-size = 0
 
 ────────────────────
-_ This
+_ This @inline
     - data CPointer'Item
     - size Size
 
 storage = data as Backing.Storage'Item
 storage-size = size
+
+────────────────────
++ to CPointer'Item
+
+storage as CPointer'Item
+
+────────────────────
++ to CPointer''T
+
+storage as CPointer'T
 
 ━━━━━━━━━━━━━━━━━━━━
 + ByteReadable is Interface
@@ -716,7 +753,7 @@ true
 
 ────────────────────
 + write Size ?! Error
-    - buffer Byte[]
+    - buffer ImmutableArray'Byte
     - size Size
 
 ━━━━━━━━━━━━━━━━━━━━

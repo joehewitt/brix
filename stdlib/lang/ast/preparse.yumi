@@ -23,10 +23,10 @@ while byte-count < input.size && input[byte-count] != 0
     if byte < 128 || byte >= 192
         codepoint-count += 1
     byte-count += 1
-C:brixStringValidateUtf8(input.data, byte-count)
+C:brixStringValidateUtf8(input, byte-count)
     ?! Panic("Unable to read UTF8 content")
         if it
-input = Array'Byte(input.data, byte-count)
+input = input[0 .. < byte-count]
 
 . output = PreparseBuffer(scratch, codepoint-count * 2 + line-count * 4 + 8)
 . source-cursor Index = 0
@@ -259,11 +259,12 @@ length += 1
 
 ────────────────────
 + do append
-    - source Byte[]
+    - source ImmutableArray'Byte
     - start Index
     - end Index
 
-. input = Array'Byte(source.data + start, end - start)
+=? if end <= start
+. input = source[start .. < end]
 . output = Array'Char(data.data + length, data.size - length)
 . decoded-count Size
 . bytes-decoded Size
@@ -310,7 +311,7 @@ length -= amount
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do parse-indent Int
-    - input Byte[]
+    - input ImmutableArray'Byte
     - start Index
     - end Index
 
@@ -322,7 +323,7 @@ while cursor < end && input[cursor] == 32
 
 ━━━━━━━━━━━━━━━━━━━━
 _ is-header-line Bool
-    - input Byte[]
+    - input ImmutableArray'Byte
     - start Index
     - end Index
 
@@ -332,7 +333,7 @@ _ is-header-line Bool
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do is-repeated-char Bool
-    - input Byte[]
+    - input ImmutableArray'Byte
     - start Index
     - end Index
     - char Char
@@ -350,7 +351,7 @@ while cursor < end
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do find-paragraph-marker Index?
-    - input Byte[]
+    - input ImmutableArray'Byte
     - start Index
     - end Index
 
@@ -384,7 +385,7 @@ while cursor < end && is-whitespace(input[cursor])
 ━━━━━━━━━━━━━━━━━━━━
 _ do append-paragraph-line
     - output PreparseBuffer
-    - input Byte[]
+    - input ImmutableArray'Byte
     - start Index
     - end Index
     - access-index Index
@@ -417,14 +418,14 @@ _ SourceScalar is (byte-count I32, char Char)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do source-scalar SourceScalar
-    - input Byte[]
+    - input ImmutableArray'Byte
     - offset Index
 
 . first = input[offset]
 =? SourceScalar(1, first as Char) if first < 128
 
 . result SourceScalar
-. status = C:brixStringGetNextChar(input.data + offset, &result)
+. status = C:brixStringGetNextChar((input as CPointer'Byte) + offset, &result)
 ?! Panic("Unable to read UTF8 content")
     if status != 0 || result.byte-count <= 0 || offset + result.byte-count as Size > input.size
 = result

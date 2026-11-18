@@ -808,6 +808,68 @@ Array size overflow
 é
 ```
 
+### A byte view of a text reads its UTF-8 bytes.
+
+```yumi
+. part = "h"
+. view = byte-view("${part}é!")
+-- view.size
+-- ", ".join(view)
+-- view[1 .. < 3].slice-string()
+```
+
+```output
+4
+104, 195, 169, 33
+é
+```
+
+### A byte view of a text cannot be written.
+
+```yumi compile-error
+. view = byte-view("ab")
+view[0] = 99
+```
+
+```output
+Exception: ImmutableArray does not support element assignment
+<no file:3>
+    view[0] = 99
+    ^^^^^^^
+```
+
+### A slice of a byte view of a text cannot be written.
+
+```yumi compile-error
+. view = byte-view("ab")
+view[1 ...][0] = 99
+```
+
+```output
+Exception: ImmutableArray does not support element assignment
+<no file:3>
+    view[1 ...][0] = 99
+    ^^^^^^^^^^^^^^
+```
+
+### Writing a byte copy of a text leaves the text and its byte view as they were.
+
+```yumi
+. part = "k"
+. text = "${part}ey"
+. copy = Array'Byte(text)
+copy[0] = 109
+-- copy.slice-string()
+-- text
+-- byte-view(text)[0]
+```
+
+```output
+mey
+key
+107
+```
+
 ### Byte-buffer string range assignment writes UTF-8 bytes without recursion.
 
 ```yumi
@@ -3165,21 +3227,18 @@ Exception: Setter not found
     ^^^^^^^^^^^
 ```
 
-```yumi crash
-accept(Array'I32([1]))
+```yumi
+-- accept(Array'I32([1, 2]))
 
 ━━━━━━━━━━━━━━━━━━━━
-+ accept
++ accept Size
     - values ImmutableArray'I32
 
 values.length
 ```
 
 ```output
-Exception: No function "accept" accepts (Array'I32); it is declared as "accept(values ImmutableArray'I32)"
-<no file:2>
-    accept(Array'I32([1]))
-    ^^^^^^^^^^^^^^^^^^^^^^
+2
 ```
 
 ### An array of one item type is not an array of another, whose items it would read as the other.

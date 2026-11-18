@@ -460,7 +460,8 @@ hi
   one. Both take `.little` or `.big` as a third argument; the default is `.big`.
 - **Text.** `(as text ([] Byte))`{.brix} gives a copy of the UTF-8 bytes of a text, and
   `slice-string` reads bytes as text. `as Hex` and `as Base64` write the bytes as text, and
-  `(as (as text Hex) ([] Byte))`{.brix} reads them back.
+  `(as (as text Hex) ([] Byte))`{.brix} reads them back. `(call byte-view text)`{.brix} gives
+  the text's bytes without copying them, as an `ImmutableArray` of `Byte` that cannot be written.
 
 ### Immutable arrays and builders
 
@@ -468,6 +469,10 @@ hi
 written, so later writes to `a` show through it. Writing an item through it is an error:
 `ImmutableArray does not support element assignment`. Only the array cannot be written: objects
 it holds can still be changed through it.
+
+An `Array` is taken wherever an `ImmutableArray` of the same items is wanted, as a view of its
+storage. A function that only reads an array's items declares an `ImmutableArray` parameter, so
+that it takes both.
 
 An `ArrayBuilder`, from `/core/array-builder`, collects items and then gives them up as an array.
 That module also lets `Array` and `ImmutableArray` be made from a stream.
