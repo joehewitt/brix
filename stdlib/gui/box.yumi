@@ -70,6 +70,7 @@ _ gui-composite-pinned-bit U8 = 64
 _ gui-scroll-pinned-boxes = List'Box()
 _ gui-scroll-blur-least Length = 1.5
 _ gui-scroll-blur-most Length = 40
+_ gui-scroll-blur-fade Nanoseconds = 30000000ns
 _ gui-tree-structure-generation U64
 _ gui-lift-count U64
 _ gui-carry-trail = spring(150ms)
@@ -893,13 +894,19 @@ _ do get scroll-blur-filter ShaderFilter?
 
 . run = motion-state?.scroll-blur
 =? null if !run
-. shutter = $scroll-blur
-=? null if shutter == null
-. span = sqrt(run.shown.x * run.shown.x + run.shown.y * run.shown.y) * (shutter as F64)
+. span = scroll-blur-span(run.shown)
 =? null if span < gui-scroll-blur-least
-. reach = min(span, gui-scroll-blur-most) / span * (shutter as F64)
+. reach = min(span, gui-scroll-blur-most) / span * ($scroll-blur! as F64)
 . made ShaderFilter = ScrollBlur(Point(run.shown.x * reach, run.shown.y * reach), scroll-blur-stills())
 = made
+
+────────────────────
+_ do scroll-blur-span Length
+    - shown Point
+
+. shutter = $scroll-blur
+=? 0 if shutter == null
+= sqrt(shown.x * shown.x + shown.y * shown.y) * (shutter as F64)
 
 ────────────────────
 + do get scroll-held-rects [Rect]
@@ -5704,7 +5711,6 @@ _ BoxScrollBlur
 + box Box
 + travel Point
 + shown Point
-+ rests Size
 + is-over = false
 
 ────────────────────
@@ -5718,16 +5724,15 @@ _ BoxScrollBlur
 =? false if is-over
 . moved = travel
 travel = Point(0, 0)
-if moved.x == 0 && moved.y == 0
-    rests += 1
-    if rests > 1
-        is-over = true
-        box.scroll-blur-ended(this)
-        = false
-else
-    rests = 0
-if moved != shown
-    shown = moved
+. kept = exp(-(tick.delta as F64) / (gui-scroll-blur-fade as F64))
+. faded = Point(shown.x * kept, shown.y * kept)
+. next = if moved.x * moved.x + moved.y * moved.y >= faded.x * faded.x + faded.y * faded.y then moved else faded
+if moved.x == 0 && moved.y == 0 && box.scroll-blur-span(next) < gui-scroll-blur-least
+    is-over = true
+    box.scroll-blur-ended(this)
+    = false
+if next != shown
+    shown = next
     box.invalidate-presentation()
 = true
 
