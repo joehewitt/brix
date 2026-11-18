@@ -101,6 +101,8 @@ _ quasi-free-block SyntaxId = 0
 _ discarding-block SyntaxId = 0
 _ steps-block SyntaxId = 0
 _ arm-block SyntaxId = 0
+_ expected-block SyntaxId = 0
+_ block-expected TypeId = no-type
 _ materialized [SlotId]
 _ unsure-stores [U32]
 _ unsure-reads [U32]
@@ -149,6 +151,7 @@ _ carried-sites [SyntaxId]
 _ whole-returns [SyntaxId]
 _ giving = Giving()
 _ arms-expected TypeId = no-type
+_ arms-given TypeId = no-type
 _ declared-return TypeId = no-type
 _ default-site SyntaxId = 0
 _ folded-yield TypeId = no-type
@@ -174,6 +177,7 @@ _ case-row RowCapture? = null
 _ arm-bodies [SyntaxId]
 _ arm-present [Bool]
 _ arm-values [SyntaxId]
+_ arm-givens [TypeId]
 _ arm-starts [Size]
 _ arm-ends [Size]
 _ arm-settled [Narrowed]
@@ -346,6 +350,7 @@ _ building SlotId = no-slot
 .. arm-bodies = parts.arm-bodies
 .. arm-present = parts.arm-present
 .. arm-values = parts.arm-values
+.. arm-givens = parts.arm-givens
 .. arm-starts = parts.arm-starts
 .. arm-ends = parts.arm-ends
 .. arm-settled = parts.arm-settled
@@ -1006,6 +1011,9 @@ checker.retire()
 
 . symbol = tree.symbol-of(expr)
 . expects = expected != no-type && expected != invalid-type
+if expects && tree.arms-value(expr) != expr
+    expected-block = expr
+    block-expected = expected
 if symbol && expects
     . owner = contextual-symbol(types, relations, expected, symbol, module)
     if owner != invalid-type
@@ -4862,8 +4870,10 @@ _ do check-block TypeId
 . discards = block == discarding-block
 . steps-body = block == steps-block && block != matching.arms
 . arm-row = if block == arm-block then tree.arm-value(block) else 0
+. valued = if block == expected-block then block-expected else no-type
 steps-block = 0
 arm-block = 0
+expected-block = 0
 . last = if body.count != 0 then tree.children[body.start + body.count - 1] else 0
 . kept = tree.kept-row(body)
 . value = no-type
@@ -4933,7 +4943,8 @@ for statement in tree.children[body]
     .. choice-statement = tree.is-choice-syntax(statement)
     if discards || statement != last
         want = want.adding(.want-unused)
-    . produced = if named then infer-with-expected(statement, declared, want) else check-line(statement, parent, want)
+    . expects-row = valued != no-type && (tree.calls-symbol(statement) || tree.symbol-of(statement) != null)
+    . produced = if named then infer-with-expected(statement, declared, want) else if expects-row then infer-with-expected(statement, valued, want) else check-line(statement, parent, want)
     if stepped
         produced = no-type
     if watches
@@ -5622,11 +5633,7 @@ match? tree.nodes[left]
     | .node-type-capture(row)
         if row.type != 0
             place = row.type
-. arms = tree.arms-value(right)
-if expecting && tree.is-arms-syntax(arms) && !may-miss(arms, expected)
-    note-returned-match(arms, expected)
-    arms-expected = expected
-.. expecting = expected != no-type && expected != invalid-type
+expect-arms(right, expected)
 = infer-with-expected(right, expected, Want().escaping(expected, place))
 
 ────────────────────
@@ -6687,6 +6694,18 @@ match? tree.nodes[expr]
             facts.set-node-type(instance, streamed, declared)
 
 ────────────────────
+_ do expect-arms Bool
+    - value SyntaxId
+    - expected TypeId
+
+. arms = tree.arms-value(value)
+. expects = expected != no-type && expected != invalid-type && expected != types.void-type
+=? false if !expects || !tree.is-arms-syntax(arms) || may-miss(arms, expected)
+note-returned-match(arms, expected)
+arms-expected = expected
+= true
+
+────────────────────
 _ do may-miss Bool
     - expr SyntaxId
     - declared TypeId
@@ -6735,11 +6754,8 @@ if expr == 0
         giving = giving.empty = true
     =
 . declared = declared-return
-. missing = may-miss(expr, declared)
-. matched = declared != no-type && declared != types.void-type && tree.is-match-syntax(expr) && !missing
-if matched
-    note-returned-match(expr, declared)
-    arms-expected = declared
+. missing = may-miss(tree.arms-value(expr), declared)
+expect-arms(expr, declared)
 . value = if declared == no-type then returned-symbol(expr) else no-type
 if value == no-type
     expect-feeds(expr, declared)
@@ -18165,6 +18181,7 @@ _ CheckerKit
 + arm-bodies [SyntaxId]
 + arm-present [Bool]
 + arm-values [SyntaxId]
++ arm-givens [TypeId]
 + arm-starts [Size]
 + arm-ends [Size]
 + arm-settled [Narrowed]
@@ -18294,6 +18311,7 @@ checked-rows.clear()
 arm-bodies.clear()
 arm-present.clear()
 arm-values.clear()
+arm-givens.clear()
 arm-starts.clear()
 arm-ends.clear()
 arm-settled.clear()

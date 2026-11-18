@@ -1008,9 +1008,10 @@ _ do scan-nested
 ` what it writes. A `for` block on a stream with one header is the subscriber its body runs as, a
 ` class's section of one too. An assignment whose value reads something tracked, which gives no
 ` property of a root `<This` its value, is run again by a function of its own (`add-live`), as is a
-` lazy declaration, no attribute, of one name whose value does, but one in the value of a property,
-` which runs again with the value; so is an attribute of another element, whose function stores in
-` the element's property, and an argument of one given by position, but a comprehension. The
+` lazy declaration, no attribute, of one name whose value does, but one in the value of a property
+` or of a statement run again so, which runs again with that value; so is an attribute of another
+` element, whose function stores in the element's property, and an argument of one given by
+` position, but a comprehension. The
 ` `whenever` clause of a loop on a stream is tested again by one too (`add-whenever`). An `if`
 ` written as a line of markup content, or of a body that runs as content, whose conditions read
 ` something tracked is a region: each arm is built by a function of its own, written at its body,
@@ -1395,7 +1396,8 @@ for reverse in 1 .. < tree.root
             if is-unclaimed && row.is-lazy && plain && row.right != 0 && is-live
                 nested = add-live(tree, id, owner, named)
             .. is-unclaimed = !attributes[id] && !getters[id]
-            .. is-live = reads-tracked(tree, row.right) && !in-property-value(tree, id, parents)
+            .. is-live = reads-tracked(tree, row.right) && !in-property-value(tree, id, parents) && !attached
+            .. attached = in-live-value(id, owners, depth, parents)
         | .node-iterable-expression(row)
             if reads-tracked(tree, row.expr)
                 nested = add-live(tree, id, owner, named)
@@ -1696,6 +1698,22 @@ for id in 1u32 .. < limit
     for child in tree.children-of(id)
         parents[child] = id
 = parents
+
+────────────────────
+_ do in-live-value Bool
+    - id SyntaxId
+    - owners [DeclId]
+    - depth Size
+    - parents [SyntaxId]
+
+. open = depth
+while open != 0
+    match? decls[owners[open - 1]]
+        | .decl-function(fn)
+            if descends(id, fn.syntax, parents)
+                = fn.kind == .live-decl
+    open -= 1
+= false
 
 ────────────────────
 _ do in-property-value Bool

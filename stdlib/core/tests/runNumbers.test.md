@@ -3409,6 +3409,152 @@ a
 -2147483648
 ```
 
+### Integers with no suffix that a match, arms of conditions or a value written alone in a block of its own give take the type of the local or property they are assigned to.
+
+```yumi
+. fast = true
+. speed F64 = 1
+speed = match fast
+    |= true
+        75
+    ??
+        55
+-- speed / 2
+speed =
+    |? !fast
+        75
+    ??
+        55
+-- speed / 2
+speed =
+    75
+-- speed / 2
+. car = Car()
+car.speed = match fast
+    |= true
+        75
+    ??
+        55
+-- car.speed / 2
+car.speed =
+    15
+-- car.speed / 2
+car.slow()
+-- car.speed / 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Car
+
++ speed F64 = 1
+
+────────────────────
++ do slow
+
+speed =
+    |? speed > 10
+        5
+    ??
+        1
+```
+
+```output
+37.5
+27.5
+37.5
+37.5
+7.5
+2.5
+```
+
+### An optional local assigned a match whose arms each give a value, or give a match whose own arms each give one, holds one after it, while integers with no suffix the arms give take the type it holds.
+
+```yumi
+. fast = true
+. speed F64? = null
+speed = match fast
+    |= true
+        75
+    ??
+        55
+-- speed / 2
+. count Int? = null
+count = match fast
+    |= true
+        match fast
+            |= true
+                1
+            ??
+                2
+    ??
+        3
+-- count + 1
+```
+
+```output
+37.5
+2
+```
+
+### Integers with no suffix written alone in a block of their own below a declaration, a property or a global take the type it states, and so do those the arms of a match a property or a global is given.
+
+```yumi
+. d F64 =
+    75
+-- d / 2
+-- level / 2
+. car = Car()
+-- car.speed / 2
+-- car.limit / 2
+
++ high = true
++ level F64 = match high
+    |= true
+        75
+    ??
+        55
+
+━━━━━━━━━━━━━━━━━━━━
++ Car
+
++ fast = true
++ speed F64 =
+    |? fast
+        75
+    ??
+        55
++ limit F64 =
+    95
+```
+
+```output
+37.5
+37.5
+37.5
+47.5
+```
+
+### Integers with no suffix that arms of conditions give where a function returns them take the type it declares, as the arms of a match it returns do.
+
+```yumi
+-- pick(true) / 2
+-- pick(false) / 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick F64
+    - fast Bool
+
+=
+    |? fast
+        75
+    ??
+        55
+```
+
+```output
+37.5
+27.5
+```
+
 ### A choice between integers with no suffix, an operand of arithmetic, takes the type of the other operand, as one such integer does.
 
 ```yumi

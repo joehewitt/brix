@@ -34,6 +34,7 @@
 + brix-mode-styled SourceRowMode = 17
 + brix-mode-unparsed SourceRowMode = 18
 + brix-mode-keyframe SourceRowMode = 19
++ brix-mode-argument SourceRowMode = 20
 + brix-unparsed-head = "unparsed"
 
 _ brix-thick-divider = "━━━━━━━━━━━━━━━━━━━━"
@@ -142,6 +143,7 @@ SourceRow
     - store.id-at(row.owner)
     - row.zone
     - row.block
+    - row.mode == brix-mode-text
     - row.is-padding
     - row.is-private
     - row.is-open-end
@@ -171,6 +173,8 @@ _ printed String
     printer.heading(node)
 |? row.mode == brix-mode-text
     printer.line(node)
+|? row.mode == brix-mode-argument
+    printer.argument(node)
 ??
     printer.row(node)
 
@@ -213,6 +217,8 @@ match mode
         "unparsed"
     |= brix-mode-keyframe
         "keyframe"
+    |= brix-mode-argument
+        "argument"
     ??
         "decoration"
 
@@ -259,6 +265,7 @@ is-code || is-prose || is-nested
 =? null if mode == brix-mode-separator || mode == brix-mode-tail || mode == source-row-decoration
 =? null if mode == brix-mode-unparsed
 . parsed = opening(brix-parse-statement(text, store, brix-scope(mode)), text)
+=? store.item(parsed, 1) if mode == brix-mode-argument && parsed && store.is-form(parsed, "arg") && store.count(parsed) == 2
 =? null if parsed && store.is-form(parsed, "import") && mode != brix-mode-main
 =? member-line(text) if !parsed && mode == brix-mode-member
 =? parsed if is-untitled || !parsed || store.is-blank(parsed) || store.is-comment(parsed)
@@ -1524,12 +1531,24 @@ if index < items.length || !is-shaped
 . first = rows.length
 . is-style = store.is-form(node, "style") || store.is-form(node, "style-extend")
 . mode = if is-style then brix-mode-style else brix-mode-member
-while index < items.length && !is-divided(items[index])
-    part(build, items[index], brix-part-statement, mode, node, SourceRowZone.body)
-    index += 1
+. divided = index
+while divided < items.length && !is-divided(items[divided])
+    divided += 1
+. lead = divided
+while lead > index && store.is-comment(items[lead - 1])
+    lead -= 1
+. late = late-members(items, divided)
+for position in index .. < lead
+    part(build, items[position], brix-part-statement, mode, node, SourceRowZone.body)
+for position in late
+    part(build, items[position], brix-part-statement, mode, node, SourceRowZone.body)
+for position in lead .. < divided
+    part(build, items[position], brix-part-statement, mode, node, SourceRowZone.body)
 if rows.length == first && !is-shaped
     rows += brix-blank-line(brix-mode-separator, node)
-for position in index .. < items.length
+for position in divided .. < items.length
+    if late has position
+        continue
     . item = items[position]
     names.home(item, node)
     if is-function(item)
@@ -1541,6 +1560,25 @@ for position in index .. < items.length
     else
         part(build, item, brix-part-note, brix-mode-note, item, SourceRowZone.body)
 rows += brix-gap(brix-mode-tail, node) • is-open-end true
+
+────────────────────
+_ do late-members [Index]
+    - items ImmutableTableSpan'SourceNode
+    - start Index
+
+. found [Index]
+. run [Index]
+for position in start .. < items.length
+    . item = items[position]
+    if store.is-comment(item)
+        run += position
+    else if store.is-blank(item) || is-divided(item)
+        run = List'Index()
+    else
+        found ++= run
+        found += position
+        run = List'Index()
+= found
 
 ────────────────────
 _ do part
@@ -1678,7 +1716,7 @@ _ do statement-rows
     - zone SourceRowZone
     - rows [SourceOutlineRow]
 
-if store.is-form(node, "paragraph")
+if store.is-form(node, "paragraph") && is-text-body
     line-rows(node, indent, zone, rows)
     =
 if store.is-form(node, "before") || store.is-form(node, "where")
@@ -1689,10 +1727,14 @@ if store.is-form(node, "before") || store.is-form(node, "where")
 if store.is-form(node, "header") && store.count(node) == 2 && is-flow(mode)
     rows += SourceOutlineRow(null, source-row-decoration, indent, false, source-divider-double, held, false)
     shown = brix-mode-titled
-printer.scan-row(node)
+if mode == brix-mode-argument
+    printer.scan-argument(node)
+else
+    printer.scan-row(node)
 . holder = printer.holder
 . start = printer.start
 . armed = printer.armed
+. is-arguing = printer.is-arguing
 if mode == brix-mode-styled && holder != null && start < store.count(holder)
     shown = brix-mode-rule
 . is-preamble = zone == SourceRowZone.loose && is-import(node)
@@ -1719,7 +1761,7 @@ if store.is-form(holder, "paragraph")
             - !printer.has-text
             - zone
     =
-. inner = nested-mode(node, holder, mode)
+. inner = if is-arguing then brix-mode-argument else nested-mode(node, holder, mode)
 if armed
     for item in store.listed(armed, 1)
         if item.index == holder.index
@@ -1736,6 +1778,8 @@ for index in start .. < items.length
         statement-rows(item, indent, owner, mode, zone, rows)
     else
         statement-rows(item, indent + 1, owner, inner, zone, rows)
+
+.. is-text-body = printer.text-body(store.items(owner))?.index == node.index
 
 ────────────────────
 _ do section-rows
@@ -1768,7 +1812,7 @@ _ nested-mode SourceRowMode
     brix-mode-keyframe
 |? head == "when-style"
     brix-mode-styled
-|? is-nested || mode == brix-mode-member || mode == brix-mode-main
+|? is-nested || mode == brix-mode-member || mode == brix-mode-main || mode == brix-mode-argument
     brix-mode-statement
 ??
     mode
@@ -1827,7 +1871,7 @@ _ do resolved-spans [SourceSpan]
     - row SourceOutlineRow
     - node ImmutableTableRow'SourceNode
 
-. text = printer.row(node)
+. text = printed(row, node)
 = names.resolved(highlight(text, row.mode), printer.tags, row.owner)
 
 ────────────────────

@@ -1,3 +1,4 @@
+./brix-fit
 ./brix-fixes
 ./conditionals
 ./config
@@ -131,17 +132,19 @@ if rule-id == "style/prefer-shorthand"
 
 . max = option-int(context.options, "max", 100)
 . template-text = template-text-lines(source.lines)
+. longs [U32]
 . index = 0u32
 for line in source.lines
     index += 1
-
     . kind = classify-line(line)
-    if kind == .line-divider || kind == .line-comment || template-text[index - 1]
-        continue
-
-    . length = visible-length(line)
-    if length > max
-        context.report("Line is $length columns; expected $max or fewer.", index, (max + 1) as U32)
+    if kind != .line-divider && kind != .line-comment && !template-text[index - 1] && visible-length(line) > max
+        longs += index
+. fixes [U32 = LintFix]
+if context.is-fixing && longs.length != 0
+    fixes = yumi-fit-fixes(source, longs, max as Size)
+for line in longs
+    . length = visible-length(source.lines[(line - 1) as Index])
+    context.report("Line is $length columns; expected $max or fewer.", line, (max + 1) as U32, "actionable", fixes[line])
 
 ━━━━━━━━━━━━━━━━━━━━
 + ComplexityCounts

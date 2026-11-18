@@ -767,3 +767,289 @@ content = child
 a
 b
 ```
+
+## Lazies attached to a value
+
+### A lazy attached to an attribute's value is part of the value: the attribute is given again as what the lazy reads changes, whether the value reads the lazy plainly or with "#", in a scope or in the block of a call, and a "#" read written in the value itself is still followed. Lazies of one name in several attributes are each their own.
+
+```brix
+(main
+  (let count 1)
+  (let step 10)
+  (<> Board (id: board)
+    (<> Text (text: "direct")
+      (= note (str #count " seen"))
+    )
+    (<> Text (text: "lazy")
+      (= note
+        (scope (str shown " seen")
+          (lazy shown #count)
+        )
+      )
+    )
+    (<> Text (text: "plain")
+      (= note
+        (scope (str shown " seen, step " #step)
+          (lazy shown #count)
+        )
+      )
+    )
+    (<> Text (text: "tracked")
+      (= note
+        (scope (str #shown " seen")
+          (lazy shown (* #count 2))
+        )
+      )
+    )
+    (<> Text (text: "call")
+      (= note
+        (call (. (call padded shown) trim)
+          (block (lazy shown (+ #count #step)))
+        )
+      )
+    )
+  )
+  (call (. board show))
+  (= count 5)
+  (call (. board show))
+  (= step 20)
+  (call (. board show))
+  (= count 6)
+  (call (. board show))
+)
+
+(fn-expr + padded String
+  (param n Int)
+  (str "  " n "  ")
+)
+
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (prop + note _ (= ""))
+  (fn-do + This _
+    (param text _)
+  )
+)
+
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (list String))
+    (for (in child (call (of children-of Text)))
+      (+= parts (str (. child text) ": " (. child note)))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
+```
+
+```output
+direct: 1 seen, lazy: 1 seen, plain: 1 seen, step 10, tracked: 2 seen, call: 11
+direct: 5 seen, lazy: 5 seen, plain: 5 seen, step 10, tracked: 10 seen, call: 15
+direct: 5 seen, lazy: 5 seen, plain: 5 seen, step 20, tracked: 10 seen, call: 25
+direct: 6 seen, lazy: 6 seen, plain: 6 seen, step 20, tracked: 12 seen, call: 26
+```
+
+### A lazy attached to the value of an attribute in a row of a markup loop or in an arm of a markup `if` is part of the value.
+
+```brix
+(main
+  (let count 1)
+  (let names (list "a" "b"))
+  (let open true)
+  (<> Board (id: board)
+    (for (in name names)
+      (<> Text (text: name)
+        (= note
+          (scope (str shown " seen")
+            (lazy shown #count)
+          )
+        )
+      )
+    )
+    (if #open
+      (<> Text (text: "arm")
+        (= note
+          (scope (str #shown " seen")
+            (lazy shown (* #count 2))
+          )
+        )
+      )
+    )
+  )
+  (call (. board show))
+  (= count 5)
+  (call (. board show))
+  (= count 6)
+  (call (. board show))
+)
+
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (prop + note _ (= ""))
+  (fn-do + This _
+    (param text _)
+  )
+)
+
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (list String))
+    (for (in child (call (of children-of Text)))
+      (+= parts (str (. child text) ": " (. child note)))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
+```
+
+```output
+a: 1 seen, b: 1 seen, arm: 2 seen
+a: 5 seen, b: 5 seen, arm: 10 seen
+a: 6 seen, b: 6 seen, arm: 12 seen
+```
+
+### A lazy attached to the value of an attribute in a class's markup, in a row of a loop, in an arm of an `if` or on an element alone, is part of the value where the value reads it plainly, reads nothing tracked itself and only formats it.
+
+```brix
+(import /core/markup)
+
+(main
+  (<> Board (id: board))
+  (let form (. board form))
+  (call (. board show))
+  (= (. form count) 5)
+  (call (. board show))
+  (= (. form count) 6)
+  (call (. board show))
+)
+
+(type + Form
+  (prop + count _ (= 1))
+)
+
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (prop + note _ (= ""))
+  (fn-do + This _
+    (param text _)
+  )
+)
+
+(type + Board (is MarkupNode)
+  (prop + form _ (= (call Form)))
+  (prop + names _ (= (list "a" "b")))
+  (prop + open _ (= true))
+  (fn-do + show _
+    (let parts (list String))
+    (for (in child (call (of children-of Text)))
+      (+= parts (str (. child text) ": " (. child note)))
+    )
+    (print (call (. ", " join) parts))
+  )
+  (content
+    (for (in name #names)
+      (<> Text (text: name)
+        (= note (scope (str n " seen") (lazy n (. form #count))))
+      )
+    )
+    (if #open
+      (<> Text (text: "arm")
+        (= note (scope (str n " arm") (lazy n (* (. form #count) 2))))
+      )
+    )
+    (<> Text (text: "alone")
+      (= note (scope (str n " alone") (lazy n (. form #count))))
+    )
+  )
+)
+```
+
+```output
+a: 1 seen, b: 1 seen, arm: 2 arm, alone: 1 alone
+a: 5 seen, b: 5 seen, arm: 10 arm, alone: 5 alone
+a: 6 seen, b: 6 seen, arm: 12 arm, alone: 6 alone
+```
+
+### A lazy attached to the value of an attribute in a row of a class's markup loop is part of the value beside a StyleSheet slot the value reads as "$name": the attribute is given again as the value or the lazy reads something new.
+
+```brix
+(import /core/style)
+
+(main
+  (<> Page (id: page)
+    (<> Gutter (id: gutter))
+  )
+  (call (. gutter show))
+  (= (. gutter is-marked) true)
+  (call (. page settle))
+  (call (. gutter show))
+  (= (. gutter is-marked) false)
+  (= ([] (. gutter rows) 0) (call Row "del"))
+  (call (. page settle))
+  (call (. gutter show))
+)
+
+(type + Look (is Style)
+  (prop + ink String (= "none"))
+  (prop + size Int (= 1))
+)
+
+(style Palette
+  (using Look)
+  (prop + accent String (= "blue"))
+  (rule gutter-cell
+    (= size 2)
+  )
+)
+
+(type + Row
+  (prop + kind String)
+  (fn-do + This _
+    (param kind _)
+  )
+)
+
+(fn-expr + kind-ink String
+  (param kind String)
+  (param owner Gutter)
+  (str kind "-ink")
+)
+
+(type + Cell (is MarkupNode)
+  (using Look)
+)
+
+(type + Gutter (is MarkupNode)
+  (using Palette)
+  (prop + rows _ (= (list (call Row "add") (call Row "keep"))))
+  (prop + is-marked _ (= false))
+  (fn-do + show _
+    (let parts (list String))
+    (for (in cell (call (of children-of Cell)))
+      (+= parts (str (. cell $ink) " " (. cell $size)))
+    )
+    (print (call (. ", " join) parts))
+  )
+  (content
+    (for (in row #rows)
+      (<> Cell (• gutter-cell)
+        (= ink
+          (scope (if-expr #is-marked $accent row-ink)
+            (lazy row-ink (call kind-ink (. #row kind) this))
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + Page (is MarkupRoot)
+  (using Palette)
+)
+```
+
+```output
+add-ink 2, keep-ink 2
+blue 2, blue 2
+del-ink 2, keep-ink 2
+```

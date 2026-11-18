@@ -55,10 +55,17 @@ t.check("another provider's data is left out", answer["session"] == null)
 . source = FragmentedAIStream(openai-tool-sse(), 3)
 . lines = collect-event-summaries(source)
 
-. expected = "".join
-    * "begin:text\ndelta:Hel\ndelta:lo\nbegin:tool\ndelta:{\"x\":"
-    * "\ndelta:1}\nusage:2\nend:text:1\nend:tool:weather:{\"x\": 1}"
-    * "\ndone:tool-calls:3"
+. expected = "
+    begin:text
+    delta:Hel
+    delta:lo
+    begin:tool
+    delta:{"x":
+    delta:1}
+    usage:2
+    end:text:1
+    end:tool:weather:{"x": 1}
+    done:tool-calls:3
 t.expect("fragmented SSE event lifecycle", expected, "\n".join(lines))
 
 . null-source = DataStream'Byte(openai-null-tool-sse())
@@ -82,9 +89,8 @@ t.expect("stream completes", "done:stop:1", lines.tail)
 + do openai-invalid-stream-tests TestCase
     - t TestCase
 
-. source-text = "".join
-    * "data: {\"id\":\"chat-3\",\"choices\":[{"
-    * "\"delta\":{\"content\":\"unfinished\"},\"finish_reason\":null}]}\n\n"
+. source-text = "
+    data: {"id":"chat-3","choices":[{"delta":{"content":"unfinished"},"finish_reason":null}]}${"\n\n"}
 . source = DataStream'Byte(source-text)
 . provider = OpenAIStreamProvider(source)
 . result = catch complete(provider, AIRequest("mock"))
@@ -190,53 +196,39 @@ match reason
         "other"
 
 ━━━━━━━━━━━━━━━━━━━━
-_ openai-tool-sse
+_ " openai-tool-sse
 
-"".join
-    * "data: {\"id\":\"chat-1\",\"choices\":[{"
-    * "\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-1\",\"choices\":[{"
-    * "\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
-    * "\"content\":\"lo\",\"annotations\":[{"
-    * "\"type\":\"url_citation\",\"url_citation\":{"
-    * "\"title\":\"Example\",\"url\":\"https://example.com\","
-    * "\"start_index\":0,\"end_index\":5}}]},"
-    * "\"finish_reason\":null}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
-    * "\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{"
-    * "\"name\":\"weather\",\"arguments\":\"{\\\"x\\\":\"}}]},"
-    * "\"finish_reason\":null}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{"
-    * "\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]},"
-    * "\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-1\",\"choices\":[],\"usage\":{"
-    * "\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\n"
-    * "data: [DONE]\n\n"
+data: {"id":"chat-1","choices":[{"delta":{"role":"assistant"},"finish_reason":null}],"usage":null}
+
+data: {"id":"chat-1","choices":[{"delta":{"content":"Hel"},"finish_reason":null}],"usage":null}
+
+data: {"id":"chat-1","choices":[{"delta":{"content":"lo","annotations":[{"type":"url_citation","url_citation":{"title":"Example","url":"https://example.com","start_index":0,"end_index":5}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chat-1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"weather","arguments":"{\\"x\\":"}}]},"finish_reason":null}],"usage":null}
+
+data: {"id":"chat-1","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]},"finish_reason":"tool_calls"}],"usage":null}
+
+data: {"id":"chat-1","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}
+
+data: [DONE]${"\n\n"}
 
 ━━━━━━━━━━━━━━━━━━━━
-_ openai-null-tool-sse
+_ " openai-null-tool-sse
 
-"".join
-    * "data: {\"id\":\"chat-null\",\"choices\":[{\"delta\":{"
-    * "\"tool_calls\":[{\"index\":0,\"id\":\"call-null\",\"function\":{"
-    * "\"name\":\"none\",\"arguments\":\"null\"}}]},"
-    * "\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n"
-    * "data: [DONE]\n\n"
+data: {"id":"chat-null","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-null","function":{"name":"none","arguments":"null"}}]},"finish_reason":"tool_calls"}],"usage":null}
+
+data: [DONE]${"\n\n"}
 
 ━━━━━━━━━━━━━━━━━━━━
-_ openai-search-audio-sse
+_ " openai-search-audio-sse
 
-"".join
-    * "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{"
-    * "\"web_search\":{\"id\":\"search-1\",\"query\":\"brix ai\"}},"
-    * "\"finish_reason\":null}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{"
-    * "\"audio\":{\"id\":\"audio-1\",\"data\":\"Zm9v\",\"transcript\":\"foo\"}},"
-    * "\"finish_reason\":\"stop\"}],\"usage\":null}\n\n"
-    * "data: {\"id\":\"chat-2\",\"choices\":[],\"usage\":{"
-    * "\"prompt_tokens\":1,\"completion_tokens\":0,\"total_tokens\":1}}\n\n"
-    * "data: [DONE]\n\n"
+data: {"id":"chat-2","choices":[{"delta":{"web_search":{"id":"search-1","query":"brix ai"}},"finish_reason":null}],"usage":null}
+
+data: {"id":"chat-2","choices":[{"delta":{"audio":{"id":"audio-1","data":"Zm9v","transcript":"foo"}},"finish_reason":"stop"}],"usage":null}
+
+data: {"id":"chat-2","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":0,"total_tokens":1}}
+
+data: [DONE]${"\n\n"}
 
 ━━━━━━━━━━━━━━━━━━━━
 _ OpenAIStreamProvider is AIProvider

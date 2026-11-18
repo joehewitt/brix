@@ -50,6 +50,7 @@ _ brix-level-primary = 26
 + armed ImmutableTableRow'SourceNode?
 + tail ImmutableTableRow'SourceNode?
 + has-text Bool
++ is-arguing Bool
 + tags [BrixTag]
 + targets [U32]
 + target-start Size
@@ -67,6 +68,8 @@ _ column Size
 _ is-field Bool
 _ is-setting Bool
 _ is-binding Bool
+_ is-stream Bool
+_ is-elided Bool
 
 ────────────────────
 + This
@@ -99,11 +102,26 @@ text-line(node)
 = "".join(parts)
 
 ────────────────────
++ do argument String
+    - node ImmutableTableRow'SourceNode
+
+begin(false)
+argument-row(node)
+= "".join(parts)
+
+────────────────────
 + do scan-row
     - node ImmutableTableRow'SourceNode
 
 begin(true)
 statement(node)
+
+────────────────────
++ do scan-argument
+    - node ImmutableTableRow'SourceNode
+
+begin(true)
+argument-row(node)
 
 ────────────────────
 + do scan-heading
@@ -167,9 +185,27 @@ column = 0
 is-field = false
 is-setting = false
 is-binding = false
+is-stream = false
+is-elided = false
+is-arguing = false
 target-start = 0
 target-end = 0
 target-depth = targets.length
+
+────────────────────
+_ do streaming Bool
+    - next Bool
+
+. outer = is-stream
+is-stream = next
+= outer
+
+────────────────────
+_ do elide
+    - text String
+
+is-elided = true
+put(text)
 
 ────────────────────
 _ do note
@@ -221,6 +257,7 @@ _ do hold
 . count = store.count(node)
 holder = node
 armed = null
+is-arguing = false
 start = if origin < count then origin else count
 
 ────────────────────
@@ -426,6 +463,16 @@ match items
         statement(node)
 
 ────────────────────
+_ do argument-row
+    - node ImmutableTableRow'SourceNode
+
+put("- ")
+. before = column
+payload(node)
+if targets.length != 0
+    note(node, before)
+
+────────────────────
 _ do statement
     - node ImmutableTableRow'SourceNode
 
@@ -463,7 +510,8 @@ match items
         tagged("=", .exit)
     | [.atom(_, "return"), value, ...]
         tagged("=", .exit)
-        put(" ")
+        if !store.is-form(value, "block")
+            put(" ")
         payload(value)
     | [.atom(_, mark {brix-is-yield(it)}), ...]
         put(brix-return-mark(mark))
@@ -543,7 +591,9 @@ match items
         . mark = store.text(op)
         put("$mark ")
         if mark == "~>"
+            . outer = streaming(true)
             expression(value, 0, false)
+            is-stream = outer
             hold(node, 3)
         else
             expression(value, 0, true)
@@ -717,7 +767,8 @@ if level == brix-level-assign && items.length == 3
     is-setting = false
     put(" ")
     put(brix-operator-text(head))
-    put(" ")
+    if !store.is-form(items[2], "block")
+        put(" ")
     payload(items[2])
     =
 . shown = called(node)
@@ -821,14 +872,16 @@ _ do alternative
     - is-tail Bool
 
 put("~ ")
+. outer = streaming(true)
 expression(items[1], 0, false)
+is-stream = outer
 . origin Size = 2
 while origin < items.length && alternative-part(items[origin])
     origin += 1
 if is-tail
     hold(node, origin)
 else if origin < items.length
-    put(" {…}")
+    elide(" {…}")
 
 ────────────────────
 _ do alternative-part Bool
@@ -1041,7 +1094,7 @@ match items
                     break
             =
         if text-body(items) != null
-            put("¶ ")
+            put("\" ")
         if has-flag(items, ":get")
             put("get ")
             expression(key, brix-level-primary, false)
@@ -1062,7 +1115,7 @@ match items
         if word.ends-with("-do")
             put("do ")
         if text-body(items) != null
-            put("¶ ")
+            put("\" ")
         put(if is-from then "from " else "to ")
         expression(other, if is-from then 0 else brix-level-primary, false)
         signature-tail(items, 3)
@@ -1487,8 +1540,12 @@ while origin < items.length
             put(" = ")
             guarded(value, brix-level-named, false)
         | [.atom(_, "text:"), value, ...]
-            put(" ")
-            expression(value, brix-level-primary, false)
+            if store.is-text(value) || store.is-form(value, "str")
+                put(" ")
+                expression(value, brix-level-primary, false)
+            else
+                put(" = ")
+                guarded(value, brix-level-named, false)
         ??
             break
     origin += 1
@@ -1506,7 +1563,7 @@ for position in tag-start .. < origin
 if is-tail
     hold(node, origin)
 else if origin < items.length
-    put(" {…}")
+    elide(" {…}")
 
 ────────────────────
 _ do named
@@ -1580,27 +1637,82 @@ for index in origin + 1 .. < items.length
 . has-named = named > 0
 . has-extra = extra > 0
 . is-tight = minimum > brix-level-named
-. is-wrapped = (has-named && (no-prep || is-tight)) || (has-extra && !has-named && is-tight)
+. last = items[items.length - 1]
+. is-flat = extra == 1 && !has-named && (is-tight || !is-tail) && is-argued(last)
+. is-wrapped = !is-flat && ((has-named && (no-prep || is-tight)) || (has-extra && !has-named && is-tight))
 if is-wrapped
     put("(")
 else if is-tail && tail == null
     tail = node
+. outer = streaming(false)
+. is-rowed = is-tail && positional > 0 && !has-named && !has-extra && elides(items, origin + 1)
 expression(items[origin], brix-level-primary, false)
-if positional > 0 || !(has-named || (has-extra && is-bare(items[items.length - 1])))
+if is-rowed
+    hold(node, origin + 1)
+    is-arguing = true
+else if is-flat
     put("(")
-    . wrote = false
-    for index in origin + 1 .. < items.length
-        . item = items[index]
-        if argument-kind(item) == BrixArgument.positional
-            if wrote
-                put(", ")
-            free(item, brix-level-closure, false)
-            wrote = true
+    for index in origin + 1 .. < items.length - 1
+        free(items[index], brix-level-closure, false)
+        put(", ")
+    . given = store.items(last)
+    for index in 1 .. < given.length
+        if index > 1
+            put(", ")
+        free(store.item(given[index], 1), brix-level-closure, false)
     put(")")
-for index in origin + 1 .. < items.length
-    trailing(items[index], is-tail && !is-wrapped && index + 1 == items.length)
+else
+    if positional > 0 || !(has-named || (has-extra && is-bare(items[items.length - 1])))
+        put("(")
+        . wrote = false
+        for index in origin + 1 .. < items.length
+            . item = items[index]
+            if argument-kind(item) == BrixArgument.positional
+                if wrote
+                    put(", ")
+                free(item, brix-level-closure, false)
+                wrote = true
+        put(")")
+    for index in origin + 1 .. < items.length
+        trailing(items[index], is-tail && !is-wrapped && index + 1 == items.length)
+is-stream = outer
 if is-wrapped
     put(")")
+
+────────────────────
+_ do is-argued Bool
+    - node ImmutableTableRow'SourceNode
+
+=? false if !store.is-form(node, "block") || store.count(node) < 2
+for item in store.listed(node, 1)
+    =? false if !store.is-form(item, "arg") || store.count(item) != 2
+= true
+
+────────────────────
+_ do elides Bool
+    - items ImmutableTableSpan'SourceNode
+    - first Size
+
+. quiet = is-quiet
+. elided = is-elided
+. texted = has-text
+. field = is-field
+. setting = is-setting
+. binding = is-binding
+. binder = binds-clause
+is-quiet = true
+is-elided = false
+for index in first .. < items.length
+    free(items[index], brix-level-closure, false)
+. found = is-elided
+is-quiet = quiet
+is-elided = elided
+has-text = texted
+is-field = field
+is-setting = setting
+is-binding = binding
+binds-clause = binder
+= found
 
 ────────────────────
 _ is-bare Bool
@@ -1632,7 +1744,7 @@ match fields
         if is-line
             hold(item, 1)
         else
-            put(" {…}")
+            elide(" {…}")
     ??
         =
 
@@ -1694,7 +1806,9 @@ for index in 1 .. < count
     . is-last = is-tail && !is-wrapped && index + 1 == count
     if is-last && level == brix-level-assign && tail == null
         tail = item
+    . outer = streaming(head == "~>" && index == 2)
     expression(item, least, is-last)
+    is-stream = outer
 if is-wrapped
     put(")")
 
@@ -1784,7 +1898,7 @@ if origin < items.length
     else if is-tail && !is-wrapped
         hold(body, 1)
     else
-        put(" {…}")
+        elide(" {…}")
 if is-wrapped
     put(")")
 
@@ -1814,7 +1928,7 @@ for index in 1 .. < items.length
     . line = items[index]
     match line
         | .string(_, text)
-            put(brix-escaped(text, true))
+            put(brix-escaped(text))
         | .list(_, start, count)
             if store.is-form(line, "str")
                 interpolated-parts(store.nodes[start .. < start + count], 1, true)
@@ -1845,7 +1959,7 @@ for index in origin .. < items.length
     . is-joined = index + 1 < items.length && continues(items[index + 1])
     match part
         | .string(_, text)
-            put(if is-quoted then brix-escaped(text, true) else brix-line-escaped(text))
+            put(if is-quoted then brix-escaped(text) else brix-line-escaped(text))
         | .atom(_, name)
             if brix-is-name(name) && !is-joined
                 put("\$")
@@ -1968,7 +2082,7 @@ match items
         call(node, items, 1, minimum, is-tail)
     | [.atom(_, "paragraph"), ...]
         if is-tail
-            put("¶")
+            put("\"")
             hold(node, 1)
         else
             quoted-lines(items)
@@ -1980,7 +2094,7 @@ match items
         if is-tail && !is-wrapped
             hold(node, 2)
         else
-            put(" {…}")
+            elide(" {…}")
         if is-wrapped
             put(")")
     | [.atom(_, op {it == "." || it == "?." || it == "*."}), target, _, ...]
@@ -2032,8 +2146,11 @@ match items
                 expression(argument, brix-level-closure, false)
                 put(")")
     | [.atom(_, op {it == "?" || it == "*" || it == "+"}), target]
-        expression(target, brix-level-primary, false)
-        put(op)
+        if is-stream || op == "?"
+            expression(target, brix-level-primary, false)
+            put(op)
+        else
+            expression(target, minimum, is-tail)
     | [.atom(_, "channel"), target]
         expression(target, brix-level-primary, false)
         put("<>")
@@ -2047,7 +2164,9 @@ match items
     | [.atom(_, op {brix-is-word-prefix(it)}), operand]
         prefix("$op ", operand, brix-level-prefix, minimum, is-tail)
     | [.atom(_, "~"), operand]
+        . outer = streaming(true)
         prefix("~ ", operand, brix-level-closure, minimum, is-tail)
+        is-stream = outer
     | [.atom(_, "~"), _, _, ...]
         alternative(node, items, is-tail)
     | [.atom(_, op {it == "|" || it == "<*"}), operand]
@@ -2110,16 +2229,22 @@ match items
         put("[${store.text(value)}]")
     | [.atom(_, "{}"), body]
         put("{ ")
+        . outer = streaming(false)
         expression(body, 0, false)
+        is-stream = outer
         put(" }")
     | [.atom(_, "{}"), target, _, ...]
         expression(target, brix-level-primary, false)
         put("{")
+        . outer = streaming(false)
         list(items, 2, ", ", brix-level-closure)
+        is-stream = outer
         put("}")
     | [.atom(_, "\\{}"), body]
         put("\\{ ")
+        . outer = streaming(false)
         expression(body, 0, false)
+        is-stream = outer
         put(" }")
     | [.atom(_, "into"), ...]
         put("into ")
@@ -2206,12 +2331,12 @@ match items
         if is-tail
             hold(node, 2)
         else
-            put(" {…}")
+            elide(" {…}")
     | [.atom(_, "block"), ...]
         if is-tail
             hold(node, 1)
         else
-            put("{…}")
+            elide("{…}")
     | [.atom(_, "inline"), body]
         put(": ")
         expression(body, 0, is-tail)
@@ -2311,7 +2436,7 @@ for index in 1 .. < shown
         put(" ")
     loop-clause(items[index])
 if shown < count
-    put(" {…}")
+    elide(" {…}")
 
 ━━━━━━━━━━━━━━━━━━━━
 + brix-is-keyword-head Bool
@@ -2433,14 +2558,13 @@ _ brix-glued-operator String?
 + brix-quoted String
     - value String
 
-"\"${brix-escaped(value, true)}\""
+"\"${brix-escaped(value)}\""
 
 ━━━━━━━━━━━━━━━━━━━━
 + brix-escaped String
     - value String
-    - is-quoted Bool
 
-"".join(brix-escaped-char(each, is-quoted) in value)
+"".join(brix-escaped-char(each) in value)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do brix-line-escaped String
@@ -2451,10 +2575,12 @@ _ brix-glued-operator String?
 for index in 0 .. < chars.length
     . c = chars[index]
     . next = if index + 1 < chars.length then chars[index + 1] else ' '
-    if c == '\\' || (c == '$' && brix-leads-embed(next))
+    if c == '$' && brix-leads-embed(next)
         parts += "\\$c"
-    else
+    else if c == '$' || c == '"'
         parts += "$c"
+    else
+        parts += brix-escaped-char(c)
 = "".join(parts)
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -2604,19 +2730,18 @@ bytes.length > 0 && (byte == 45 || byte == 46 || is-digit || is-lower)
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-escaped-char String
     - c Char
-    - is-quoted Bool
 
-|? c == '\\' || ((c == '"' || c == '$') && is-quoted)
+|? c == '\\' || c == '"' || c == '$'
     "\\$c"
-|? c == '\n' && is-quoted
+|? c == '\n'
     "\\n"
-|? c == '\t' && is-quoted
+|? c == '\t'
     "\\t"
 |? c == '\r'
     "\\r"
-|? is-quoted && short != null
+|? short != null
     short
-|? is-quoted && brix-is-control(c)
+|? brix-is-control(c)
     brix-unicode-escape(c)
 ??
     c as String

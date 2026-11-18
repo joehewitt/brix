@@ -1921,9 +1921,12 @@ _ do track-local
 ` action as it is subscribed. The reference keeps one list for every local of a function by
 ` name, so a local that shares its name with another of its function, one of an enclosing
 ` function anywhere else, one of the value of a property or a rule, and one a live action of
-` any other kind reads have no shape here yet. A local nothing stores to after it is declared,
+` any other kind reads have no shape here yet; a lazy local attached to a live value is no such
+` other, as nothing stores to it. A local nothing stores to after it is declared,
 ` nor to any other local of its function of its name, is read plainly where no statement runs
-` again, though the function keeps its list where it can: no store runs what reads it.
+` again, though the function keeps its list where it can: no store runs what reads it. A lazy
+` local in the value of a live statement is part of the value, which follows what it reads, so it
+` is read plainly.
 . plain = !restored(slot) && !restored-namesake(slot)
 . subscribers = subscribers-slot(slot)
 . kind = frame.declaration.kind
@@ -1934,6 +1937,10 @@ if kind == .key-decl && tree.tests-row(frame.declaration.syntax) && !plain
     . message = "The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep \"$shown\" in a property and read it with \"#\""
     frame.diagnose(id, .stated, program.store-atom(message))
     =
+if attached(slot)
+    if subscribers != no-slot
+        do hold-subscribers(id, subscribers)
+    =
 if subscribers == no-slot || (frame.is-captured(slot) && !reaches) || in-initializer
     if !plain
         decline(id)
@@ -1941,7 +1948,7 @@ if subscribers == no-slot || (frame.is-captured(slot) && !reaches) || in-initial
         do hold-subscribers(id, subscribers)
     =
 .. in-initializer = instances.rows[instance].initializer != 0
-if bindings.namesake(slot, false) && !plain
+if unattached-namesake(slot) && !plain
     decline(id)
     =
 if !hold-subscribers(id, subscribers)
@@ -1961,6 +1968,25 @@ if context == .live-statement
     =
 if !plain
     decline(id)
+
+────────────────────
+_ do attached Bool
+    - slot SlotId
+
+. group = bindings.slots[slot].group
+= bindings.slots[slot].kind == .slot-lazy && !is-live-statement(group) && in-statement
+    .. in-statement = live-context(group) == .live-statement
+
+────────────────────
+_ do unattached-namesake Bool
+    - slot SlotId
+
+. other = bindings.slots[slot].namesake
+while other != no-slot && other != slot
+    if bindings.is-trackable(other) && !attached(other)
+        = true
+    other = bindings.slots[other].namesake
+= false
 
 ────────────────────
 _ do hold-subscribers Bool
@@ -2207,9 +2233,10 @@ if pulled-pipelines.find(pipeline) == null
 ` action, so what it reads where it opens none of its own is read plainly when it runs
 ` (`gives-closure`). The value a root `<This` gives a property is one of a property. The
 ` reference opens none for a declaration that is not lazy, which is read as the one open around
-` it where that is none or a rule's, and a lazy one in the value of a property runs again with
-` the value, whose action it reads in; a function written in its value sees none where none is
-` open around it, as the reference looks out through the functions around it for one. A line of
+` it where that is none or a rule's, and a lazy one in the value of a property or of a live
+` statement runs again with the value, whose action it reads in; a function written in its value
+` sees none where none is open around it, as the reference looks out through the functions around
+` it for one. A line of
 ` an arm's body that gives content is a live statement, as one of an element's body is. An
 ` element that gives a slot content is built by a function of its own, which the reference
 ` compiles where no live action is open (`builds-slot`). The name the parameter of a slot outlet
@@ -2240,7 +2267,7 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
             if !row.is-lazy
                 . plain = outer == .live-none || (!nested && outer == .live-rule)
                 = if plain then outer else LiveContext.live-other
-            = if outer == .live-value then .live-value else LiveContext.live-other
+            = if outer == .live-value || outer == .live-statement then outer else LiveContext.live-other
         | .node-markup
             if !nested && (live-argument(node, id) != 0 || live-line(node, id) != 0)
                 = .live-statement
@@ -2424,14 +2451,16 @@ _ do enclosing-statement SyntaxId
 
 ` The assignment, the declaration, the line of a class's markup that declares a property, the
 ` stream of a value as it changes, or the argument or the line of content of a markup element, or
-` of an arm of a region, run again a node is written in, or none.
+` of an arm of a region, run again a node is written in, or none. A lazy declaration in the value
+` of one is part of it.
 for node in id + 1 .. < (tree.nodes.length as SyntaxId)
     if tree.subtree-start(node) <= id
         match? tree.nodes[node]
             | .node-assign
                 = node
-            | .node-declare
-                = node
+            | .node-declare(row)
+                if !row.is-lazy || is-live-statement(node)
+                    = node
             | .node-iterable-expression
                 if is-live-statement(node)
                     = node

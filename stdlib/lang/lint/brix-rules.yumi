@@ -1,4 +1,6 @@
+./brix-fit
 ./brix-fix
+./brix-shapes
 ./brix-source
 ./config
 ./diagnostics
@@ -15,55 +17,6 @@
 /lang/brix/layout
 
 ━━━━━━━━━━━━━━━━━━━━
-+ BrixRowShape is Tuple
-
-+ line U32
-+ column U32
-+ shown String
-+ columns Size
-+ indent Size
-+ is-text Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ do brix-row-shapes [BrixRowShape] ?! SexpError
-    - text String
-
-. language = BrixLanguage()
-. store = use language.store
-. document = source-document-read(language, text)
-. marked = use SourceStore()
-. marks = SexpMarks(marked.latest-id)
-sexp-read(text, marked, marks)
-. shapes [BrixRowShape]
-. place = BrixCursor(byte-view(text))
-for index in 0 .. < document.declarations.length
-    for outline in document.rows-of(index)
-        . row = language.render(outline)
-        . node = store.node-at(row.node)
-        if node && !store.is-comment(node)
-            . start = marks.start(node.id)
-            if start > 0
-                place.advance(start)
-            shapes += BrixRowShape
-                - place.line + 1
-                - place.column + 1
-                - shown(store, node)
-                - row.columns
-                - row.indent
-                - outline.mode == brix-mode-text
-        document.discard()
-= shapes
-
-━━━━━━━━━━━━━━━━━━━━
-_ shown String
-    - store SourceStore
-    - node ImmutableTableRow'SourceNode
-
-if head != null then "($head …)" else "`${store.text(node)}`"
-
-.. head = store.head(node)
-
-━━━━━━━━━━━━━━━━━━━━
 + do lint-brix-width
     - source LintSource
     - context RuleContext
@@ -71,10 +24,18 @@ if head != null then "($head …)" else "`${store.text(node)}`"
 . max = option-int(context.options, "max", 100)
 . shapes = catch? brix-row-shapes(source.text)
 =? if !shapes
+. fixes [U32 = LintFix]
+if context.is-fixing
+    fixes = brix-fit-fixes(source, shapes, max)
 for shape in shapes
     if shape.columns > max && !shape.is-text
         . advice = "Name a part of it with (let …) or (lazy …), or write its arguments one to a row in a (block …)."
-        context.report("${shape.shown} makes a row ${shape.columns} columns wide, and the limit is $max. $advice", shape.line, shape.column)
+        context.report
+            - "${shape.shown} makes a row ${shape.columns} columns wide, and the limit is $max. $advice"
+            - shape.line
+            - shape.column
+            - "actionable"
+            - fixes[shape.id]
 
 ━━━━━━━━━━━━━━━━━━━━
 + do lint-brix-depth
@@ -86,7 +47,9 @@ for shape in shapes
 =? if !shapes
 . is-deep = false
 for shape in shapes
-    . is-over = shape.indent > max && !shape.is-text
+    if shape.is-text
+        continue
+    . is-over = shape.indent > max
     if is-over && !is-deep
         . advice = "Move the inner rows into a function of their own."
         context.report

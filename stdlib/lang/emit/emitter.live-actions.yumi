@@ -914,7 +914,8 @@ do call-protocol(statement, write, channel.operand, found.type, value.operand, h
 ` `declare-again` says, a line of a markup element's body that gives content
 ` as `absorb-again` or `replace-again` says, and the value of a stream as `write-again` says. An
 ` attribute of an element and a line of a style rule that sets a property are stored again in the
-` object kept where they were written (`store-again`).
+` object kept where they were written (`store-again`). The lazy locals declared in the value are
+` part of it, and are evaluated again in each run.
 . live = instances.live
 if live.previous == no-instance || live.next == no-instance
     refuse(.refused-function, declared)
@@ -925,6 +926,7 @@ store-local(previous, call-instance(live.previous, statement, pending.length).op
 store-local(next, call-instance(live.next, statement, pending.length).operand, statement)
 live-actions += LiveTrackers(previous, next)
 rerunning = true
+unsettle-attached(statement)
 . element = tree.argument-element(statement)
 . streamed SyntaxId = 0
 match? tree.nodes[statement]
@@ -972,6 +974,21 @@ else
 rerunning = false
 live-actions.pop()
 emit-end(declared)
+
+────────────────────
+_ do unsettle-attached
+    - statement SyntaxId
+
+. start = tree.subtree-start(statement)
+. owner = instances.rows[unit.instance].enclosing
+for offset in 0 .. < unit.slot-count
+    . slot = unit.slot-start + offset
+    . row = bindings.slots[slot]
+    . inside = row.group >= start && row.group < statement
+    if row.kind != .slot-lazy || !inside || tables.live-statement-of(owner, row.group)
+        continue
+    if is-captured(slot) && sees(slot) && !tables.holds-lazy(slot)
+        unsettle-shared(slot, statement)
 
 ────────────────────
 + do reruns-in Bool

@@ -221,6 +221,49 @@ count 3
 - **Content.** The rows of a class's `content`, such as `(content (= echo #shown))`{.brix}, run as
   the object is made, and those that read tracked state are live.
 
+### Lazies attached to a value
+
+A lazy attached to a live value, with `scope` or in the `block` of a call, is part of the value,
+as one attached to the value of a derived property is. It is worked out again each time the value
+runs, and the value follows the tracked reads made in it.
+
+```brix
+(main
+  (let cart (call Cart))
+  (let label (call Label))
+  (= (. label text)
+    (scope (str q " at " (. cart #price))
+      (lazy q (. cart #quantity))
+    )
+  )
+  (print (. label text))
+  (= (. cart quantity) 3)
+  (print (. label text))
+  (= (. cart price) 7)
+  (print (. label text))
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+  (prop + price _ (= 5))
+)
+
+(type + Label
+  (prop + text _ (= ""))
+)
+```
+
+```output
+1 at 5
+3 at 5
+3 at 7
+```
+
+- **Plain or tracked.** The value follows what `q` reads whether it reads `q` plainly or as `#q`,
+  and it follows the `#` reads written in the value itself too.
+- **Where.** A live assignment, an attribute of a markup element and a row of a class's `content`
+  each work out their attached lazies so.
+
 ### Streams of a value
 
 `(stream (* (. counter #count) 10))`{.brix} is a channel that sends the value now, and then the

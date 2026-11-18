@@ -1205,6 +1205,51 @@ butt
 square
 ```
 
+### A case named by its symbol alone that another union has too, written alone in a block of its own below a declaration, an assignment, a property or a return, is the case of the type each states.
+
+```yumi
+. cap Cap =
+    .round
+-- cap
+. join Join = .miter
+join =
+    .round
+-- join
+-- Brush().cap
+-- ending()
+
+━━━━━━━━━━━━━━━━━━━━
++ Cap is Union
+
+| butt
+| round
+
+━━━━━━━━━━━━━━━━━━━━
++ Join is Union
+
+| miter
+| round
+
+━━━━━━━━━━━━━━━━━━━━
++ Brush
+
++ cap Cap =
+    .round
+
+━━━━━━━━━━━━━━━━━━━━
++ do ending Cap
+
+=
+    .round
+```
+
+```output
+round
+round
+round
+round
+```
+
 ### A case named by its symbol alone is of neither enum that has it where a function written without do gives it as a type that has no such case.
 
 ```yumi crash

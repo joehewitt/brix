@@ -11,6 +11,7 @@ The code editor is split across two libraries. Brix has an editor of its own, wh
 | View | `stdlib/gui/code-editor` | `CodeEditor`, `CodeGutter`, `CodeOverview`, `CodeLinkCard`, `CodeSyntaxStyle` |
 | Find bar | `stdlib/gui/code-editor/code-find-bar.yumi` | `FindBar` runs a `CodeFind` over its `target`; `FindOptions` keeps the case, word and regex toggles in an `AppState` |
 | Brix rows | `stdlib/gui/source-editor` | `SourceEditor` shows a `SourceSession` as rows, `SourceListingPane` shows the forms beside it, and `SourceSurface` paints the boxes behind them |
+| Soft wrap | `stdlib/gui/source-editor/source-wrap.yumi` | `source-wrap` breaks a row into visual lines, `SourceWrap` maps columns to and from them, and `SourceWrapRows` gives each shown row its height |
 
 `CodeEditor.show(session, scroll)` displays a `CodeSession`; several editors may show one session.
 The editor never reads or writes files. It publishes `save-requested`, and the owner saves, usually
@@ -43,7 +44,41 @@ count as two columns, which matches most monospace fonts but is not exact.
 from each language's tree-sitter fold query. The gutter shows a fold arrow on each foldable line,
 and clicking it toggles the fold. `fold`, `unfold`, `fold-all` and `unfold-all` act on the session.
 
-Not supported: IME composition, soft wrap, and multiple carets.
+Not supported: IME composition and multiple carets. `CodeEditor` keeps each line on one visual
+line and scrolls sideways; `SourceEditor` wraps its rows, as Soft Wrap describes.
+
+## Soft Wrap
+
+`SourceEditor` wraps rows that do not fit the visible text area, which ends one box indent short
+of the box's right edge, and rewraps them when the pane resizes, keeping the row at the top of the
+pane in place. `wraps-rows`, true by default, is the only switch; code that creates an editor sets
+it to false to keep each row on one line, with sideways scrolling as before. There is no setting,
+menu item or command for it. Wrapping changes only how rows are laid out, never the text.
+
+- **Breaks.** A line breaks after the last space that fits. A word wider than the line is broken
+  where the line ends. Dividers never wrap.
+- **Continuation indent.** Each later line of a code row starts at the row's leading spaces plus
+  one indent unit, `source-indent-columns`. A row the language renders with `is-prose`, such as a
+  line of a Brix text body or text block, has no extra indent: its later lines start under its
+  first. When the indent leaves fewer than `source-wrap-least` (20) columns, it shrinks so each line
+  keeps at least that many, and a row indented past the pane overflows it rather than wrapping a
+  character per line.
+- **Caret.** A column at a break belongs to the line it starts. Up and Down move by visual line and
+  keep the caret's visual column across rows; Page Up and Page Down move by a page of visual
+  lines. ⌘← and ⌘→, and Home and End, go to the start and end of the visual line, and the end of a
+  line that continues is just before its break. ⌃A and ⌃E still go to the start and end of the
+  whole row. A click maps to the column under it on the clicked visual line, and a moved caret
+  scrolls its visual line into view.
+- **Decorations.** Selections, find hits, link underlines and insight marks split across visual
+  lines. Line numbers, fold arrows and add buttons sit on a row's first visual line; the fold chip,
+  inferred types, captions and notes follow its last. Boxes, bands, held marks, sticky rows, the
+  change bars and the overview take the wrapped heights.
+- **Heights.** `SourceWrapCache` renders each declaration's rows once, as the find cache does, and
+  keeps their texts and line counts by declaration, so an edit recounts only what changed and a
+  resize recounts without rendering. `SourceWrapRows` lays the counts end to end for the region's
+  `VerticalOffsetLayout`, and the editor updates it in place.
+- **Listing.** `SourceListingPane` shows listing lines, not rows, in a region of its own, so its
+  lines stay on one line each and scroll sideways.
 
 ## Highlighting
 

@@ -557,7 +557,10 @@ match? tree.nodes[lhs]
                 note-guarded(lhs, assigned.module, assigned.decl)
         check-tracked-store(id, lhs)
 . target = target-of(lhs, op != .eq-op)
+. primed = op == .eq-op && expect-arms(rhs, target)
+arms-given = no-type
 . written = if op == .eq-op then infer-with-expected(rhs, target, Want().escaping(target, rhs)) else infer(rhs)
+. given = if primed && arms-given != no-type then arms-given else written
 if written == invalid-type || target == invalid-type
     = invalid-type
 . value = stored-value(rhs, written)
@@ -581,8 +584,8 @@ if key
         if frame.slot-type(slot) == assigned-narrowing(settled, value)
             settled = frame.slot-type(slot)
     else if op == .eq-op
-        held = assigned-case(settled, value)
-        settled = assigned-narrowing(settled, value)
+        held = assigned-case(settled, given)
+        settled = assigned-narrowing(settled, given)
     else if !(outer && frame.is-captured(slot))
         . current = frame.slot-type(slot)
         if current != no-type && current != invalid-type
@@ -742,18 +745,22 @@ _ do infer-property-assign TypeId
 ` way is declined. The object of an assignment that applies an operator is typed before the
 ` value, and that of a plain one after it, as the reference evaluates them, but before a case
 ` named by its symbol alone, which evaluates nothing, so that a state machine is found before
-` the case is (`writes-machine`). An event stored is taken once the property is known, as
-` `store-event` says.
-. object-first = (op != .eq-op || tree.nodes[rhs] is .node-symbol) && object-syntax != 0
+` the case is (`writes-machine`), and before arms, which take the type the property is declared
+` as (`expect-arms`). An event stored is taken once the property is known, as `store-event`
+` says.
+. armed = op == .eq-op && tree.is-arms-syntax(tree.arms-value(rhs))
+. object-first = (op != .eq-op || tree.nodes[rhs] is .node-symbol || armed) && object-syntax != 0
 . early = if object-first then infer-found(object-syntax) else Found(no-type)
 if object-first && op == .eq-op && writes-machine(id, early.type, name)
     = invalid-type
+. own-receiver = if owner != no-type then owner else frame.self-type
+if armed
+    expect-arms(rhs, stored-type(if object-syntax != 0 then early.type else own-receiver, name))
 . assigned = infer-found(rhs, if op == .eq-op then Want().adding(.want-store) else Want())
 . value = stored-value(rhs, assigned.type)
 . doubted = assigned.doubted
 . stored = found-event-of(assigned)
 . kept = assigned.kept
-. own-receiver = if owner != no-type then owner else frame.self-type
 . unqualified = object-syntax == 0
 . late = if unqualified || object-first then Found(no-type) else infer-found(object-syntax)
 . receiver = if unqualified then own-receiver else if object-first then early.type else late.type
@@ -1048,6 +1055,16 @@ _ do sets-added Bool
 ` no property of.
 =? false if property-named(receiver, name) != null || types.intrinsic-of(receiver) != .class
 = calls.has-setter(receiver, name, value, rhs)
+
+────────────────────
+_ do stored-type TypeId
+    - receiver TypeId
+    - name Atom
+
+=? no-type if receiver == no-type || receiver == invalid-type
+. found = property-named(receiver, name)
+=? no-type if !found
+= if types.properties[found].storage-kind == .storage-getter then no-type else types.properties[found].type
 
 ────────────────────
 _ do forwards-setter Bool

@@ -211,7 +211,7 @@ for line-no in 0 .. < line-count + 1
         . current-line-start = output.length
         . block-at = if output-kind == 0 && !prefix-line && !is-paragraph then find-block-marker(input, first-content, line-end) else null
         if block-at
-            output.append(input, line-start, block-at + 2)
+            output.append(input, line-start, block-at)
             block-end = output.length
             block-line = line-no
             block-indent = parse-indent(input, line-start, line-end)
@@ -408,9 +408,11 @@ while cursor < end && is-whitespace(input[cursor])
 
 =? if spaces == 0
 =? if cursor >= end
-=? if source-scalar(input, cursor).char != '¶'
+. is-quote = input[cursor] == 34
+=? if !is-quote && source-scalar(input, cursor).char != '¶'
 
-cursor += 2
+cursor += if is-quote then 1 else 2
+=? if is-quote && (cursor >= end || !is-whitespace(input[cursor]))
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
 
@@ -427,11 +429,82 @@ _ do find-block-marker Index?
 . last = end
 while last > start && is-whitespace(input[last - 1])
     last -= 1
+=? if last == start || input[start] == 96
+=? if last - start >= 2 && input[start] == 47 && input[start + 1] == 47
+. quote = last - 1
+=? last if input[quote] == 34 && (quote == start || is-whitespace(input[quote - 1])) && !continues-text(input, start) && quote-opens(input, start, quote)
 =? if last - start < 4
 =? if input[last - 2] != 0xC2 || input[last - 1] != 0xB6
 =? if !is-whitespace(input[last - 3])
-=? if input[start] == 47 && input[start + 1] == 47
-= last - 2
+= last
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-text-block-opener Bool
+    - line String
+
+. input = byte-view(line)
+. start Index = 0
+while start < input.length && is-whitespace(input[start])
+    start += 1
+= find-block-marker(input, start, input.length) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ do is-text-body-header Bool
+    - line String
+
+. input = byte-view(line)
+= find-paragraph-marker(input, 0, input.length) != null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do continues-text Bool
+    - input ImmutableArray'Byte
+    - start Index
+
+. at = start
+while at > 0 && input[at - 1] != 10
+    at -= 1
+=? false if at < 2
+. before = if input[at - 2] == 13 && at >= 3 then at - 3 else at - 2
+= input[before] == 92
+
+━━━━━━━━━━━━━━━━━━━━
+_ do quote-opens Bool
+    - input ImmutableArray'Byte
+    - start Index
+    - end Index
+
+. cursor = start
+. in-text = false
+. depths [Size]
+while cursor < end
+    . byte = input[cursor]
+    if in-text
+        if byte == 92
+            cursor += 1
+        else if byte == 34
+            in-text = false
+        else if byte == 36 && cursor + 1 < end && input[cursor + 1] == 123
+            depths += 0
+            in-text = false
+            cursor += 1
+    else if byte == 34
+        in-text = true
+    else if byte == 96
+        = false
+    else if byte == 39 && cursor + 2 < end && input[cursor + 2] == 39
+        cursor += 2
+    else if byte == 39 && cursor + 3 < end && input[cursor + 1] == 92 && input[cursor + 3] == 39
+        cursor += 3
+    else if byte == 123 && depths.length > 0
+        depths[depths.length - 1] += 1
+    else if byte == 125 && depths.length > 0
+        if depths[depths.length - 1] == 0
+            depths.pop()
+            in-text = true
+        else
+            depths[depths.length - 1] -= 1
+    cursor += 1
+= !in-text
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do is-blank-line Bool
@@ -458,7 +531,7 @@ output.append(' ')
 . cursor = access-index + 1
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
-cursor += 2
+cursor += if input[cursor] == 34 then 1 else 2
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
 

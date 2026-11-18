@@ -801,12 +801,8 @@ Path(directory).make-directory()
 for name, content in test-case.files
     write-case-file(directory, name, content)
 . errors-path = "$directory/stderr"
-. command = " ".join
-    * "cd ${shell-quoted(directory)} &&"
-    * shell-quoted(context.compiler)
-    * "--reached-only"
-    * source-switch(directory, test-case)
-    * "2>${shell-quoted(errors-path)}"
+. command = "
+    cd ${shell-quoted(directory)} && ${shell-quoted(context.compiler)} --reached-only ${source-switch(directory, test-case)} 2>${shell-quoted(errors-path)}
 . process = Process("/bin/sh", "-c", command)
 . output = unsourced(process as String, directory, test-case)
 . status = process.wait(null) ?? 1
@@ -1039,11 +1035,8 @@ write-case-file(directory, "manifest", "\n".join(lines))
 write-case-file(directory, "stdout", "")
 write-case-file(directory, "stderr", "")
 . executable = "$directory/batch"
-. command = " ".join
-    * "cd ${shell-quoted(directory)} &&"
-    * shell-quoted(context.compiler)
-    * "--batch manifest -o ${shell-quoted(executable)}"
-    * ">${shell-quoted("$directory/build")} 2>&1"
+. command = "
+    cd ${shell-quoted(directory)} && ${shell-quoted(context.compiler)} --batch manifest -o ${shell-quoted(executable)} >${shell-quoted("$directory/build")} 2>&1
 . process = Process("/bin/sh", "-c", command)
 . status = process.wait(null) ?? 1
 process.close()
@@ -1138,11 +1131,8 @@ _ do run-batch-from Index
 ` that ended the program its own, and gives where the batch runs from next.
 . control = "$directory/control"
 write-case-file(directory, "control", "")
-. command = " ".join
-    * "cd ${shell-quoted(directory)} &&"
-    * "BRIXTEST_BATCH_START_INDEX=$first BRIXTEST_BATCH_END_INDEX=${batched.length}"
-    * "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 exec ./batch"
-    * ">>${shell-quoted("$directory/process")} 2>&1"
+. command = "
+    cd ${shell-quoted(directory)} && BRIXTEST_BATCH_START_INDEX=$first BRIXTEST_BATCH_END_INDEX=${batched.length} BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 exec ./batch >>${shell-quoted("$directory/process")} 2>&1
 . process = Process("/bin/sh", "-c", command)
 . status = process.wait(null) ?? 1
 process.close()
@@ -1354,16 +1344,9 @@ process.close()
 .. probing = if probes == "true" then "--probes" else if probes then "--probes ${shell-quoted(probes)}" else ""
 .. tracing = if probes then "PROBES_ENABLED=${shell-quoted(probes)} PROBES_PATH=${shell-quoted(trace-path)}" else ""
 .. trace-path = "$directory/probes.trace"
-.. command = " ".join
-    * "cd ${shell-quoted(directory)} &&"
-    * ": >${shell-quoted(errors-path)} &&"
-    * shell-quoted(context.compiler)
-    * source-switch
-    * "-o ${shell-quoted(executable)}"
-    * "$switches $probing 2>${shell-quoted(warnings-path)} &&"
-    * if test-case.is-brix then "rm -f ${test-case.source-name} &&" else ""
-    * "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)}"
-    * "2>>${shell-quoted(errors-path)}"
+.. command = "
+    cd ${shell-quoted(directory)} && : >${shell-quoted(errors-path)} && ${shell-quoted(context.compiler)} $source-switch -o ${shell-quoted(executable)} $switches $probing 2>${shell-quoted(warnings-path)} && ${removing}BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)} 2>>${shell-quoted(errors-path)}
+.. removing = if test-case.is-brix then "rm -f ${test-case.source-name} && " else ""
 
 ━━━━━━━━━━━━━━━━━━━━
 _ crash-reason String?

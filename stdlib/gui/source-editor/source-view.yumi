@@ -1,6 +1,7 @@
 ./source-insight
 ./source-note-card
 ./source-surface
+./source-wrap
 /code/code-find
 /code/structure/document
 /code/structure/find
@@ -19,6 +20,7 @@
 /gui/clipboard
 /gui/code-editor
 /math
+/stream/aggregate
 /time/duration
 /ui/virtual
 /ui/virtual-layout
@@ -231,6 +233,7 @@ _ source-add-caret-gap Length = 3
 + find CodeFind?
 + definition-key KeyCombo?
 + top-inset Length = 0
++ wraps-rows = true
 + event modified-changed Bool
 + event save-requested SourceSession
 + event definition-requested SourcePoint
@@ -260,9 +263,18 @@ _ edit-stamp U64
 _ marked-stamp U64
 _ is-marking = false
 _ shown-folds U64?
+_ wrap-cache = SourceWrapCache()
+_ wrap-rows = SourceWrapRows(0, List'Size(), 0, source-row-height, source-end-space)
+_ wrap-columns Size
+_ wrapped-columns Size
+_ wrapped-stamp U64
+_ line-count Size
+_ goal-x Size
+_ goal-place SourcePoint?
 
 . rebase < baseline
 . inset-changed < top-inset
+. wrap-changed < wraps-rows
 
 • This • code-editor-text flex-row
     focus-mode = FocusMode.input
@@ -281,7 +293,7 @@ _ shown-folds U64?
         changes = #row-changes
     <VirtualRegion'SourceRow region • flex:1
         source = #source
-        virtual-layout = source-row-layout(#row-width, #sticky-rows)
+        virtual-layout = source-row-layout(#row-width, #sticky-rows, #wrap-rows)
         overscan = VirtualInsets(100vcoord, 0vcoord, 100vcoord, 0vcoord)
         top-inset = #top-inset
 
@@ -291,12 +303,13 @@ _ shown-folds U64?
             bolds = #bolds
             italics = #italics
             inset = source-text-inset
+            wrap-columns = #wrap-columns
     <CodeOverview overview • absolute w:code-overview-width
         anchor = Anchor.parent
         top = PositionOffset.coord(#top-inset)
         right = PositionOffset.coord(0)
         bottom = PositionOffset.coord(0)
-        rows = #shown-row-count
+        rows = #line-count
         row-length = source-row-length
         changes = #row-changes
     <CodeLinkCard link-card
@@ -332,6 +345,9 @@ resume(SourceSession(shown))
 
 clear-link()
 find-cache.reset()
+wrap-cache.reset()
+wrapped-stamp = 0
+goal-place = null
 . bound = SourceRowSource(next)
 bound.revision.value = next.revision + next.document.revision + next.folds.version + 1
 session = next
@@ -362,6 +378,11 @@ bound-rows = null
 sticky-rows = null
 source = null
 region.release-bindings()
+wrap-cache.reset()
+wrap-rows.take(SourceWrapRows(0, List'Size(), 0, source-row-height, source-end-space))
+wrapped-stamp = 0
+line-count = 0
+goal-place = null
 is-modified = false
 insight = null
 note-hits.clear()
@@ -442,12 +463,14 @@ refresh()
     - extends = false
 
 . active = session
-=? if !active
+=? if !active || wrap-rows.line-count == 0
 . x = point.x + region.scroll-x - source-text-inset - gutter-width
 . y = point.y + shown-top
-. column = if x > 0 && cell-width > 0 then round(x / cell-width) as Size else 0
-. row = if y > 0 then floor(y / source-row-length) as Size else 0
-active.place(active.stop-at(active.folds.actual(row), false), column, extends)
+. cell = if x > 0 && cell-width > 0 then round(x / cell-width) as Size else 0
+. lines = if y > 0 then floor(y / source-row-length) as Size else 0
+. spot = spot-on(active, min(lines, wrap-rows.line-count - 1))
+goal-place = null
+active.place(active.stop-at(spot.row, false), spot.wrap.column-at(spot.line, cell), extends)
 refresh()
 
 ────────────────────
@@ -458,6 +481,7 @@ refresh()
 
 . active = session
 =? if !active
+goal-place = null
 if replaces-before > 0 && !active.has-selection
     . start = active.column - replaces-before
     active.select-range(active.row, start, start + replaces-length)
@@ -482,13 +506,13 @@ match command
     | .move-word-forward
         active.move-token-right()
     | .move-up
-        active.move-up()
+        move-lines(active, 1, true)
     | .move-down
-        active.move-down()
+        move-lines(active, 1, false)
     | .move-to-line-start
-        active.move-to-line-start()
+        move-to-edge(active, false)
     | .move-to-line-end
-        active.move-to-line-end()
+        move-to-edge(active, true)
     | .move-to-paragraph-start
         active.move-to-line-start()
     | .move-to-paragraph-end
@@ -498,9 +522,9 @@ match command
     | .move-to-end
         active.move-to-end()
     | .page-up
-        active.move-up(page-rows())
+        move-lines(active, page-lines(), true)
     | .page-down
-        active.move-down(page-rows())
+        move-lines(active, page-lines(), false)
     | .delete-backward
         active.delete-backward()
     | .delete-forward
@@ -528,9 +552,27 @@ match command
         active.revert()
     ??
         =
+if !is-vertical(command)
+    goal-place = null
 if !keeps
     active.collapse()
 refresh()
+
+────────────────────
+_ is-vertical Bool
+    - command TextCommand
+
+match command
+    | .move-up
+        true
+    | .move-down
+        true
+    | .page-up
+        true
+    | .page-down
+        true
+    ??
+        false
 
 ────────────────────
 + do press Bool
@@ -573,17 +615,13 @@ if noted
     show-note(noted)
 else if event.button == PointerButton.secondary || is-control-click
     press-context(event.point)
-else if stuck != null && event.button == PointerButton.primary && is-stuck-control(event.point, stuck ?? 0)
+else if stuck && event.button == PointerButton.primary && is-stuck-control(event.point, stuck.row)
     request-focus()
-    session!.toggle-fold(session!.folds.actual(stuck ?? 0))
+    session!.toggle-fold(session!.folds.actual(stuck.row))
     refresh()
-else if stuck != null && event.button == PointerButton.primary
+else if stuck && event.button == PointerButton.primary
     request-focus()
-    . x = event.point.x + region.scroll-x - source-text-inset - gutter-width
-    session!.place
-        - session!.folds.actual(stuck)
-        - if x > 0 && cell-width > 0 then floor(x / cell-width) as Size else 0
-    refresh()
+    place-stuck(event.point, stuck)
 else if folded != null && event.button == PointerButton.primary
     request-focus()
     session!.toggle-fold(folded)
@@ -601,6 +639,22 @@ else if event.button == PointerButton.primary
     if active && event.click-count == 1 && event.modifiers.command
         definition-requested <- SourcePoint(active.row, active.column)
 .. is-control-click = event.button == PointerButton.primary && event.modifiers.control
+
+────────────────────
+_ do place-stuck
+    - point Point
+    - stuck SourceStuckRow
+
+. active = session
+=? if !active
+. row = active.folds.actual(stuck.row)
+. wrap = row-wrap(active, row)
+. x = point.x + region.scroll-x - source-text-inset - gutter-width
+. cell = if x > 0 && cell-width > 0 then floor(x / cell-width) as Size else 0
+. below = point.y - stuck.y
+. line = if below > 0 then min(floor(below / source-row-length) as Size, wrap.last-line) else 0
+active.place(row, wrap.column-at(line, cell))
+refresh()
 
 ────────────────────
 _ do cut-selection Bool
@@ -668,7 +722,8 @@ definition-requested <- pressed
 for change on overview.chose
 
 request-focus()
-jump-to(session?.folds.actual(change.line) ?? change.line, 0)
+. display = wrap-rows.display-at(change.line)
+jump-to(session?.folds.actual(display) ?? display, 0)
 
 ────────────────────
 for target on gutter.added
@@ -716,6 +771,9 @@ for event on key-press
 . modifiers = event.modifiers
 if event.key == Key.tab && !modifiers.command && !modifiers.control && !modifiers.option
     perform(if modifiers.shift then TextCommand.insert-backtab else TextCommand.insert-tab)
+    event.cancel()
+else if (event.key == Key.home || event.key == Key.end) && !modifiers.command && !modifiers.control && !modifiers.option
+    perform(if event.key == Key.home then TextCommand.move-to-line-start else TextCommand.move-to-line-end, modifiers.shift)
     event.cancel()
 else if modifiers.command && !modifiers.control && !modifiers.option
     if press(event.characters, modifiers.shift)
@@ -837,38 +895,34 @@ if !found || (found.title.length == 0 && found.detail.length == 0) || cell-width
     =
 link-card.title = found.title
 link-card.detail = found.detail
-link-card.show(PopupAnchor.rect(presentation-rect(link-rect(found))))
+. rects = link-rects(found)
+if rects.length != 0
+    link-card.show(PopupAnchor.rect(presentation-rect(rects[0])))
 
 ────────────────────
-_ link-rect Rect
+_ do link-rects [Rect]
     - found SourceLink
 
-Rect(x, y, (found.end - found.start) * cell-width, source-row-length)
-
-.. content = text-bounds
-.. x = content.x + source-text-inset + found.start * cell-width - region.scroll-x
-.. y = content.y + (session?.folds.shown(found.row) ?? found.row) * source-row-length - shown-top
+. active = session
+=? List'Rect() if !active
+. content = text-bounds
+. left = content.x + source-text-inset - region.scroll-x
+. y = content.y + row-top(active.folds.shown(found.row)) - shown-top
+= span-rects(row-wrap(active, found.row), found.start, found.end, left, y)
 
 ────────────────────
-_ point-at SourcePoint?
+_ do point-at SourcePoint?
     - active SourceSession
     - point Point
 
-|? x < 0 || y < 0 || cell-width <= 0
-    null
-|? display >= active.folds.row-count()
-    null
-|? shown.is-divider || column < shown.content-start || column >= shown.columns
-    null
-??
-    SourcePoint(row, column)
-
-.. x = point.x + region.scroll-x - source-text-inset - gutter-width
-.. y = point.y + shown-top
-.. display = floor(y / source-row-length) as Size
-.. row = active.folds.actual(display)
-.. column = floor(x / cell-width) as Size
-.. shown = active.row-at(row)
+. x = point.x + region.scroll-x - source-text-inset - gutter-width
+=? null if x < 0 || cell-width <= 0
+. spot = spot-under(active, point)
+=? null if !spot
+. column = spot.wrap.column-under(spot.line, floor(x / cell-width) as Size)
+. shown = active.row-at(spot.row)
+=? null if column == null || shown.is-divider || column < shown.content-start || column >= shown.columns
+= SourcePoint(spot.row, column)
 
 ────────────────────
 _ do track
@@ -947,6 +1001,13 @@ number-rows()
 invalidate-paint()
 
 ────────────────────
+_ do wrap-changed
+
+widen()
+number-rows()
+invalidate-paint()
+
+────────────────────
 _ do note-changes
     - forced Bool
 
@@ -991,18 +1052,19 @@ _ do show-changes
 
 . active = session
 shown-folds = active.folds.version + active.document.revision if active
-if !active || active.folds.is-plain
+if !active || (active.folds.is-plain && !wrap-rows.is-wrapped)
     row-changes = line-changes
     =
 . folds = active.folds
+. rows = wrap-rows
 . made [DiffLineChange]
 for change in line-changes
-    . top = folds.shown(change.line)
+    . top = rows.top(folds.shown(change.line))
     if change.kind == DiffLineChangeKind.deleted || change.count == 0
         made += DiffLineChange(change.kind, top, change.count)
     else
         . bottom = folds.shown(change.line + change.count - 1)
-        made += DiffLineChange(change.kind, top, bottom - top + 1)
+        made += DiffLineChange(change.kind, top, rows.top(bottom + 1) - top)
 row-changes = made
 
 ────────────────────
@@ -1028,24 +1090,184 @@ _ do reveal-caret
 
 . view = region.content-bounds
 =? if view.width <= 0 || view.height <= 0
-region.scroll-to-address(active.folds.shown(active.row), ScrollAlignment.nearest)
+. display = active.folds.shown(active.row)
+region.scroll-to-address(display, ScrollAlignment.nearest)
 if active.row + 1 == active.row-count
     region.scroll-to-end(Orientation.vertical)
-. left = source-text-inset + active.column * cell-width
+. wrap = row-wrap(active, active.row)
+. top = row-top(display) + wrap.line-of(active.column) * source-row-length
+. y = region.scroll-y
+if top < y
+    y = top
+else if top + source-row-length + top-inset > y + view.height
+    y = top + source-row-length + top-inset - view.height
+. left = source-text-inset + wrap.x-of(active.column) * cell-width
 . x = region.scroll-x
 if left - source-text-inset < x
     x = left - source-text-inset
 else if left + source-row-trail > x + view.width
     x = left + source-row-trail - view.width
-if x != region.scroll-x
-    region.scroll-to(Point(x, region.scroll-y))
+if x != region.scroll-x || y != region.scroll-y
+    region.scroll-to(Point(x, y))
 
 ────────────────────
-_ page-rows Size
+_ page-lines Size
 
 if count > 1 then count - 1 else 1
 
 .. count = floor((region.content-bounds.height - top-inset) / source-row-length) as Size
+
+────────────────────
+_ do move-lines
+    - active SourceSession
+    - count Size
+    - upward Bool
+
+. x = goal-for(active)
+for step in 0 .. < count
+    if !step-line(active, x, upward)
+        break
+goal-x = x
+goal-place = SourcePoint(active.row, active.column)
+
+────────────────────
+_ do goal-for Size
+    - active SourceSession
+
+. kept = goal-place
+=? goal-x if kept && kept.row == active.row && kept.column == active.column
+= row-wrap(active, active.row).x-of(active.column)
+
+────────────────────
+_ do step-line Bool
+    - active SourceSession
+    - x Size
+    - upward Bool
+
+. wrap = row-wrap(active, active.row)
+. next = wrap.line-of(active.column) + (if upward then -1 else 1)
+if next >= 0 && next <= wrap.last-line
+    active.place(active.row, wrap.column-at(next, x), true)
+    = true
+. before = active.row
+if upward
+    active.move-up()
+else
+    active.move-down()
+=? false if active.row == before
+. landed = row-wrap(active, active.row)
+active.place(active.row, landed.column-at(if upward then landed.last-line else 0, x), true)
+= true
+
+────────────────────
+_ do move-to-edge
+    - active SourceSession
+    - is-end Bool
+
+. wrap = row-wrap(active, active.row)
+. line = wrap.line-of(active.column)
+if is-end && line == wrap.last-line
+    active.move-to-line-end()
+else if !is-end && line == 0
+    active.move-to-line-start()
+else
+    active.place(active.row, if is-end then wrap.last-column(line) else wrap.starts[line], true)
+
+────────────────────
+_ do sync-wrap
+    - active SourceSession
+
+. stamp = active.revision + active.document.revision + active.folds.version + 1
+=? if stamp == wrapped-stamp && wrap-columns == wrapped-columns
+. resized = wrapped-columns > 0 && wrap-columns > 0 && wrap-columns != wrapped-columns
+wrapped-stamp = stamp
+wrapped-columns = wrap-columns
+. next = wrap-cache.rows(active, wrap-columns, source-indent-columns, source-row-height, source-end-space)
+=? if next.count == wrap-rows.count && next.widest == wrap-rows.widest && next.tops == wrap-rows.tops
+. scroll = max(region.scroll-y, 0)
+. anchor = wrap-rows.display-at(floor(scroll / source-row-length) as Size)
+. within = scroll - row-top(anchor)
+wrap-rows.take(next)
+line-count = wrap-rows.line-count
+region.invalidate-bindings()
+gutter.invalidate-paint()
+show-changes()
+if resized && anchor < wrap-rows.count
+    region.pin-address(anchor, top-inset - min(within, row-height(anchor) - 1))
+
+────────────────────
+_ wrap-width Size
+
+|? !wraps-rows || cell-width <= 0 || room <= 0
+    0
+??
+    max(floor(room / cell-width) as Size, 1)
+
+.. room = region.content-bounds.width - source-text-inset - box-clearance - source-box-indent
+
+────────────────────
+_ row-wrap SourceWrap
+    - active SourceSession
+    - row Size
+
+source-row-wrap(active.row-at(row), wrap-columns, source-indent-columns)
+
+────────────────────
+_ row-top Length
+    - display Size
+
+wrap-rows.top(display) * source-row-length
+
+────────────────────
+_ row-height Length
+    - display Size
+
+wrap-rows.lines(display) * source-row-length
+
+────────────────────
+_ first-shown Size
+    - top Length
+
+if top > 0 then wrap-rows.display-at(floor(top / source-row-length) as Size) else 0
+
+────────────────────
+_ last-shown Size
+    - active SourceSession
+    - top Length
+    - height Length
+
+min(active.folds.row-count(), wrap-rows.display-at(ceil((top + height) / source-row-length) as Size) + 1)
+
+────────────────────
+_ do spot-on SourceSpot
+    - active SourceSession
+    - lines Size
+
+. display = wrap-rows.display-at(lines)
+. row = active.folds.actual(display)
+. wrap = row-wrap(active, row)
+= SourceSpot(display, row, min(lines - wrap-rows.top(display), wrap.last-line), wrap)
+
+────────────────────
+_ do spot-under SourceSpot?
+    - active SourceSession
+    - point Point
+
+. y = point.y + shown-top
+=? null if y < 0
+. lines = floor(y / source-row-length) as Size
+=? null if lines >= wrap-rows.line-count
+= spot-on(active, lines)
+
+────────────────────
+_ span-rects [Rect]
+    - wrap SourceWrap
+    - start Size
+    - end Size
+    - left Length
+    - y Length
+
+List'Rect(Rect(left + each.start * cell-width, y + each.line * source-row-length, (each.end - each.start) * cell-width, source-row-length) in wrap.segments(start, end))
 
 ────────────────────
 _ caret-rect Rect
@@ -1055,8 +1277,10 @@ Rect(x - source-caret-width / 2, y + 1, source-caret-width, source-row-length - 
 
 .. content = text-bounds
 .. left = content.x + source-text-inset - region.scroll-x
-.. x = if active.is-open-end(active.row) then adder-left(left) + source-add-size + source-add-caret-gap else if is-open-row(active, active.row) then left else left + active.column * cell-width
-.. y = content.y + active.folds.shown(active.row) * source-row-length - shown-top
+.. wrap = row-wrap(active, active.row)
+.. line = wrap.line-of(active.column)
+.. x = if active.is-open-end(active.row) then adder-left(left) + source-add-size + source-add-caret-gap else if is-open-row(active, active.row) then left else left + wrap.x-at(line, active.column) * cell-width
+.. y = content.y + row-top(active.folds.shown(active.row)) + line * source-row-length - shown-top
 
 ────────────────────
 _ adder-left Length
@@ -1089,10 +1313,10 @@ _ do paint-controls
 . content = content-bounds
 . top = shown-top
 . folds = active.folds
-. first = if top > 0 then floor(top / source-row-length) as Size else 0
-. last = min(folds.row-count(), (ceil((top + content.height) / source-row-length) as Size) + 1)
+. first = first-shown(top)
+. last = last-shown(active, top, content.height)
 . left = text-bounds.x + source-text-inset - region.scroll-x
-. scan = SourceSliceScan(active, source-row-length)
+. scan = SourceSliceScan(active)
 do use canvas.saved-state
     canvas.clip(Rect(content.x, open.y, content.width, open.height))
     for index in first .. < last
@@ -1101,8 +1325,8 @@ do use canvas.saved-state
         . is-folded = folds.is-folded(row)
         . folds-here = row == hovered-row && (is-folded || source-fold-head(active, row))
         if adds || is-folded || folds-here
-            . x = control-x(left, scan.slice(index).member != null)
-            . y = content.y + index * source-row-length - top
+            . x = control-x(left, scan.slice(index, row-height(index)).member != null)
+            . y = content.y + row-top(index) - top
             if adds && !folds-here
                 paint-add-button(canvas, x, y, row == active.row)
             else
@@ -1114,11 +1338,7 @@ _ do row-under Size?
 
 . active = session
 =? null if !active
-. y = point.y + shown-top
-=? null if y < 0
-. display = floor(y / source-row-length) as Size
-=? null if display >= active.folds.row-count()
-= active.folds.actual(display)
+= spot-under(active, point)?.row
 
 ────────────────────
 _ do track-hover
@@ -1129,8 +1349,8 @@ _ do track-hover
 . active = session
 if point && active
     . stuck = stuck-row-at(point)
-    row = if stuck != null then active.folds.actual(stuck ?? 0) else row-under(point)
-    on-control = if stuck != null then is-stuck-control(point, stuck ?? 0) else control-at(point) != null
+    row = if stuck then active.folds.actual(stuck.row) else row-under(point)
+    on-control = if stuck then is-stuck-control(point, stuck.row) else control-at(point) != null
 =? if row == hovered-row && on-control == is-control-hovered
 hovered-row = row
 is-control-hovered = on-control
@@ -1143,7 +1363,8 @@ _ do is-on-control Bool
 
 . active = session
 =? false if !active
-. is-member = SourceSliceScan(active, source-row-length).slice(active.folds.shown(row)).member != null
+. display = active.folds.shown(row)
+. is-member = SourceSliceScan(active).slice(display, row-height(display)).member != null
 . x = control-x(gutter-width + source-text-inset - region.scroll-x, is-member)
 = point.x >= x - source-border-width && point.x <= x + source-add-size + source-border-width
 
@@ -1163,9 +1384,9 @@ _ do control-at Size?
 
 . active = session
 =? null if !active
-. found = row-under(point)
-=? null if found == null
-. row = found ?? 0
+. spot = spot-under(active, point)
+=? null if !spot || spot.line != 0
+. row = spot.row
 =? null if !is-on-control(point, row)
 = if is-adder(active, row) || active.folds.is-folded(row) || source-fold-head(active, row) then row else null
 
@@ -1223,39 +1444,26 @@ _ is-open-row Bool
 row + 1 == active.row-count || active.is-open-end(row) || active.is-blank-line(row)
 
 ────────────────────
-_ chip-at Size?
+_ do chip-at Size?
     - point Point
 
-|? !active || cell-width <= 0
-    null
-|? x < 0 || y < 0
-    null
-|? display >= active.folds.row-count()
-    null
-|? !active.folds.is-folded(row)
-    null
-|? x < start || x > start + code-chip-width
-    null
-??
-    row
-
-.. active = session
-.. x = point.x + region.scroll-x - source-text-inset - gutter-width
-.. y = point.y + shown-top
-.. display = floor(y / source-row-length) as Size
-.. row = active.folds.actual(display)
-.. start = active.row-at(row).columns * cell-width + code-chip-gap
+. active = session
+=? null if !active || cell-width <= 0
+. x = point.x + region.scroll-x - source-text-inset - gutter-width
+. spot = spot-under(active, point)
+=? null if x < 0 || !spot || !active.folds.is-folded(spot.row) || spot.line != spot.wrap.last-line
+. start = spot.wrap.end-x(spot.line) * cell-width + code-chip-gap
+= if x < start || x > start + code-chip-width then null else spot.row
 
 ────────────────────
-_ stuck-rows [CodeStuckRow]
+_ stuck-rows [SourceStuckRow]
 
-|? !sticky || !active
-    List'CodeStuckRow()
+|? !sticky || !session
+    List'SourceStuckRow()
 ??
-    code-stuck-rows(sticky, active.folds.row-count(), source-row-length, region.scroll-y, top-inset)
+    source-stuck-rows(sticky, wrap-rows, region.scroll-y, top-inset)
 
 .. sticky = sticky-rows
-.. active = session
 
 ────────────────────
 + do get scroll-held-rects
@@ -1264,13 +1472,13 @@ _ stuck-rows [CodeStuckRow]
 =? List'Rect() if stuck.length == 0
 . content = content-bounds
 . top = stuck[0].y
-= [Rect(content.x, content.y + top, content.width, code-stuck-height(stuck, source-row-length) - top + 1)]
+= [Rect(content.x, content.y + top, content.width, source-stuck-height(stuck) - top + 1)]
 
 ────────────────────
-_ stuck-row-at Size?
+_ stuck-row-at SourceStuckRow?
     - point Point
 
-code-stuck-at(stuck-rows(), point.y, source-row-length)
+source-stuck-at(stuck-rows(), point.y)
 
 ────────────────────
 _ caret-context TextInputContext?
@@ -1318,7 +1526,8 @@ gutter.numbered = active.folds.row-count() - 1
 gutter.caret-row = active.folds.shown(active.row)
 gutter.head-lit = !active.has-selection && active.is-block-head(active.row) && active.column <= active.row-at(active.row).content-start
 gutter.scrolled = shown-top
-gutter.covered = code-stuck-height(stuck-rows(), source-row-length)
+gutter.rows = wrap-rows
+gutter.covered = source-stuck-height(stuck-rows())
 
 ────────────────────
 _ do widen
@@ -1332,8 +1541,10 @@ if font != measured-font
     bolds = code-cell-width(Font($font-family, $font-size, FontWeight.bold, $font-slant)) == cell-width
     italics = code-cell-width(Font($font-family, $font-size, $font-weight, FontSlant.italic)) == cell-width
     row-width = null
-. widest = max(active.document.widest-columns, widest-columns)
-if active.is-dirty
+wrap-columns = wrap-width()
+sync-wrap(active)
+. widest = if wrap-columns > 0 then wrap-rows.widest else max(active.document.widest-columns, widest-columns)
+if active.is-dirty && wrap-columns == 0
     widest = max(widest, active.row-at(active.row).columns)
 . width = ceil(max(text-width, region.content-bounds.width)) as I64
     .. text-width = widest * cell-width + source-text-inset + source-row-trail
@@ -1471,8 +1682,8 @@ canvas.rect(whole)
 . content = text-bounds
 . top = shown-top
 . folds = active.folds
-. first = if top > 0 then floor(top / source-row-length) as Size else 0
-. last = min(folds.row-count(), (ceil((top + content.height) / source-row-length) as Size) + 1)
+. first = first-shown(top)
+. last = last-shown(active, top, content.height)
 . selects = active.has-selection
 . first-selected = active.first-selected-row
 . last-selected = active.last-selected-row
@@ -1483,10 +1694,10 @@ canvas.rect(whole)
 . focus-hit = finder.current if finder
 . right = box-right(content)
 . rule-end = min(content.right, right - source-box-indent)
-. scan = SourceSliceScan(active, source-row-length)
+. scan = SourceSliceScan(active)
 . slices [SourceSlice]
 for index in first .. < last
-    slices += scan.slice(index)
+    slices += scan.slice(index, row-height(index))
 paint-surfaces(canvas, slices, content, first, left, right)
 . known = insight
 if known
@@ -1500,10 +1711,11 @@ do use canvas.saved-state
         . is-typed = active.is-dirty && row == active.row
         . is-tinted = held && !is-typed
         . is-current = row == active.row && !selects && active.can-edit(row)
-        . y = whole.y + index * source-row-length - top
+        . y = whole.y + row-top(index) - top
+        . height = row-height(index)
         if is-tinted || is-current
-            . band = Rect(whole.x, y, whole.width, source-row-length)
-            . shape = source-slice-shape(slices[index - first], Rect(content.x, y, content.width, source-row-length), left - source-box-indent, right)
+            . band = Rect(whole.x, y, whole.width, height)
+            . shape = source-slice-shape(slices[index - first], Rect(content.x, y, content.width, height), left - source-box-indent, right)
             do use canvas.saved-state
                 canvas.clip(band)
                 if shape
@@ -1516,15 +1728,16 @@ do use canvas.saved-state
     for index in first .. < last
         . row = folds.actual(index)
         . shown = active.row-at(row)
-        . y = content.y + index * source-row-length - top
+        . wrap = source-row-wrap(shown, wrap-columns, source-indent-columns)
+        . y = content.y + row-top(index) - top
         if known && !(active.is-dirty && row == active.row)
-            paint-washes(canvas, known, shown, left, y, folds.is-folded(row), lit-for(active, shown))
+            paint-washes(canvas, known, shown, wrap, left, y, folds.is-folded(row), lit-for(active, shown))
         if folds.is-folded(row)
-            . x = left + shown.columns * cell-width + code-chip-gap
+            . x = left + wrap.end-x(wrap.last-line) * cell-width + code-chip-gap
             code-fold-chip
                 - canvas
                 - x
-                - y
+                - y + wrap.last-line * source-row-length
                 - source-row-length
                 - $gui-editor-fold-chip-color
                 - $gui-editor-line-number-color
@@ -1542,22 +1755,23 @@ do use canvas.saved-state
         while next-hit < hits.length && hits[next-hit].row == row
             if next-hit != focus-hit
                 canvas.fill-color = $gui-editor-find-color
-                canvas.rect(found-rect(hits[next-hit], left, y))
+                for rect in span-rects(wrap, hits[next-hit].start, hits[next-hit].end, left, y)
+                    canvas.rect(rect)
             next-hit += 1
         if selects && row >= first-selected && row <= last-selected
             . low = if row == first-selected then active.selection-start else 0
             . high = if row == last-selected then active.selection-end else shown.columns + 1
-            if high > low
-                . selected-width = (high - low) * cell-width
-                canvas.fill-color = if is-focused then $gui-editor-selection-color else $gui-editor-idle-selection-color
-                canvas.rect(Rect(left + low * cell-width, y, selected-width, source-row-length))
+            canvas.fill-color = if is-focused then $gui-editor-selection-color else $gui-editor-idle-selection-color
+            for rect in span-rects(wrap, low, high, left, y)
+                canvas.rect(rect)
     . focused = finder.current-found if finder
     if focused && !folds.is-hidden(focused.row)
         . display = folds.shown(focused.row)
         if display >= first && display < last
-            . y = content.y + display * source-row-length - top
+            . y = content.y + row-top(display) - top
             canvas.fill-color = $gui-editor-find-current-color
-            canvas.rect(found-rect(focused, left, y))
+            for rect in span-rects(row-wrap(active, focused.row), focused.start, focused.end, left, y)
+                canvas.rect(rect)
 
 ────────────────────
 _ do paint-unknown
@@ -1576,8 +1790,8 @@ do use canvas.saved-state
     for offset in 0 .. < slices.length
         . row = active.folds.actual(first + offset)
         if known.is-unknown(active.row-at(row))
-            . y = content.y + (first + offset) * source-row-length - shown-top
-            . band = Rect(content.x, y, content.width, source-row-length)
+            . y = content.y + row-top(first + offset) - shown-top
+            . band = Rect(content.x, y, content.width, row-height(first + offset))
             . shape = source-slice-shape(slices[offset], band, left - source-box-indent, right)
             if shape
                 paint-source-hatch(canvas, shape, band, $source-unknown-color)
@@ -1587,6 +1801,7 @@ _ do paint-washes
     - canvas Canvas
     - known SourceInsight
     - shown SourceRow
+    - wrap SourceWrap
     - left Length
     - y Length
     - is-folded Bool
@@ -1595,17 +1810,31 @@ _ do paint-washes
 . marks = known.marks-of(shown)
 for mark in marks
     if mark.kind == SourceMarkKind.wait
-        paint-source-underline(canvas, mark, left, y, cell-width, source-row-length, $source-wait-color)
-. end = left + shown.columns * cell-width + (if is-folded then code-chip-gap + code-chip-width else 0) + cell-width
+        paint-mark(canvas, mark, wrap, left, y, $source-wait-color)
+. last-y = y + wrap.last-line * source-row-length
+. end = left + wrap.end-x(wrap.last-line) * cell-width + (if is-folded then code-chip-gap + code-chip-width else 0) + cell-width
 . fill = known.fill-of(shown)
 if fill
-    end = paint-fill(canvas, fill, lit, end, y)
+    end = paint-fill(canvas, fill, lit, end, last-y)
 end += cell-width
 for mark in marks
     . caption = mark.caption
     if caption
-        paint-caption(canvas, caption, end, y)
+        paint-caption(canvas, caption, end, last-y)
         =
+
+────────────────────
+_ do paint-mark
+    - canvas Canvas
+    - mark SourceMark
+    - wrap SourceWrap
+    - left Length
+    - y Length
+    - color RGBA
+
+for part in wrap.segments(mark.start, mark.end)
+    . piece = SourceMark(part.start, part.end, mark.kind, mark.detail, mark.caption, mark.errors)
+    paint-source-underline(canvas, piece, left, y + part.line * source-row-length, cell-width, source-row-length, color)
 
 ────────────────────
 _ do lit-for [String]
@@ -1655,19 +1884,21 @@ _ do paint-marks
 . text = text-bounds
 . top = shown-top
 . folds = active.folds
-. first = if top > 0 then floor(top / source-row-length) as Size else 0
-. last = min(folds.row-count(), (ceil((top + text.height) / source-row-length) as Size) + 1)
+. first = first-shown(top)
+. last = last-shown(active, top, text.height)
 . left = text.x + source-text-inset - region.scroll-x
 do use canvas.saved-state
     canvas.clip(open)
     for index in first .. < last
         . row = folds.actual(index)
         if !(active.is-dirty && row == active.row)
-            . y = text.y + index * source-row-length - top
-            for mark in known.marks-of(active.row-at(row))
+            . y = text.y + row-top(index) - top
+            . shown = active.row-at(row)
+            . wrap = source-row-wrap(shown, wrap-columns, source-indent-columns)
+            for mark in known.marks-of(shown)
                 if mark.kind != SourceMarkKind.wait
                     . color = if mark.kind == SourceMarkKind.raise then $source-raise-color else $source-convert-color
-                    paint-source-underline(canvas, mark, left, y, cell-width, source-row-length, color)
+                    paint-mark(canvas, mark, wrap, left, y, color)
 
 ────────────────────
 + do paint-stuck-surface
@@ -1678,14 +1909,15 @@ do use canvas.saved-state
 
 . active = session
 =? if !active || address < 0 || address >= (active.folds.row-count() as I64)
-. scan = SourceSliceScan(active, source-row-length)
+. scan = SourceSliceScan(active)
 . left = band.x + inset - source-box-indent
-paint-source-slice(canvas, scan.slice(address as Size), band, left, band.right - box-clearance, surface-palette())
+paint-source-slice(canvas, scan.slice(address as Size, band.height), band, left, band.right - box-clearance, surface-palette())
 . known = insight
 . row = active.folds.actual(address as Size)
 if known && !(active.is-dirty && row == active.row)
     . shown = active.row-at(row)
-    paint-washes(canvas, known, shown, band.x + inset, band.y, active.folds.is-folded(row), lit-for(active, shown))
+    . wrap = source-row-wrap(shown, wrap-columns, source-indent-columns)
+    paint-washes(canvas, known, shown, wrap, band.x + inset, band.y, active.folds.is-folded(row), lit-for(active, shown))
 
 ────────────────────
 _ do paint-surfaces
@@ -1700,8 +1932,8 @@ _ do paint-surfaces
 do use canvas.saved-state
     canvas.clip(content)
     for offset in 0 .. < slices.length
-        . y = content.y + (first + offset) * source-row-length - shown-top
-        . band = Rect(content.x, y, content.width, source-row-length)
+        . y = content.y + row-top(first + offset) - shown-top
+        . band = Rect(content.x, y, content.width, row-height(first + offset))
         paint-source-slice(canvas, slices[offset], band, left - source-box-indent, right, palette)
 
 ────────────────────
@@ -1747,8 +1979,8 @@ note-hits.clear()
 . text = text-bounds
 . top = shown-top
 . folds = active.folds
-. first = if top > 0 then floor(top / source-row-length) as Size else 0
-. last = min(folds.row-count(), (ceil((top + text.height) / source-row-length) as Size) + 1)
+. first = first-shown(top)
+. last = last-shown(active, top, text.height)
 . left = text.x + source-text-inset - region.scroll-x
 . right = min(text.right, box-right(text) - source-box-indent) - cell-width
 . font = Font($font-family, $font-size, $font-weight, $font-slant)
@@ -1758,7 +1990,8 @@ do use canvas.saved-state
         . row = folds.actual(index)
         if !(active.is-dirty && row == active.row)
             . shown = active.row-at(row)
-            . y = text.y + index * source-row-length - top
+            . wrap = source-row-wrap(shown, wrap-columns, source-indent-columns)
+            . y = text.y + row-top(index) + wrap.last-line * source-row-length - top
             . pills [SourcePill]
             if row == active.row && !active.has-selection
                 . message = known.message-at(shown, active.column)
@@ -1768,7 +2001,7 @@ do use canvas.saved-state
                 pills += SourcePill(note.label, note.text, true)
             if pills.length != 0
                 . total = pills-width(pills, font)
-                . start = left + (shown.columns + written-columns(known, shown, folds.is-folded(row)) + 2) * cell-width
+                . start = left + (wrap.end-x(wrap.last-line) + written-columns(known, shown, folds.is-folded(row)) + 2) * cell-width
                 . x = max(start, right - total)
                 for pill in pills
                     . drawn = paint-pill(canvas, pill.label, x, y, font)
@@ -1852,14 +2085,6 @@ canvas.text-color = color
 canvas.draw-text(layout, Rect(left, y + (source-row-length - layout.height) / 2, layout.width, layout.height), TextAlignment.left)
 
 ────────────────────
-_ found-rect Rect
-    - hit CodeHit
-    - left Length
-    - y Length
-
-Rect(left + hit.start * cell-width, y, (hit.end - hit.start) * cell-width, source-row-length)
-
-────────────────────
 + do paint-overlay
     - canvas Canvas
 
@@ -1867,7 +2092,7 @@ Rect(left + hit.start * cell-width, y, (hit.end - hit.start) * cell-width, sourc
 =? if !active
 . stuck = stuck-rows()
 . text = text-bounds
-. below = code-stuck-height(stuck, source-row-length)
+. below = source-stuck-height(stuck)
 . open = Rect(text.x, text.y + below, text.width, max(text.height - below, 0))
 paint-held-marks(canvas, active)
 paint-marks(canvas, active, open)
@@ -1896,21 +2121,21 @@ do use canvas.saved-state
 _ do paint-stuck
     - canvas Canvas
     - active SourceSession
-    - stuck [CodeStuckRow]
+    - stuck [SourceStuckRow]
 
 =? if stuck.length == 0
 . content = content-bounds
 . font = Font($font-family, $font-size, $font-weight, $font-slant)
 . right = content.x + gutter-width - source-gutter-gap
 . left = text-bounds.x + source-text-inset - region.scroll-x
-. scan = SourceSliceScan(active, source-row-length)
+. scan = SourceSliceScan(active)
 do use canvas.saved-state
     canvas.clip(content)
     canvas.stroke-color = null
     for row in stuck
         . y = content.y + row.y
         canvas.fill-color = $gui-editor-gutter-color
-        canvas.rect(Rect(content.x, y, gutter-width, source-row-length))
+        canvas.rect(Rect(content.x, y, gutter-width, row.height))
         . layout = ink-layout("${active.folds.actual(row.row) + 1}", font)
         . text-y = y + (source-row-length - layout.height) / 2
         canvas.text-color = $gui-editor-line-number-color
@@ -1920,11 +2145,11 @@ do use canvas.saved-state
             - TextAlignment.left
         . actual = active.folds.actual(row.row)
         if actual == hovered-row && source-fold-head(active, actual)
-            paint-fold-button(canvas, control-x(left, scan.slice(row.row).member != null), y, true)
+            paint-fold-button(canvas, control-x(left, scan.slice(row.row, row.height).member != null), y, true)
     . last = stuck[stuck.length - 1]
-    if last.y > (last.row as Length) * source-row-length - shown-top
+    if last.y > row-top(last.row) - shown-top
         canvas.fill-color = $gui-editor-sticky-border-color
-        canvas.rect(Rect(content.x, content.y + last.y + source-row-length, content.width, 1))
+        canvas.rect(Rect(content.x, content.y + last.y + last.height, content.width, 1))
 
 ────────────────────
 _ do paint-link
@@ -1933,11 +2158,11 @@ _ do paint-link
 
 . found = link
 =? if !found || cell-width == 0
-. rect = link-rect(found)
 do use canvas.saved-state
     canvas.clip(open)
     canvas.fill-color = $gui-editor-link-color
-    canvas.rect(Rect(rect.x, rect.y + rect.height - 3, rect.width, 1))
+    for rect in link-rects(found)
+        canvas.rect(Rect(rect.x, rect.y + rect.height - 3, rect.width, 1))
 
 ────────────────────
 _ do paint-held-marks
@@ -1947,16 +2172,16 @@ _ do paint-held-marks
 . whole = content-bounds
 . top = shown-top
 . folds = active.folds
-. first = if top > 0 then floor(top / source-row-length) as Size else 0
-. last = min(folds.row-count(), (ceil((top + whole.height) / source-row-length) as Size) + 1)
+. first = first-shown(top)
+. last = last-shown(active, top, whole.height)
 do use canvas.saved-state
     canvas.clip(whole)
     canvas.fill-color = $source-held-mark-color
     for index in first .. < last
         . row = folds.actual(index)
         if active.row-at(row).is-invalid || folds.holds-invalid(row)
-            . y = whole.y + index * source-row-length - top
-            canvas.rect(Rect(whole.x, y, source-marker-width, source-row-length))
+            . y = whole.y + row-top(index) - top
+            canvas.rect(Rect(whole.x, y, source-marker-width, row-height(index)))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ source-fold-head Bool
@@ -2060,6 +2285,7 @@ canvas.outline(Outline(Rect(x - source-add-dot / 2, y - source-add-dot / 2, sour
 + covered Length
 + version U64
 + folds SourceFolds?
++ rows SourceWrapRows?
 + changes [DiffLineChange]
 + event toggled Size
 + event added Size
@@ -2067,7 +2293,7 @@ canvas.outline(Outline(Rect(x - source-add-dot / 2, y - source-add-dot / 2, sour
 _ numbers [TextLayout]
 _ labels [Size]
 
-. changed < numbered, caret-row, head-lit, scrolled, gap, version, changes
+. changed < numbered, caret-row, head-lit, scrolled, gap, version, changes, rows
 
 ────────────────────
 _ do changed
@@ -2085,7 +2311,7 @@ for event on pointer-down
 . active = folds
 . y = event.point.y + scrolled
 if active && event.button == PointerButton.primary && y >= 0 && event.point.y >= covered
-    . display = floor(y / source-row-length) as Size
+    . display = display-of(floor(y / source-row-length) as Size)
     . row = if display < active.row-count() then active.actual(display) else active.document.row-count
     if display < numbered && (active.is-folded(row) || (session != null && source-fold-head(session, row)))
         toggled <- row
@@ -2125,6 +2351,21 @@ _ has-adder Bool
 
 session != null && row + 1 == session.row-count
 
+────────────────────
+_ do display-of Size
+    - line Size
+
+. shown = rows
+=? line if !shown
+=? shown.count if line >= shown.line-count
+= shown.display-at(line)
+
+────────────────────
+_ top-of Length
+    - display Size
+
+(rows?.top(display) ?? display) * source-row-length
+
 
 ────────────────────
 + do close
@@ -2142,8 +2383,8 @@ canvas.fill-color = $gui-editor-gutter-color
 canvas.rect(content)
 . active = folds
 . shown-count = if active then active.row-count() else numbered + 1
-. low = if scrolled > 0 then floor(scrolled / source-row-length) as Size else 0
-. high = min(shown-count, (ceil((scrolled + content.height) / source-row-length) as Size) + 1)
+. low = if scrolled > 0 then display-of(floor(scrolled / source-row-length) as Size) else 0
+. high = min(shown-count, display-of(ceil((scrolled + content.height) / source-row-length) as Size) + 1)
 =? if high <= low
 . rows [Size]
 . wanted [Size]
@@ -2158,7 +2399,7 @@ do use canvas.saved-state
     canvas.stroke-color = null
     for index in low .. < high
         . layout = numbers[index - low]
-        . y = content.y + index * source-row-length - scrolled
+        . y = content.y + top-of(index) - scrolled
         . text-y = y + (source-row-length - layout.height) / 2
         . text-rect = Rect(right - layout.width, text-y, layout.width, layout.height)
         . is-caret = index == caret-row
@@ -2177,8 +2418,9 @@ do use canvas.saved-state
 + bolds Bool
 + italics Bool
 + inset Length = source-row-padding
++ wrap-columns Size = 0
 
-_ text-layout TextLayout?
+_ text-layouts [TextLayout]
 _ shown-spans [SourceSpan]
 _ shown-indent Size
 _ shown-divider U8
@@ -2186,41 +2428,32 @@ _ shown-zone SourceRowZone
 _ shown-bolds Bool
 _ shown-italics Bool
 _ shown-colors [RGBA]
+_ shown-wrap-columns Size
 
-. row-changed < row, bolds, italics
+. row-changed < row, bolds, italics, wrap-columns
 
 ────────────────────
 _ do row-changed
 
-if !text-layout || shown-indent != row.indent || shown-divider != row.divider || is-restyled || !source-spans-same(shown-spans, row.spans)
+if text-layouts.length == 0 || shown-indent != row.indent || shown-divider != row.divider || is-restyled || !source-spans-same(shown-spans, row.spans)
     release-text-layout()
-.. is-restyled = shown-zone != row.zone || shown-bolds != bolds || shown-italics != italics
+.. is-restyled = shown-zone != row.zone || shown-bolds != bolds || shown-italics != italics || shown-wrap-columns != wrap-columns
 invalidate-paint()
 
 ────────────────────
-_ do ensure-text-layout TextLayout
+_ do ensure-text-layouts [TextLayout]
 
 . colors = palette()
-. cached = text-layout
-if cached
-    =? cached if has-colors(colors)
+if text-layouts.length != 0
+    =? text-layouts if has-colors(colors)
     release-text-layout()
 . font = Font($font-family, $font-size, $font-weight, $font-slant)
-. bold = Font($font-family, $font-size, FontWeight.bold, $font-slant)
-. italic = Font($font-family, $font-size, $font-weight, FontSlant.italic)
-. bold-italic = Font($font-family, $font-size, FontWeight.bold, FontSlant.italic)
-. is-preamble = row.zone == SourceRowZone.preamble
-. segments [TextSegment]
-if row.indent > 0
-    segments += TextSegment(0, " " * (row.indent * source-indent-columns), font)
-for span in row.spans
-    . is-bold = bolds && source-is-bold(span.kind)
-    . is-slanted = italics && span.is-optional
-    . shown = if is-bold then (if is-slanted then bold-italic else bold) else (if is-slanted then italic else font)
-    . color = if is-preamble then preamble-color(span.kind) else span-color(span.kind)
-    segments += TextSegment(0, span.text, shown, color)
-. layout = TextLayout(segments, font, null, TextOverflow.clip, TextWrap.no-wrap)
-text-layout = layout
+. wrap = source-row-wrap(row, wrap-columns, source-indent-columns)
+. made [TextLayout]
+for line in 0 .. < wrap.line-count
+    . segments = line-segments(wrap.starts[line], wrap.line-end(line), wrap.line-x(line), font)
+    made += TextLayout(segments, font, null, TextOverflow.clip, TextWrap.no-wrap)
+text-layouts = made
 shown-spans = row.spans
 shown-indent = row.indent
 shown-divider = row.divider
@@ -2228,7 +2461,37 @@ shown-zone = row.zone
 shown-bolds = bolds
 shown-italics = italics
 shown-colors = colors
-= layout
+shown-wrap-columns = wrap-columns
+= made
+
+────────────────────
+_ do line-segments [TextSegment]
+    - from Size
+    - to Size
+    - lead Size
+    - font Font
+
+. bold = Font($font-family, $font-size, FontWeight.bold, $font-slant)
+. italic = Font($font-family, $font-size, $font-weight, FontSlant.italic)
+. bold-italic = Font($font-family, $font-size, FontWeight.bold, FontSlant.italic)
+. is-preamble = row.zone == SourceRowZone.preamble
+. segments [TextSegment]
+. position = row.content-start
+. blank = lead + max(min(to, position) - from, 0)
+if blank > 0
+    segments += TextSegment(0, " " * blank, font)
+for span in row.spans
+    . end = position + span.text.length
+    if end > from && position < to
+        . is-bold = bolds && source-is-bold(span.kind)
+        . is-slanted = italics && span.is-optional
+        . shown = if is-bold then (if is-slanted then bold-italic else bold) else (if is-slanted then italic else font)
+        . color = if is-preamble then preamble-color(span.kind) else span-color(span.kind)
+        . whole = position >= from && end <= to
+        . text = if whole then span.text else span.text[max(from, position) - position .. < min(to, end) - position]
+        segments += TextSegment(0, text, shown, color)
+    position = end
+= segments
 
 ────────────────────
 _ palette [RGBA]
@@ -2324,9 +2587,9 @@ match kind
 ────────────────────
 _ do release-text-layout
 
-if text-layout
-    text-layout.close()
-    text-layout = null
+for layout in text-layouts
+    layout.close()
+text-layouts = List'TextLayout()
 
 ────────────────────
 + do close
@@ -2347,11 +2610,13 @@ if virtual-row-is-sticky'SourceRow(this)
 =? if row.spans.length == 0 || row.is-divider
 do use canvas.saved-state
     canvas.clip(content)
-    . layout = ensure-text-layout()
-    . text-y = content.y + (content.height - layout.height) / 2
-    . text-rect = Rect(content.x + inset, text-y, layout.width, layout.height)
+    . layouts = ensure-text-layouts()
+    . pitch = content.height / layouts.length
     canvas.text-color = $syntax-plain-color ?? $gui-syntax-plain-color
-    canvas.draw-text(layout, text-rect, TextAlignment.left)
+    for line in 0 .. < layouts.length
+        . layout = layouts[line]
+        . text-y = content.y + line * pitch + (pitch - layout.height) / 2
+        canvas.draw-text(layout, Rect(content.x + inset, text-y, layout.width, layout.height), TextAlignment.left)
 
 ━━━━━━━━━━━━━━━━━━━━
 + SourceRowSource
@@ -2427,11 +2692,63 @@ for row in folds.headers(folds.actual(address), source-sticky-limit)
 _ source-row-layout VirtualLayout
     - row-width VirtualCoord?
     - sticky SourceStickyRows?
+    - rows SourceWrapRows
 
 |? sticky != null
-    VerticalStickyLayout(VerticalFixedLayout(source-row-height, row-width, null, source-end-space), sticky)
+    VerticalStickyLayout(VerticalOffsetLayout(rows, row-width), sticky)
 ??
-    VerticalFixedLayout(source-row-height, row-width, null, source-end-space)
+    VerticalOffsetLayout(rows, row-width)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-stuck-rows [SourceStuckRow]
+    - sticky VirtualStickyRows
+    - rows SourceWrapRows
+    - top Length
+    - inset Length
+
+. found [SourceStuckRow]
+. bottom = top
+. reach = top
+. headers = List'I64()
+while reach >= 0
+    . line = floor(reach / source-row-length) as Size
+    =? found if line >= rows.line-count
+    headers.clear()
+    sticky.sticky-headers(rows.display-at(line), headers)
+    =? found if headers.length <= found.length || !source-extends-stuck(headers, found)
+    . header = headers[found.length] as Size
+    . natural = rows.top(header) * source-row-length
+    . height = rows.lines(header) * source-row-length
+    . limit = rows.top((sticky.sticky-section-last(header) as Size) + 1) * source-row-length
+    . y = max(natural, min(bottom, limit - height))
+    found += SourceStuckRow(header, y - top + inset, height)
+    bottom = y + height
+    reach += height
+= found
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-extends-stuck Bool
+    - headers List'I64
+    - found [SourceStuckRow]
+
+all(0 .. < found.length) • where (headers[each] as Size) == found[each].row
+
+━━━━━━━━━━━━━━━━━━━━
+_ do source-stuck-at SourceStuckRow?
+    - stuck [SourceStuckRow]
+    - y Length
+
+for row in stuck
+    =? row if y >= row.y && y < row.y + row.height
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ source-stuck-height Length
+    - stuck [SourceStuckRow]
+
+if stuck.length > 0 then max(last.y + last.height, 0) else 0
+
+.. last = stuck[stuck.length - 1]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ source-selection-contains Bool
@@ -2447,6 +2764,12 @@ active.has-selection && after-start && before-end
 
 ━━━━━━━━━━━━━━━━━━━━
 _ SourceNoteHit is (rect Rect, text String, is-code Bool)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceSpot is (display Size, row Size, line Index, wrap SourceWrap)
+
+━━━━━━━━━━━━━━━━━━━━
+_ SourceStuckRow is (row Size, y Length, height Length)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ SourcePill is (label String, text String, is-code Bool)

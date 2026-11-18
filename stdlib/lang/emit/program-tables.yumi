@@ -2573,13 +2573,14 @@ _ do settle-held
 ` functions read it as they read any local, and only the function that declares it keeps a flag.
 ` One is held where it is assigned nowhere and referred to nowhere, is not read tracked, is not
 ` declared in a loop or with others, is not read in a subscription or a state machine, and its
-` value tracks nothing; and where every instance that declares it reads it before it makes each
-` nested function that reads it (`lazy-dominated`), or its value is cheap and pure there, so
-` that evaluating it early changes nothing (`cheap-value`). One that the value of a captured
-` lazy local not held reads is not held, since a nested function may evaluate that one before
-` the held one has its value. Then an argument or a local captured only for the values of lazy
-` locals (`slot-shared-read`) that no nested function and no captured lazy local not held reads
-` is not kept in the environment.
+` value tracks nothing; is no live statement and is not part of the value of one, which each run
+` of the statement evaluates again (`in-live-statement`); and where every instance that declares
+` it reads it before it makes each nested function that reads it (`lazy-dominated`), or its value
+` is cheap and pure there, so that evaluating it early changes nothing (`cheap-value`). One that
+` the value of a captured lazy local not held reads is not held, since a nested function may
+` evaluate that one before the held one has its value. Then an argument or a local captured only
+` for the values of lazy locals (`slot-shared-read`) that no nested function and no captured lazy
+` local not held reads is not kept in the environment.
 . bound = bindings.bindings[binding]
 . tree = program.modules[bound.module].tree
 . any = false
@@ -2669,13 +2670,31 @@ for position in 0 .. < typed.length
     . owner = instances.rows[instance]
     if (nested-scopes[DeclRef(owner.module, owner.decl).key] ?? bound.scopes.start) != home
         continue
-    if owner.initializer != 0 || has-fills || live-statement-of(instance, row.group)
+    if owner.initializer != 0 || has-fills || in-live-statement(instance, tree, row.group)
         = false
     .. has-fills = owner.fills.count != 0 || owner.fills-share
     if !dominated && !cheap-value(binding, tree, instance, value, 0)
         = false
     declared = true
 = declared
+
+────────────────────
+_ do in-live-statement Bool
+    - instance InstanceId
+    - tree AST
+    - id SyntaxId
+
+` Whether a node is a live statement of an instance or is written in the value of one, outside
+` the functions written in it, as a lazy local attached to a live value is, which each run of
+` the statement evaluates again.
+for node in id .. < (tree.nodes.length as SyntaxId)
+    if tree.subtree-start(node) > id
+        continue
+    if live-statement-of(instance, node)
+        = true
+    if tree.nodes[node] is .node-function-syntax
+        = false
+= false
 
 ────────────────────
 _ do cheap-value Bool

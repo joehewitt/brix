@@ -1229,3 +1229,120 @@ Exception: A ¶ text block ends its row, and its text is on the rows indented be
     . label = show(¶, 1)
                    ^
 ```
+
+### A row that ends in a quote that opens a text takes the rows indented below it as the lines of a text. A line may hold quotes, unescaped, and end in one.
+
+```yumi
+. greeting = "
+    say "hi" to $name "
+    and \"escaped\"
+```
+
+```brix
+(main
+  (let greeting
+    (paragraph
+      (str "say \"hi\" to " name " \"")
+      "and \"escaped\""
+    )
+  )
+)
+```
+
+```output
+<Declaration>
+    <TypeCapture>
+        <Id name="greeting"/>
+    </TypeCapture>
+    <BinaryExpression operator="++">
+        <BinaryExpression operator="++">
+            <String text="say "hi" to "/>
+            <Id name="name"/>
+        </BinaryExpression>
+        <String text=" "
+and "escaped""/>
+    </BinaryExpression>
+</Declaration>
+```
+
+### A row that ends in the quote that closes a text, as `" "` does, keeps the rows indented below it as code.
+
+```yumi
+. label = mark ++ " "
+    .. mark = "Bo"
+```
+
+```brix
+(main
+  (let label
+    (scope (++ mark " ")
+      (lazy mark "Bo")
+    )
+  )
+)
+```
+
+```output
+<Declaration>
+    <TypeCapture>
+        <Id name="label"/>
+    </TypeCapture>
+    <Block>
+        <Declaration lazy="true">
+            <TypeCapture>
+                <Id name="mark"/>
+            </TypeCapture>
+            <String text="Bo"/>
+        </Declaration>
+        <Declaration lazy="true">
+            <TypeCapture>
+                <Id name="it"/>
+            </TypeCapture>
+            <BinaryExpression operator="++">
+                <Id name="mark"/>
+                <String text=" "/>
+            </BinaryExpression>
+        </Declaration>
+        <Id name="it"/>
+    </Block>
+</Declaration>
+```
+
+### A function whose access mark is followed by a quote, as in `+ " text`, has a text body.
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ " text
+    - name String
+
+Hello, "$name".
+```
+
+```brix
+(fn-expr + text _
+  (param name String)
+  (paragraph
+    (str "Hello, \"" name "\".")
+  )
+)
+```
+
+```output
+<Function names="text" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="name"/>
+            <TypeId name="String"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <BinaryExpression operator="++">
+            <BinaryExpression operator="++">
+                <String text="Hello, ""/>
+                <Id name="name"/>
+            </BinaryExpression>
+            <String text=""."/>
+        </BinaryExpression>
+    </Block>
+</Function>
+```

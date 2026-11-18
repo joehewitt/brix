@@ -385,11 +385,8 @@ if fixtures
 . executable = "$directory/module"
 . build = "$directory/build"
 . errors-path = "$directory/stderr"
-. compile = " ".join
-    * "cd ${shell-quoted(suite.project)} &&"
-    * shell-quoted(compiler)
-    * "--compile -o ${shell-quoted(executable)} ${shell-quoted(module.source-path)}"
-    * ">${shell-quoted(build)} 2>&1"
+. compile = "
+    cd ${shell-quoted(suite.project)} && ${shell-quoted(compiler)} --compile -o ${shell-quoted(executable)} ${shell-quoted(module.source-path)} >${shell-quoted(build)} 2>&1
 . compiling = Process("/bin/sh", "-c", compile)
 . compiled = compiling.wait(null) ?? 1
 compiling.close()
@@ -400,9 +397,8 @@ if compiled != 0 || !result.compiled
     result.status = "crashed"
     result.errors = if report then report else "The compiler exited with status $compiled"
     =
-. command = " ".join
-    * "cd ${shell-quoted(work)} &&"
-    * "exec ${shell-quoted(executable)} 2>${shell-quoted(errors-path)}"
+. command = "
+    cd ${shell-quoted(work)} && exec ${shell-quoted(executable)} 2>${shell-quoted(errors-path)}
 . process = Process("/bin/sh", "-c", command)
 . output = process as String
 . status = process.wait(null) ?? 1

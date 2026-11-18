@@ -154,72 +154,69 @@ match turn % 4
         chat-bench-table(turn)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ chat-bench-document
+_ " chat-bench-document
     - turn Size
 
-"\n".join
-    * "## Behaviour under load, part ${turn % 7 + 1}"
-    * ""
-    * "The scheduler keeps a *bounded* run queue per worker, so a burst of work spreads across workers instead of piling onto one. Each worker steals from its neighbours only when its own queue is empty, which keeps `steal` rare in the steady state."
-    * ""
-    * "### What changes as load rises"
-    * ""
-    * "- Queue depth grows until the **high-water mark** is reached"
-    * "- New work is then admitted at the rate old work completes"
-    * "- Latency rises smoothly rather than falling off a cliff"
-    * ""
-    * "1. Measure the baseline with one worker"
-    * "2. Double the workers until throughput stops scaling"
-    * "3. Record the point where latency doubles"
-    * ""
-    * "```yumi"
-    * "+ admitted"
-    * "    - depth Size"
-    * "    - limit Size"
-    * ""
-    * "depth < limit"
-    * "```"
-    * ""
-    * "| Workers | Throughput | Latency |"
-    * "| :-- | --: | --: |"
-    * "| 1 | 1,200 | 4 ms |"
-    * "| 4 | 4,500 | 5 ms |"
-    * "| 16 | 14,000 | 9 ms |"
-    * ""
-    * "> Past sixteen workers the shared allocator becomes the limit, not the scheduler."
-    * ""
-    * "In short, the system degrades gracefully: throughput flattens, latency climbs slowly, and nothing is dropped."
+## Behaviour under load, part ${turn % 7 + 1}
+
+The scheduler keeps a *bounded* run queue per worker, so a burst of work spreads across workers instead of piling onto one. Each worker steals from its neighbours only when its own queue is empty, which keeps `steal` rare in the steady state.
+
+### What changes as load rises
+
+- Queue depth grows until the **high-water mark** is reached
+- New work is then admitted at the rate old work completes
+- Latency rises smoothly rather than falling off a cliff
+
+1. Measure the baseline with one worker
+2. Double the workers until throughput stops scaling
+3. Record the point where latency doubles
+
+```yumi
++ admitted
+    - depth Size
+    - limit Size
+
+depth < limit
+```
+
+| Workers | Throughput | Latency |
+| :-- | --: | --: |
+| 1 | 1,200 | 4 ms |
+| 4 | 4,500 | 5 ms |
+| 16 | 14,000 | 9 ms |
+
+> Past sixteen workers the shared allocator becomes the limit, not the scheduler.
+
+In short, the system degrades gracefully: throughput flattens, latency climbs slowly, and nothing is dropped.
 
 ━━━━━━━━━━━━━━━━━━━━
-_ chat-bench-steps
+_ " chat-bench-steps
     - turn Size
 
-"\n".join
-    * "There are three things to check for turn ${turn + 1}:"
-    * ""
-    * "1. Whether the queue depth stays under the limit"
-    * "2. Whether any worker is starved for longer than a tick"
-    * "3. Whether `steal` shows up in the profile at all"
-    * ""
-    * "```"
-    * "depth=${turn * 3 + 12} limit=256 starved=0"
-    * "```"
-    * ""
-    * "If all three look healthy, the part is behaving as designed and no tuning is needed."
+There are three things to check for turn ${turn + 1}:
+
+1. Whether the queue depth stays under the limit
+2. Whether any worker is starved for longer than a tick
+3. Whether `steal` shows up in the profile at all
+
+```
+depth=${turn * 3 + 12} limit=256 starved=0
+```
+
+If all three look healthy, the part is behaving as designed and no tuning is needed.
 
 ━━━━━━━━━━━━━━━━━━━━
-_ chat-bench-table
+_ " chat-bench-table
     - turn Size
 
-"\n".join
-    * "Here is the summary for turn ${turn + 1}."
-    * ""
-    * "| Metric | Before | After |"
-    * "| :-- | --: | --: |"
-    * "| Queue depth | ${turn + 40} | ${turn + 12} |"
-    * "| Steals per second | 310 | 18 |"
-    * ""
-    * "The second column is what you should expect once the limit is in place. The first is what an *unbounded* queue looks like under the same burst."
+Here is the summary for turn ${turn + 1}.
+
+| Metric | Before | After |
+| :-- | --: | --: |
+| Queue depth | ${turn + 40} | ${turn + 12} |
+| Steals per second | 310 | 18 |
+
+The second column is what you should expect once the limit is in place. The first is what an *unbounded* queue looks like under the same burst.
 
 ━━━━━━━━━━━━━━━━━━━━
 _ chat-bench-find-transcript ChatTranscript?

@@ -2,6 +2,7 @@
 /lang/ast/brix
 /lang/ast/error
 /lang/ast/grammar
+/lang/ast/preparse
 /lang/target
 /stream/aggregate
 
@@ -196,8 +197,11 @@ char == '━' || char == '─' || char == '═'
 . is-next-text = false
 . is-text = false
 . block-indent = -1
+. previous = ""
 for line in lines
     . trimmed = line.trim()
+    . is-continued = previous.ends-with("\\")
+    previous = line
     if block-indent >= 0
         if trimmed.length == 0 || indent-level(line) > block-indent
             text += true
@@ -211,23 +215,17 @@ for line in lines
         is-text = true
         text += true
     else
-        if is-template-header(trimmed)
+        if is-text-body-header(trimmed)
             is-expecting = true
         else if is-expecting && trimmed.length == 0
             is-expecting = false
             is-next-text = true
         else if is-divider-line(trimmed)
             is-expecting = false
-        else if opens-text-block(trimmed)
+        else if !is-continued && is-text-block-opener(line)
             block-indent = indent-level(line)
         text += false
 = text
-
-━━━━━━━━━━━━━━━━━━━━
-_ opens-text-block Bool
-    - trimmed String
-
-trimmed.length > 2 && trimmed.ends-with(" ¶") && !trimmed.starts-with("`") && !trimmed.starts-with("//")
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do indent-level Size
@@ -237,16 +235,6 @@ _ do indent-level Size
 while spaces < line.length && line[spaces] == ' '
     spaces += 1
 = spaces / 4
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-template-header Bool
-    - trimmed String
-
-trimmed.length > 2 && is-access && is-space-char(trimmed[1]) && is-marked
-
-.. is-access = trimmed[0] == '+' || trimmed[0] == '_' || trimmed[0] == '^'
-.. is-marked = rest.starts-with("¶") && (rest.length == 1 || is-space-char(rest[1]))
-.. rest = trimmed[1 .. < trimmed.length].trim()
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do is-template-boundary Bool

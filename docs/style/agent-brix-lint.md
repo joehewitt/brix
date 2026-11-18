@@ -7,7 +7,7 @@ measure the rows of its Yumi view.
 
 ## Core Lint Pass
 
-Run `brix lint <targets> --semantic-rules` with each rule of this set as `--rule <id>`:
+Run `brix lint <targets> --semantic-rules --fix` with each rule of this set as `--rule <id>`:
 
 ```text
 events/no-effectful-payload
@@ -35,6 +35,12 @@ style/prefer-shorthand
 style/prefer-text-template
 tui/prefer-shortcut-node
 ```
+
+`--fix` applies every safe fix the rules make, repeats until none is left, and writes the files it
+changes; the run then reports only the findings it could not fix. Never make a safe fix by hand:
+run `--fix` again instead. `--fix-dry-run` reports the fixes without writing them. Leave
+intentional invalid-style fixtures out of a fix run. Fix the findings that remain as the rule
+guidance below says.
 
 Use `brix lint --list-rules` to confirm the inventory if a rule is unavailable or the configuration
 has changed. If semantic coverage cannot compile or understand a target, report that limitation; do
@@ -82,8 +88,8 @@ exception.
 ### `layout/depth`
 
 Brix only. A row nested more than five levels deep is reported once where the nesting starts. Move
-the inner rows into a function of their own. The rows of a `¶` text block are text and do not
-count.
+the inner rows into a function of their own. The rows of a `¶` text block are text: they do not
+count, and they do not end the nesting around them.
 
 ### `layout/divider-length`
 
@@ -98,6 +104,21 @@ template and the rows of a `¶` text block are exempt: lay them out as the text 
 never wrap them with line continuations to fit the limit. Write a long quoted text as a text block
 instead. Ignore an unbreakable literal or protocol token when splitting it would change the
 value, and intentional golden input where physical line length is what the test covers.
+
+The core pass's `--fix` rewrites a long row only where the rewrite keeps the program's meaning and
+every row it makes fits:
+
+- a call that is the whole value of its row gets its arguments one to a row;
+- a quoted text, or the last operand of `++` when it is one, becomes a text block;
+- `if … then … else …` chains that compare one subject with `==` become a `match` of that subject
+  in a `let`, a lazy or a return, and other chains become a decision table in a `let` or a lazy;
+- `=? value if condition` becomes `if condition` with `= value` below it;
+- the value of a `let` or a lazy declared without a type moves to the row below.
+
+It leaves a row alone when the rewrite would change typing, such as a decision table or a value
+below an assignment or a declared type, and in a `.bx` file when the rows it would make start a new
+run nested past the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
+arithmetic or list with lazies, or move code into a function.
 
 Finding:
 
@@ -162,8 +183,7 @@ ordinary exception. Ignore only in a diagnostic fixture built to contain the sha
 ### `style/no-nested-match-assertions`
 
 Lift assertion-only statements from a nested fallback block of a match or bare table into direct
-raising arms, written as its last cases. Apply the reported safe transformation unless the source is
-an intentional syntax or linter fixture.
+raising arms, written as its last cases. `--fix` makes this rewrite.
 
 Finding:
 
@@ -202,8 +222,7 @@ a suffix that names that same type says nothing. The rule reports a suffix such 
 `f64` where removing it leaves the number the same type: the value of a declaration, assignment or
 return of that type, or of each side of a choice that gives one; an argument the call takes as that
 type and still chooses the same function without the suffix; and an operand of arithmetic, a
-comparison or a bitwise operation beside a value of that type. Apply the safe fix, which deletes
-the suffix.
+comparison or a bitwise operation beside a value of that type. `--fix` deletes the suffix.
 
 A suffix that selects a type is never reported: the value of a local declared without a type, the
 value a shift moves, a number beside another written number, one whose unsuffixed form would not
@@ -251,8 +270,7 @@ Fix:
 ### `style/no-redundant-null-fallback`
 
 A value written with `if` is already null when its condition fails, so a choice whose other side is
-`null` says the same thing at more length. Apply the safe fix, which rewrites the choice as a
-conditional value.
+`null` says the same thing at more length. `--fix` rewrites the choice as a conditional value.
 
 Finding:
 
@@ -281,7 +299,7 @@ built.
 
 An `actionable` finding is an assignment in the constructor's leading run of such assignments, to a
 property without an explicit initializer, whose value reads only constructor parameters and
-properties the body does not assign; apply the safe fix. A `review` finding's value depends on
+properties the body does not assign; `--fix` applies it. A `review` finding's value depends on
 earlier statements, follows other statements, calls a method of the object, reads a name that is
 also a getter or lazy property, replaces an explicit initializer, or targets a property with a
 setter or an observing `when` or `whenever` rule. A `..` initializer runs before the constructor

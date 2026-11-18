@@ -1956,6 +1956,13 @@ for offset in 0 .. < unit.slot-count
         seen += 1
 
 ────────────────────
+_ own-subject Typed
+
+Typed(unit.self, if apart then instances.rows[unit.reading].self-type else unit.owner-type)
+
+.. apart = unit.reading != unit.instance && unit.reading != unit.lender
+
+────────────────────
 _ owns Bool
     - slot SlotId
 
@@ -19373,8 +19380,8 @@ _ do holds-locals Bool
     - property SyntaxId
 
 ` Whether a value an instance types, written at `value`, declares locals in a scope of its own,
-` or a lazy local some read tracks, which its one read does not evaluate in place (see
-` `read-apart`), which the function that evaluates the value where it is written holds as its
+` or a lazy local some read tracks or that is not read once, which no one read evaluates in place
+` (see `read-apart`), which the function that evaluates the value where it is written holds as its
 ` own for the run (see `enter-unit`), where no nested function reads them. Only the slots the
 ` binder declared for the value of the property declared at `property` are looked at
 ` (`window-of`), not every slot of its module's main.
@@ -19389,7 +19396,8 @@ for slot in bound.start .. < bound.start + bound.count
     . row = bindings.slots[slot]
     . scoped = bindings.scopes[row.scope].syntax
     . tracked = row.kind == .slot-lazy && (row.flags /and/ SlotFlag.slot-tracked) != 0
-    if (row.kind == .slot-local || tracked) && start <= scoped && scoped <= value
+    . apart = row.kind == .slot-lazy && !bindings.lazy-reads-once(slot)
+    if (row.kind == .slot-local || tracked || apart) && start <= scoped && scoped <= value
         = true
     if row.kind == .slot-loop-state && start <= row.syntax && row.syntax <= value
         = true

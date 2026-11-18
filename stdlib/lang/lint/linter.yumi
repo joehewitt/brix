@@ -26,6 +26,7 @@
 + config LintConfig
 + catalog [LintRule]
 + active-rules [LintRule]
++ is-fixing = false
 _ analyzer SymbolAnalyzer
 _ declarations DeclarationStore
 
@@ -105,7 +106,7 @@ if facts
     . found [LintDiagnostic]
     for rule in active-rules
         if rule.phase == "semantic"
-            . context = RuleContext(relative, rule.id, config.rules[rule.id]!)
+            . context = RuleContext(relative, rule.id, config.rules[rule.id]!, is-fixing)
             run-semantic-rule(rule.id, source, facts, context)
             found ++= context.diagnostics
     = sort(found) • using compare-diagnostics
@@ -126,7 +127,7 @@ if needs-phase("declaration")
 
 . diagnostics [LintDiagnostic]
 for rule in active-rules
-    . context = RuleContext(relative, rule.id, config.rules[rule.id]!)
+    . context = RuleContext(relative, rule.id, config.rules[rule.id]!, is-fixing)
     if rule.phase == "text" && source.is-brix
         run-brix-text-rule(rule.id, source, context)
     else if rule.phase == "text"
@@ -186,7 +187,7 @@ _ do parse-error-diagnostics [LintDiagnostic]
 . diagnostics [LintDiagnostic]
 for rule in active-rules
     if rule.id == "syntax/parse-error"
-        . context = RuleContext(relative, rule.id, config.rules[rule.id]!)
+        . context = RuleContext(relative, rule.id, config.rules[rule.id]!, is-fixing)
         if source.is-brix
             lint-brix-parse-errors(source, context)
         else

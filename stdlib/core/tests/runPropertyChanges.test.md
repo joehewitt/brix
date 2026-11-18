@@ -3685,3 +3685,368 @@ bump()
 count 1
 count 2
 ```
+
+## Lazies attached to a value
+
+### A lazy attached to the value of a live assignment is part of the value, in "main" or in a function: the assignment stores again as what the lazy reads changes, whether the value reads the lazy plainly or with "#", in a scope or in the block of a call, and a "#" read written in the value itself is still followed. A live lazy's value may have one attached too.
+
+```brix
+(main
+  (let cart (call Cart))
+  (let plain (call Label))
+  (let tracked (call Label))
+  (let called (call Label))
+  (let doubling (call Label))
+  (= (. plain text)
+    (scope (str q " x " (. cart #price))
+      (lazy q (. cart #quantity))
+    )
+  )
+  (= (. tracked text)
+    (scope (str #q " items")
+      (lazy q (. cart #quantity))
+    )
+  )
+  (call follow cart called)
+  (lazy doubled
+    (scope (* q 2)
+      (lazy q (. cart #quantity))
+    )
+  )
+  (= (. doubling text) (str "doubled " #doubled))
+  (call report plain tracked called doubling)
+  (= (. cart quantity) 3)
+  (call report plain tracked called doubling)
+  (= (. cart price) 7)
+  (call report plain tracked called doubling)
+  (= (. cart quantity) 4)
+  (call report plain tracked called doubling)
+)
+
+(fn-do + follow _
+  (param cart Cart)
+  (param label Label)
+  (= (. label text)
+    (call (. (call padded amount) trim)
+      (block (lazy amount (* (. cart #quantity) (. cart #price))))
+    )
+  )
+)
+
+(fn-expr + padded String
+  (param n Int)
+  (str "  " n "  ")
+)
+
+(fn-do + report _
+  (param plain Label)
+  (param tracked Label)
+  (param called Label)
+  (param doubling Label)
+  (print (str (. plain text) " | " (. tracked text) " | " (. called text) " | " (. doubling text)))
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+  (prop + price _ (= 5))
+)
+
+(type + Label
+  (prop + text _ (= ""))
+  (fn-do + close _)
+)
+```
+
+```output
+1 x 5 | 1 items | 5 | doubled 2
+3 x 5 | 3 items | 15 | doubled 6
+3 x 7 | 3 items | 21 | doubled 6
+4 x 7 | 4 items | 28 | doubled 8
+```
+
+### A lazy attached to the value of a content row is part of the value, for a row that stores to a property and for one that declares a property.
+
+```brix
+(import /core/markup)
+
+(main
+  (let cart (call Cart))
+  (let card (call Card cart))
+  (print (str (. card plain) " | " (. card noted)))
+  (= (. cart quantity) 3)
+  (print (str (. card plain) " | " (. card noted)))
+  (= (. cart price) 7)
+  (print (str (. card plain) " | " (. card noted)))
+  (= (. cart quantity) 4)
+  (print (str (. card plain) " | " (. card noted)))
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+  (prop + price _ (= 5))
+)
+
+(type + Card (is MarkupNode)
+  (prop + cart Cart)
+  (prop + plain _ (= ""))
+  (fn-do + This _
+    (param cart _)
+  )
+  (content
+    (= plain
+      (scope (str q " x " (. cart #price))
+        (lazy q (. cart #quantity))
+      )
+    )
+    (prop + noted _
+      (= (scope (str #q " at " (. cart #price))
+          (lazy q (. cart #quantity))
+        )
+      )
+    )
+  )
+)
+```
+
+```output
+1 x 5 | 1 at 5
+3 x 5 | 3 at 5
+3 x 7 | 3 at 7
+4 x 7 | 4 at 7
+```
+
+### A lazy attached to a live value is evaluated again in each run where the value reads it plainly, reads nothing tracked itself and works on it only with built-in operators: in a function, in a method, and in a content row that stores to a property or declares one.
+
+```brix
+(import /core/markup)
+
+(main
+  (let cart (call Cart))
+  (let label (call Label))
+  (let card (call Card cart))
+  (call follow cart label)
+  (call (. card bind))
+  (print (str (. label text) " | " (. card bound) " | " (. card plain) " | " (. card noted)))
+  (= (. cart quantity) 3)
+  (print (str (. label text) " | " (. card bound) " | " (. card plain) " | " (. card noted)))
+  (= (. cart quantity) 4)
+  (print (str (. label text) " | " (. card bound) " | " (. card plain) " | " (. card noted)))
+)
+
+(fn-do + follow _
+  (param cart Cart)
+  (param label Label)
+  (= (. label text) (scope (str q " items") (lazy q (. cart #quantity))))
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+)
+
+(type + Label
+  (prop + text _ (= ""))
+)
+
+(type + Card (is MarkupNode)
+  (prop + cart Cart)
+  (prop + bound _ (= 0))
+  (prop + plain _ (= ""))
+  (fn-do + This _
+    (param cart _)
+  )
+  (fn-do + bind _
+    (= bound (scope (* q 2) (lazy q (. cart #quantity))))
+  )
+  (content
+    (= plain (scope (str q " x") (lazy q (. cart #quantity))))
+    (prop + noted _ (= (scope (str q " noted") (lazy q (. cart #quantity)))))
+  )
+)
+```
+
+```output
+1 items | 2 | 1 x | 1 noted
+3 items | 6 | 3 x | 3 noted
+4 items | 8 | 4 x | 4 noted
+```
+
+### A lazy attached to the value of a derived property is part of the value, whether the value reads it plainly or with "#", in a scope or in the block of a call.
+
+```brix
+(main
+  (let cart (call Cart))
+  (print (str (. cart total) " | " (. cart tracked) " | " (. cart shown)))
+  (= (. cart quantity) 3)
+  (print (str (. cart total) " | " (. cart tracked) " | " (. cart shown)))
+  (= (. cart price) 7)
+  (print (str (. cart total) " | " (. cart tracked) " | " (. cart shown)))
+  (= (. cart quantity) 4)
+  (print (str (. cart total) " | " (. cart tracked) " | " (. cart shown)))
+)
+
+(fn-expr + padded String
+  (param n Int)
+  (str "  " n "  ")
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+  (prop + price _ (= 5))
+  (prop + total _ (= (scope (* q #price) (lazy q #quantity))))
+  (prop + tracked _ (= (scope (* #q 2) (lazy q #quantity))))
+  (prop + shown _
+    (= (call (. (call padded amount) trim)
+        (block (lazy amount (+ #quantity #price)))
+      )
+    )
+  )
+)
+```
+
+```output
+5 | 2 | 6
+15 | 6 | 8
+21 | 6 | 10
+28 | 8 | 11
+```
+
+### A lazy attached to a live value is its own, apart from a live lazy of its function with its name: a "#" read of either follows what that one reads.
+
+```brix
+(main
+  (let cart (call Cart))
+  (let priced (call Label))
+  (let counted (call Label))
+  (lazy shown (. cart #price))
+  (= (. priced text) (str "price " #shown))
+  (= (. counted text)
+    (scope (str #shown " items")
+      (lazy shown (. cart #quantity))
+    )
+  )
+  (print (str (. priced text) " | " (. counted text)))
+  (= (. cart quantity) 3)
+  (print (str (. priced text) " | " (. counted text)))
+  (= (. cart price) 7)
+  (print (str (. priced text) " | " (. counted text)))
+)
+
+(type + Cart
+  (prop + quantity _ (= 1))
+  (prop + price _ (= 5))
+)
+
+(type + Label
+  (prop + text _ (= ""))
+  (fn-do + close _)
+)
+```
+
+```output
+price 5 | 1 items
+price 5 | 3 items
+price 7 | 3 items
+```
+
+### A lazy attached to a live value may be read in more than one arm of "or", "and", "if-expr" or "??", where the arm that reads it first may not run, and by another lazy one arm reads, in a derived property and in a live assignment.
+
+```brix
+(main
+  (let form (call Form))
+  (let view (call View form))
+  (let label (call Label))
+  (= (. label text)
+    (scope (str (or (?? (?. picked folds) false) (?? (?. picked keeps) false)) " " tip)
+      (lazy picked (. form #branch))
+      (lazy count (. form #runs length))
+      (lazy tip (if-expr (> count 1) many "one run"))
+      (lazy many (str count " runs"))
+    )
+  )
+  (call report view label)
+  (= (. form branch) (call Branch false true))
+  (call report view label)
+  (+= (. form runs) "a")
+  (+= (. form runs) "b")
+  (call report view label)
+  (= (. form branch) (call Branch true true))
+  (call report view label)
+  (= (. form runs) (list "c"))
+  (call report view label)
+)
+
+(fn-do + report _
+  (param view View)
+  (param label Label)
+  (print (str (. view either) " " (. view both) " " (. view chosen) " " (. view fallback) " " (. view tip) " | " (. label text)))
+)
+
+(type + Branch
+  (prop + folds Bool)
+  (prop + keeps Bool)
+  (fn-do + This _
+    (param folds _)
+    (param keeps _)
+  )
+)
+
+(type + Form
+  (prop + branch (? Branch) (= null))
+  (prop + runs (list String))
+)
+
+(type + Label
+  (prop + text _ (= ""))
+)
+
+(type + View
+  (prop + form Form)
+  (prop + either _
+    (=
+      (scope (or (?? (?. picked folds) false) (?? (?. picked keeps) false))
+        (lazy picked (. #form #branch))
+      )
+    )
+  )
+  (prop + both _
+    (=
+      (scope (and (?? (?. picked folds) false) (?? (?. picked keeps) false))
+        (lazy picked (. #form #branch))
+      )
+    )
+  )
+  (prop + chosen _
+    (=
+      (scope (if-expr (> (. #form #runs length) 1) (?? (?. picked folds) false) (?? (?. picked keeps) false))
+        (lazy picked (. #form #branch))
+      )
+    )
+  )
+  (prop + fallback _
+    (=
+      (scope (?? (?. picked folds) (?? (?. picked keeps) false))
+        (lazy picked (. #form #branch))
+      )
+    )
+  )
+  (prop + tip _
+    (=
+      (scope (if-expr (> count 1) many "one run")
+        (lazy count (. #form #runs length))
+        (lazy many (str count " runs"))
+      )
+    )
+  )
+  (fn-do + This _
+    (param form _)
+  )
+)
+```
+
+```output
+false false false false one run | false one run
+true false true false one run | true one run
+true false false false 2 runs | true 2 runs
+true true true true 2 runs | true 2 runs
+true true true true one run | true one run
+```

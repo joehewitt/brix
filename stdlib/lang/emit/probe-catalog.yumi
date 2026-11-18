@@ -28,20 +28,31 @@ for position in 0 .. < tables.probes.length
 for position in 0 .. < tables.profile-metrics.length
     metrics += "    ${site-json(position + 1, metric)}"
     .. metric = tables.metric-site(tables.profile-metrics[position])
-. lines [String]
-lines += "{"
-lines += "  \"version\": 1,"
-lines += "  \"selectors\": ${strings-json(program.probes.selectors)},"
-lines += "  \"locals\": ${strings-json(program.probes.locals)},"
-lines += "  \"unmatched\": ${strings-json(unmatched)},"
-lines += "  \"sites\": ["
-lines += ",\n".join(sites)
-lines += "  ],"
-lines += "  \"metrics\": ["
-lines += ",\n".join(metrics)
-lines += "  ]"
-lines += "}"
-write-file-atomically(Path(path), "${"\n".join(lines)}\n")
+write-file-atomically(Path(path), "${probe-catalog(program, unmatched, sites, metrics)}\n")
+
+━━━━━━━━━━━━━━━━━━━━
+_ ¶ probe-catalog
+    - program Program
+    - unmatched [String]
+    - sites [String]
+    - metrics [String]
+
+{
+  "version": 1,
+  "selectors": ${strings-json(program.probes.selectors)},
+  "locals": ${strings-json(program.probes.locals)},
+  "unmatched": ${strings-json(unmatched)},
+  "sites": [
+$site-rows
+  ],
+  "metrics": [
+$metric-rows
+  ]
+}
+
+════════════════════
+.. site-rows = ",\n".join(sites)
+.. metric-rows = ",\n".join(metrics)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ site-json String

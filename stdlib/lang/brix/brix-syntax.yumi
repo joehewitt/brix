@@ -150,7 +150,7 @@ _ do brix-is-prefix Bool
 
 . spans [SourceSpan]
 . is-named = false
-for span in brix-highlight(text)
+for span in brix-head-spans(text)
     . is-word = span.kind == SourceSpanKind.identifier || span.kind == SourceSpanKind.type-name
     if is-word && !is-named
         spans += SourceSpan(if span.kind == SourceSpanKind.type-name then SourceSpanKind.type-definition else SourceSpanKind.definition, span.text)
@@ -158,6 +158,29 @@ for span in brix-highlight(text)
     else
         spans += span
 = spans
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-head-spans [SourceSpan]
+    - text String
+
+. mark = brix-text-body-mark(text)
+=? brix-highlight(text) if !mark
+= brix-highlight(text[0 .. < mark]) ++ List'SourceSpan(SourceSpan(.string, "\"")) ++ brix-highlight(text[mark + 1 ...])
+
+━━━━━━━━━━━━━━━━━━━━
+_ do brix-text-body-mark Index?
+    - text String
+
+. at Index = 0
+while at < text.length && text[at] == ' '
+    at += 1
+=? if at >= text.length || (text[at] != '+' && text[at] != '_')
+at += 1
+. spaces = at
+while at < text.length && text[at] == ' '
+    at += 1
+=? if at == spaces || at + 1 >= text.length || text[at] != '"' || text[at + 1] != ' '
+= at
 
 ━━━━━━━━━━━━━━━━━━━━
 _ brix-highlight-grammar ~ Char ImmutableArray'SourceSpan

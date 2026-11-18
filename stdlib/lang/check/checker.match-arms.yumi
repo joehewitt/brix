@@ -215,6 +215,8 @@ if expected != no-type && !is-optional
         facts.set-node-type(instance, id, recorded)
 if result == no-type
     = invalid-type
+if is-optional && arms-given != no-type
+    arms-given = types.optional-of(arms-given)
 = if is-optional then types.optional-of(result) else result
 
 ────────────────────
@@ -283,6 +285,10 @@ if subject != no-type && subject != invalid-type
 for position in first-value .. < arm-values.length
     values += arm-values[position]
 -= arm-values[first-value .. < arm-values.length]
+. givens [TypeId]
+for position in first-value .. < arm-givens.length
+    givens += arm-givens[position]
+-= arm-givens[first-value .. < arm-givens.length]
 . valued = values.length == arms.length
 . typed [TypeId]
 . peer = if !valued then no-type else if expected != no-type then expected-inner else written-peer
@@ -336,7 +342,11 @@ if unites
     joined = types.intern-union(united)
 scratch.types.rewind(mark)
 . result = joined
+. lacks = null-joined || absent || (!has-else && subject == no-type)
+    .. null-joined = has-null && joined != types.null-type && !holds-null(joined)
 if expected != no-type
+    . given = given-join(typed, givens, joined, raises, expected)
+    arms-given = if lacks then types.optional-of(given) else given
     result = expected
     . missed = !has-else && subject == no-type && expected != types.void-type
     if missed && !types.is-optional(expected)
@@ -344,9 +354,8 @@ if expected != no-type
         facts.replace-node-type(instance, id, result)
     else
         facts.set-node-type(instance, id, joined)
-else if null-joined || absent || (!has-else && subject == no-type)
+else if lacks
     result = types.optional-of(joined)
-.. null-joined = has-null && joined != types.null-type && !holds-null(joined)
 . joins = !as-statement
 for position in 0 .. < arms.length
     . arm = typed[position]
@@ -361,6 +370,25 @@ if raises && frame.surround.catch-depth != 0
 for error in errors
     note-outgoing(error, id)
 = result
+
+────────────────────
+_ do given-join TypeId
+    - typed [TypeId]
+    - givens [TypeId]
+    - joined TypeId
+    - raises Bool
+    - expected TypeId
+
+=? joined if givens.length != typed.length || (all(givens) • where each == no-type)
+. mark = scratch.types.mark
+for position in 0 .. < typed.length
+    . arm = typed[position]
+    if arm == types.null-type || arm == invalid-type || (raises && raises-at-arm(arm, expected))
+        continue
+    scratch.types.push(if givens[position] != no-type then givens[position] else arm)
+. given = if scratch.types.length == mark then joined else relations.join-arms(mark)
+scratch.types.rewind(mark)
+= given
 
 ────────────────────
 + do literal-peer TypeId
@@ -637,6 +665,7 @@ match tree.nodes[id]
             if it-slot != no-slot && it-type != no-type
                 frame.assign(it-slot, it-type)
         . value = no-type
+        . given = no-type
         . symbol = tree.symbol-of(row.expr)
         . assigned-start = frame.assigned-syntax.length
         if symbol && arming.expected == no-type
@@ -647,15 +676,19 @@ match tree.nodes[id]
             . own-arm = arm-typing
             arm-typing = arm-typing.forced = if predicate != 0 && narrowing.condition-slot(predicate) == null then predicate else 0
             arm-typing = arm-typing.symbol = if arming.expected != no-type then tree.arm-value(row.expr) else 0
-            if passes-expected(row.expr)
+            . passed = passes-expected(row.expr)
+            if passed
                 note-returned-match(tree.arm-value(row.expr), arming.expected)
                 arms-expected = arming.expected
+                arms-given = no-type
             if content-parent(row.expr) != no-type
                 check-body(row.expr)
             else if arming.statement
                 value = check-steps(row.expr)
             else
                 value = check-arm-value(row.expr)
+            if passed
+                given = arms-given
             arm-typing = own-arm
         if narrowing.exits(row.expr)
             frame.restore-members(known)
@@ -680,6 +713,7 @@ match tree.nodes[id]
                 arming = arming.union = scratch.types.mark
             scratch.types.push(value)
             arm-values += tree.arm-value(row.expr)
+            arm-givens += given
         if raises-at-arm(value, arming.expected)
             raised-arms += id
         = is-else
@@ -696,6 +730,7 @@ match tree.nodes[id]
         if value != no-type && value != invalid-type
             scratch.types.push(value)
             arm-values += 0
+            arm-givens += no-type
         = is-else
 
 ────────────────────
