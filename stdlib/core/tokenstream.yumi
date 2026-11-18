@@ -766,20 +766,23 @@ _ get pattern-refill-size Size
 + do pattern-release
 
 pinned = false
-release-consumed()
+release-consumed(chunk-size)
 
 ────────────────────
 _ do release-unpinned
+    - amount Size
 
-if !pinned
-    release-consumed()
+. needed = if byte-source && amount < chunk-size then chunk-size else amount
+if !pinned && buffer.size - length < needed
+    release-consumed(needed)
 
 ────────────────────
 _ do release-consumed
+    - needed Size
 
 . released = if cursor && is-code(buffer[cursor - 1], 13) then cursor - 1 else cursor
 . pending = length - released
-. is-full = buffer.size - length < chunk-size
+. is-full = buffer.size - length < needed
 if released && released >= pending && (is-full || buffer.size > release-capacity)
     release-locations(released)
     . capacity = token-buffer-capacity(pending + chunk-size)
@@ -836,7 +839,8 @@ append-buffer(data, data.length)
 + do get has-more
 
 if cursor >= length && !source-complete
-    release-unpinned()
+    if !pinned && buffer.size - length < chunk-size
+        release-unpinned(1)
     refill(1)
 = cursor < length
 
@@ -844,7 +848,8 @@ if cursor >= length && !source-complete
 + do <- this Token?
 
 if cursor >= length && !source-complete
-    release-unpinned()
+    if !pinned && buffer.size - length < chunk-size
+        release-unpinned(1)
     refill(1)
 if cursor < length
     . item = buffer[cursor]
@@ -870,7 +875,7 @@ if has-more
 
 if !(should-read-once && cursor < length)
     while cursor + size > length && !source-complete
-        release-unpinned()
+        release-unpinned(cursor + size - length)
         . old-length = length
         refill(cursor + size - length)
         if should-read-once || length == old-length
