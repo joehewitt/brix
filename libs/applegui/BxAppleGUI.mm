@@ -5126,7 +5126,10 @@ guiRunMenuCallback(void* closure) {
 @interface BxGuiMenu : NSMenu <NSMenuDelegate>
 @property(nonatomic, assign) BxGuiMenuCallback callback;
 @property(nonatomic, assign) void* context;
+@property(nonatomic, assign) void* contextRoot;
 @property(nonatomic, assign) BOOL populated;
+- (void)registerCallback:(BxGuiMenuCallback)callback context:(void*)context;
+- (void)clearCallback;
 @end
 
 static SEL
@@ -5188,6 +5191,27 @@ guiMenuItemMatchesKey(NSMenuItem* item, NSEvent* event) {
 }
 
 @implementation BxGuiMenu
+
+- (void)dealloc {
+    [self clearCallback];
+}
+
+- (void)registerCallback:(BxGuiMenuCallback)callback context:(void*)context {
+    [self clearCallback];
+    self.callback = callback;
+    self.context = context;
+    self.contextRoot = context ? brixAddRoot(static_cast<char*>(context)) : nullptr;
+}
+
+- (void)clearCallback {
+    void* root = self.contextRoot;
+    self.callback = nullptr;
+    self.context = nullptr;
+    self.contextRoot = nullptr;
+    if (root) {
+        brixRemoveRoot(root);
+    }
+}
 
 - (BOOL)performKeyEquivalent:(NSEvent*)event {
     if (!self.populated) {
@@ -5571,8 +5595,7 @@ brixGuiMenuCreate(const char* title, BxGuiMenuCallback callback, void* context) 
     BxGuiMenu* menu = [[BxGuiMenu alloc] initWithTitle:stringFromUTF8(title)];
     [menu setAutoenablesItems:NO];
     [menu setDelegate:menu];
-    menu.callback = callback;
-    menu.context = context;
+    [menu registerCallback:callback context:context];
     return (__bridge_retained void*)menu;
 }
 
@@ -5584,8 +5607,7 @@ brixGuiMenuRelease(void* ptr) {
     }
     if ([menu isKindOfClass:[BxGuiMenu class]]) {
         BxGuiMenu* owned = (BxGuiMenu*)menu;
-        owned.callback = nullptr;
-        owned.context = nullptr;
+        [owned clearCallback];
         [owned setDelegate:nil];
     }
     if ([NSApp mainMenu] == menu) {
@@ -5735,6 +5757,7 @@ static const uint32_t kGuiStatusItemMoved = 2;
 @property(nonatomic, weak) NSStatusItem* item;
 @property(nonatomic, assign) BxGuiStatusItemCallback callback;
 @property(nonatomic, assign) void* context;
+@property(nonatomic, assign) void* contextRoot;
 @property(nonatomic, strong) BxGuiWindowHost* panel;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) id globalMonitor;
@@ -5746,6 +5769,24 @@ static const uint32_t kGuiStatusItemMoved = 2;
     [self endPanel];
     if (self.localMonitor) {
         [NSEvent removeMonitor:self.localMonitor];
+    }
+    [self clearCallback];
+}
+
+- (void)registerCallback:(BxGuiStatusItemCallback)callback context:(void*)context {
+    [self clearCallback];
+    self.callback = callback;
+    self.context = context;
+    self.contextRoot = context ? brixAddRoot(static_cast<char*>(context)) : nullptr;
+}
+
+- (void)clearCallback {
+    void* root = self.contextRoot;
+    self.callback = nullptr;
+    self.context = nullptr;
+    self.contextRoot = nullptr;
+    if (root) {
+        brixRemoveRoot(root);
     }
 }
 
@@ -5858,12 +5899,13 @@ brixGuiStatusItemSetCallback(void* ptr, BxGuiStatusItemCallback callback, void* 
     if (!item) {
         return;
     }
+    BxGuiStatusItemTarget* previous = objc_getAssociatedObject(item, &guiStatusItemTargetKey);
+    [previous clearCallback];
     BxGuiStatusItemTarget* target = nil;
     if (callback) {
         target = [[BxGuiStatusItemTarget alloc] init];
         target.item = item;
-        target.callback = callback;
-        target.context = context;
+        [target registerCallback:callback context:context];
         [target startMonitoring];
     }
     NSStatusBarButton* button = [item button];
