@@ -140,6 +140,7 @@ _ sticky-rows CodeStickyRows?
 _ scroll-filters [ShaderFilter]
 _ scroll-blur-from Length
 _ event refreshed Bool
+_ event scroll-moved Length
 _ event scroll-blur-settled Bool
 _ event closing Bool
 
@@ -661,7 +662,7 @@ _ caret-blink ~>
 _ scroll-blur ~>
 
 ~> scroll-resting
-    then scroll-blurring(change.old-position.y) for change on region.scroll-changed when blurs-scrolling && change.cause.is-direct
+    then scroll-blurring(from) for from on scroll-moved
 
 ~> scroll-blurring(from)
     do scroll-blur-from = from
@@ -699,6 +700,8 @@ for event on region.scroll-changed when arrival
 clear-link()
 scroll-top = event.position.y
 invalidate-paint()
+if blurs-scrolling && event.cause.is-direct
+    scroll-moved <- event.old-position.y
 
 ────────────────────
 _ get row-length Length
