@@ -710,7 +710,7 @@ do match? tree.nodes[id]
                     do match? tree.nodes[statement]
                         | .node-assign(attribute)
                             if attribute.op == .bind-op
-                                . name = identifier-name(tree, attribute.lhs)
+                                . name = tree.identifier-name(attribute.lhs)
                                 if !name
                                     refuse(.refused-statement, statement)
                                     =
@@ -883,7 +883,7 @@ do match? tree.nodes[id]
                                     attribute-trackers += LiveMember(statement, watching)
                                 setter-given += Typed(apart(given, attribute.rhs, true), given.type)
                                 continue
-                            . name = identifier-name(tree, attribute.lhs)
+                            . name = tree.identifier-name(attribute.lhs)
                             . place = if name then instances.fill-argument(callee, name) else U32.max
                             . fills = filled-parameter(fact, count + written) != U32.max
                             if !fills && place != declared + given
@@ -969,9 +969,9 @@ do match? tree.nodes[body]
                             = statement
                         if !default && line.slot-binding != 0 && same-name
                             = statement
-                        .. same-name = identifier-name(tree, line.slot-binding) == name
+                        .. same-name = tree.identifier-name(line.slot-binding) == name
                 | .node-markup-slot-forward(line)
-                    if !default && identifier-name(tree, line.slot-binding) == name
+                    if !default && tree.identifier-name(line.slot-binding) == name
                         = statement
                 ??
                     . attribute = tree.nodes[statement] is .node-assign
@@ -998,7 +998,7 @@ for arm in tree.region-arms(control)
             for line in tree.children[block.body]
                 do match? tree.nodes[line]
                     | .node-markup(row)
-                        if identifier-name(tree, row.slot-binding) == name
+                        if tree.identifier-name(row.slot-binding) == name
                             = line
 = 0
 
@@ -1067,7 +1067,7 @@ do match? tree.nodes[body]
                 | .node-assign(attribute)
                     if facts.style-declaration-of(unit.reading, statement)
                         continue
-                    . name = identifier-name(tree, attribute.lhs)
+                    . name = tree.identifier-name(attribute.lhs)
                     . place = types.property-named(type, name) if name
                     if !place
                         refuse(.refused-statement, statement)

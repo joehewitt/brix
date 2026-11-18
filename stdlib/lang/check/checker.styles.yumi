@@ -462,7 +462,7 @@ do match? owner.tree.nodes[root]
                 for statement in owner.tree.children[block.body]
                     do match? owner.tree.nodes[statement]
                         | .node-assign(line)
-                            . name = identifier-name(owner.tree, line.lhs)
+                            . name = owner.tree.identifier-name(line.lhs)
                             if name && !property-named(level, name)
                                 for member in owner.member-pool[members]
                                     do match? owner.decls[member]
@@ -1459,11 +1459,11 @@ do match? owner.decls[ref.decl]
                 | .decl-style-domains(domains)
                     do match? owner.tree.nodes[domains.syntax]
                         | .node-style-annotation(row)
-                            if identifier-name(owner.tree, row.left) == name
+                            if owner.tree.identifier-name(row.left) == name
                                 for item in owner.tree.children[row.domains]
                                     do match? owner.tree.nodes[item]
                                         | .node-style-domain-item(domain)
-                                            . named = identifier-name(owner.tree, domain.domain)
+                                            . named = owner.tree.identifier-name(domain.domain)
                                             if named && domain.target == 0
                                                 . index = style-domain
                                                     - named
@@ -1489,7 +1489,7 @@ for member in program.modules[module].member-pool[class.members]
         | .decl-style-domains(domains)
             do match? tree.nodes[domains.syntax]
                 | .node-style-annotation(row)
-                    . name = identifier-name(tree, row.left)
+                    . name = tree.identifier-name(row.left)
                     if is-sheet-type(base)
                         frame.diagnose(domains.syntax, .stated, program.store-atom("Derived StyleSheet \"${class.name.text}\" names no domains; its slots raise those ${type-short-name(types, family-root(sheet))} names"))
                     else if !name || !sheet-has-slot(sheet, name)
@@ -1591,7 +1591,7 @@ do match? owner.decls[ref.decl]
                             for item in owner.tree.children[row.domains]
                                 do match? owner.tree.nodes[item]
                                     | .node-style-domain-item(domain)
-                                        . named = identifier-name(owner.tree, domain.domain)
+                                        . named = owner.tree.identifier-name(domain.domain)
                                         if named && domain.target == 0
                                             place-style-domain(named, home, site, ref.module, item)
 
@@ -2133,7 +2133,7 @@ _ do add-style-domains Bool
 ` naming no property of the style, or a place other than the node or its parent, is reported.
 do match? tree.nodes[id]
     | .node-style-annotation(row)
-        . name = identifier-name(tree, row.left)
+        . name = tree.identifier-name(row.left)
         . position = if name then style-property(first, name) else U32.max
         if position == U32.max
             . message = "Style property \"${if name then name.text else ""}\" does not exist"
@@ -2142,8 +2142,8 @@ do match? tree.nodes[id]
         for item in tree.children[row.domains]
             do match? tree.nodes[item]
                 | .node-style-domain-item(domain)
-                    . domain-name = identifier-name(tree, domain.domain)
-                    . target = identifier-name(tree, domain.target) if domain.target != 0
+                    . domain-name = tree.identifier-name(domain.domain)
+                    . target = tree.identifier-name(domain.target) if domain.target != 0
                     if !domain-name
                         decline(site)
                         = false
@@ -2281,7 +2281,7 @@ while level && types.intrinsic-of(level) == .style && level != types.type-row(.s
                                 for item in owner.tree.children[row.domains]
                                     do match? owner.tree.nodes[item]
                                         | .node-style-domain-item(domain)
-                                            . name = identifier-name(owner.tree, domain.domain)
+                                            . name = owner.tree.identifier-name(domain.domain)
                                             if name
                                                 place-style-domain(name, module, site, ref.module, item)
     level = types.base-of(level)
@@ -2298,7 +2298,7 @@ do match? written.nodes[id]
             | .node-identifier(head)
                 =? program.store-atom("${head.name.text}.${row.name.text}") if !head.is-tracked
         = null
-= identifier-name(written, id)
+= written.identifier-name(id)
 
 ────────────────────
 + styles-attribute Bool
@@ -4052,7 +4052,7 @@ for line in lines
     . slot = U32.max
     do match? written.nodes[line]
         | .node-markup(element)
-            . name = identifier-name(written, element.slot-binding)
+            . name = written.identifier-name(element.slot-binding)
             slot = if name then slot-number(name.text) else U32.max
     facts.style-contents += StyleContent
         - instance
@@ -4773,7 +4773,7 @@ for update in facts.rule-updates
         . written = program.modules[row.module].tree
         do match? written.nodes[update.site]
             | .node-assign(line)
-                . name = identifier-name(written, line.lhs)
+                . name = written.identifier-name(line.lhs)
                 if name
                     facts.record-diagnostic
                         - instance
@@ -5525,7 +5525,7 @@ do match? tree.nodes[statement]
     | .node-rule-syntax
         type-nested-rule(statement, sheet)
     | .node-assign(line)
-        . name = identifier-name(tree, line.lhs)
+        . name = tree.identifier-name(line.lhs)
         if line.op != .eq-op || !name
             =
         . answering = style-answering(styles, name)
@@ -5673,7 +5673,7 @@ do match? tree.nodes[syntax]
                 for statement in tree.children[block.body]
                     do match? tree.nodes[statement]
                         | .node-assign(line)
-                            . name = identifier-name(tree, line.lhs)
+                            . name = tree.identifier-name(line.lhs)
                             if assigning && name && is-class && property-named(receiver, name)
                                 if !update-unit-property(statement, line, receiver, name)
                                     =
@@ -5722,7 +5722,7 @@ do match? tree.nodes[syntax]
                                 do content-slot(statement)
                                 =
                             | .node-assign(line)
-                                . name = identifier-name(tree, line.lhs)
+                                . name = tree.identifier-name(line.lhs)
                                 if name && property-named(receiver, name)
                                     frame.diagnose(line.lhs, .stated, conditional-update(name))
                                     =
@@ -5775,7 +5775,7 @@ do match? tree.nodes[line]
             - .stated
             - program.store-atom("Style content slots cannot forward markup slots")
         = U32.max
-. name = identifier-name(tree, binding) if binding != 0
+. name = tree.identifier-name(binding) if binding != 0
 if !name
     decline(line)
     = U32.max

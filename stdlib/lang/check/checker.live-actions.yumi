@@ -221,7 +221,7 @@ _ do bind-again Bool
 
 . resolution = bindings.resolution-of(frame.binding, statement)
 . made = if resolution.kind == .resolve-slot then frame.slot-type(resolution.slot) else no-type
-. name = identifier-name(tree, anchor)
+. name = tree.identifier-name(anchor)
 =? false if made == no-type || !name
 . found = property-named(made, name)
 =? false if !found || types.properties[found].storage-kind != .storage-eager
@@ -967,7 +967,7 @@ if clause != 0
     . message = "A whenever clause cannot follow a named element that a branch rebuilds"
     frame.diagnose(clause, .stated, program.store-atom(message))
     = false
-. name = identifier-name(tree, root)!
+. name = tree.identifier-name(root)!
 . place = property-named(receiver, name)
 if !place
     decline(root)
@@ -1330,7 +1330,7 @@ do match? tree.nodes[id]
     | .node-get-expression(row)
         if !row.is-tracked && tree.nodes[row.object] is .node-identifier && reads-scope
             = id
-        .. reads-scope = identifier-name(tree, row.object) == scope
+        .. reads-scope = tree.identifier-name(row.object) == scope
 for child in tree.children-of(id)
     . found = untracked-read(child, scope)
     if found != 0
@@ -1933,7 +1933,7 @@ _ do track-local
 . kind = frame.declaration.kind
 . reaches = kind == .live-decl || kind == .whenever-decl || kind == .gate-decl || kind == .branch-decl || kind == .branch-arm-decl || kind == .source-decl || kind == .row-decl || kind == .slot-decl || kind == .selector-decl
 if kind == .key-decl && tree.tests-row(frame.declaration.syntax) && !plain
-    . name = identifier-name(tree, id)
+    . name = tree.identifier-name(id)
     . shown = if name then name.text else "it"
     . message = "The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep \"$shown\" in a property and read it with \"#\""
     frame.diagnose(id, .stated, program.store-atom(message))
@@ -1953,7 +1953,7 @@ if !hold-subscribers(id, subscribers)
     =
 . context = live-context(read-site(id))
 if context == .live-none
-    . name = identifier-name(tree, id)
+    . name = tree.identifier-name(id)
     if name
         untracked(id, name)
     =
@@ -2131,7 +2131,7 @@ do match? tree.nodes[id]
     | .node-get-expression(row)
         object = row.object
 =? false if object == 0
-. scope = identifier-name(tree, object)
+. scope = tree.identifier-name(object)
 =? false if !scope
 for node in id + 1 .. < (tree.nodes.length as SyntaxId)
     if tree.subtree-start(node) <= id
@@ -2139,7 +2139,7 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
             | .node-markup(row)
                 do match? tree.nodes[row.slot-parameter]
                     | .node-markup-slot-parameter(written)
-                        =? true if identifier-name(tree, written.name) == scope
+                        =? true if tree.identifier-name(written.name) == scope
 = false
 
 ────────────────────

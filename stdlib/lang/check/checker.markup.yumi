@@ -91,7 +91,7 @@ _ do clashes-property Bool
     - name SyntaxId
     - written SyntaxId
 
-. text = identifier-name(tree, name)
+. text = tree.identifier-name(name)
 . place = property-named(receiver, text) if text
 if !place || names-element(types, types.properties[place])
     = false
@@ -578,11 +578,11 @@ while level && types.intrinsic-of(level) == .class
                 | .node-slot-outlet(row)
                     . named = program.store-atom("")
                     if row.name != 0
-                        named = identifier-name(owner.tree, row.name) ?? named
+                        named = owner.tree.identifier-name(row.name) ?? named
                     if named == name && !owner.tree.inner-outlet(content, node)
                         = (level, node)
                 | .node-markup-slot-forward(row)
-                    if identifier-name(owner.tree, row.slot-binding) == name
+                    if owner.tree.identifier-name(row.slot-binding) == name
                         = (level, node)
     level = types.base-of(level)
 = (no-type, 0u32)
@@ -718,7 +718,7 @@ if above != no-type && writes-content(above)
         | .node-markup(row)
             if row.slot-binding != 0 && written.holder-of(first) == owner-lines
                 bound = true
-                slot = identifier-name(written, row.slot-binding) ?? slot
+                slot = written.identifier-name(row.slot-binding) ?? slot
             .. owner-lines = written.content-lines(class-content(owner))
     . names [Atom]
     . wanted [TypeId]
@@ -814,7 +814,7 @@ for index in 0 .. < path.length
             else if bound != 0
                 do match? written.nodes[bound]
                     | .node-markup(line)
-                        slot = identifier-name(written, line.slot-binding) ?? slot
+                        slot = written.identifier-name(line.slot-binding) ?? slot
             . slots [Atom]
             . wanted [TypeId]
             . items [TypeId]
@@ -1719,7 +1719,7 @@ do match? tree.nodes[row.body] if row.body != 0
         for statement in tree.children[block.body]
             do match? tree.nodes[statement]
                 | .node-assign(attribute)
-                    . name = identifier-name(tree, attribute.lhs)
+                    . name = tree.identifier-name(attribute.lhs)
                     if name
                         given += name
 . count = 0
@@ -1749,7 +1749,7 @@ if count == 0
 . message = "Markup element <$shown gives none of the arguments the constructors of $shown require"
 if count == 1 && wanted
     message = "Markup element <$shown gives no value for \"${wanted.text}\", which the constructor of $shown requires"
-. named = identifier-name(tree, row.id) if row.id != 0
+. named = tree.identifier-name(row.id) if row.id != 0
 if named
     message = "$message; \"${named.text}\" after <$shown names the element"
 frame.diagnose(row.type-id, .stated, program.store-atom(message))
@@ -2040,7 +2040,7 @@ do match? tree.nodes[body]
 ` by itself and the setter chosen for it as an assignment to the property chooses one, the
 ` reference's error where none answers. One of a setter private to another module, one written
 ` with an assigning operator, and one of a class with type variables are declined.
-. name = identifier-name(tree, target)
+. name = tree.identifier-name(target)
 . found = attribute-accessor(class, name!)
 if op == .bind-op
     . shown = type-short-name(types, class)
@@ -2099,7 +2099,7 @@ frame.diagnose(target, .stated, program.store-atom(message))
 ` reference's error where no style could answer it. An attribute a setter answers, one of an
 ` array and one written with an assigning operator are declined. An event written is wanted as
 ` the property's type, as `use-event` says.
-. name = identifier-name(tree, target)
+. name = tree.identifier-name(target)
 if (op != .eq-op && op != .bind-op) || !name || types.intrinsic-of(class) != .class || generic
     decline(statement)
     = invalid-type
@@ -2166,7 +2166,7 @@ do match? tree.nodes[body]
                 for statement in tree.children[row.body]
                     do match? tree.nodes[statement]
                         | .node-assign(attribute)
-                            . name = identifier-name(tree, attribute.lhs)
+                            . name = tree.identifier-name(attribute.lhs)
                             . place = (property-named(made, name) ?? interface-accessor(made, name)) if name
                             if !place && facts.style-declaration-of(instance, statement)
                                 continue
@@ -2625,9 +2625,9 @@ _ filled-name Atom?
 
 match tree.nodes[line]
     | .node-markup(row)
-        identifier-name(tree, row.slot-binding)
+        tree.identifier-name(row.slot-binding)
     | .node-markup-slot-forward(row)
-        identifier-name(tree, row.slot-binding)
+        tree.identifier-name(row.slot-binding)
     ??
         null
 
@@ -2735,7 +2735,7 @@ for outlet in found
         continue
     do match? owner.tree.nodes[outlet]
         | .node-markup-slot-forward(row)
-            . name = identifier-name(owner.tree, row.slot-binding)
+            . name = owner.tree.identifier-name(row.slot-binding)
             . body = owner.tree.holder-of(outlet)
             . element = owner.tree.holder-of(body)
             if !(owner.tree.nodes[element] is .node-markup)
@@ -2780,7 +2780,7 @@ for outlet in found
         | .node-slot-outlet(row)
             . name = program.store-atom("")
             if row.name != 0
-                name = identifier-name(owner.tree, row.name) ?? name
+                name = owner.tree.identifier-name(row.name) ?? name
             if names.find(name) != null
                 if ref.module == module
                     frame.diagnose(outlet, .stated, program.store-atom("Duplicate slot outlet"))
@@ -2891,7 +2891,7 @@ if types.intrinsic-of(content) != .class
     = invalid-type
 . name = program.store-atom("")
 if row.name != 0
-    name = identifier-name(tree, row.name) ?? name
+    name = tree.identifier-name(row.name) ?? name
 . item = no-type
 . given SyntaxId = 0
 do match? tree.nodes[row.slot-parameter]
@@ -3020,7 +3020,7 @@ _ do outlet-name Atom
 
 . name = program.store-atom("")
 if row.name != 0
-    name = identifier-name(tree, row.name) ?? name
+    name = tree.identifier-name(row.name) ?? name
 = name
 
 ────────────────────
@@ -3794,7 +3794,7 @@ if bindings.resolution-of(frame.binding, name).kind != .resolve-member
 . self = frame.self-type
 if self == no-type || self == invalid-type || types.intrinsic-of(self) != .class || lacks-self()
     = false
-. text = identifier-name(tree, name)
+. text = tree.identifier-name(name)
 . place = property-named(self, text) if text
 if !place
     = false
@@ -4028,7 +4028,7 @@ while true
 ` where it reads something tracked, as a live assignment does. The line gives no content. One
 ` whose name its class or a class above declares too is reported (`report-content-clash`).
 . left = tree.content-property-name(id)
-. name = identifier-name(tree, left) if left != 0
+. name = tree.identifier-name(left) if left != 0
 if !name || bindings.resolution-of(frame.binding, left).kind != .resolve-member
     decline(id)
     = invalid-type

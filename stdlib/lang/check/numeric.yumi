@@ -1,52 +1,7 @@
 ./type-store
 ./types
+/lang/ast/ast-queries
 /lang/ast/program
-
-━━━━━━━━━━━━━━━━━━━━
-+ IntegerLiteral is Tuple
-
-+ value U64
-+ negative Bool
-+ overflow Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ do parse-integer-literal IntegerLiteral
-    - text String
-
-. negative = text.length != 0 && text[0] == '-'
-. start = if negative then 1 else 0
-. base = 10u64
-if text.length >= start + 2 && text[start] == '0'
-    . marker = text[start + 1]
-    if marker == 'x' || marker == 'X'
-        base = 16
-        start += 2
-    else if marker == 'b' || marker == 'B'
-        base = 2
-        start += 2
-    else if marker == 'o' || marker == 'O'
-        base = 8
-        start += 2
-. value = 0u64
-. overflow = false
-for index in start .. < text.length
-    . char = text[index]
-    if char == '_'
-        continue
-    . digit = 0u64
-    if char >= '0' && char <= '9'
-        digit = char - '0'
-    else if char >= 'a' && char <= 'f'
-        digit = ((char - 'a') as U64) + 10
-    else if char >= 'A' && char <= 'F'
-        digit = ((char - 'A') as U64) + 10
-    else
-        break
-    if value > (U64.max - digit) / base
-        overflow = true
-    else
-        value = value * base + digit
-= IntegerLiteral(value, negative, overflow)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do decimal-text String

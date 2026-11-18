@@ -1038,7 +1038,7 @@ _ do hold-placed Void
 ` The name of a placed markup element is given the element's object where it is written,
 ` which a function written in the one that declares the name, such as the one that builds a
 ` slot, does through what it captures.
-. text = identifier-name(tree, name)
+. text = tree.identifier-name(name)
 . position = lookup-position(text) if text
 if position
     use-slot(name-slots[position], name-depths[position], ResolutionFlag.resolution-write)
@@ -1263,7 +1263,7 @@ _ do walk-outlet Void
 if fills && function-depth != 0
     . text = program.store-atom("")
     if name != 0
-        text = identifier-name(tree, name) ?? text
+        text = tree.identifier-name(name) ?? text
     use-slot(builder-of(text), 0, 0)
 do match? tree.nodes[parameter]
     | .node-markup-slot-parameter(row)
@@ -1600,7 +1600,7 @@ _ do note-borrowed Void
 ` The name of a markup element that no block declares: where something else in reach
 ` declared the name, the reference takes that thing's value for the element's object. What
 ` the name finds is kept for the type pass, and nothing is reported where it finds nothing.
-. name = identifier-name(tree, id)
+. name = tree.identifier-name(id)
 if !name
     =
 . position = lookup-position(name)
@@ -1753,7 +1753,7 @@ _ do declare-capture
 ` A name a stream pattern captures. A match keeps one slot for each name, which every place
 ` that captures the name fills, as the reference's matchmaker keeps one. No capture is named
 ` `it`, which an action reads for what its arm matched.
-. name = identifier-name(tree, id)
+. name = tree.identifier-name(id)
 if name && name.text == "it"
     . message = "A capture cannot be named \"it\", which names what the arm matched; choose another name"
     bindings.diagnostics.append(Diagnostic(module, id, .stated, program.store-atom(message)))
@@ -2085,9 +2085,9 @@ _ declared-name Atom?
 
 match tree.nodes[pattern]
     | .node-type-capture(row)
-        identifier-name(tree, row.id)
+        tree.identifier-name(row.id)
     ??
-        identifier-name(tree, pattern)
+        tree.identifier-name(pattern)
 
 ────────────────────
 _ do walk Void
@@ -2202,7 +2202,7 @@ do match tree.nodes[id]
         resolve(id, row.name, ResolutionFlag.resolution-ref)
     | .node-assign(row)
         walk(row.rhs)
-        . target = identifier-name(tree, row.lhs)
+        . target = tree.identifier-name(row.lhs)
         if target
             . assignment = if row.op == .eq-op then id else 0u32
             resolve(row.lhs, target, ResolutionFlag.resolution-write, assignment)
@@ -2310,7 +2310,7 @@ do match tree.nodes[id]
     | .node-markup-slot-forward(row)
         if fills && function-depth != 0
             use-slot
-                - builder-of(identifier-name(tree, row.slot-binding) ?? program.store-atom(""))
+                - builder-of(tree.identifier-name(row.slot-binding) ?? program.store-atom(""))
                 - 0
                 - 0
     | .node-for-block(row)
@@ -2538,7 +2538,7 @@ do match tree.nodes[id]
         . named = if fills then tree.content-property-name(id) else 0u32
         if named != 0
             walk(row.value)
-            resolve(named, identifier-name(tree, named)!, ResolutionFlag.resolution-write, id)
+            resolve(named, tree.identifier-name(named)!, ResolutionFlag.resolution-write, id)
             walk-live(id)
     | .node-import-syntax
         =
@@ -3782,7 +3782,7 @@ _ do declare-pattern-node Void
 
 do match tree.nodes[id]
     | .node-type-capture(row)
-        . name = identifier-name(tree, row.id)
+        . name = tree.identifier-name(row.id)
         if name
             . slot = declare-bound(name, kind, id, flags, group)
             . declares U32 = ResolutionFlag.resolution-declares
@@ -4177,7 +4177,7 @@ if keyed
         | .node-loop-syntax(row)
             do match? tree.nodes[row.pattern]
                 | .node-type-capture(capture)
-                    . named = identifier-name(tree, capture.id)
+                    . named = tree.identifier-name(capture.id)
                     if named
                         dependent += named
 do match? tree.nodes[body]
@@ -4338,7 +4338,7 @@ do match? tree.nodes[id]
         do match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 named = capture.id
-        . declared = identifier-name(tree, named)
+        . declared = tree.identifier-name(named)
         . found = lookup-position(declared) if declared
         if found
             slots += name-slots[found]
@@ -4763,7 +4763,7 @@ do match? tree.nodes[loop]
     | .node-loop-syntax(row)
         do match? tree.nodes[row.pattern]
             | .node-type-capture(capture)
-                name = identifier-name(tree, capture.id) ?? each-name
+                name = tree.identifier-name(capture.id) ?? each-name
 . given = declare(name, .slot-argument, clause, 0, 0)
 bindings.set-resolution
     - binding
@@ -5486,7 +5486,7 @@ _ capture-named Bool
 ` Whether a field of a type written as a tuple is a capture that names `name`.
 match owner-tree.nodes[id]
     | .node-type-capture(row)
-        identifier-name(owner-tree, row.id) == name
+        owner-tree.identifier-name(row.id) == name
     ??
         false
 

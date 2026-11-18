@@ -397,7 +397,7 @@ if is-super-syntax(callable) || tree.names-super(callable)
 . resolution = bindings.resolution-of(frame.binding, callable)
 do match resolution.kind
     |= .resolve-function
-        . name = identifier-name(tree, callable)
+        . name = tree.identifier-name(callable)
         if !name
             decline(id)
             = Found(invalid-type)
@@ -412,7 +412,7 @@ do match resolution.kind
             plan-builder(id, frame.self-type, name.text, arguments.types.length)
         = Found(answered)
     |= .resolve-type
-        . called = identifier-name(tree, callable)
+        . called = tree.identifier-name(callable)
         if called && types.this-atom && called == types.this-atom
             = Found(construct-type(id, callable, arguments))
         if types.const-array-decl.refers-to(resolution.module, resolution.decl)
@@ -426,7 +426,7 @@ do match resolution.kind
             decline(callable)
             = Found(invalid-type)
         if precedes-declaration(resolution.slot)
-            frame.diagnose(id, .function-not-found, identifier-name(tree, callable))
+            frame.diagnose(id, .function-not-found, tree.identifier-name(callable))
             = Found(invalid-type)
         if wavers(resolution.slot)
             decline(id)
@@ -438,7 +438,7 @@ do match resolution.kind
         .. unwraps-called = types.optional-inner(declared) == called
         = Found(call-value(id, callable, called, arguments))
     |= .resolve-member
-        . name = identifier-name(tree, callable)
+        . name = tree.identifier-name(callable)
         if !name
             decline(id)
             = Found(invalid-type)
@@ -458,7 +458,7 @@ do match resolution.kind
             = Found(held)
         = Found(call-value(id, callable, held, arguments))
     |= .resolve-unresolved
-        . name = identifier-name(tree, callable)
+        . name = tree.identifier-name(callable)
         if !name
             = Found(invalid-type)
         . bound = types.env-lookup(frame.env, name)
