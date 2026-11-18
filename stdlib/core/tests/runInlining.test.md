@@ -1,0 +1,3479 @@
+# Inlining
+
+```yumi
+. nodes [Node] = [Row(), Node(), Row()]
+for row in selected(nodes)
+    -- row.enabled
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Node
+
++ enabled = true
+
+━━━━━━━━━━━━━━━━━━━━
++ selected @inline
+    - nodes [Node]
+
+** nodes
+?*> select-row(each)
+
+━━━━━━━━━━━━━━━━━━━━
++ do select-row @inline
+    - node Node
+
+if node is Row
+    . row = node as Row
+    if row.enabled
+        = row
+```
+
+```output
+true
+true
+```
+
+```yumi warn
+/core
+-- caller(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf Int @inline
+    - value Int
+
+. total = 0
+for index in 0 .. < value
+    if index == 2
+        continue
+    total += index
+if total > 1
+    = total
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ caller Int
+    - value Int
+
+leaf(value) + leaf(value + 1)
+```
+
+```stderr
+```
+
+```output
+12
+```
+
+```yumi
+-- selected-property(Value(4), Value(9), true)
+-- selected-property(Value(4), Value(9), false)
+
+━━━━━━━━━━━━━━━━━━━━
++ Value
+
++ number Int
+
+────────────────────
++ This
+    - number Int
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose-value Value @inline
+    - first Value
+    - second Value
+    - choose Bool
+
+if choose
+    = second
+= first
+
+━━━━━━━━━━━━━━━━━━━━
++ do selected-property Int
+    - first Value
+    - second Value
+    - choose Bool
+
+. selected = choose-value(first, second, choose)
+. offset = 2
+. callback Mapper'Int'Int = :: value => value + offset
+= invoke(callback, selected.number)
+```
+
+```output
+11
+6
+```
+
+```yumi
+-- selected-property(Value(4), Value(9), true)
+-- selected-property(Value(4), Value(9), false)
+
+━━━━━━━━━━━━━━━━━━━━
++ Value
+
++ number Int
+
+────────────────────
++ This
+    - number Int
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose-value Value
+    - first Value
+    - second Value
+    - choose Bool
+
+if choose
+    = second
+= first
+
+━━━━━━━━━━━━━━━━━━━━
++ do selected-property Int
+    - first Value
+    - second Value
+    - choose Bool
+
+. selected = choose-value(first, second, choose)
+. offset = 2
+. callback Mapper'Int'Int = :: value => value + offset
+= invoke(callback, selected.number)
+```
+
+```output
+11
+6
+```
+
+```yumi warn
+/core
+-- catch outer(true)
+-- catch outer(false)
+panic-leaf()
+-- "after"
+
+━━━━━━━━━━━━━━━━━━━━
++ Failure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf Int ?! Failure @inline
+    - succeeds Bool
+
+do finally
+    -- "leaf cleanup"
+if succeeds
+    = 7
+?! Failure("failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int ?! Failure @inline
+    - succeeds Bool
+
+do finally
+    -- "outer cleanup"
+= leaf(succeeds) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do panic-leaf @inline
+
+. attempt = do new
+    ?! Panic("panic")
+catch failure
+    -- failure
+attempt.wait()
+```
+
+```stderr
+```
+
+```output
+leaf cleanup
+outer cleanup
+8
+leaf cleanup
+outer cleanup
+failed
+panic
+after
+```
+
+```yumi warn
+/core
+
+-- combine(tick(1), tick(2))
+-- combine(tick(3))
+-- state
+
+_ state = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick Int
+    - value Int
+
+state = state * 10 + value
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ combine Int @inline
+    - value I64
+    - unused Int = tick(9)
+
+(value + value) as Int
+```
+
+```stderr
+```
+
+```output
+2
+6
+1239
+```
+
+```yumi warn
+/core
+
+-- inline-identity(42)
+-- inline-identity("text")
+
+━━━━━━━━━━━━━━━━━━━━
++ inline-identity'T T @inline
+    - value T
+
+value
+```
+
+```stderr
+```
+
+```output
+42
+text
+```
+
+```yumi warn
+/core
+
+. counter = Counter()
+-- counter.bump(4)
+-- counter.bump(3)
+-- counter.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ value Int = 0
+
+────────────────────
++ do bump Int @inline
+    - amount Int
+
+value += amount
+= value
+```
+
+```stderr
+```
+
+```output
+4
+7
+7
+```
+
+```yumi warn
+/core
+
+-- lazy-value(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ lazy-value Int @inline
+    - value Int
+
+twice + twice
+    .. twice = value * 2
+```
+
+```stderr
+```
+
+```output
+20
+```
+
+```yumi warn
+/core
+
+. sum = 0
+for index in 0 .. < 3
+    sum += fresh(index) + fresh(index + 1)
+-- sum
+
+━━━━━━━━━━━━━━━━━━━━
++ do fresh Int @inline
+    - value Int
+
+. local = value
+for index in 0 .. < 4
+    if index == 1
+        continue
+    if index == 3
+        break
+    local += index
+if local < 3
+    = local + 10
+= local
+```
+
+```stderr
+```
+
+```output
+31
+```
+
+```yumi warn
+./inline-support
+/core
+
+-- cross-module(8)
+-- cross-module-ordinary(8)
+```
+
+```yumi file=inline-support.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ cross-module Int @inline
+    - value Int
+
+value + 3
+
+━━━━━━━━━━━━━━━━━━━━
++ cross-module-ordinary Int
+    - value Int
+
+value + 3
+
+```
+
+```stderr
+```
+
+```output
+11
+11
+```
+
+```yumi warn
+/BxEvents/BxGCHandshake.h
+/BxGC/BxGC.h
+/core
+
+-- managed("held")
+
+━━━━━━━━━━━━━━━━━━━━
++ do managed String @inline
+    - seed String
+
+. live = "$seed value"
+C:brixGCSafepoint()
+C:brixCollect()
+allocate()
+= live
+
+━━━━━━━━━━━━━━━━━━━━
++ do allocate
+
+-- "allocation ${Counter().value}"
+C:brixCollect()
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ value Int = 0
+
+────────────────────
++ do bump Int @inline
+    - amount Int
+
+value += amount
+= value
+```
+
+```stderr
+```
+
+```output
+allocation 0
+held value
+```
+
+```yumi
+/core
+-- recurse(3)
+-- aggregate((4, 5))
+for value in inline-numbers()
+    -- value
+━━━━━━━━━━━━━━━━━━━━
++ recurse Int @inline
+    - value Int
+
+match value
+    | 0
+        0
+    ??
+        recurse(value - 1) + 1
+━━━━━━━━━━━━━━━━━━━━
++ aggregate Int @inline
+    - pair (Int, Int)
+
+pair[0]
+━━━━━━━━━━━━━━━━━━━━
++ do inline-numbers @inline
+
+<= 7
+━━━━━━━━━━━━━━━━━━━━
++ unused Int @inline
+
+42
+```
+
+```output
+3
+4
+7
+```
+
+```yumi
+/core
+-- dispatch(Child())
+━━━━━━━━━━━━━━━━━━━━
++ Base
+────────────────────
++ value Int @inline
+
+1
+━━━━━━━━━━━━━━━━━━━━
++ Child is Base
+────────────────────
++ value Int
+
+2
+━━━━━━━━━━━━━━━━━━━━
++ dispatch Int
+    - object Base
+
+object.value()
+```
+
+```output
+2
+```
+
+```yumi
+/core
+. fn = bound-leaf
+-- fn(4)
+-- bound-leaf(7)
+━━━━━━━━━━━━━━━━━━━━
++ bound-leaf Int @inline
+    - value Int
+
+value + 1
+```
+
+```output
+5
+8
+```
+
+```yumi
+/core
+
+-- even(4)
+-- even(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do even Bool @inline
+    - value Int
+
+if value == 0
+    = true
+= odd(value - 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do odd Bool @inline
+    - value Int
+
+if value == 0
+    = false
+= even(value - 1)
+```
+
+```output
+true
+false
+```
+
+```yumi warn
+./inline-panic
+/core
+
+attempt(0)
+attempt(1)
+attempt(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do attempt
+    - which Int
+
+. task = do new
+    choose(which)
+catch failure
+    -- failure.source?.line
+task.wait()
+```
+
+```yumi file=inline-panic.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose @inline
+    - which Int
+
+if which == 0
+    . missing Int?
+    -- missing!
+else if which == 1
+    . missing Int?
+    -- missing!
+else
+    ?! Panic("existing")
+
+```
+
+```stderr
+```
+
+```output
+8
+11
+13
+```
+
+```yumi warn
+/core
+-- batch-caller(3)
+━━━━━━━━━━━━━━━━━━━━
++ batch-leaf Int @inline
+    - value Int
+
+value + 1
+━━━━━━━━━━━━━━━━━━━━
++ batch-caller Int
+    - value Int
+
+batch-leaf(value) + batch-leaf(value + 1)
+```
+
+```stderr
+```
+
+```output
+9
+```
+
+```yumi
+/core
+-- increment(4)
+━━━━━━━━━━━━━━━━━━━━
++ increment Int @inline without gc
+    - value Int
+
+value + 1
+```
+
+```output
+5
+```
+
+```yumi warn
+/core
+
+-- link-0(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ link-0 Int @inline
+    - value Int
+
+link-1(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-1 Int @inline
+    - value Int
+
+link-2(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-2 Int @inline
+    - value Int
+
+link-3(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-3 Int @inline
+    - value Int
+
+link-4(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-4 Int @inline
+    - value Int
+
+link-5(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-5 Int @inline
+    - value Int
+
+link-6(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-6 Int @inline
+    - value Int
+
+link-7(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-7 Int @inline
+    - value Int
+
+link-8(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-8 Int @inline
+    - value Int
+
+link-9(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-9 Int @inline
+    - value Int
+
+link-10(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-10 Int @inline
+    - value Int
+
+link-11(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ link-11 Int @inline
+    - value Int
+
+value + 1
+```
+
+```stderr
+```
+
+```output
+13
+```
+
+```yumi warn
+/core
+
+-- large(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do large Int @inline
+    - value Int
+
+. total = value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+total += value + value + value + value + value + value + value + value
+= total
+```
+
+```stderr
+```
+
+```output
+321
+```
+
+```yumi warn
+/core
+
+-- tuple-sum((3, 4))
+. point = InlinePoint(3.0, 4.0)
+-- point.dot(InlinePoint(2.0, 5.0))
+-- point.shift(1.0).dot(point)
+
+━━━━━━━━━━━━━━━━━━━━
++ tuple-sum Int @inline
+    - pair (Int, Int)
+
+pair[0] + pair[1]
+
+━━━━━━━━━━━━━━━━━━━━
++ InlinePoint is Tuple
+
++ x F64
++ y F64
+
+────────────────────
++ dot F64 @inline
+    - other InlinePoint
+
+x * other.x + y * other.y
+
+────────────────────
++ shift InlinePoint @inline
+    - amount F64
+
+InlinePoint(x + amount, y + amount)
+```
+
+```stderr
+```
+
+```output
+7
+26
+32
+```
+
+```yumi warn
+/core
+
+. value = InlineWide(1, 2, 3, 4, 5, 6)
+-- wide-sum(value)
+-- wide-forward(value)
+-- wide-sum(wide-choice(value, true))
+-- wide-sum(wide-choice(value, false))
+-- wide-sum(inline-tuple-identity(value))
+-- nested-sum(InlineNested(value, (7, 8)))
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineWide is (a I64, b I64, c I64, d I64, e I64, f I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineNested is (wide InlineWide, pair (I64, I64))
+
+━━━━━━━━━━━━━━━━━━━━
++ wide-sum I64 @inline
+    - value InlineWide
+
+value.a + value.b + value.c + value.d + value.e + value.f
+
+━━━━━━━━━━━━━━━━━━━━
++ wide-forward I64 @inline
+    - value InlineWide
+
+wide-sum(value) + wide-sum(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ wide-choice InlineWide @inline
+    - value InlineWide
+    - original Bool
+
+|? original
+    value
+??
+    InlineWide(6, 5, 4, 3, 2, 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ inline-tuple-identity'T T @inline
+    - value T
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
++ nested-sum I64 @inline
+    - value InlineNested
+
+wide-sum(value.wide) + value.pair[0] + value.pair[1]
+```
+
+```stderr
+```
+
+```output
+21
+42
+21
+30
+21
+36
+```
+
+```yumi warn
+/BxGC/BxGC.h
+/core
+
+. payload = InlinePayload("first", "second", InlineBox(7))
+-- keep-payload(payload)
+-- payload.box.value
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineBox
+
++ value Int
+
+────────────────────
++ This
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ InlinePayload is (first String, second String, box InlineBox)
+
+━━━━━━━━━━━━━━━━━━━━
++ do keep-payload String @inline
+    - value InlinePayload
+
+. retained = value
+C:brixCollect()
+retained.box.value += 1
+C:brixCollect()
+= "$retained.first $retained.second ${retained.box.value}"
+```
+
+```stderr
+```
+
+```output
+first second 8
+8
+```
+
+```yumi warn
+/core
+
+-- use-tuple-once(make-tuple())
+-- tuple-evaluations
+
+_ tuple-evaluations = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-tuple (Int, Int)
+
+tuple-evaluations += 1
+= (3, 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ use-tuple-once Int @inline
+    - value (Int, Int)
+
+value[0] + value[0] + value[1] + value[1]
+```
+
+```stderr
+```
+
+```output
+14
+1
+```
+
+```yumi warn
+/core
+
+. small = InlineMutablePair(3, 4)
+. wide = InlineMutableWide(1, 2, 3, 4)
+-- update-pair(small)
+-- small.a
+-- update-wide(wide)
+-- wide.a
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineMutablePair is Struct
+
++ a Int
++ b Int
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineMutableWide is Struct
+
++ a I64
++ b I64
++ c I64
++ d I64
+
+━━━━━━━━━━━━━━━━━━━━
++ update-pair Int @inline
+    - value InlineMutablePair
+
+do
+    value.a += 10
+value.a + value.b
+
+━━━━━━━━━━━━━━━━━━━━
++ update-wide I64 @inline
+    - value InlineMutableWide
+
+do
+    value.a += 10
+value.a + value.b + value.c + value.d
+```
+
+```stderr
+```
+
+```output
+17
+3
+20
+1
+```
+
+```yumi warn
+/core
+
+. missing InlineMaybePoint?
+-- optional-point-sum(InlineMaybePoint(3, 4))
+-- optional-point-sum(missing)
+-- catch checked-point-sum(InlineMaybePoint(3, 4), true)
+-- catch checked-point-sum(InlineMaybePoint(3, 4), false)
+
+━━━━━━━━━━━━━━━━━━━━
++ InlineMaybePoint is (x I64, y I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ InlinePointError is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ optional-point-sum I64 @inline
+    - value InlineMaybePoint?
+
+|? value
+    value.x + value.y
+??
+    -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked-point-sum I64 ?! InlinePointError @inline
+    - value InlineMaybePoint
+    - succeeds Bool
+
+do finally
+    -- "cleanup $value.x"
+if succeeds
+    = value.x + value.y
+?! InlinePointError("failed")
+```
+
+```stderr
+```
+
+```output
+7
+-1
+cleanup 3
+7
+cleanup 3
+failed
+```
+
+```yumi warn
+./inline-tuple-module
+/core
+
+. point = ModulePoint(3.0, 4.0)
+-- module-point-dot(point, point)
+```
+
+```yumi file=inline-tuple-module.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ ModulePoint is (x F64, y F64)
+
+━━━━━━━━━━━━━━━━━━━━
++ module-point-dot F64 @inline
+    - left ModulePoint
+    - right ModulePoint
+
+left.x * right.x + left.y * right.y
+
+```
+
+```stderr
+```
+
+```output
+25
+```
+
+```yumi warn
+/core
+
+. original = ReboundTuple(1, 2, 3, 4)
+-- rebind-tuple(original)
+-- original.a
+
+━━━━━━━━━━━━━━━━━━━━
++ ReboundTuple is (a I64, b I64, c I64, d I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ do rebind-tuple I64 @inline
+    - value ReboundTuple
+
+value = ReboundTuple(9, 8, 7, 6)
+= value.a + value.b
+```
+
+```stderr
+```
+
+```output
+17
+1
+```
+
+```yumi warn
+/core
+
+_ source = SnapshotTuple(1, 2, 3, 4)
+-- snapshot-tuple(source)
+-- source.a
+
+━━━━━━━━━━━━━━━━━━━━
++ SnapshotTuple is (a I64, b I64, c I64, d I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ do snapshot-tuple I64 @inline
+    - value SnapshotTuple
+
+replace-source()
+= value.a
+
+━━━━━━━━━━━━━━━━━━━━
++ do replace-source
+
+source = SnapshotTuple(9, 8, 7, 6)
+```
+
+```stderr
+```
+
+```output
+1
+9
+```
+
+```yumi warn
+/core
+
+. value = HugeInlineTuple(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+-- huge-inline-sum(value)
+-- branch-inline-tuple(value, true)
+-- branch-inline-tuple(value, false)
+-- loop-inline-tuple(value)
+-- value.a
+
+━━━━━━━━━━━━━━━━━━━━
++ HugeInlineTuple is (a I64, b I64, c I64, d I64, e I64, f I64, g I64, h I64, i I64, j I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ huge-inline-sum I64 @inline
+    - value HugeInlineTuple
+
+value.a + value.b + value.c + value.d + value.e + value.f + value.g + value.h + value.i + value.j
+
+━━━━━━━━━━━━━━━━━━━━
++ do branch-inline-tuple I64 @inline
+    - value HugeInlineTuple
+    - replace Bool
+
+if replace
+    value = HugeInlineTuple(10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+= value.a
+
+━━━━━━━━━━━━━━━━━━━━
++ do loop-inline-tuple I64 @inline
+    - value HugeInlineTuple
+
+for index in 0 .. < 3
+    value = HugeInlineTuple(value.a + 1, value.b, value.c, value.d, value.e, value.f, value.g, value.h, value.i, value.j)
+= value.a
+```
+
+```stderr
+```
+
+```output
+55
+10
+1
+4
+1
+```
+
+```yumi
+/core
+
+_ source = SnapshotTuple(1, 2, 3, 4)
+-- snapshot-tuple(source)
+-- source.a
+
+━━━━━━━━━━━━━━━━━━━━
++ SnapshotTuple is (a I64, b I64, c I64, d I64)
+
+━━━━━━━━━━━━━━━━━━━━
++ do snapshot-tuple I64
+    - value SnapshotTuple
+
+replace-source()
+= value.a
+
+━━━━━━━━━━━━━━━━━━━━
++ do replace-source
+
+source = SnapshotTuple(9, 8, 7, 6)
+```
+
+```output
+1
+9
+```
+
+```yumi
+/core
+-- closure-inline(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ twice Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value) + callback(value + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-inline Int
+    - value Int
+
+. offset = 3
+. callback Mapper'Int'Int = :: item => item + offset
+. first = twice(callback, value)
+offset = 10
+= first + callback(value)
+```
+
+```output
+29
+```
+
+```yumi
+/core
+-- closure-escape(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ ordinary-invoke Int
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-escape Int
+    - value Int
+
+. count = 1
+. callback Mapper'Int'Int = :: amount => do
+    count += amount
+    = count
+. alias = callback
+. first = invoke(callback, value)
+. second = ordinary-invoke(alias, 5)
+. third = invoke(callback, 2)
+-- callback == alias
+= first * 100 + second * 10 + third
+```
+
+```output
+true
+501
+```
+
+```yumi
+/core
+-- closure-join(true, 3)
+-- closure-join(false, 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-join Int
+    - first Bool
+    - value Int
+
+. offset = 4
+. callback Mapper'Int'Int = :: item => item + offset
+if first
+    callback = :: item => item * offset
+. result = invoke(callback, value)
+callback = :: item => item - offset
+= result + invoke(callback, 10)
+```
+
+```output
+18
+13
+```
+
+```yumi
+/core
+-- closure-nested(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ forward Mapper'Int'Int @inline
+    - callback Mapper'Int'Int
+
+callback
+
+━━━━━━━━━━━━━━━━━━━━
++ make-adder Mapper'Int'Int @inline
+    - offset Int
+
+:: value => value + offset
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-nested Int
+    - value Int
+
+. first = make-adder(2)
+. second = make-adder(5)
+. nested Mapper'Int'Int = :: item => invoke(forward(first), item) + invoke(second, item)
+= invoke(nested, value)
+```
+
+```output
+13
+```
+
+```yumi
+/core
+-- closure-loop(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ do consume Int @inline
+    - callback Mapper'Int'Int
+    - count Int
+
+. total = 0
+for index in 0 .. < count
+    total += callback(index)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-loop Int
+    - count Int
+
+. calls = 0
+. callback Mapper'Int'Int = :: item => do
+    calls += 1
+    = item + calls
+. zero = consume(callback, 0)
+. result = consume(callback, count)
+= zero + result + calls
+```
+
+```output
+20
+```
+
+```yumi
+/core
+/BxGC/BxGC.h
+-- closure-managed("capture")
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload is (name String, a Int, b Int, c Int, d Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ apply-payload Payload @inline
+    - callback Mapper'Payload'Payload
+    - value Payload
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-managed String
+    - text String
+
+. capture = Payload(text, 1, 2, 3, 4)
+. callback Mapper'Payload'Payload = :: value => do
+    C:brixGCCollect()
+    = Payload(capture.name + value.name, capture.a + value.a, value.b, value.c, value.d)
+. result = apply-payload(callback, Payload("-alive", 5, 6, 7, 8))
+= result.name + "-${result.a}"
+```
+
+```output
+capture-alive-6
+```
+
+```yumi
+/core
+-- closure-each(3)
+. iterator = closure-generator(2)
+-- iterator()
+-- iterator()
+
+━━━━━━━━━━━━━━━━━━━━
++ apply-each Int @inline
+    - value Int
+    - callback
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ closure-each Int
+    - value Int
+
+apply-each(value) • callback each * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-generator
+    - value Int
+
+. offset = 4
+<= apply-each(value) • callback each + offset
+offset = 5
+<= apply-each(value) • callback each + offset
+```
+
+```output
+6
+6
+7
+```
+
+```yumi
+/core
+-- catch closure-errors(true)
+-- catch closure-errors(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ checked-apply Int ?! CallbackFailure @inline
+    - callback CheckedCallback
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-errors Int ?! CallbackFailure
+    - succeeds Bool
+
+. callback CheckedCallback = :: value => do
+    do finally
+        -- "callback cleanup"
+    if succeeds
+        = value + 1
+    ?! CallbackFailure("callback failed")
+= checked-apply(callback, 4)
+```
+
+```output
+callback cleanup
+5
+callback cleanup
+callback failed
+```
+
+```yumi
+/core
+-- catch closure-errors-ordinary(true)
+-- catch closure-errors-ordinary(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ checked-apply Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-errors-ordinary Int ?! CallbackFailure
+    - succeeds Bool
+
+. callback CheckedCallback = :: value => do
+    do finally
+        -- "callback cleanup"
+    if succeeds
+        = value + 1
+    ?! CallbackFailure("callback failed")
+= checked-apply(callback, 4)
+```
+
+```output
+callback cleanup
+5
+callback cleanup
+callback failed
+```
+
+```yumi
+/core
+-- closure-creation-join(true, 3)
+-- closure-creation-join(false, 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ make-adder Mapper'Int'Int @inline
+    - offset Int
+
+:: value => value + offset
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-creation-join Int
+    - choose Bool
+    - value Int
+
+. first = make-adder(2)
+. second = make-adder(5)
+. callback = first
+if choose
+    callback = second
+= invoke(callback, value)
+```
+
+```output
+8
+5
+```
+
+```yumi
+/core
+-- closure-identity(3)
+-- closure-unknown(true, :: value => value * 3)
+-- closure-unknown(false, :: value => value * 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-identity Int
+    - value Int
+
+. offset = 4
+. callback Mapper'Int'Int = :: item => item + offset
+. alias = callback
+-- callback == alias
+= invoke(callback, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-unknown Int
+    - choose Bool
+    - unknown Mapper'Int'Int
+
+. offset = 4
+. callback Mapper'Int'Int = :: item => item + offset
+if choose
+    callback = unknown
+= invoke(callback, 3)
+```
+
+```output
+true
+7
+9
+7
+```
+
+```yumi
+/core
+-- closure-lazy-counter([3,2,5,1,4])
+-- closure-lazy-counter([9])
+-- closure-lazy-counter([4.0,8.0])
+
+━━━━━━━━━━━━━━━━━━━━
++ Accumulate'A'I is () A
+    - accum A
+    - item I
+
+━━━━━━━━━━━━━━━━━━━━
++ do fold'I'A @inline
+    - seed A
+    - stream <I>
+    - callback Accumulate'A'I
+
+. result = seed
+for item in stream
+    result = callback(result, item)
+= result
+
+━━━━━━━━━━━━━━━━━━━━
++ closure-lazy-counter'Item Item
+    - stream <Item>
+
+result / count
+
+.. count = Item()
+.. result = fold'Item(Item(), stream) • callback :: accum, item => do
+    count += 1
+    = accum + item
+```
+
+```output
+3
+9
+6
+```
+
+```yumi
+/core
+-- closure-unrelated(4)
+-- closure-selected(4)
+-- closure-shared-sibling(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ scalar-step Int @inline
+    - value Int
+
+value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ select-callback Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ ordinary-callback Int
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-unrelated Int
+    - value Int
+
+. offset = 3
+. callback Mapper'Int'Int = :: item => item + offset
+. result = scalar-step(value) + ordinary-callback(callback, value)
+offset = 10
+= result + ordinary-callback(callback, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-selected Int
+    - value Int
+
+. offset = 2
+. callback Mapper'Int'Int = :: item => item + offset
+= select-callback(callback, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-shared-sibling Int
+    - value Int
+
+. count = 1
+. selected Mapper'Int'Int = :: amount => do
+    count += amount
+    = count
+. sibling Mapper'Int'Int = :: amount => do
+    count += amount
+    = count
+. first = select-callback(selected, value)
+. second = ordinary-callback(sibling, 5)
+. third = select-callback(selected, 2)
+= first * 100 + second * 10 + third
+```
+
+```output
+26
+6
+501
+```
+
+```yumi
+/core
+-- closure-recursive(3)
+-- closure-recursive(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ recursive-invoke Int @inline
+    - callback Mapper'Int'Int
+    - value Int
+
+callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-recursive Int
+    - depth Int
+
+. callback Mapper'Int'Int = :: value => value
+callback = :: value =>
+    |? value > 0
+        value + recursive-invoke(callback, value - 1)
+    ??
+        0
+= recursive-invoke(callback, depth)
+```
+
+```output
+6
+0
+```
+
+```yumi
+-- fusion-sum()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-sum Int
+
+. source = fusion-numbers(3)
+-- "created"
+. alias = source
+. total = 0
+for value in alias
+    -- "consumer $value"
+    if value == 2
+        continue
+    total += value
+    if value == 3
+        break
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-numbers @inline
+    - count Int
+
+-- "started"
+do finally
+    -- "closed"
+. index = 1
+while index <= count
+    <= index
+    -- "resumed $index"
+    index += 1
+<= 99
+```
+
+```output
+created
+started
+consumer 1
+resumed 1
+consumer 2
+resumed 2
+consumer 3
+closed
+4
+```
+
+```yumi
+-- fusion-multiple()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-multiple Int
+
+. total = 0
+for value in fusion-pair(10)
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pair @inline
+    - value Int
+
+<= value
+<= value + 1
+```
+
+```output
+21
+```
+
+```yumi
+-- fusion-return()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-return Int
+
+for value in fusion-finally()
+    = value
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-finally @inline
+
+do finally
+    -- "closed"
+<= 17
+-- "unexpected"
+<= 18
+```
+
+```output
+closed
+17
+```
+
+```yumi
+-- fusion-callback()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback Int
+
+. total = 0
+for value in fusion-offsets(3)
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ fusion-apply Int @inline
+    - value Int
+    - callback
+
+callback(value)
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-offsets @inline
+    - value Int
+
+. offset = 4
+<= fusion-apply(value) • callback each + offset
+offset = 5
+<= fusion-apply(value) • callback each + offset
+```
+
+```output
+15
+```
+
+```yumi
+-- fusion-nested()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-nested Int
+
+. total = 0
+for value in fusion-doubled()
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-doubled @inline
+
+for value in fusion-inner()
+    <= value * 2
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-inner @inline
+
+<= 3
+<= 4
+```
+
+```output
+14
+```
+
+```yumi
+. result = catch fusion-errors()
+-- result is FusionProblem
+━━━━━━━━━━━━━━━━━━━━
++ FusionProblem is Error
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-errors Int ?! FusionProblem
+
+for value in fusion-failure()
+    -- value
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-failure <Int> ?! FusionProblem @inline
+
+do finally
+    -- "closed"
+<= 1
+?! FusionProblem("failed")
+```
+
+```output
+1
+closed
+true
+```
+
+```yumi
+-- fusion-choice(true)
+-- fusion-choice(false)
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-choice Int
+    - first Bool
+
+. source = match first
+    |= true
+        fusion-left(3)
+    ??
+        fusion-right(7)
+. total = 0
+for value in source
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-left @inline
+    - value Int
+
+<= value
+<= value + 1
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-right @inline
+    - value Int
+
+<= value * 2
+```
+
+```output
+7
+14
+```
+
+```yumi
+fusion-cleanup-panic()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-cleanup-panic
+
+. attempt = do new
+    for value in fusion-cleanup-failure()
+        -- value
+        break
+    -- "unexpected"
+catch failure
+    . error Panic? = failure
+    if error
+        -- "recovered"
+attempt.wait()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-cleanup-failure @inline
+
+do finally
+    ?! Panic("cleanup")
+<= 1
+```
+
+```output
+1
+recovered
+```
+
+```yumi
+-- fusion-interface()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-interface Int
+
+. source Stream'Int = fusion-forward()
+. total = 0
+for value in source
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ fusion-forward Stream'Int @inline
+
+fusion-interface-items()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-interface-items Stream'Int @inline
+
+<= 3
+<= 4
+```
+
+```output
+7
+```
+
+```yumi
+-- fusion-mixed()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-mixed Int
+
+. total = 0
+. saved = fusion-mixed-items()
+for value in fusion-mixed-items()
+    total += value
+for value in saved
+    total += value
+for value in saved
+    total += 100
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-mixed-items @inline
+
+<= 2
+<= 3
+```
+
+```output
+10
+```
+
+```yumi
+-- fusion-repeated()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-repeated Int
+
+. source = fusion-repeated-items()
+. total = 0
+for pass in 0 .. < 2
+    for value in source
+        total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-repeated-items @inline
+
+<= 2
+<= 3
+```
+
+```output
+5
+```
+
+```yumi
+/BxGC/BxGC.h
+-- fusion-escaped()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-escaped Int
+
+. callbacks [Getter'Int] = List'(Getter'Int)()
+for callback in fusion-captures()
+    callbacks += callback
+C:brixGCCollect()
+= callbacks[0]() + callbacks[1]()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-captures <Getter'Int> @inline
+
+. value = 3
+<= => value
+value = 4
+<= => value
+```
+
+```output
+8
+```
+
+```yumi
+/BxGC/BxGC.h
+-- fusion-snapshot()
+━━━━━━━━━━━━━━━━━━━━
++ FusionRecord is Struct
+
++ name String
++ count Int
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-snapshot Int
+
+. input = FusionRecord("before", 7)
+. source = fusion-records(input)
+input.name = "after"
+input.count = 9
+. total = 0
+for item in source
+    C:brixGCCollect()
+    -- item.name
+    total += item.count
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-records @inline
+    - value FusionRecord
+
+<= value
+value.count += 1
+<= value
+```
+
+```output
+before
+before
+15
+```
+
+```yumi
+-- fusion-input-capture()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-input-capture Int
+
+. offset = 1
+. source = fusion-map(2) • callback each + offset
+offset = 5
+. total = 0
+for value in source
+    total += value
+    offset += 1
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-map @inline
+    - value Int
+    - callback
+
+<= callback(value)
+<= callback(value)
+```
+
+```output
+15
+```
+
+```yumi
+-- fusion-generic()
+━━━━━━━━━━━━━━━━━━━━
++ FusionProducer is Tuple
+
++ count Int
+────────────────────
++ do items'T @inline
+    - value T
+
+for index in 0 .. < count
+    <= value
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-generic Int
+
+. producer = FusionProducer(3)
+. total = 0
+for value in producer.items(("item", 4))
+    total += value[1]
+= total
+```
+
+```output
+12
+```
+
+```yumi
+-- fusion-surrounding()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-surrounding Int
+. total = 0
+for value in fusion-surrounding-outer()
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-surrounding-outer
+. count = 10
+for value in fusion-surrounding-inner()
+    <= count + value
+    count += 1
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-surrounding-inner @inline
+<= 3
+<= 4
+```
+
+```output
+28
+```
+
+```yumi
+-- fusion-unbounded()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-unbounded Int
+. total = 0
+for value in fusion-forever()
+    if value == 4
+        break
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-forever @inline
+do finally
+    -- "closed"
+. index = 0
+while true
+    <= index
+    index += 1
+```
+
+```output
+closed
+6
+```
+
+```yumi
+-- fusion-opaque-choice(true)
+-- fusion-opaque-choice(false)
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-opaque-choice Int
+    - known Bool
+. source = match known
+    |= true
+        fusion-known()
+    ??
+        fusion-unknown()
+. total = 0
+for value in source
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-known @inline
+<= 3
+<= 4
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-unknown
+<= 10
+```
+
+```output
+7
+10
+```
+
+```yumi
+do new
+    -- fusion-task()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-task Int
+. total = 0
+for value in fusion-task-values()
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-task-values @inline
+<= 3
+<= 4
+```
+
+```output
+7
+```
+
+```yumi
+. result = catch fusion-consumer-error()
+-- result is FusionProblem
+━━━━━━━━━━━━━━━━━━━━
++ FusionProblem is Error
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-consumer-error Int ?! FusionProblem
+do finally
+    -- "consumer closed"
+for value in fusion-consumer-error-values()
+    -- value
+    ?! FusionProblem("failed")
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-consumer-error-values @inline
+do finally
+    -- "producer closed"
+<= 3
+<= 4
+```
+
+```output
+3
+producer closed
+consumer closed
+true
+```
+
+```yumi
+-- fusion-empty()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-empty Int
+. total = 0
+for value in fusion-empty-values(false)
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-empty-values @inline
+    - present Bool
+do finally
+    -- "closed"
+if present
+    <= 3
+```
+
+```output
+closed
+0
+```
+
+```yumi
+-- fusion-never-started()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-never-started Int
+. unused = fusion-unused(fusion-unused-argument())
+= 17
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-unused-argument Int
+-- "created"
+= 3
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-unused @inline
+    - value Int
+-- "entered"
+do finally
+    -- "closed"
+<= value
+```
+
+```output
+created
+17
+```
+
+```yumi
+-- fusion-yield-copy()
+━━━━━━━━━━━━━━━━━━━━
++ FusionYieldRecord is Struct
++ count Int
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-yield-copy Int
+. total = 0
+for value in fusion-yield-copy-values()
+    value.count += 10
+    total += value.count
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-yield-copy-values @inline
+. value = FusionYieldRecord(3)
+<= value
+value.count += 1
+<= value
+```
+
+```output
+27
+```
+
+```yumi
+-- fusion-recursive()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-recursive Int
+. total = 0
+. seen = 0
+for value in fusion-recursive-values(3)
+    seen += 1
+    if seen > 4
+        = -1
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-recursive-values Generator'I32 @inline
+    - count I32
+<= count
+if count > 0
+    for value in fusion-recursive-values(count - 1)
+        <= value
+```
+
+```output
+6
+```
+
+```yumi
+-- fusion-pipeline()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline Int
+
+. total = 0
+for value in (pipeline-filter((pipeline-map((0 .. < 8)) • with each + 1)) • where each % 2 == 0)
+    total += value
+for value in (pipeline-map((pipeline-filter((0 .. < 8)) • where each % 2 == 0)) • with each + 1)
+    total += value
+. first = pipeline-map((0 .. < 8)) • with each + 1
+. second = pipeline-filter(first) • where each % 2 == 0
+. third = pipeline-map(second) • with each * 3
+for value in (pipeline-filter(third) • where each > 10)
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-map'From'To @inline
+    - stream <From>
+    - with Mapper'From'To
+
+for item in stream
+    <= with(item)
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-filter'Item @inline
+    - stream <Item>
+    - where Predicate'Item
+
+for item in stream when where(item)
+    <= item
+```
+
+```output
+90
+```
+
+```yumi
+. result = catch fusion-pipeline-errors()
+-- result is FusionProblem
+━━━━━━━━━━━━━━━━━━━━
++ FusionProblem is Error
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline-errors Int ?! FusionProblem
+
+for value in (pipeline-forward((pipeline-forward(fusion-failure()))))
+    -- value
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-failure <Int> ?! FusionProblem @inline
+
+do finally
+    -- "closed"
+<= 1
+?! FusionProblem("failed")
+
+
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-forward @inline
+    - stream <Int>
+
+for item in stream
+    <= item
+```
+
+```output
+1
+closed
+true
+```
+
+```yumi
+-- fusion-pipeline-repeated()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline-repeated Int
+
+. source = fusion-repeated-items()
+. total = 0
+for pass in 0 .. < 2
+    for value in (pipeline-forward(source))
+        total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-repeated-items @inline
+
+<= 2
+<= 3
+
+
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-forward @inline
+    - stream <Int>
+
+for item in stream
+    <= item
+```
+
+```output
+5
+```
+
+```yumi
+-- fusion-pipeline-cleanup()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline-cleanup Int
+
+. inner = pipeline-stage(pipeline-items(), "inner")
+for value in (pipeline-stage(inner, "outer"))
+    -- "consumer $value"
+    = value
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-stage @inline
+    - stream <Int>
+    - name String
+
+do finally
+    -- "$name closed"
+for item in stream
+    -- "$name $item"
+    <= item * 2
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-items @inline
+
+do finally
+    -- "source closed"
+<= 1
+<= 2
+```
+
+```output
+inner 1
+outer 2
+consumer 4
+source closed
+inner closed
+outer closed
+4
+```
+
+```yumi
+. result = catch fusion-pipeline-consumer-error()
+-- result is FusionProblem
+━━━━━━━━━━━━━━━━━━━━
++ FusionProblem is Error
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline-consumer-error Int ?! FusionProblem
+do finally
+    -- "consumer closed"
+for value in (pipeline-forward((pipeline-forward(fusion-consumer-error-values()))))
+    -- value
+    ?! FusionProblem("failed")
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-consumer-error-values @inline
+do finally
+    -- "producer closed"
+<= 3
+<= 4
+
+
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-forward @inline
+    - stream <Int>
+
+for item in stream
+    <= item
+```
+
+```output
+3
+producer closed
+consumer closed
+true
+```
+
+```yumi
+-- fusion-stdlib-pipeline()
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-stdlib-pipeline Int
+
+. total = 0
+for value in (filter((map((0 .. < 8)) • with each + 1)) • where each % 2 == 0)
+    total += value
+for value in (map((filter((0 .. < 8)) • where each % 2 == 0)) • with each + 1)
+    total += value
+. first = map((0 .. < 8)) • with each + 1
+. second = filter(first) • where each % 2 == 0
+. third = map(second) • with each * 3
+for value in (filter(third) • where each > 10)
+    total += value
+= total
+```
+
+```output
+90
+```
+
+```yumi
+-- fusion-pipeline-choice(true)
+-- fusion-pipeline-choice(false)
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-pipeline-choice Int
+    - first Bool
+
+. source = match first
+    |= true
+        fusion-left(3)
+    ??
+        fusion-right(7)
+. total = 0
+for value in (pipeline-forward(source))
+    total += value
+= total
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-left @inline
+    - value Int
+
+<= value
+<= value + 1
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-right @inline
+    - value Int
+
+<= value * 2
+
+
+━━━━━━━━━━━━━━━━━━━━
++ do pipeline-forward @inline
+    - stream <Int>
+
+for item in stream
+    <= item
+```
+
+```output
+7
+14
+```
+
+```yumi
+-- bullet-chain()
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-chain Int
+
+. offset = 2
+. source =
+    * 0
+    ** 1 .. 5
+    *? 8 if false
+    **? [6, 7] if true
+    *> each + offset
+    ?> each % 2 == 0
+    ?*> each * 3 if each > 3
+. alias = source
+. total = 0
+for value in alias
+    total += value
+= total
+```
+
+```output
+54
+```
+
+```yumi
+-- bullet-list()
+━━━━━━━━━━━━━━━━━━━━
++ bullet-list List'Int
+
+* 1
+** 2 .. 4
+*> each * 2
+```
+
+```output
+2, 4, 6, 8
+```
+
+```yumi
+-- List(bullet-escaping())
+━━━━━━━━━━━━━━━━━━━━
++ bullet-escaping
+
+* 1
+** 2 .. 4
+*> each * 2
+?> each > 3
+```
+
+```output
+4, 6, 8
+```
+
+```yumi
+. source =
+    * 0
+    **? [6, 7] if true
+for item in source
+    -- item
+```
+
+```output
+0
+6
+7
+```
+
+```yumi
+-- bullet-partial()
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-partial Int
+
+. factor = 2
+. values =
+    * bullet-effect(1)
+    ** bullet-cleanup()
+    * bullet-effect(9)
+    *> each * factor
+factor = 3
+-- "created"
+for value in values
+    -- value
+    if value >= 6
+        = 17
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-effect Int
+    - value Int
+
+-- "produce $value"
+= value
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-cleanup @inline
+
+do finally
+    -- "closed"
+<= 2
+<= 3
+```
+
+```output
+created
+produce 1
+3
+6
+closed
+17
+```
+
+```yumi
+. state = BulletState(2)
+. values = bullet-lazy(state)
+-- "created"
+state.factor = 3
+for value in values
+    -- value
+    if value >= 6
+        break
+━━━━━━━━━━━━━━━━━━━━
++ BulletState
++ factor Int
+────────────────────
++ This
+    - factor
+━━━━━━━━━━━━━━━━━━━━
++ bullet-lazy
+    - state BulletState
+
+* bullet-lazy-value(1)
+** bullet-lazy-inner()
+* bullet-lazy-value(9)
+*> each * state.factor
+?> each > 0
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-lazy-value Int
+    - value Int
+
+-- "produce $value"
+= value
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-lazy-inner @inline
+
+do finally
+    -- "closed"
+<= 2
+<= 3
+```
+
+```output
+created
+produce 1
+3
+6
+closed
+```
+
+```yumi
+-- bullet-nested()
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-nested Int
+
+. rows = each * 10 in 1 .. 3
+. values =
+    ** rows
+    ** (each + 1 in 1 .. 2 when each > 1)
+    *> each + 1
+. total = 0
+for value in values
+    total += value
+= total
+```
+
+```output
+67
+```
+
+```yumi
+. result = catch bullet-errors()
+-- result is BulletFailure
+━━━━━━━━━━━━━━━━━━━━
++ BulletFailure is Error
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-errors Int ?! BulletFailure
+
+. values =
+    * 1
+    ** bullet-failure()
+    * 9
+    *> each + 1
+for value in values
+    -- value
+= 0
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-failure <Int> ?! BulletFailure @inline
+
+do finally
+    -- "closed"
+<= 2
+?! BulletFailure("failed")
+```
+
+```output
+2
+3
+closed
+true
+```
+
+```yumi
+/BxGC/BxGC.h
+. values = bullet-managed(BulletBox("one"))
+C:brixGCCollect()
+for value in values
+    C:brixGCCollect()
+    -- value.text
+━━━━━━━━━━━━━━━━━━━━
++ BulletBox
++ text String
+────────────────────
++ This
+    - text
+━━━━━━━━━━━━━━━━━━━━
++ bullet-managed
+    - first BulletBox
+
+** bullet-boxes(first)
+* BulletBox("three")
+*> each
+?> each.text != ""
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-boxes @inline
+    - first BulletBox
+
+<= first
+C:brixGCCollect()
+<= BulletBox("two")
+```
+
+```output
+one
+two
+three
+```
+
+```yumi
+/core/channel
+/core/task
+. input = SyncBufferedChannel'Int()
+. output = SyncBufferedChannel'Int()
+input <- 7
+input.close()
+for value in bullet-task-values(input, output)
+    -- value
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-task-values
+    - input SyncBufferedChannel'Int
+    - output SyncBufferedChannel'Int
+
+do new
+    for value in input
+        . callback Getter'Int = => value + 1
+        output <- callback()
+    output.close()
+for value in output
+    <= value
+```
+
+```output
+8
+```
+
+```yumi
+specialization-repeated()
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-repeated
+
+. source = specialization-producer()
+for index in 0 .. < 2
+    . mapped = map(source) • with each + 10
+    specialization-drain(mapped)
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-producer @inline
+
+do finally
+    -- "closed"
+-- "producer"
+<= 1
+<= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-drain
+    - source <Int>
+
+for value in source
+    -- value
+```
+
+```output
+producer
+11
+12
+closed
+```
+
+```yumi
+-- fusion-callback-join(true)
+-- fusion-callback-join(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-join Int
+    - choose Bool
+
+. source = match choose
+    |= true
+        fusion-callback-left()
+    ??
+        fusion-callback-right()
+. last Getter'Int = => 0
+for value in source
+    last = => value
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-left @inline
+
+<= 1
+<= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-right @inline
+
+<= 3
+<= 4
+```
+
+```output
+2
+4
+```
+
+```yumi
+-- fusion-callback-single()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-single Int
+
+. source = fusion-callback-left()
+. last Getter'Int = => 0
+for value in source
+    last = => value
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-left @inline
+
+<= 1
+<= 2
+```
+
+```output
+2
+```
+
+```yumi
+. holder = KeptHolder()
+holder.items += KeptStored(7, "seven")
+holder.before = KeptStored(3, "three")
+. kept = holder.settle(1)
+-- "${kept.id} ${kept.name}"
+. next = holder.settle(1)
+-- "${next.id} ${next.name}"
+holder.before = KeptStored(4, "four")
+. swapped = holder.swap(KeptStored(5, "five"))
+-- "${swapped.id} ${swapped.name}"
+. picked = kept-pick(holder, holder.before!)
+-- "${picked.id} ${picked.name}"
+-- holder.before == null
+
+━━━━━━━━━━━━━━━━━━━━
++ KeptThing is Interface
+
+────────────────────
++ get id U64
+
+────────────────────
++ get name String
+
+━━━━━━━━━━━━━━━━━━━━
+_ KeptStored is Tuple
+    is KeptThing
+
++ id U64
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
+_ kept-doubled Size @inline
+    - count Size
+
+count * 2
+
+━━━━━━━━━━━━━━━━━━━━
+_ do kept-pick KeptThing @inline
+    - holder KeptHolder
+    - thing KeptThing
+
+holder.before = null
+= thing
+
+━━━━━━━━━━━━━━━━━━━━
+_ KeptHolder
+
++ before KeptThing?
++ items [KeptThing]
++ seen Size
+
+────────────────────
++ do settle KeptThing
+    - scale Size
+
+. original = before ?? items[0]
+before = null
+seen += kept-doubled(scale)
+= original
+
+────────────────────
++ do swap KeptThing
+    - next KeptThing
+
+. previous = before!
+before = next
+seen += kept-doubled(1)
+= previous
+```
+
+```output
+3 three
+7 seven
+4 four
+5 five
+true
+```
+
+```yumi
+./callback-support
+/core
+
+-- closure-interface(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ Measured is Interface
+
+────────────────────
++ total Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Amount is Tuple
+    is Measured
+
++ value Int
+
+────────────────────
++ total Int @inline
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
++ read Int @inline
+    - value Measured
+
+value.total()
+
+━━━━━━━━━━━━━━━━━━━━
++ do closure-interface Int
+    - value Int
+
+. capture Measured = Amount(value)
+. callback Mapper'Measured'Measured = :: input => Amount(input.total() + capture.total())
+= read(apply'Measured'Measured(callback, Amount(3)))
+```
+
+```yumi file=callback-support.yumi
+
+/core
+
+━━━━━━━━━━━━━━━━━━━━
++ apply'T'U U @inline
+    - callback Mapper'T'U
+    - value T
+
+callback(value)
+
+```
+
+```output
+7
+```
+
+```yumi
+./generator-producer
+/core
+
+-- fused-total()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fused-total Int
+
+. total = 0
+for value in values(12)
+    total += value
+= total
+```
+
+```yumi file=generator-producer.yumi
+
+/core
+
+━━━━━━━━━━━━━━━━━━━━
++ do values @inline
+    - count Int
+
+. index = 0
+while index < count
+    <= index
+    index += 1
+
+```
+
+```output
+66
+```
+
+```yumi
+./bullet-producer
+/core
+
+-- bullet-module()
+
+━━━━━━━━━━━━━━━━━━━━
++ do bullet-module Int
+
+. values = bullet-values()
+. alias = values
+. total = 0
+for value in alias
+    total += value
+= total
+```
+
+```yumi file=bullet-producer.yumi
+
+/core
+
+━━━━━━━━━━━━━━━━━━━━
++ bullet-values @inline
+
+* 1
+** 2 .. 12
+*> each * 2
+?> each % 4 == 0
+
+```
+
+```output
+84
+```
+
+```yumi
+specialization-repeated()
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-repeated
+
+for index in 0 .. < 2
+    . source = specialization-producer()
+    . mapped = map(source) • with each + 10
+    specialization-drain(mapped)
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-producer @inline
+
+do finally
+    -- "closed"
+-- "producer"
+<= 1
+<= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do specialization-drain
+    - source <Int>
+
+for value in source
+    -- value
+```
+
+```output
+producer
+11
+12
+closed
+producer
+11
+12
+closed
+```
+
+```yumi
+-- fusion-callback-join(true)
+-- fusion-callback-join(false)
+-- fusion-callback-single()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-join Int
+    - choose Bool
+
+. source = match choose
+    |= true
+        fusion-callback-left()
+    ??
+        fusion-callback-right()
+. last Getter'Int = => 0
+for value in source
+    last = => value
+    break
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-single Int
+
+. source = fusion-callback-left()
+. last Getter'Int = => 0
+for value in source
+    last = => value
+    break
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-left @inline
+
+<= 1
+<= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-right @inline
+
+<= 3
+<= 4
+```
+
+```output
+1
+3
+1
+```
+
+```yumi
+-- fusion-callback-join(true)
+-- fusion-callback-join(false)
+-- fusion-callback-single()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-join Int
+    - choose Bool
+
+. source = match choose
+    |= true
+        fusion-callback-left()
+    ??
+        fusion-callback-right()
+. last Getter'Int = => 0
+for value in source
+    -- last()
+    last = => value
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-single Int
+
+. source = fusion-callback-left()
+. last Getter'Int = => 0
+for value in source
+    -- last()
+    last = => value
+= last()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-left @inline
+
+<= 1
+<= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do fusion-callback-right @inline
+
+<= 3
+<= 4
+```
+
+```output
+0
+1
+2
+0
+3
+4
+0
+1
+2
+```
+
+```yumi
+./projection-nodes
+/core/arena
+/core/array-builder
+/core/parsing
+/core/table
+
+_ @stack xml-tree Tree
+
+. arena = use Arena()
+. tree = Tree(Table'Node(arena, 16), ArrayBuilder'NodeId(arena))
+. a = tree.nodes.append(Leaf(MatchLocation(), 7)) as NodeId
+tree.children.append(a)
+. b = tree.nodes.append(Call(MatchLocation(), a, RowRange'NodeId(0, 1), 0, false)) as NodeId
+tree.children.append(b)
+. c = tree.nodes.append(Call(MatchLocation(), b, RowRange'NodeId(1, 1), 0, true)) as NodeId
+do with xml-tree = tree
+    -- tree.nodes[c].xml as String
+
+━━━━━━━━━━━━━━━━━━━━
++ Tree is Tuple
+
++ nodes Table'Node
++ children ArrayBuilder'NodeId'ArenaBacking
+
+────────────────────
++ child-ids IndexSpan'NodeId
+    - range RowRange'NodeId
+
+IndexSpan'NodeId(children, range.start .. < range.end)
+
+━━━━━━━━━━━━━━━━━━━━
+_ child-xml XML
+    - id NodeId
+
+xml-tree.nodes[id].xml
+
+━━━━━━━━━━━━━━━━━━━━
+_ do child-xmls ImmutableArray'XML?
+    - range RowRange'NodeId
+
+-- "range ${range.start}+${range.count}"
+=? if range.count == 0
+. builder = ArrayBuilder'XML()
+for node in xml-tree.nodes[xml-tree.child-ids(range)]
+    builder.append(node.xml)
+= builder.finish-immutable()
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Leaf
+
+────────────────────
++ get xml XML
+
+<XML "Leaf"
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Call
+
+────────────────────
++ get xml XML
+
+<XML "Call"
+    •? curried is-curried
+    child-xml(callable)
+    if params.count
+        <XML "params"
+            child-xmls(params)
+    child-xmls(args)
+
+━━━━━━━━━━━━━━━━━━━━
++ XML
+
++ node-name String
++ attrs [KeyValuePair'String'String]
++ children [This]
+
+────────────────────
++ This
+    - node-name String
+
+────────────────────
++ do to String
+
+. text = "<$node-name"
+for attr in attrs
+    text += " ${attr.key}=\"${attr.value}\""
+text += ">"
+for child in children
+    text += child as String
+= text + "</$node-name>"
+
+────────────────────
++ do this += child This?
+
+if child
+    children += child
+
+────────────────────
++ do this ++= kids <This>?
+
+if kids
+    for kid in kids
+        children += kid
+
+────────────────────
++ do this += kv KeyValuePair'String'String?
+
+if kv
+    attrs += kv
+
+────────────────────
++ do this += kv KeyValuePair'String''Value?
+
+if kv
+    attrs += (kv.key, "${kv.value}")
+```
+
+```yumi file=projection-nodes.yumi
+
+/core/parsing
+
++ NodeId is U32
+
+━━━━━━━━━━━━━━━━━━━━
++ RowRange''Row is Tuple
+
++ start U32
++ count U32
+
+────────────────────
++ get end U32 @inline
+
+start + count
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| leaf Leaf
+| call Call
+
+━━━━━━━━━━━━━━━━━━━━
++ Base is Tuple
+
++ loc MatchLocation
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Base
+
++ value U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Call is Base
+
++ callable NodeId
++ operands RowRange'NodeId
++ param-count U8
++ is-curried Bool
+
+────────────────────
++ get params RowRange'NodeId @inline
+
+RowRange'NodeId(operands.start, param-count)
+
+────────────────────
++ get args RowRange'NodeId @inline
+
+RowRange'NodeId(operands.start + param-count, operands.count - param-count)
+
+```
+
+```output
+range 0+1
+range 1+1
+range 0+1
+<Call curried="true"><Call><Leaf></Leaf><Leaf></Leaf></Call><Call><Leaf></Leaf><Leaf></Leaf></Call></Call>
+```

@@ -1,0 +1,2263 @@
+# Types
+
+```yumi crash
+-- Foo().foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ foo
+```
+
+```output
+Exception: Property 'foo' of 'Foo' needs either a type or a value
+<no file:7>
+    + foo
+    ^^^^^
+```
+
+## Recursive Generic Variable Lookup
+
+```yumi
+. node = Node'String'Int("left", 42, CPointer'(Node'String'Int)())
+accept(node)
+
+━━━━━━━━━━━━━━━━━━━━
++ Node'Left'Right is Tuple
+
++ left Left
++ right Right
++ next CPointer'(Node'Left'Right)
+
+━━━━━━━━━━━━━━━━━━━━
++ do accept'Left'Right
+    - node Node'Left'Right
+
+-- type-of node
+-- node.left
+-- node.right
+```
+
+```output
+[TypeInfo Node'String'I64]
+left
+42
+```
+
+## Conversions between aliases
+
+```yumi
+. foo = Foo()
+. bar Bar = foo
+-- bar
+
++ Foo (Bar)
+```
+
+```output
+[Object __source__:Foo]
+```
+
+```yumi
++ Foo
++ Bar (Baz) is Foo
+
+. foo = Bar()
+. bar Baz = foo
+-- bar
+```
+
+```output
+[Object __source__:Bar]
+```
+
+### Numeric aliases
+
+```yumi
++ Stuff is I32
+
+. s Stuff = 42
+-- s
+```
+
+```output
+42
+```
+
+```yumi
+. s Stuff = 42
+-- s
+. s2 Fluff = 42
+-- s2
+
++ Stuff (Fluff) is I32
+```
+
+```output
+42
+42
+```
+
+## Casts
+
+```yumi
+-- Foo() as Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ to Bar
+
+Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+```
+
+```output
+[Object __source__:Bar]
+```
+
+```yumi crash
+. foo = Foo()
+-- Foo() as Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
+_ to Bar
+
+Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+```
+
+```output
+Exception: Converters must be public
+<no file:9>
+    _ to Bar
+    ^^^^^^^
+```
+
+## Constructors
+
+### Builtin type constructors
+
+```yumi
+-- F32()
+```
+
+```output
+0
+```
+
+```yumi
+. s = String()
+-- "got '$s'"
+```
+
+```output
+got ''
+```
+
+```yumi
+. s = I32()
+-- "got $s"
+
+s = I32(4.5)
+-- "got $s"
+
+s = I32(" 42 ")
+-- "got $s"
+```
+
+```output
+got 0
+got 4
+got 42
+```
+
+### A number type called with text that is no number of it panics.
+
+```yumi crash
+-- I32("42x")
+```
+
+```stderr
+Unhandled panic: "42x" is not a whole number
+<core/number.yumi>
+
+Task 1
+
+Stack trace:
+  0  core/number:read-integer core/number.yumi
+  1  core/number:I32:from String6 core/number.yumi
+  2  __source__:main no file:2:4
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+## Subclassing builtin types
+
+```yumi
+-- Foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is CPointer'I32
+```
+
+```output
+[CPointer core/number:I32*]
+```
+
+```yumi crash
+-- Foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Optional'I32
+```
+
+```output
+Exception: Type has illegal base class
+<no file:5>
+    + Foo is Optional'I32
+    ^^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+-- Foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Function
+```
+
+```output
+Exception: Type has illegal base class
+<no file:5>
+    + Foo is Function
+    ^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+-- Foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is CFunction
+```
+
+```output
+Exception: Type has illegal base class
+<no file:5>
+    + Foo is CFunction
+    ^^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+-- Foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Bool
+```
+
+```output
+Exception: Type has illegal base class
+<no file:5>
+    + Foo is Bool
+    ^^^^^^^^^^^^
+```
+
+```yumi
+. bar = Bar()
+bar.a = 99
+-- bar as Foo
+-- Foo(bar)
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Bar
+
+────────────────────
++ do from b Bar
+
+. foo = This()
+foo.bar = b
+= foo
+
+────────────────────
++ to String
+
+"Foo $bar"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ a = 0
+
+────────────────────
++ to String
+
+"Bar $a"
+```
+
+```output
+Foo Bar 99
+Foo Bar 99
+```
+
+### Can't use parameterized types as units
+
+```yumi crash
++ Foo'T (foo) is Float
++ Bar is Float
+
+-- 1foo
+```
+
+```output
+Exception: Unit types must be numeric and unqualified
+<no file:5>
+    -- 1foo
+        ^^^
+```
+
+### Make sure units declared in class declaration are seen even if type was never used
+
+```yumi
+-- Foo.compare(Baz)
+-- 1foo as Baz
+
++ Foo (foo) is Float
++ Bar (bar) is 2foo
++ Bazoo (bazoo) is Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Baz (baz) is Float
+
+────────────────────
++ from foo Foo
+
+` Would never be called if 2foo unit is not seen
+(4 * foo) as Float
+
+━━━━━━━━━━━━━━━━━━━━
+
++ 1baz = 1bazoo
+```
+
+```output
+[Fromverter Foo = Baz]
+4
+```
+
+### Downcasting hack
+
+```yumi
+do new
+    . box Box = Square("bob")
+    -- box.downcast'Square().id
+    -- box.downcast'Circle().id
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ id String
+
+────────────────────
++ This
+    - id
+
+────────────────────
++ do downcast'TargetBox TargetBox
+
+?! Panic("Invalid cast")
+
+━━━━━━━━━━━━━━━━━━━━
++ Circle is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Square is Box
+
+────────────────────
++ downcast'TargetBox TargetBox
+    - TargetBox is! This
+
+this
+```
+
+```output
+bob
+Invalid cast
+```
+
+```yumi
+. foo Foo = Bar()
+-- foo as Bar
+
++ Foo
++ Bar is Foo
+```
+
+```output
+[Object __source__:Bar]
+```
+
+### Downcasting
+
+```yumi
+. foo Foo = Bar()
+-- foo is Bar
+-- foo as Bar
+
+-- foo is Baz
+
++ Foo
++ Bar is Foo
++ Baz is Foo
+```
+
+```output
+true
+[Object __source__:Bar]
+false
+```
+
+```yumi
+. foo Foo = Baz()
+-- foo is Bar
+-- foo as Bar
+
+-- foo is Other
+
++ Foo
++ Bar is Foo
++ Baz is Bar
++ Other is Foo
+```
+
+```output
+true
+[Object __source__:Bar]
+false
+```
+
+## Or Typing
+
+```yumi
+fetch(Thing())
+fetch(Bling())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+
+-- "fallthrough", thing
+```
+
+```output
+(duck, [Interface __source__:IFoo])
+(fallthrough, [Object __source__:Bling])
+```
+
+```yumi
+fetch(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is Bling || Void
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+
+-- "fallthrough", thing
+```
+
+```output
+(duck, [Object __source__:Bling])
+```
+
+```yumi
+fetch(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is Thing || Void
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+
+-- "fallthrough", thing
+```
+
+```output
+(duck, [Object __source__:Thing])
+```
+
+```yumi
+fetch(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ to IFoo
+
+FooThing()
+
+━━━━━━━━━━━━━━━━━━━━
++ FooThing
+    is IFoo
+
+────────────────────
++ foopy
+
+"foopy do"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ foopy String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", (thing as IFoo).foopy()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+
+-- "fallthrough", thing
+```
+
+```output
+(duck, foopy do)
+```
+
+```yumi
+. thing = Thing()
+-- thing as Donald
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ to Donald
+
+Goober()
+
+━━━━━━━━━━━━━━━━━━━━
++ Goober
+    is Foo
+    is Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is Foo || Bar
+```
+
+```output
+[Interface __source__:Foo]
+```
+
+```yumi
+-- Thing() as Donald
+fetch(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || Void
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+```
+
+```output
+[Interface __source__:IFoo]
+(duck, [Interface __source__:IFoo])
+```
+
+```yumi
+. bling = Bling()
+-- bling as Donald
+fetch(bling)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+    is IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+────────────────────
++ to Donald
+
+Thing()
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+```
+
+```output
+[Interface __source__:IFoo]
+(duck, [Interface __source__:IFoo])
+```
+
+### Choosing an or-type alternative never compiles the converters of the alternatives it rejects.
+
+```yumi
+fetch(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ to IBar
+
+Missing()
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck", thing
+```
+
+```output
+(duck, [Interface __source__:IFoo])
+```
+
+### A type of alternatives called with a value gives the value as the alternative it converts to, as `as` does.
+
+```yumi
+. count = Choice(3)
+-- count + 1
+. text = Choice("x")
+-- text ++ "y"
+. duck = Donald(Thing())
+-- duck.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Int || String
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ get name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
++ name = "thing"
+```
+
+```output
+4
+xy
+thing
+```
+
+### A type of alternatives has no constructor of its own, so calling it with nothing is an error.
+
+```yumi compile-error
+. choice = Choice()
+
+━━━━━━━━━━━━━━━━━━━━
++ Choice is Int || String
+```
+
+```output
+Exception: Choice stands for any one of Int and String, so it has no constructor; give it a value of one of them, as in Choice(value)
+<no file:2>
+    . choice = Choice()
+               ^^^^^^
+```
+
+## Matching types with the same name
+
+### Arena allocations expose ordinary pointer types.
+
+```yumi
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+. pointer = arena.allocate'U16(2)
+. mark = arena.mark
+
+-- type-of arena
+-- type-of pointer
+-- type-of mark
+```
+
+```output
+[TypeInfo Arena]
+[TypeInfo CPointer'U16]
+[TypeInfo ArenaMark]
+```
+
+### Arena handles and allocation pointers remain pointer-free through ordinary aggregates.
+
+```yumi
+/core/arena
+
+. inner = Arena()
+. pointer = inner.allocate'U32(1)
+pointer[0] = 42u32
+. bundle = ArenaBundle(inner, pointer, inner.mark)
+. outer = Arena()
+. stored = outer.allocate'ArenaBundle(1)
+stored[0] = bundle
+
+-- type-of bundle
+-- stored[0].pointer[0]
+outer.release()
+-- pointer[0]
+inner.release()
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBundle is Tuple
+
++ arena Arena
++ pointer CPointer'U32
++ mark ArenaMark
+```
+
+```output
+[TypeInfo ArenaBundle]
+42
+42
+```
+
+```yumi
+/core/table
+
+. value Table'Payload? = null
+-- value == null
+. constructed = Table'Payload()
+-- constructed.marker
+
+━━━━━━━━━━━━━━━━━━━━
++ Payload
+
++ text = "payload"
+
+━━━━━━━━━━━━━━━━━━━━
++ Table'Item
+
++ marker = 7
+```
+
+```output
+true
+7
+```
+
+### A converter a subclass declares again answers for its objects, whatever type they are held as.
+
+```yumi
+. x A = B()
+-- x
+. y A = A()
+-- y
+. z B = B()
+-- z
+. w A = C()
+-- w
+-- "$x and $w"
+
+━━━━━━━━━━━━━━━━━━━━
++ A
+
+────────────────────
++ to String
+
+"A's text"
+
+━━━━━━━━━━━━━━━━━━━━
++ B is A
+
+────────────────────
++ to String
+
+"B's text"
+
+━━━━━━━━━━━━━━━━━━━━
++ C is B
+```
+
+```output
+B's text
+A's text
+B's text
+B's text
+B's text and B's text
+```
+
+### A type given as a value prints its name, and answers its name and key.
+
+```yumi
+. n = 5
+. t = (1, 2.5)
+. o Int? = 4
+. b = Box'Int()
+. p = Pair(1, 2)
+. s = "text"
+. thing Base = Sub()
+. named = Named(1, 2)
+-- type-of n
+-- type-of t
+-- type-of o
+-- type-of b
+-- type-of p
+-- type-of s
+-- type-of thing
+-- type-of named
+-- (type-of b).name
+-- (type-of t).name
+-- (type-of t).key
+-- (type-of named).name
+-- (type-of o).name
+-- (type-of thing).name
+-- (type-of thing).concrete-name
+-- label'(Int, String)()
+-- short'(Box'Float)()
+-- label'(Float?)()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Struct
+
++ a I32
++ b I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is (x Int, y Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Base
+
+━━━━━━━━━━━━━━━━━━━━
++ label'Item String
+
+"${Item.name} / ${Item.key}"
+
+━━━━━━━━━━━━━━━━━━━━
++ short'Item String
+
+Item.name
+```
+
+```output
+[TypeInfo I64]
+[TypeInfo Tuple]
+[TypeInfo Optional'I64]
+[TypeInfo Box'I64]
+[TypeInfo Pair]
+[TypeInfo String]
+[TypeInfo Base]
+[TypeInfo Named]
+Box'I64
+Tuple
+Tuple:((0:Class:core/number:I64), (1:Class:core/number:F64))
+Named
+Optional'I64
+Base
+Sub
+Tuple / Tuple:((0:Class:core/number:I64), (1:Class:core/string:String))
+Box'F64
+Optional'F64 / Struct:optional(Class:core/number:F64, Class:core/number:I8)
+```
+
+### The concrete name and key of a tuple and of an optional.
+
+```yumi
+. t = (1, 2.5)
+. o Int? = 4
+-- (type-of t).concrete-name
+-- (type-of o).concrete-key
+-- (type-of o).concrete-name
+-- (type-of t).concrete-key
+```
+
+```output
+Tuple
+Struct:optional(Class:core/number:I64, Class:core/number:I8)
+Optional'I64
+Tuple:((0:Class:core/number:I64), (1:Class:core/number:F64))
+```
+
+### The name and the key of each kind of type given as a type parameter.
+
+```yumi
+-- label'Int()
+-- label'Bool()
+-- label'Char()
+-- label'F32()
+-- label'String()
+-- label'(Int, String)()
+-- label'(a Int, b String)()
+-- named'Named()
+-- named'(Gen'Int)()
+-- named'Pair()
+-- label'(Int?)()
+-- label'(String?)()
+-- named'(Named?)()
+-- named'(Box'Int)()
+-- named'(Box'(Int, Int))()
+-- label'(CPointer'U8)()
+-- label'Pointer()
+-- named'Color()
+-- named'Shape()
+-- label'[Int]()
+-- label'Size()
+-- named'Meters()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Struct
+
++ a I32
++ b I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is (x Int, y Int)
+
+━━━━━━━━━━━━━━━━━━━━
++ Gen'T is (x T, y T)
+
+━━━━━━━━━━━━━━━━━━━━
++ Color is Union
+
+| red
+| green
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| circle Float
+| square Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Meters (m) is Float
+
+━━━━━━━━━━━━━━━━━━━━
++ label'Item String
+
+"${Item.name} / ${Item.key}"
+
+━━━━━━━━━━━━━━━━━━━━
++ named'Item String
+
+Item.name
+```
+
+```output
+I64 / Class:core/number:I64
+Bool / Class:core/number:Bool
+Char / Class:core/number:Char
+F32 / Class:core/number:F32
+String / Class:core/string:String
+Tuple / Tuple:((0:Class:core/number:I64), (1:Class:core/string:String))
+Tuple / Tuple:((a:Class:core/number:I64), (b:Class:core/string:String))
+Named
+Gen'I64
+Pair
+Optional'I64 / Struct:optional(Class:core/number:I64, Class:core/number:I8)
+Optional'String / Struct:optional(Class:core/string:String, Class:core/number:I8)
+Optional'Named
+Box'I64
+Box'Tuple
+CPointer'U8 / Class:core:CPointer(Class:core/number:U8)
+Pointer / Class:core:Pointer
+Color
+Shape
+List'I64'GCBacking / Class:core/list:List(Class:core/number:I64, Class:core/backing:GCBacking)
+Size / Class:core/range:Size
+Meters
+```
+
+### A tuple with no name is named Tuple and an optional is keyed as the struct that holds it, wherever they are nested.
+
+```yumi
+-- named'(Box'(Int?))()
+-- label'((Int?, String))()
+-- label'((Int?)?)()
+-- named'(Box'(Box'(Int, Int)))()
+-- named'(Pair'(Int?)'(Int, Int))()
+-- label'((a Int?, b (Int, Int)))()
+-- label'[Int?]()
+-- label'[(Int, Int?)]()
+. box Base = Box'(Int, Int)()
+-- (type-of box).concrete-name
+-- type-of box
+. deep Base = Box'(Int?)()
+-- (type-of deep).concrete-name
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T is Base
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair'A'B
+
+━━━━━━━━━━━━━━━━━━━━
++ label'Item String
+
+"${Item.name} / ${Item.key}"
+
+━━━━━━━━━━━━━━━━━━━━
++ named'Item String
+
+Item.name
+```
+
+```output
+Box'Optional'I64
+Tuple / Tuple:((0:Struct:optional(Class:core/number:I64, Class:core/number:I8)), (1:Class:core/string:String))
+Optional'Optional'I64 / Struct:optional(Struct:optional(Class:core/number:I64, Class:core/number:I8), Class:core/number:I8)
+Box'Box'Tuple
+Pair'Optional'I64'Tuple
+Tuple / Tuple:((a:Struct:optional(Class:core/number:I64, Class:core/number:I8)), (b:Tuple:((0:Class:core/number:I64), (1:Class:core/number:I64))))
+List'Optional'I64'GCBacking / Class:core/list:List(Struct:optional(Class:core/number:I64, Class:core/number:I8), Class:core/backing:GCBacking)
+List'Tuple'GCBacking / Class:core/list:List(Tuple:((0:Class:core/number:I64), (1:Struct:optional(Class:core/number:I64, Class:core/number:I8))), Class:core/backing:GCBacking)
+Box'Tuple
+[TypeInfo Base]
+Box'Optional'I64
+```
+
+### The size of a type given as a type parameter is the bytes a value of it is held in.
+
+```yumi
+-- choose'Int()
+-- choose'(Int, Int, Int, Int, Int)()
+-- choose'String()
+-- choose'Thing()
+-- choose'Pair()
+-- choose'(Int?)()
+-- choose'(Int, String)()
+-- choose'Bool()
+-- choose'F64()
+-- choose'(U8, U8, U8)()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 0
++ b = 0
++ c = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Struct
+
++ a I64
++ b U8
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose'Item Size
+
+= Item.size
+```
+
+```output
+8
+40
+8
+8
+16
+16
+16
+1
+8
+3
+```
+
+### A variable of a type that is one of several interfaces holds the one its value is
+
+```yumi
+. first Donald = Thing()
+. second Donald = Bling()
+. third Donald = Both()
+-- first, first.name()
+-- second, second.name()
+-- third, third.name()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+```
+
+```output
+([Interface __source__:IFoo], thing)
+([Interface __source__:IBar], bling)
+([Interface __source__:IFoo], both)
+```
+
+### A parameter of a type that is one of several interfaces is the one each argument is
+
+```yumi
+show(Thing())
+show(Bling())
+show(Both())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - value Donald
+
+-- value, value.name()
+```
+
+```output
+([Interface __source__:IFoo], thing)
+([Interface __source__:IBar], bling)
+([Interface __source__:IFoo], both)
+```
+
+### A function that returns one of several interfaces returns the one its value is
+
+```yumi
+-- pick(true)
+-- pick(false)
+. picked = pick(true)
+-- picked.name()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick Donald
+    - first Bool
+
+if first
+    = Thing()
+= Thing()
+```
+
+```output
+[Interface __source__:IFoo]
+[Interface __source__:IFoo]
+thing
+```
+
+### Two parameters of a type that is one of several interfaces choose alone
+
+```yumi
+show(Thing(), Bling())
+show(Bling(), Thing())
+show(Both(), Both())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - left Donald
+    - right Donald
+
+-- left.name(), right.name()
+-- left, right
+```
+
+```output
+(thing, bling)
+([Interface __source__:IFoo], [Interface __source__:IBar])
+(bling, thing)
+([Interface __source__:IBar], [Interface __source__:IFoo])
+(both, both)
+([Interface __source__:IFoo], [Interface __source__:IFoo])
+```
+
+### A list and a method parameter of a type that is one of several interfaces
+
+```yumi
+. items = [Thing() as Donald, Thing() as Donald]
+for item in items
+    -- item.name()
+. box = Box()
+box.keep(Thing())
+box.keep(Bling())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+────────────────────
++ do keep
+    - value Donald
+
+-- "kept", value.name()
+```
+
+```output
+thing
+thing
+(kept, thing)
+(kept, bling)
+```
+
+### A do function that returns one of several interfaces returns the second
+
+```yumi
+-- pick()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick Donald
+
+= Bling()
+```
+
+```output
+[Interface __source__:IBar]
+```
+
+### An expression function that returns one of several interfaces returns the second
+
+```yumi
+-- pick()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+────────────────────
++ name String
+
+"bling"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Donald
+
+Bling()
+```
+
+```output
+[Interface __source__:IBar]
+```
+
+### A converter to a type that is one of several interfaces gives the one it returns
+
+```yumi
+. source = Source()
+-- source as Donald
+. held Donald = source
+-- held.name()
+show(source)
+show(Wrapper())
+show(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+────────────────────
++ name String
+
+"thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ Both
+    is IBar
+    is IFoo
+
+────────────────────
++ name String
+
+"both"
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+────────────────────
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
+────────────────────
++ to Donald
+
+Thing()
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrapper
+
+────────────────────
++ to Donald
+
+Both()
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - value Donald
+
+-- "shown", value, value.name()
+```
+
+```output
+[Interface __source__:IFoo]
+thing
+(shown, [Interface __source__:IFoo], thing)
+(shown, [Interface __source__:IFoo], both)
+(shown, [Interface __source__:IFoo], thing)
+```
+
+### An overload of a type that is one of several interfaces and one of a number
+
+```yumi
+fetch(Thing())
+fetch(Bling())
+fetch(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Donald
+
+-- "duck"
+-- thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing Int
+
+-- "int"
+```
+
+```output
+duck
+[Interface __source__:IFoo]
+duck
+[Interface __source__:IBar]
+int
+```
+
+### A value declared and cast as a type that is one of several interfaces
+
+```yumi
+. thing = Thing()
+. donald Donald = thing
+-- donald
+. other = Bling() as Donald
+-- other
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+    is IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+```
+
+```output
+[Interface __source__:IFoo]
+[Interface __source__:IBar]
+```
+
+### A converter declared to give one of several types converts to each of them: an argument and a declaration of one take what it gives, and a function that takes that one is chosen.
+
+```yumi
+take(Source())
+. held IBar = Source()
+-- held
+only(Source())
+
+━━━━━━━━━━━━━━━━━━━━
++ Barred
+    is IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ IBar is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Donald is IFoo || IBar
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
+────────────────────
++ to Donald
+
+Barred()
+
+━━━━━━━━━━━━━━━━━━━━
++ do take
+    - value IBar
+
+-- "bar", value
+
+━━━━━━━━━━━━━━━━━━━━
++ do take
+    - value Donald
+
+-- "donald", value
+
+━━━━━━━━━━━━━━━━━━━━
++ do only
+    - value IBar
+
+-- "only", value
+```
+
+```output
+(bar, [Interface __source__:IBar])
+[Interface __source__:IBar]
+(only, [Interface __source__:IBar])
+```
+
+```yumi crash
+. value Arena? = null
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:2>
+    . value Arena? = null
+            ^^^^^
+```
+
+```yumi crash
+. value Table'Int? = null
+```
+
+```output
+Exception: Type "Table" not found; it is declared in /core/table and /tui/table, which this module does not import. Import one of them
+<no file:2>
+    . value Table'Int? = null
+            ^^^^^^^^^
+```
+
+```yumi crash
+. value ArrayBuilder'Int? = null
+```
+
+```output
+Exception: Type "ArrayBuilder" not found; it is declared in /core/array-builder, which this module does not import. Add the import /core/array-builder
+<no file:2>
+    . value ArrayBuilder'Int? = null
+            ^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+-- later() == null
+
+━━━━━━━━━━━━━━━━━━━━
+_ later Arena?
+
+null
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:5>
+    _ later Arena?
+            ^^^^^
+```
+
+```yumi crash
+-- take(null)
+
+━━━━━━━━━━━━━━━━━━━━
+_ take Bool
+    - value Arena?
+
+value == null
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:6>
+        - value Arena?
+                ^^^^^
+```
+
+```yumi crash
+_ size Arena? = null
+
+-- size == null
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:2>
+    _ size Arena? = null
+           ^^^^^
+```
+
+```yumi crash
+. value = 3
+-- value is Arena
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:3>
+    -- value is Arena
+                ^^^^^
+```
+
+```yumi crash
+. found = List'Arena()
+-- found.length
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:2>
+    . found = List'Arena()
+                   ^^^^^
+```
+
+```yumi crash
+. value = 3
+do match value
+    | held Arena
+        -- "arena"
+    ??
+        -- "other"
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:4>
+        | held Arena
+               ^^^^^
+```
+
+```yumi crash
+. b = Box'Int(1)
+. x [Int] = b
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'Item
+
++ k Item
+
+────────────────────
++ This
+    - k
+
+────────────────────
++ to List'Item
+
+?! Panic("conv")
+```
+
+```stderr
+Unhandled panic: conv
+<no file:18>
+
+Task 1
+
+Stack trace:
+  0  __source__:Box:to List'Item2 no file:18:1
+  1  __source__:main no file:3:5
+  2  __source__:init.__source__ no file
+  3  __source__:brix.main no file
+```
+
+### A tuple of one field whose type its value gives is made from a value of that type, not converted by its `from`.
+
+```yumi
+-- Wrapped("abc").name
+. w Wrapped = "def"
+-- w.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrapped is Tuple
+
++ name = "none"
+
+────────────────────
++ do from value String
+
+-- "from $value"
+= Wrapped("w-$value")
+```
+
+```output
+abc
+from def
+w-def
+```
+
+### A member read from a name that names no type is reported where the name is written.
+
+```yumi crash
+-- Missing.word
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:2>
+    -- Missing.word
+       ^^^^^^^
+```
+
+### A type written after a function's name that names no type is reported where it is written.
+
+```yumi crash
+-- convert'Missing(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ convert'Unit Int
+    - value Int
+
+value
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:2>
+    -- convert'Missing(3)
+               ^^^^^^^
+```
+
+### A type a value is cast to that names no type is reported where it is written.
+
+```yumi crash
+. id = 3 as Missing
+-- id
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:2>
+    . id = 3 as Missing
+                ^^^^^^^
+```
+
+### A parameter's type that names no type is reported where it is written when a call reads it.
+
+```yumi crash
+-- describe(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe Int
+    - value Missing
+
+= 1
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:6>
+        - value Missing
+                ^^^^^^^
+```
+
+### A method overriding a base's whose parameter's type names no type is reported where it is written, not left to the base's.
+
+```yumi crash
+-- ask(Thing())
+
+━━━━━━━━━━━━━━━━━━━━
++ do ask String
+    - base Base
+
+= base.describe(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ do describe String
+    - value Int
+
+= "base"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Base
+
+────────────────────
++ do describe String
+    - value Missing
+
+= "thing"
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:24>
+        - value Missing
+                ^^^^^^^
+```
+
+### A method parameter's type that names no type is reported where it is written, though a function of the module has the method's name.
+
+```yumi crash
+-- Gauge().reading()
+
+━━━━━━━━━━━━━━━━━━━━
++ Gauge
+
+────────────────────
++ reading Int
+
+scaled(3)
+
+────────────────────
+_ scaled Int
+    - value Missing
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
++ scaled Int
+    - value Int
+
+2
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:14>
+        - value Missing
+                ^^^^^^^
+```
+
+### A constructor parameter's type that names no type is reported where it is written.
+
+```yumi crash
+-- Gauge(3).level
+
+━━━━━━━━━━━━━━━━━━━━
++ Gauge
+
++ level Int
+
+────────────────────
++ This
+    - value Missing
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:11>
+        - value Missing
+                ^^^^^^^
+```
+
+### A local whose written type names nothing is an error where the type is written.
+
+```yumi crash
+. x Nonexistent
+x = 3
+-- x
+```
+
+```output
+Exception: Type "Nonexistent" not found
+<no file:2>
+    . x Nonexistent
+        ^^^^^^^^^^^
+```
+
+### A class and a generic class may share a name in one module, whichever is declared first. Construction, a written type, and markup each choose the one with as many type parameters as they give, and the class may extend an instance of the generic and override its methods.
+
+```yumi
+. plain = Slot("plain")
+. typed = Slot'Int("typed")
+-- describe(plain)
+-- describe(typed)
+-- plain.parse("1")
+-- typed.parse("2")
+. held Slot'String = plain
+-- held.parse("3")
+<Slot marked "marked"
+<Slot'Int counted "counted"
+-- describe(marked)
+-- describe(counted)
+. box Box = Box()
+-- box.label()
+-- Box'Int().label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+────────────────────
++ label String
+
+"plain box"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'T
+
+────────────────────
++ label String
+
+"typed box"
+
+━━━━━━━━━━━━━━━━━━━━
++ Named
+
++ name String
+
+────────────────────
++ This
+    - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Slot'T is Named
+
+────────────────────
++ This
+    - name String
+
+super(name)
+
+────────────────────
++ parse String
+    - text String
+
+"typed $text"
+
+━━━━━━━━━━━━━━━━━━━━
++ Slot is Slot'String
+
+────────────────────
++ This
+    - name String
+
+super(name)
+
+────────────────────
++ parse String
+    - text String
+
+"plain $text"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - slot Slot
+
+"Slot ${slot.name}"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - slot Slot'Int
+
+"Slot'Int ${slot.name}"
+```
+
+```output
+Slot plain
+Slot'Int typed
+plain 1
+typed 2
+plain 3
+Slot marked
+Slot'Int counted
+plain box
+typed box
+```

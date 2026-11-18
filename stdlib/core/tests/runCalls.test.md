@@ -1,0 +1,3842 @@
+# Calls
+
+```yumi
+/BxCore/tests.h
+
+. data1 = (81, 92, 33, 45, 55)
+C:ctestStructLarge(data1)
+
+. data1n = (81, 92, 33, 45, (88, 99))
+C:ctestStructLargeNested(data1n)
+
+. data2 = (81, 92)
+C:ctestStructSmall1(data2)
+
+. data3 = (81, 92, 33, 45)
+C:ctestStructSmall2(data3)
+
+. data4 = (1.8, 9.2, 3.3)
+C:ctestStructHFA(data4)
+C:ctestStructHFASpill(1, 2, 3, 4, 5, 6, data4)
+```
+
+```output
+a 81 b 92 c 33 d 45 e 55
+a 81 b 92 c 33 d 45
+e.a 88 e.b 99
+a 81 b 92
+a 81 b 92 c 33 d 45
+a 1.800000 b 9.200000 c 3.300000
+a 1.000000 b 2.000000 c 3.000000 d 4.000000 e 5.000000 f 6.000000
+a 1.800000 b 9.200000 c 3.300000
+```
+
+```yumi
+/core/table
+
+/BxEvents/BxGCHandshake.h
+/core/arena
+
+. arena = Arena(32768)
+do finally arena.release()
+. rows = Table'Node(arena, 2)
+rows.append(Node.wide(1, 10, 20, 30, 40))
+
+match rows[0]
+    | .small(small)
+        show-call-cursor(small.value)
+    | .wide(wide)
+        show-call-cursor(direct-wide(wide))
+        show-call-cursor(forward-wide(wide))
+        show-call-cursor(ignore-wide(wide))
+        show-call-cursor(conditional-wide(wide, true))
+        show-call-cursor(recursive-wide(wide, 2))
+        show-call-cursor(escape-wide(wide).external-a)
+        show-call-cursor(pair-wide(wide, wide))
+        show-call-cursor(safepoint-wide(wide))
+        show-call-cursor(direct-wide(Wide(9, 11, 12, 13, 14)))
+        show-call-cursor(unsafe-wide(wide, rows))
+
+━━━━━━━━━━━━━━━━━━━━
++ do show-call-cursor
+    - value U64
+
+-- value
+
+━━━━━━━━━━━━━━━━━━━━
++ direct-wide U64
+    - wide Wide
+
+wide.external-a + wide.external-b
+
+━━━━━━━━━━━━━━━━━━━━
++ forward-wide U64
+    - wide Wide
+
+direct-wide(wide)
+
+━━━━━━━━━━━━━━━━━━━━
++ ignore-wide U64
+    - wide Wide
+
+7
+
+━━━━━━━━━━━━━━━━━━━━
++ conditional-wide U64
+    - wide Wide
+    - take Bool
+
+|? take
+    wide.external-a
+??
+    0
+
+━━━━━━━━━━━━━━━━━━━━
++ recursive-wide U64
+    - wide Wide
+    - count U64
+
+|? count == 0
+    wide.external-b
+??
+    recursive-wide(wide, count - 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ escape-wide Wide
+    - wide Wide
+
+wide
+
+━━━━━━━━━━━━━━━━━━━━
++ pair-wide U64
+    - left Wide
+    - right Wide
+
+left.external-a + right.external-b
+
+━━━━━━━━━━━━━━━━━━━━
++ do safepoint-wide U64
+    - wide Wide
+
+C:brixGCSafepoint()
+= wide.external-a
+
+━━━━━━━━━━━━━━━━━━━━
++ unsafe-wide U64
+    - wide Wide
+    - rows Table'Node
+
+do
+    mutate-call-cursor-rows(rows)
+wide.external-a
+
+━━━━━━━━━━━━━━━━━━━━
++ do mutate-call-cursor-rows
+    - rows Table'Node
+
+rows[0] = Node.wide(2, 100, 200, 300, 400)
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Small is Syntax
+
++ value U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Syntax
+
++ @hot inline-a U64
++ @hot inline-b U64
++ external-a U64
++ external-b U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| small Small
+| wide Wide
+```
+
+```output
+70
+70
+7
+30
+40
+30
+70
+30
+27
+30
+```
+
+```yumi
+/BxCore/tests.h
+
+-- C:ctestStructReturnHFA()
+-- C:ctestStructReturnSmall1()
+-- C:ctestStructReturnSmall2()
+-- C:ctestStructReturnLarge()
+```
+
+```output
+(1.2, 2.3, 3.4)
+(1, 2)
+(1, 2, 3, 4)
+(1, 2, 3, 4, 5)
+```
+
+```yumi
+. data1a = (81, 92, 33, 45, 55)
+struct-pass(data1a)
+
+. data2a = (81, 92)
+struct-pass(data2a)
+struct-pass-overflow9(1, 2, 3, 4, 5, 6, 7, 8, data2a, 9)
+
+. data3a = (81, 92, 33, 45)
+struct-pass(data3a)
+struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data3a, 9, 10)
+
+. data4a = (1.8, 9.2, 3.3)
+struct-pass(data4a)
+struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data4a, 9, 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-pass
+    - x
+
+-- x
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-pass-overflow8
+    - a
+    - b
+    - c
+    - d
+    - e
+    - f
+    - g
+    - x
+    - i
+    - j
+
+-- a, b, c, d, e, f, g, i, j
+-- x
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-pass-overflow9
+    - a
+    - b
+    - c
+    - d
+    - e
+    - f
+    - g
+    - h
+    - x
+    - j
+
+-- x
+= 0
+```
+
+```output
+(81, 92, 33, 45, 55)
+(81, 92)
+(81, 92)
+(81, 92, 33, 45)
+(1, 2, 3, 4, 5, 6, 7, 9, 10)
+(81, 92, 33, 45)
+(1.8, 9.2, 3.3)
+(1, 2, 3, 4, 5, 6, 7, 9, 10)
+(1.8, 9.2, 3.3)
+```
+
+```yumi
+-- struct-return-hfa()
+-- struct-return-small1()
+-- struct-return-small2()
+-- struct-return-large()
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-return-hfa
+
+= (1.8, 9.2, 3.3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-return-small1
+
+= (8, 9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-return-small2
+
+= (8, 9, 10, 11)
+
+━━━━━━━━━━━━━━━━━━━━
++ do struct-return-large
+
+= (8, 9, 10, 11, 12)
+```
+
+```output
+(1.8, 9.2, 3.3)
+(8, 9)
+(8, 9, 10, 11)
+(8, 9, 10, 11, 12)
+```
+
+```yumi
+. sink = Sink()
+set-before-overflow(sink, 7)
+set-after-overflow("a", "b", "c", "d", "e", "f", "g", "h", sink)
+-- sink.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Sink
+
++ value = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-before-overflow
+    - sink Sink
+    - value Int
+
+sink.value = value
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-after-overflow
+    - a String
+    - b String
+    - c String
+    - d String
+    - e String
+    - f String
+    - g String
+    - h String
+    - sink Sink
+
+set-before-overflow(sink, 123)
+```
+
+```output
+123
+```
+
+```yumi
+callme(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+
+━━━━━━━━━━━━━━━━━━━━
++ do callme
+    - a
+    - b
+    - c
+    - d
+    - e
+    - f
+    - g
+    - h
+    - i
+    - j
+    - k
+    - l
+    - m
+    - n
+    - o
+    - p
+    - q
+    - r
+
+-- a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r
+```
+
+```output
+(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo I32
+
+. abc = 5
+= 5
+```
+
+```output
+5
+```
+
+```yumi
+. x I32 = 1
+-- foo(x)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo I32
+    - i I32
+
+i + 2
+```
+
+```output
+3
+```
+
+```yumi
+-- bar(1)
+-- bar(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ bar'T T
+    - b T
+
+(b + 2.5) as T
+```
+
+```output
+3
+3.5
+```
+
+```yumi
+-- bar(1)
+-- bar(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ bar T
+    - b ''T
+
+(b + 2.5) as T
+```
+
+```output
+3
+3.5
+```
+
+```yumi crash
+-- bar(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ bar'T'B T
+    - b T''B
+
+b + 2.5
+```
+
+```output
+Exception: Duplicate type parameter
+<no file:6>
+        - b T''B
+             ^^^
+```
+
+```yumi
+. r = Range'Index(0, 1)
+```
+
+```yumi
+-- bar(1)
+-- bar(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bar'T T
+    - b T
+
+. a T = (b + 2.5) as T
+= a
+```
+
+```output
+3
+3.5
+```
+
+```yumi crash
+foo()
+```
+
+```output
+Exception: Function "foo" not found
+<no file:2>
+    foo()
+    ^^^^^
+```
+
+```yumi crash
+-- foo
+```
+
+```output
+Exception: Name "foo" not found
+<no file:2>
+    -- foo
+       ^^^
+```
+
+```yumi
+foo(24)
+foo(24, 26)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32
+    - b = 25
+
+-- a
+-- b
+```
+
+```output
+24
+25
+24
+26
+```
+
+```yumi
+foo(24)
+foo(24, 26)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32
+    - b I32 = 25
+
+-- a
+-- b
+```
+
+```output
+24
+25
+24
+26
+```
+
+```yumi
+foo(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32
+    - b = 25
+
+-- a
+-- b
+```
+
+```output
+1
+2
+```
+
+### Unresolved type parameter
+
+```yumi
+-- foo(24, ...)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo'T'G
+    - a T
+
+. b G
+-- a
+```
+
+```output
+[Binding foo]
+```
+
+```yumi
+foo(24)
+foo(24.5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+    - b = 25
+
+-- a + b
+```
+
+```output
+49
+49.5
+```
+
+```yumi
+-- foo(1)
+-- foo(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - b Int
+    - a = 10
+
+b + a
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - b Float
+    - a = 5.5
+
+b + a
+```
+
+```output
+11
+6.5
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a = bar()
+
+a + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ bar
+
+42
+```
+
+```output
+43
+```
+
+### A default cannot read a member of the method's class
+
+```yumi crash
+. holder = Holder()
+holder.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ name = "kept"
+
+────────────────────
++ do show
+    - text String = name
+
+-- text
+```
+
+```output
+Exception: Name "name" not found
+<no file:12>
+        - text String = name
+                        ^^^^
+```
+
+```yumi crash
+foo(24)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+    - b = 25
+    - c
+
+-- a + b
+```
+
+```output
+Exception: Parameter "c" has no default but comes after "b", which has a default; declare required parameters first, or give "c" a default
+<no file:8>
+        - c
+          ^
+```
+
+### Too many arguments
+
+```yumi crash
+foo(24, 25)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+
+-- a
+```
+
+```output
+Exception: No function "foo" accepts (I64, I64); it is declared as "foo(a)"
+<no file:2>
+    foo(24, 25)
+    ^^^^^^^^^^^
+```
+
+```yumi
+foo(42l)
+foo(34i)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n I64
+
+-- "i64"
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n I32
+
+-- "i32"
+```
+
+```output
+i64
+i64
+```
+
+```yumi
+-- foo(Foo())
+
++ Bar
++ Foo is Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - n Bar
+
+"Bar"
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - n Foo
+
+"Foo"
+```
+
+```output
+Foo
+```
+
+```yumi
+Thing(Foo())
+
++ Bar
++ Foo is Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ This
+    - n Bar
+
+-- "Bar"
+
+────────────────────
++ This
+    - n Foo
+
+-- "Foo"
+```
+
+```output
+Foo
+```
+
+### Overriding base class constructor with same signature
+
+```yumi
+Thing(Bar())
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ ThingBase
+
+────────────────────
++ This
+    - n Bar
+
+-- "Bar"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is ThingBase
+
+────────────────────
++ This
+    - n Bar
+
+-- "Foo"
+```
+
+```output
+Foo
+```
+
+### More specific base class constructor wins
+
+```yumi
+Thing(Foo())
+
++ Bar
++ Foo is Bar
+
+━━━━━━━━━━━━━━━━━━━━
++ ThingBase
+
+────────────────────
++ This
+    - n Foo
+
+-- "Foo"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is ThingBase
+
+────────────────────
++ This
+    - n Bar
+
+-- "Bar"
+```
+
+```output
+Foo
+```
+
+## Named arguments
+
+```yumi
+-- foo(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a = 2
+
+a
+```
+
+```output
+1
+```
+
+```yumi
+-- foo(1) • c 1
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+    - c = 2
+
+a + b + c
+```
+
+```output
+3
+```
+
+```yumi
+-- foo(0) • c 3
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+    - c = 2
+
+"$a $b $c"
+```
+
+```output
+0 1 3
+```
+
+```yumi
+-- foo(0) • c 3 • d 4
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+    - c = 2
+    - d = 3
+
+"$a $b $c $d"
+```
+
+```output
+0 1 3 4
+```
+
+```yumi
+-- foo(1) • c 1
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+    - c = 2
+
+a + b + c
+```
+
+```output
+3
+```
+
+```yumi
+-- foo(2) • c 1
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+    - c = 2
+
+a + b + c
+```
+
+```output
+4
+```
+
+```yumi crash
+-- foo() • to 1 • with 2
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+    - b = 1
+
+a + b
+```
+
+```output
+Exception: No function "foo" accepts to I64 with I64; it is declared as "foo(a, b)"
+<no file:2>
+    -- foo() • to 1 • with 2
+       ^^^^^^^^^^^^^^^^^^^^^
+```
+
+## Storing type parameters in bindings
+
+```yumi
+. c = foo'F32(1, 2, ...)
+-- c(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo'T1'T2
+    - a I32
+    - b T1
+    - c T2
+
+a * b * c
+```
+
+```output
+6
+```
+
+```yumi
+-- foo'Int(1, 3, 2)
+-- foo'Int(1, 2, 3)
+-- foo(1, 2.0, 3.0)
+-- foo(1, 2.0, 3.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo'T'T2
+    - a T2
+    - b T
+    - c T
+
+-- T
+= a * b * c
+```
+
+```output
+[TypeInfo I64]
+6
+[TypeInfo I64]
+6
+[TypeInfo F64]
+6
+[TypeInfo F64]
+6
+```
+
+```yumi
+foo'Int(1, 3, 2)
+foo(1, 2.0, 3.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo'T'T2
+    - a T2
+    - b T
+    - c T
+
+-- T
+```
+
+```output
+[TypeInfo I64]
+[TypeInfo F64]
+```
+
+```yumi
+. c = foo'F32(...)
+-- c'F32(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo'T1'T2
+    - a
+
+(a as T1) as T2
+```
+
+```output
+1
+```
+
+```yumi
+foo(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a ''A
+
+-- type-of a
+```
+
+```output
+[TypeInfo I64]
+```
+
+## Infer argument type from its default value (but only if not provided by caller)
+
+```yumi
+-- foo()
+    • a "hi"
+    • b 42
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a String
+    - b Int
+
+"$a = $b"
+```
+
+```output
+hi = 42
+```
+
+```yumi
+-- Foo(5)
+-- Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Int = 10
+
+────────────────────
++ This
+    - bar Int?
+
+────────────────────
++ to String
+
+"[Foo $bar]"
+```
+
+```output
+[Foo 5]
+[Foo 10]
+```
+
+```yumi crash
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+5
+6
+```
+
+```output
+Exception: A value cannot stand alone as a step; use it, or remove it
+<no file:7>
+    5
+    ^
+```
+
+```yumi crash
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+bar()
+6
+
+━━━━━━━━━━━━━━━━━━━━
++ do bar
+
+-- "bar"
+```
+
+```output
+Exception: Function "foo" is not declared with do, so its body is one expression and cannot run calls before its value; put the call in a "do" block, or write "+ do foo" and return its value with "= value"
+<no file:7>
+    bar()
+    ^^^^^
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+-- "hi"
+= 6
+```
+
+```output
+hi
+6
+```
+
+### Empty do functions are ok
+
+```yumi
+. foo = Foo()
+foo.act()
+-- "ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ do act
+```
+
+```output
+ok
+```
+
+### Empty explicit-void do functions are ok
+
+```yumi
+. foo = Foo()
+foo.act()
+-- "ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ do act Void
+```
+
+```output
+ok
+```
+
+### Ability to reference params in argument defaults
+
+```yumi
+-- foo'Int()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo'T
+    - type = T
+
+type
+```
+
+```output
+[TypeInfo I64]
+```
+
+### Write operation always returns left hand side, ignoring return value of override
+
+```yumi
+-- Foo() <- 42
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ do this <- other
+```
+
+```output
+[Object __source__:Foo]
+```
+
+```yumi
+foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo'T
+    - T = String
+
+-- T
+```
+
+```output
+[TypeInfo String]
+```
+
+```yumi
+foo(3.5)
+foo(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n Int!
+
+-- "!"
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n Int~
+
+-- "~"
+```
+
+```output
+~
+!
+```
+
+## Variadic arguments
+
+```yumi
+foo("hi")
+    - 1
+    - 2
+    - 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - text
+    ... keys [Int]
+
+-- text
+-- keys.length
+-- keys
+```
+
+```output
+hi
+3
+1, 2, 3
+```
+
+```yumi
+foo("hi")
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - text
+    ... keys = List'Int()
+
+-- text
+-- keys.length
+-- keys
+```
+
+```output
+hi
+0
+```
+
+```yumi
+foo("hi")
+    - 1
+    - 2.5
+    - 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - text
+    ... keys
+
+-- text
+-- keys.length
+-- keys
+```
+
+```output
+hi
+3
+1, 2.5, 3
+```
+
+```yumi
+. f = Foo()
+f.foo("hi")
+    - 1
+    - 2
+    - 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ do foo
+    - text
+    ... keys [Int]
+
+-- text
+-- keys.length
+-- keys
+```
+
+```output
+hi
+3
+1, 2, 3
+```
+
+```yumi
+Foo
+    - 1
+    - 2
+    - 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ This
+    ... keys [Int]
+
+-- keys.length
+-- keys
+```
+
+```output
+3
+1, 2, 3
+```
+
+```yumi
+. fn = :: text String, ... keys [Int] => "$text $keys"
+-- fn("hi", 1, 2, 3)
+```
+
+```output
+hi 1, 2, 3
+```
+
+```yumi crash
+foo("hi")
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    ... keys
+    - a
+```
+
+```output
+Exception: Variadic arguments must be the last one
+<no file:7>
+        - a
+          ^
+```
+
+```yumi crash
+foo("hi")
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    ... keys
+    ... bees
+```
+
+```output
+Exception: Variadic arguments must be the last one
+<no file:7>
+        ... bees
+            ^^^^
+```
+
+### Constructor assignments select omitted owner parameters before class defaults.
+
+```yumi
+. arena = ConstructorArena()
+. managed = ConstructorSelectedBox'U32()
+. native = ConstructorSelectedBox'U32(arena)
+-- type-of managed
+-- type-of native
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorArena
+
+━━━━━━━━━━━━━━━━━━━━
++ GCConstructorBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaConstructorBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorSelectedBox'Value'Backing
+    - Backing = GCConstructorBacking'Value
+
+────────────────────
++ This
+
+────────────────────
++ This
+    - arena ConstructorArena
+    - Backing = ArenaConstructorBacking'Value
+```
+
+```output
+[TypeInfo ConstructorSelectedBox'U32'GCConstructorBacking'U32]
+[TypeInfo ConstructorSelectedBox'U32'ArenaConstructorBacking'U32]
+```
+
+### Explicit owner arguments reject a conflicting constructor assignment.
+
+```yumi crash
+. arena = ConstructorConflictArena()
+ConstructorConflictBox'U32'(GCConflictBacking'U32)(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorConflictArena
+
+━━━━━━━━━━━━━━━━━━━━
++ GCConflictBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaConflictBacking'Value is Tuple
+
+━━━━━━━━━━━━━━━━━━━━
++ ConstructorConflictBox'Value'Backing
+    - Backing = GCConflictBacking'Value
+
+────────────────────
++ This
+    - arena ConstructorConflictArena
+    - Backing = ArenaConflictBacking'Value
+```
+
+```output
+Exception: No constructor of ConstructorConflictBox matches these arguments; its declared constructors are "ConstructorConflictBox(arena ConstructorConflictArena)"
+<no file:3>
+    ConstructorConflictBox'U32'(GCConflictBacking'U32)(arena)
+    ^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Ordinary overload ranking wins before a constructor assignment selects the owner type.
+
+```yumi
+. selected = RankedConstructorBox'U32(3)
+-- type-of selected
+
+━━━━━━━━━━━━━━━━━━━━
++ ExactRankedBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ SimilarRankedBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ RankedConstructorBox'Value'Backing
+
+────────────────────
++ This
+    - value Int~
+    - Backing = SimilarRankedBacking'Value
+
+────────────────────
++ This
+    - value Int!
+    - Backing = ExactRankedBacking'Value
+```
+
+```output
+[TypeInfo RankedConstructorBox'U32'ExactRankedBacking'U32]
+```
+
+### Equally ranked constructors selecting different owner types are ambiguous.
+
+```yumi crash
+AmbiguousConstructorBox'U32(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ FirstAmbiguousBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ SecondAmbiguousBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ AmbiguousConstructorBox'Value'Backing
+
+────────────────────
++ This
+    - marker Bool
+    - Backing = FirstAmbiguousBacking'Value
+
+────────────────────
++ This
+    - marker Bool
+    - Backing = SecondAmbiguousBacking'Value
+```
+
+```output
+Exception: Ambiguous constructor
+<no file:2>
+    AmbiguousConstructorBox'U32(true)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### An omitted owner parameter without a constructor assignment or class default is diagnosed.
+
+```yumi crash
+UnresolvedConstructorBox(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ UnresolvedConstructorBox'Backing
+
+────────────────────
++ This
+    - marker Bool
+```
+
+```output
+Exception: Could not resolve parameter Backing
+<no file:2>
+    UnresolvedConstructorBox(true)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Runtime arguments infer earlier owner parameters before constructor assignments and later defaults.
+
+```yumi
+. selected = InferredConstructorBox(5u32, InferenceArenaToken())
+-- type-of selected
+
+━━━━━━━━━━━━━━━━━━━━
++ InferenceArenaToken
+
+━━━━━━━━━━━━━━━━━━━━
++ InferredManagedBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ InferredArenaBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ InferredPolicy'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ InferredConstructorBox'Value'Backing'Policy
+    - Backing = InferredManagedBacking'Value
+    - Policy = InferredPolicy'Value
+
+────────────────────
++ This
+    - value Value
+    - token InferenceArenaToken
+    - Backing = InferredArenaBacking'Value
+```
+
+```output
+[TypeInfo InferredConstructorBox'U32'InferredArenaBacking'U32'InferredPolicy'U32]
+```
+
+### An imported extension can contribute a factory constructor that selects an omitted owner parameter.
+
+```yumi
+. selected = ExtensionConstructorBox'U32(ExtensionConstructorToken(), 7u32)
+-- type-of selected
+-- selected.value
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionConstructorToken
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionManagedBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionArenaBacking'Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtensionConstructorBox'Value'Backing is Tuple
+    - Backing = ExtensionManagedBacking'Value
+
++ value Value
+
+────────────────────
++ This
+    - item Value
+    - marker U8
+
+value = item
+
+━━━━━━━━━━━━━━━━━━━━
++ extend ExtensionConstructorBox''Value''Backing
+
+────────────────────
++ This
+    - token ExtensionConstructorToken
+    - item Value
+    - Backing = ExtensionArenaBacking'Value
+
+= ExtensionConstructorBox'Value'Backing(item, 0u8)
+```
+
+```output
+[TypeInfo ExtensionConstructorBox'U32'ExtensionArenaBacking'U32]
+7
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ unused Int
+
+1
+
+────────────────────
++ second Int
+
+2
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:7>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ unused'T T
+    - value T
+
+value
+
+────────────────────
+_ second Int
+
+2
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:8>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+-- second()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do unused
+
+-- 1
+
+
+────────────────────
+_ second Int
+
+2
+
+━━━━━━━━━━━━━━━━━━━━
++ later Int
+
+3
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:10>
+    ────────────────────
+    ^
+```
+
+```yumi
+-- second()
+
+━━━━━━━━━━━━━━━━━━━━
++ first Int
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
+_ second Int
+
+2
+```
+
+```output
+2
+```
+
+```yumi
+. value = (41 as Size, 9u32)
+-- forward(value)
+-- reverse(value)
+-- nested((value, 7u32))
+
+. address EntryAddress = 41
+. generation EntryGeneration = 9
+. typed = (address, generation)
+-- forward(typed)
+-- reverse(typed)
+-- nested((typed, 7u32))
+
+. pointer = 41 as EntryPointer
+. count EntryCount = 9
+-- forward((pointer, count))
+-- reverse((pointer, count))
+
+━━━━━━━━━━━━━━━━━━━━
++ EntryAddress is Size
+
+━━━━━━━━━━━━━━━━━━━━
++ EntryGeneration is U32
+
+━━━━━━━━━━━━━━━━━━━━
++ EntryPointer is CPointer'U8
+
+━━━━━━━━━━━━━━━━━━━━
++ EntryCount is Size
+
+━━━━━━━━━━━━━━━━━━━━
++ ExactEntry is (address Size, generation U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ ConvertedEntry is (address CPointer'U8, generation Size)
+
+━━━━━━━━━━━━━━━━━━━━
++ ExactNested is (entry ExactEntry, count U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ ConvertedNested is (entry ConvertedEntry, count U32)
+
+━━━━━━━━━━━━━━━━━━━━
++ forward
+    - entry ExactEntry
+
+"exact"
+
+━━━━━━━━━━━━━━━━━━━━
++ forward
+    - entry ConvertedEntry
+
+"converted"
+
+━━━━━━━━━━━━━━━━━━━━
++ reverse
+    - entry ConvertedEntry
+
+"converted"
+
+━━━━━━━━━━━━━━━━━━━━
++ reverse
+    - entry ExactEntry
+
+"exact"
+
+━━━━━━━━━━━━━━━━━━━━
++ nested
+    - entry ExactNested
+
+"exact nested"
+
+━━━━━━━━━━━━━━━━━━━━
++ nested
+    - entry ConvertedNested
+
+"converted nested"
+```
+
+```output
+exact
+exact
+exact nested
+exact
+exact
+exact nested
+converted
+converted
+```
+
+### An integer argument takes an integer overload, and a C pointer parameter takes an integer only when asked
+
+```yumi
+. byte U8 = 2
+. unsigned U32 = 2
+. signed I32 = 2
+. wide I64 = 2
+. pointer = (0 as Pointer) as CPointer'U8
+-- Box(byte).address
+-- Box(unsigned).address
+-- Box(signed).address
+-- Box(wide).address
+-- pick(byte)
+-- pick(unsigned)
+-- pick(signed)
+-- pick(wide)
+-- pick(pointer)
+-- reversed(unsigned)
+-- reversed(pointer)
+-- only-pointer(0 as CPointer'Char8)
+-- only-pointer(unsigned as CPointer'Char8)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box is Tuple
+
+_ native CPointer'Char8
+
+────────────────────
++ This
+    - count Int = 1
+
+-- "public $count"
+= This((0 as Pointer) as CPointer'Char8)
+
+────────────────────
+_ This
+    - native CPointer'Char8
+
+────────────────────
++ get address
+
+native.address
+
+━━━━━━━━━━━━━━━━━━━━
++ pick
+    - value Int
+
+"integer"
+
+━━━━━━━━━━━━━━━━━━━━
++ pick
+    - value CPointer'Char8
+
+"pointer"
+
+━━━━━━━━━━━━━━━━━━━━
++ reversed
+    - value CPointer'Char8
+
+"pointer"
+
+━━━━━━━━━━━━━━━━━━━━
++ reversed
+    - value Int
+
+"integer"
+
+━━━━━━━━━━━━━━━━━━━━
++ only-pointer
+    - value CPointer'Char8
+
+value.address
+```
+
+```output
+public 2
+0
+public 2
+0
+public 2
+0
+public 2
+0
+integer
+integer
+integer
+integer
+pointer
+integer
+pointer
+0
+2
+```
+
+```yumi
+-- choose((1, 2))
+-- choose((1, => 2))
+-- choose((1, produce))
+. chooser = PairChooser()
+-- chooser.choose((1, 2))
+-- chooser.choose((1, => 2))
+-- chooser.choose((1, produce))
+
+━━━━━━━━━━━━━━━━━━━━
++ ValuePair'Expected'Actual is Tuple
+
++ expected Expected
++ actual Actual
+
+━━━━━━━━━━━━━━━━━━━━
++ LazyPair'Expected'Actual is Tuple
+
++ expected Expected
++ actual Getter'Actual
+
+━━━━━━━━━━━━━━━━━━━━
++ choose'Expected'Actual
+    - pair ValuePair'Expected'Actual
+
+"value"
+
+━━━━━━━━━━━━━━━━━━━━
++ choose'Expected'Actual
+    - pair LazyPair'Expected'Actual
+
+"lazy"
+
+━━━━━━━━━━━━━━━━━━━━
++ PairChooser
+
+────────────────────
++ choose'Expected'Actual
+    - pair ValuePair'Expected'Actual
+
+"value"
+
+────────────────────
++ choose'Expected'Actual
+    - pair LazyPair'Expected'Actual
+
+"lazy"
+
+━━━━━━━━━━━━━━━━━━━━
++ produce
+
+2
+```
+
+```output
+value
+lazy
+lazy
+value
+lazy
+lazy
+```
+
+```yumi
+-- inline-add(2)
+-- inline-add(5)
+
+━━━━━━━━━━━━━━━━━━━━
+_ inline-add Int @inline
+    - value Int
+
+value + 1
+```
+
+```output
+3
+6
+```
+
+```yumi
+-- score32(roundtrip32(Quad32(Pair32(1, 2), Pair32(3, 4))))
+-- pressured32(1, 2, 3, 4, 5, 6, 7, Quad32(Pair32(1, 2), Pair32(3, 4)))
+-- score64(roundtrip64(Quad64(Pair64(1, 2), Pair64(3, 4))))
+-- pressured64(1, 2, 3, 4, 5, 6, 7, Quad64(Pair64(1, 2), Pair64(3, 4)))
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair32 is (x F32, y F32)
+
+━━━━━━━━━━━━━━━━━━━━
++ Quad32 is (a Pair32, b Pair32)
+
+━━━━━━━━━━━━━━━━━━━━
+_ roundtrip32 Quad32
+    - input Quad32
+
+input
+
+━━━━━━━━━━━━━━━━━━━━
+_ score32 F32
+    - input Quad32
+
+input.a.x + input.a.y * 10 + input.b.x * 100 + input.b.y * 1000
+
+━━━━━━━━━━━━━━━━━━━━
+_ pressured32 F32
+    - a F32
+    - b F32
+    - c F32
+    - d F32
+    - e F32
+    - f F32
+    - g F32
+    - input Quad32
+
+score32(input) + a + b + c + d + e + f + g
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair64 is (x F64, y F64)
+
+━━━━━━━━━━━━━━━━━━━━
++ Quad64 is (a Pair64, b Pair64)
+
+━━━━━━━━━━━━━━━━━━━━
+_ roundtrip64 Quad64
+    - input Quad64
+
+input
+
+━━━━━━━━━━━━━━━━━━━━
+_ score64 F64
+    - input Quad64
+
+input.a.x + input.a.y * 10 + input.b.x * 100 + input.b.y * 1000
+
+━━━━━━━━━━━━━━━━━━━━
+_ pressured64 F64
+    - a F64
+    - b F64
+    - c F64
+    - d F64
+    - e F64
+    - f F64
+    - g F64
+    - input Quad64
+
+score64(input) + a + b + c + d + e + f + g
+```
+
+```output
+4321
+4349
+4321
+4349
+```
+
+### Two definitions of a function with the same signature are rejected.
+
+```yumi crash
+-- shape()
+
+━━━━━━━━━━━━━━━━━━━━
++ shape Int
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
++ shape Int
+
+2
+```
+
+```output
+Exception: Duplicate definition of shape with the same signature
+<no file:10>
+    + shape Int
+    ^^^^^^^^^^
+```
+
+### Overloads that differ by argument type remain legal.
+
+```yumi
+-- describe(1)
+-- describe("one")
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value Int
+
+"int"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value String
+
+"string"
+```
+
+```output
+int
+string
+```
+
+### An aggregate operand keeps its value when a later operand changes its storage.
+
+```yumi
++ g Int? = 5
++ h (Int, Int) = (1, 2)
+
+. box = Box()
+-- show(box.value, box.clear())
+-- show(g, reset())
+g = 5
+-- (g, reset())
+g = 5
+-- g == reset-to(6)
+g = 5
+-- g |> trail(reset())
+-- sum(h, bump())
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int? = 5
+
+────────────────────
++ do clear Int
+
+value = null
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do reset Int
+
+g = null
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do reset-to Int?
+    - value Int
+
+g = value
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Int
+
+h = (10, 20)
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ sum Int
+    - pair (Int, Int)
+    - extra Int
+
+pair[0] + pair[1] + extra
+
+━━━━━━━━━━━━━━━━━━━━
++ show String
+    - value Int?
+    - extra Int = 0
+
+"$value $extra"
+
+━━━━━━━━━━━━━━━━━━━━
++ trail String
+    - extra Int
+    - value Int?
+
+"$value $extra"
+```
+
+```output
+5 0
+5 0
+(5, 0)
+false
+5 0
+3
+```
+
+### A method call evaluates its receiver before its arguments, and a skipped optional call evaluates none.
+
+```yumi
++ box = Step("first")
+
+-- box.then(swap())
+-- step("a").then(step("x")).then(step("y")).name
+. none Step? = null
+-- none?.then(step("skipped"))
+
+━━━━━━━━━━━━━━━━━━━━
++ do swap Step
+
+box = Step("second")
+= Step("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ do step Step
+    - name String
+
+-- "eval $name"
+= Step(name)
+
+━━━━━━━━━━━━━━━━━━━━
++ Step
+
++ name String
+
+────────────────────
++ This
+    - name String
+
+this.name = name
+
+────────────────────
++ do then Step
+    - next Step
+
+-- "call ${name} then ${next.name}"
+= next
+```
+
+```output
+call first then x
+[Object __source__:Step]
+eval a
+eval x
+call a then x
+eval y
+call x then y
+y
+unknown
+```
+
+### An optional argument that holds no value takes the default its parameter declares.
+
+```yumi
+. none I64?
+. some I64? = 5
+-- pick(1, none)
+-- pick(1, some)
+-- pick(1)
+-- maybe(1, none)
+-- maybe(1, some)
+-- maybe(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick I64
+    - a I64
+    - b I64 = 7
+
+= a + b
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe I64
+    - a I64
+    - b I64? = 9
+
+= a + (b ?? 100)
+```
+
+```output
+8
+6
+8
+10
+6
+10
+```
+
+### An optional argument given to a constructor parameter that writes a property of a class type takes the parameter's default where it holds no value.
+
+```yumi
+. none [Int]?
+. some [Int]? = [1, 2]
+-- Basket(none).items.length
+-- Basket(some).items.length
+-- Basket().items.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Basket
+
++ items [Int]
+
+────────────────────
++ This
+    - items = [9, 9, 9]
+```
+
+```output
+3
+2
+3
+```
+
+### The first eight integers and the first eight floats are passed in registers, counted apart, and the rest on the stack.
+
+```yumi
+-- sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+-- fsum10(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.5)
+-- mixed(1, 2.5, 3, 4.5, 5, 6.5, 7, 8.5, 9, 10.5, 11, 12.5)
+-- texts("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
+
+━━━━━━━━━━━━━━━━━━━━
++ sum10 Int
+    - a Int
+    - b Int
+    - c Int
+    - d Int
+    - e Int
+    - f Int
+    - g Int
+    - h Int
+    - i Int
+    - j Int
+
+a + b * 2 + c + d + e + f + g + h + i * 3 + j
+
+━━━━━━━━━━━━━━━━━━━━
++ fsum10 Float
+    - a Float
+    - b Float
+    - c Float
+    - d Float
+    - e Float
+    - f Float
+    - g Float
+    - h Float
+    - i Float
+    - j Float
+
+a + b + c + d + e + f + g + h + i * 2 + j
+
+━━━━━━━━━━━━━━━━━━━━
++ mixed Float
+    - a Int
+    - b Float
+    - c Int
+    - d Float
+    - e Int
+    - f Float
+    - g Int
+    - h Float
+    - i Int
+    - j Float
+    - k Int
+    - l Float
+
+a + b + c + d + e + f + g + h + i + j + k + l
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts String
+    - a String
+    - b String
+    - c String
+    - d String
+    - e String
+    - f String
+    - g String
+    - h String
+    - i String
+    - j String
+
+i ++= "!"
+= a ++ h ++ i ++ j
+```
+
+```output
+75
+64.5
+81
+ahi!j
+```
+
+### An argument and a result are numbers of any width: each widens to the type its parameter declares, and narrows to it when asked.
+
+```yumi
+. x = 5
+. y I64 = 7
+-- add8(100, 27)
+-- wide(x)
+-- narrow(y as U8)
+-- f32(1.5)
+-- both(true, false)
+
+━━━━━━━━━━━━━━━━━━━━
++ add8 I8
+    - a I8
+    - b I8
+
+a + b
+
+━━━━━━━━━━━━━━━━━━━━
++ wide I64
+    - n I64
+
+n * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ narrow U8
+    - n U8
+
+n + 250
+
+━━━━━━━━━━━━━━━━━━━━
++ f32 F32
+    - n F32
+
+n * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ both Bool
+    - a Bool
+    - b Bool
+
+a && !b
+```
+
+```output
+127
+10
+1
+3
+true
+```
+
+### Arguments are evaluated in the order they are written, also when they are given by name.
+
+```yumi
+-- add(show(1), show(2))
+-- add(show(3), add(show(4), show(5)))
+-- pair()
+    • b show(6)
+    • a show(7)
+
+━━━━━━━━━━━━━━━━━━━━
++ add Int
+    - a Int
+    - b Int
+
+a + b
+
+━━━━━━━━━━━━━━━━━━━━
++ pair Int
+    - a Int
+    - b Int
+
+a * 10 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ do show Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+1
+2
+3
+3
+4
+5
+12
+6
+7
+76
+```
+
+### A call is a statement, a value, a condition, an argument, and the bound of a loop.
+
+```yumi
+. n = 3
+note(n)
+note(add(n, add(1, 2)))
+if big(n)
+    -- "big"
+else if small(n)
+    -- "small"
+while below(n, 6)
+    n += 1
+for i in 0 .. < add(1, 2)
+    note(i)
+-- n
+
+━━━━━━━━━━━━━━━━━━━━
++ do note
+    - n Int
+
+-- n
+
+━━━━━━━━━━━━━━━━━━━━
++ add Int
+    - a Int
+    - b Int
+
+a + b
+
+━━━━━━━━━━━━━━━━━━━━
++ big Bool
+    - n Int
+
+n > 10
+
+━━━━━━━━━━━━━━━━━━━━
++ small Bool
+    - n Int
+
+n < 5
+
+━━━━━━━━━━━━━━━━━━━━
++ below Bool
+    - n Int
+    - limit Int
+
+n < limit
+```
+
+```output
+3
+6
+small
+0
+1
+2
+6
+```
+
+### An argument is a local of its function, and an assignment to it stays there.
+
+```yumi
+. n = 1
+. s = "a"
+-- bump(n)
+-- grow(s)
+-- n
+-- s
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Int
+    - n Int
+
+n += 1
+n = n * 10
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do grow String
+    - s String
+
+s ++= "b"
+= s
+```
+
+```output
+20
+ab
+1
+a
+```
+
+### A function of one name is chosen by the types of its arguments.
+
+```yumi
+-- describe(1)
+-- describe("one")
+-- describe(1.5)
+width(42l)
+width(34i)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value Int
+
+"int"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value String
+
+"string"
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value Float
+
+"float"
+
+━━━━━━━━━━━━━━━━━━━━
++ do width
+    - n I64
+
+-- "i64"
+
+━━━━━━━━━━━━━━━━━━━━
++ do width
+    - n I32
+
+-- "i32"
+```
+
+```output
+int
+string
+float
+i64
+i64
+```
+
+### A parameter with no type, or with a type parameter, makes a function for each type it is called with.
+
+```yumi
+-- plus(1)
+-- plus(1.5)
+-- same(1)
+-- same(1.0)
+
+━━━━━━━━━━━━━━━━━━━━
++ plus
+    - a
+
+a + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ same'T T
+    - b T
+
+(b + 2.5) as T
+```
+
+```output
+2
+2.5
+3
+3.5
+```
+
+### A pipe gives its left side to the function on its right as the first argument.
+
+```yumi
+-- 5 |> double
+-- 5 |> add(2)
+-- 5 |> double |> add(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ double Int
+    - n Int
+
+n * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ add Int
+    - a Int
+    - b Int
+
+a + b
+```
+
+```output
+10
+7
+11
+```
+
+### A function is called as an operator between slashes, and one named as a bitwise operator replaces it.
+
+```yumi
+-- 6 /and/ 3
+-- 6 /mix/ 3
+-- 6 /xor/ 3
+
+━━━━━━━━━━━━━━━━━━━━
++ mix Int
+    - a Int
+    - b Int
+
+a * 10 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ xor Int
+    - a Int
+    - b Int
+
+a - b
+```
+
+```output
+2
+63
+3
+```
+
+### `@inline` functions and those `without gc` or `without heap` are called as any other.
+
+```yumi
+-- inline-add(2)
+-- square(4)
+-- cube(3)
+-- through(5)
+
+━━━━━━━━━━━━━━━━━━━━
+_ inline-add Int @inline
+    - value Int
+
+value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ square Int without gc
+    - n Int
+
+n * n
+
+━━━━━━━━━━━━━━━━━━━━
++ do cube Int without heap, safepoints
+    - n Int
+
+. t = n * n
+= t * n
+
+━━━━━━━━━━━━━━━━━━━━
++ do through Int without gc
+    - n Int
+
+= square(n) + 1
+```
+
+```output
+3
+16
+27
+26
+```
+
+### A function calls one declared after it, through as many calls as it takes.
+
+```yumi
+-- a(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ a Int
+    - n Int
+
+b(n) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ b Int
+    - n Int
+
+c(n) + 1
+
+━━━━━━━━━━━━━━━━━━━━
+_ do c Int
+    - n Int
+
+= n * 100
+```
+
+```output
+102
+```
+
+### A call a value is piped into evaluates the value first, then the arguments written, and its receiver last.
+
+```yumi
+-- show(2).plus(show(3), show(4))
+-- show(1) |> show(2).plus(show(3))
+-- show(8) |> two(show(9))
+-- show(1) + show(2) |> show(3).plus(show(4))
+
+━━━━━━━━━━━━━━━━━━━━
++ do show Int
+    - n Int
+
+-- n
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ two Int
+    - a Int
+    - b Int
+
+a * 10 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Int
+
+────────────────────
++ plus Int
+    - a Int
+    - b Int
+
+this * 100 + a * 10 + b
+```
+
+```output
+2
+3
+4
+234
+1
+3
+2
+231
+8
+9
+98
+1
+2
+4
+3
+343
+```
+
+### A parameter with no type written that is given `null` keeps its place, and the arguments after it arrive as given.
+
+```yumi
+. a = Node(null, 3)
+-- a.value, a.next == null
+. c = Node(a, 6)
+-- c.value, c.next!.value
+-- pick(null, 4, 5)
+. nothing = null
+-- pick(nothing, 6, 7)
+-- Node(nothing, 8).value
+
+━━━━━━━━━━━━━━━━━━━━
++ pick
+    - first
+    - second
+    - third
+
+second * 10 + third
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ next Node?
++ value I32
+
+────────────────────
++ This
+    - next
+    - value
+```
+
+```output
+(3, true)
+(6, 3)
+45
+67
+8
+```
+
+### A function with a variadic tail and one with a fixed argument, each declared first: a number that converts to either.
+
+```yumi
+-- first(5)
+-- second(5)
+-- first(5, 6)
+-- second(5, 6)
+. n I32 = 5
+-- first(n)
+-- second(n)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    ... items [Int64]
+
+= 100 + items.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    - item Float
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    - item Float
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    ... items [Int64]
+
+= 100 + items.length
+```
+
+```output
+101
+7
+102
+102
+101
+7
+```
+
+### One tuple given where a variadic tail of pairs, a stream of pairs and a pair can each take it.
+
+```yumi
+-- first(("a", 1))
+-- second(("a", 1))
+-- third(("a", 1))
+-- fourth(("a", 1))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    ... pairs [KeyValuePair'String'Int]
+
+= 100 + pairs.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    - pairs <KeyValuePair'String'Int>
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    - pairs <KeyValuePair'String'Int>
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    ... pairs [KeyValuePair'String'Int]
+
+= 100 + pairs.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do third Int
+    - pair KeyValuePair'String'Int
+
+= 50
+
+━━━━━━━━━━━━━━━━━━━━
+_ do third Int
+    - pairs <KeyValuePair'String'Int>
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fourth Int
+    - pairs <KeyValuePair'String'Int>
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do fourth Int
+    - pair KeyValuePair'String'Int
+
+= 50
+```
+
+```output
+101
+101
+50
+50
+```
+
+### One tuple given where a variadic tail of pairs with a union and a stream or an array of them can each take it.
+
+```yumi
+-- first(("a", true))
+-- second(("a", 2))
+-- first(("a", true), ("b", 2))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    ... pairs [KeyValuePair'String'Value]
+
+= 100 + pairs.length
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first Int
+    - pairs <KeyValuePair'String'Value>
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    - pairs ImmutableArray'(KeyValuePair'String'Value)
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second Int
+    ... pairs [KeyValuePair'String'Value]
+
+= 100 + pairs.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| Null
+| Bool
+| Int
+```
+
+```output
+101
+101
+102
+```
+
+### A variadic tail and a fixed argument of one type, and of two: one argument, and two.
+
+```yumi
+-- text("a")
+-- text("a", "b")
+-- number(1)
+-- number(1, 2)
+-- either(3)
+-- either("x")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text String
+    - one String
+
+= "one $one"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do text String
+    ... all [String]
+
+= "all ${all.length}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do number String
+    ... all [Int]
+
+= "all ${all.length}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do number String
+    - one Int
+
+= "one $one"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do either String
+    ... all [Int]
+
+= "numbers ${all.length}"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do either String
+    - one String
+
+= "text $one"
+```
+
+```output
+one a
+all 2
+one 1
+all 2
+numbers 1
+text x
+```
+
+### A variadic tail after an untyped argument ranks by what its arguments convert to, against fixed arguments, each declared first.
+
+```yumi
+-- first(1, 2)
+-- second(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first String
+    - name
+    ... rest [String]
+
+= "variadic"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do first String
+    - count Int
+    - other Int?
+
+= "fixed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second String
+    - count Int
+    - other Int?
+
+= "fixed"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do second String
+    - name
+    ... rest [String]
+
+= "variadic"
+```
+
+```output
+fixed
+fixed
+```
+
+### An overload that types its parameter is chosen over one that leaves it untyped
+
+```yumi
+fetch(Thing())
+fetch(Bling())
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing IFoo
+
+-- "duck"
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+
+-- "fallthrough"
+```
+
+```output
+duck
+fallthrough
+```
+
+### Overloads that each leave a different parameter untyped
+
+```yumi
+fetch(Thing(), 1)
+fetch(Bling(), 2)
+fetch(Thing(), "a")
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing IFoo
+    - count
+
+-- "duck"
+
+━━━━━━━━━━━━━━━━━━━━
++ do fetch
+    - thing
+    - count Int
+
+-- "fallthrough"
+```
+
+```output
+duck
+fallthrough
+duck
+```
+
+### Methods that leave a parameter untyped take the call from the ones before them
+
+```yumi
+. box = Box()
+box.put(Thing(), 1)
+box.put(Bling(), 2)
+box.put(Thing(), "a")
+box.put(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ Bling
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
+────────────────────
++ do put
+    - thing IFoo
+    - count
+
+-- "duck"
+
+────────────────────
++ do put
+    - thing
+    - count Int
+
+-- "fallthrough"
+
+────────────────────
++ do put
+    - thing Int
+    - count Int
+
+-- "ints"
+```
+
+```output
+fallthrough
+fallthrough
+duck
+ints
+```
+
+### An untyped parameter keeps what an earlier overload compared its argument to
+
+```yumi
+show(Thing(), Thing())
+show(Thing(), 1)
+show(1, Thing())
+show(1, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a
+    - b
+
+-- "any any"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a IFoo
+    - b
+
+-- "foo any"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a
+    - b IFoo
+
+-- "any foo"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a Thing
+    - b Thing
+
+-- "thing thing"
+```
+
+```output
+any any
+any any
+any any
+any any
+```
+
+### Overloads with untyped parameters declared most specific first
+
+```yumi
+show(Thing(), Thing())
+show(Thing(), 1)
+show(1, Thing())
+show(1, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a Thing
+    - b Thing
+
+-- "thing thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a
+    - b IFoo
+
+-- "any foo"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a IFoo
+    - b
+
+-- "foo any"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a
+    - b
+
+-- "any any"
+```
+
+```output
+thing thing
+foo any
+any foo
+any any
+```
+
+### Constructors with a typed and an untyped parameter
+
+```yumi
+. made = Maker(1)
+. other = Maker("a")
+. third = Maker(Thing())
+-- made.tag
+-- other.tag
+-- third.tag
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    is IFoo
+
+━━━━━━━━━━━━━━━━━━━━
++ IFoo is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Maker
+
++ tag String
+
+────────────────────
++ This
+    - value IFoo
+
+.. tag = "foo"
+
+────────────────────
++ This
+    - value
+
+.. tag = "any"
+
+────────────────────
++ This
+    - value Int
+
+.. tag = "int"
+```
+
+```output
+int
+any
+any
+```
+
+### A function whose types fit the arguments is chosen over a generic one, compared under what the arguments bind its type parameter to.
+
+```yumi
+show("a", 2)
+show(1, 2)
+pick(1.5, 2)
+pick(1, 2)
+. shower = Shower()
+shower.show("a", 2)
+shower.show(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show'T
+    - a T
+    - b T
+
+-- "(generic, $a, $b)"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a String
+    - b Int
+
+-- "(plain, $a, $b)"
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick'T
+    - a T
+    - b T
+
+-- "same"
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick
+    - a Float
+    - b Int
+
+-- "float int"
+
+━━━━━━━━━━━━━━━━━━━━
++ Shower
+
+────────────────────
++ do show'T
+    - a T
+    - b T
+
+-- "(method generic, $a, $b)"
+
+────────────────────
++ do show
+    - a String
+    - b Int
+
+-- "(method plain, $a, $b)"
+```
+
+```output
+(plain, a, 2)
+(generic, 1, 2)
+float int
+same
+(method plain, a, 2)
+(method generic, 1, 2)
+```
+
+### A constructor default that builds an object is built again for each call.
+
+```yumi
+. first = Bag()
+first.items += "a"
+. second = Bag()
+second.items += "b"
+-- first.items.length
+-- second.items.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Bag
+
++ items [String]
+
+────────────────────
++ This
+    - items [String] = List'String()
+```
+
+```output
+1
+1
+```
+
+### A function default that builds an object is built again for each call.
+
+```yumi
+-- grown().length
+-- grown().length
+
+━━━━━━━━━━━━━━━━━━━━
++ do grown
+    - items [String] = List'String()
+
+items += "a"
+= items
+```
+
+```output
+1
+1
+```
+
+### An argument default is evaluated only by a call that omits the argument.
+
+```yumi
+-- "start ${counter.count}"
+-- next-id()
+-- next-id(10)
+-- next-id()
+-- counter.count
+-- level()
+level-floor = 9
+-- level()
+-- side()
+-- side(.left)
+-- side(Side.right)
+
++ counter = Counter()
++ level-floor = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Side
+
+| left
+| right
+
+━━━━━━━━━━━━━━━━━━━━
++ do next-id
+    - id Int = bump()
+
+= id
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Int
+
+counter.count += 1
+= counter.count
+
+━━━━━━━━━━━━━━━━━━━━
++ level
+    - floor = level-floor
+
+floor + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ side
+    - which Side = Side.right
+
+if which == Side.left then "left" else "right"
+```
+
+```output
+start 0
+1
+10
+2
+2
+4
+10
+right
+left
+right
+```
+
+```yumi
+. a Circ = (Point(1, 2), 3)
+. b Circ = (Point(4, 5), 6)
+. c Circ = (Point(7, 8), 9)
+show(a, b)
+show(a, b, c, 10)
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Tuple
+
++ x Float
++ y Float
+
+━━━━━━━━━━━━━━━━━━━━
++ Circ is (pt Point, radius Float)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a Circ
+    - b Circ
+
+-- a
+-- b
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - a Circ
+    - b Circ
+    - c Circ
+    - last Float
+
+-- a
+-- b
+-- c
+-- last
+```
+
+```output
+((1, 2), 3)
+((4, 5), 6)
+((1, 2), 3)
+((4, 5), 6)
+((7, 8), 9)
+10
+```
+
+### A scalar overload and a labelled stream overload of one name resolve side by side.
+
+```yumi
+-- least(4, 2)
+-- least([5, 3, 4])
+
+━━━━━━━━━━━━━━━━━━━━
++ least'Num
+    - n1 Num
+    - n2 Num
+
+|? n2 < n1
+    n2
+??
+    n1
+
+━━━━━━━━━━━━━━━━━━━━
++ do least'Item
+    - stream <Item>
+
+. result = Item()
+. found = false
+for item in stream
+    if !found || item < result
+        result = item
+        found = true
+= result
+```
+
+```output
+2
+3
+```
+
+### An untyped argument with a literal default takes the type of what a call gives.
+
+```yumi
+scaled(1)
+scaled()
+scaled("s")
+-- Node("leaf", Node("root")).parent!.name
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled
+    - x = 0.5
+
+-- x
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ name String
++ parent Node?
+
+────────────────────
++ This
+    - name
+    - parent = null
+```
+
+```output
+1
+0.5
+s
+root
+```
+
+### A default is cast to the type its parameter writes.
+
+```yumi
+-- plain()
+
+━━━━━━━━━━━━━━━━━━━━
++ plain String
+    - b Int = 0.5
+
+"$b"
+```
+
+```output
+0
+```
+
+### A symbol given for an untyped argument whose default is a symbol names a case of the default's type.
+
+```yumi
+faced(.right)
+faced()
+faced(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ Side
+
+| left
+| right
+
+━━━━━━━━━━━━━━━━━━━━
++ do faced
+    - side = .left
+
+-- side
+```
+
+```output
+[Object __source__:Side]
+[Object __source__:Side]
+5
+```
+
+### Type arguments a call writes rule out an overload that declares no type parameters, though one of its arguments has no type written.
+
+```yumi
+-- Reader().read'U32(Endian.big)
+
+━━━━━━━━━━━━━━━━━━━━
++ Reader
+
++ count Int = 0
+
+────────────────────
++ do read'Num Num?
+    - endian = .big
+    - Num is Number
+
+= 7 as Num
+
+────────────────────
++ do read String?
+    - terminal String
+    - limit = Size.max
+
+= "until"
+```
+
+```output
+7
+```
+
+### A default no call takes is not typed for the instance, which it does not fit.
+
+```yumi
+. items = List'Foo([Foo(2), Foo(1), Foo(3)])
+-- (pick'Foo(items, by-n))?.n
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ n Int
+
+────────────────────
++ This
+    - n Int
+
+━━━━━━━━━━━━━━━━━━━━
++ by-n Bool
+    - a Foo
+    - b Foo
+
+a.n < b.n
+
+━━━━━━━━━━━━━━━━━━━━
++ Better'Item is () Bool
+    - a Item
+    - b Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick'Item Item?
+    - stream [Item]
+    - better Better'Item = basic-better
+
+. best Item? = null
+for item in stream
+    if !best || better(item, best)
+        best = item
+= best
+
+━━━━━━━━━━━━━━━━━━━━
++ basic-better
+    - a
+    - b
+
+a.length < b.length
+```
+
+```output
+1
+```
+
+### A call of a type name that names nothing finds no constructor
+
+```yumi crash
+. items = [Missing'Int("y")]
+-- items.length
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:2>
+    . items = [Missing'Int("y")]
+               ^^^^^^^
+```
+
+### A pipe gives its left side to the constructor of a generic class on its right, which infers the class's type parameters from it.
+
+```yumi
+. box = ["a", "b"] |> Box
+-- box.value
+
+━━━━━━━━━━━━━━━━━━━━
++ Box'Item
+
++ value [Item]
+
+────────────────────
++ This
+    - value [Item]
+```
+
+```output
+a, b
+```
+
+### A method called by its name alone with arguments it does not take is reported as a method of its class.
+
+```yumi crash
+. b = Button()
+b.describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Button
+
+────────────────────
++ do describe
+
+note(5)
+
+────────────────────
++ do note
+    - text String
+
+-- text
+```
+
+```output
+Exception: No method "note" of Button accepts (I64); it is declared as "note(text String)"
+<no file:11>
+    note(5)
+    ^^^^^^^
+```
+
+### A constructor given bullets it does not take is reported with them, and a field declared by its default is shown with it.
+
+```yumi crash
+. b1 = 129u8
+. packet = Packet(b1) • is-fin b1
+-- packet.is-fin
+
+━━━━━━━━━━━━━━━━━━━━
++ Packet is Tuple
+
++ value U8
++ is-fin = true
+```
+
+```output
+Exception: No constructor of Packet accepts (U8) is-fin U8; its declared constructors are "Packet(value U8, is-fin = true)"
+<no file:3>
+    . packet = Packet(b1) • is-fin b1
+               ^^^^^^
+```

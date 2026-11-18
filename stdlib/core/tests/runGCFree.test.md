@@ -1,0 +1,1657 @@
+# Gcfree
+
+```yumi
+/BxEvents/BxGCHandshake.h
+/BxGC/BxGC.h
+
+-- C:brixGCActiveTaskCanUseFastAllocation()
+-- zone-state(4)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+zone-collection-boundary()
+-- C:brixGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ do zone-state Bool without gc
+    - count Int
+
+. total = 0
+for index in 0 .. < count
+    total += index
+= C:brixGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ do zone-collection-boundary without gc
+
+C:brixCollect()
+```
+
+```output
+true
+false
+true
+true
+```
+
+```yumi
+/BxEvents/BxGCHandshake.h
+
+-- catch gc-free-propagate(false)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+-- gc-free-catch(false)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+-- catch gc-free-catch-replace(false)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ GCFreeFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ GCFreeReplacement is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-fallible Int ?! GCFreeFailure without gc
+    - succeeds Bool
+
+if succeeds
+    = 7
+?! GCFreeFailure("failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-propagate Int ?! GCFreeFailure without gc
+    - succeeds Bool
+
+= gc-free-fallible(succeeds) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-catch Int without gc
+    - succeeds Bool
+
+. value = gc-free-fallible(succeeds)
+    catch GCFreeFailure
+        40
+= value + 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do gc-free-catch-replace Int ?! GCFreeReplacement without gc
+    - succeeds Bool
+
+. value = gc-free-fallible(succeeds)
+    catch GCFreeFailure
+        ?! GCFreeReplacement("replaced")
+= value
+```
+
+```output
+failed
+true
+42
+true
+replaced
+true
+```
+
+```yumi
+/BxEvents/BxGCHandshake.h
+
+-- managed-catch-then-allocate(true)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+-- managed-catch-value(false)
+-- C:brixGCActiveTaskCanUseFastAllocation()
+
+━━━━━━━━━━━━━━━━━━━━
++ ManagedFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ do managed-fallible Int ?! ManagedFailure
+    - succeeds Bool
+
+if succeeds
+    = 7
+?! ManagedFailure("failed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do managed-catch-then-allocate Size
+    - succeeds Bool
+
+. value = managed-fallible(succeeds)
+    catch ManagedFailure
+        ?! Panic("managed failure")
+. values = [value]
+= values.length
+
+━━━━━━━━━━━━━━━━━━━━
++ managed-catch-value Int
+    - succeeds Bool
+
+managed-fallible(succeeds)
+    catch ManagedFailure
+        3
+```
+
+```output
+1
+true
+3
+true
+```
+
+```yumi
+. seed = 5
+do without gc
+    . value = seed + 7
+    value += 1
+-- seed
+```
+
+```output
+5
+```
+
+```yumi crash
+. seed = 5
+do without gc
+    . box = Box()
+-- seed
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1): main (do without gc) → Box()
+<no file:4>
+        . box = Box()
+                ^^^^^
+```
+
+```yumi crash
+-- allocate-in-zone()
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do allocate-in-zone Int without gc
+
+. box = Box()
+= box.value
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1): allocate-in-zone (without gc) → Box()
+<no file:12>
+    . box = Box()
+            ^^^^^
+```
+
+```yumi crash
+. holder = Holder()
+holder.replace("after")
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ value String = "before"
+
+────────────────────
++ do replace without gc
+    - next String
+
+value = next
+```
+
+```output
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:11:1); compute into a zone buffer and publish after the zone exits: Holder.replace (without gc) → value = next
+<no file:14>
+    value = next
+    ^^^^^^^^^^^^
+```
+
+```yumi crash
+. generator = suspended-values()
+-- generator()
+
+━━━━━━━━━━━━━━━━━━━━
++ do suspended-values without gc
+
+<= 1
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:6:1): suspended-values (without gc)
+<no file:6>
+    + do suspended-values without gc
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Exception: cannot suspend inside a GC-free zone (entered at no file:6:1): suspended-values (without gc) → <= 1
+<no file:8>
+    <= 1
+    ^^^^
+```
+
+```yumi crash
+conflict()
+
+━━━━━━━━━━━━━━━━━━━━
++ conflict without gc, heap
+```
+
+```output
+Exception: Conflicting compilation effect 'no-heap'
+<no file:4>
+    ━━━━━━━━━━━━━━━━━━━━
+    ^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+. generator = suspended-values()
+-- generator()
+
+━━━━━━━━━━━━━━━━━━━━
++ do suspended-values without safepoints
+
+<= 1
+```
+
+```output
+Exception: cannot suspend under 'without safepoints': suspended-values (without safepoints) → <= 1
+<no file:8>
+    <= 1
+    ^^^^
+```
+
+```yumi
+/core/arena
+/core/table
+
+. span-source = "span-owned".codepoints
+-- arena-cycle(span-source)
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-cycle U64 without gc
+    - span-source Char[]
+
+. arena = Arena(4096)
+do finally
+    arena.release()
+. alias = arena
+. checksum = 0u64
+. copied = arena-copy-string(alias)
+checksum += copied.length as U64
+. copied-span = arena-copy-codepoint-span(alias, span-source)
+checksum += copied-span.length as U64
+for index in 0 .. < 16
+    . value = alias.allocate'U64(1)
+    value[0] = index as U64
+    checksum += value[0]
+. mark = alias.mark
+. discarded = alias.allocate'U64(1)
+discarded[0] = 99u64
+alias.rewind(mark)
+. rows = Table'ArenaBenchRow(arena, 1)
+rows.append(ArenaBenchRow(10u64, 20u64))
+. table-mark = rows.mark
+rows.append(ArenaBenchRow(30u64, 40u64))
+checksum += rows[0].left + rows[1].right
+rows.rewind(table-mark)
+rows.clear()
+arena.reset()
+= checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-copy-string String without gc
+    - arena Arena
+
+= arena.copy-string("arena-owned")
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-copy-codepoint-span String without gc
+    - arena Arena
+    - source Char[]
+
+= arena.copy-span(source, 0, source.length)
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBenchRow is Struct
+
++ left U64
++ right U64
+```
+
+```output
+191
+```
+
+```yumi
+/core/arena
+
+. arena = Arena(256)
+do finally arena.release()
+-- arena-cycle(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ ManagedBacking'Value
+
++ marker Value
+
+━━━━━━━━━━━━━━━━━━━━
++ ArenaBacking'Value is Tuple
+
++ arena Arena
+
+━━━━━━━━━━━━━━━━━━━━
++ Storage'Value'Backing is Tuple
+    - Backing = ManagedBacking'Value
+
++ storage Backing
++ value Value
+
+────────────────────
++ This
+    - value Value
+
+storage = ManagedBacking'Value()
+
+────────────────────
++ This
+    - arena Arena
+    - value Value
+    - Backing = ArenaBacking'Value
+
+storage = ArenaBacking'Value(arena)
+
+━━━━━━━━━━━━━━━━━━━━
++ do arena-cycle U32 without gc
+    - arena Arena
+
+. storage Storage'U32'(ArenaBacking'U32) = Storage'U32(arena, 41u32)
+= storage.value
+```
+
+```output
+41
+```
+
+```yumi
+/core/arena
+/core/table
+
+-- controlled-union-cycle()
+
+━━━━━━━━━━━━━━━━━━━━
++ do controlled-union-cycle U64 without gc
+
+. arena = Arena(8192)
+do finally
+    arena.release()
+. rows = Table'Node(arena, 1)
+rows.append(Node.small(1u32, 1u64, 2u32))
+rows.reserve(8)
+rows.append(Node.wide(2u32, 3u64, 4u32, 5u32))
+rows.append(Node.small(3u32, 6u64, 7u32))
+
+rows[0].lower(2u64)
+rows[1].lower(3u64)
+. extension-checksum = (rows[0].source-plus as U64) + rows[0].score() + rows[1].score()
+
+match rows[1]
+    | .small(small)
+        small.value += 1u64
+    | .wide(wide)
+        wide.hot += 1u64
+match rows[1]
+    | .small(small)
+        small.cold += 1u32
+    | .wide(wide)
+        wide.cold += 1u32
+
+. live = rows[1]
+rows[0] = live
+. span = rows[0 .. < 2]
+rows[1 .. < 3] = span
+
+. snapshot Node = rows[1] as Node
+. checksum = match snapshot
+    | .small(small)
+        small.value + (small.cold as U64)
+    | .wide(wide)
+        wide.hot + (wide.cold as U64) + (wide.other as U64)
+rows.clear()
+= checksum + extension-checksum
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Small is Syntax
+
++ @hot value U64
++ cold U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Wide is Syntax
+
++ @hot hot U64
++ cold U32
++ other U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| small Small
+| wide Wide
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Node
+
+────────────────────
++ do lower
+    - delta U64
+
+match this
+    | .small(small)
+        small.lower(delta)
+    | .wide(wide)
+        wide.lower(delta)
+
+────────────────────
++ score U64
+
+match this
+    | .small(small)
+        small.value + (small.cold as U64)
+    | .wide(wide)
+        wide.hot + (wide.cold as U64) + (wide.other as U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Small
+
+────────────────────
++ do lower
+    - delta U64
+
+this.value += delta
+this.cold += delta as U32
+this.source += delta as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Wide
+
+────────────────────
++ do lower
+    - delta U64
+
+this.hot += delta
+this.cold += delta as U32
+this.source += delta as U32
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Syntax
+
+────────────────────
++ get source-plus U64
+
+this.source as U64
+```
+
+```output
+48
+```
+
+```yumi crash
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal without gc
+    - left View
+    - right View
+
+= left == right
+```
+
+```output
+Exception: Interface equality requires unrestricted effects: equal (without gc) → left == right
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+```
+
+```yumi crash
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal without heap
+    - left View
+    - right View
+
+= left == right
+```
+
+```output
+Exception: Interface equality requires unrestricted effects: equal (without heap) → left == right
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+```
+
+```yumi crash
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal without safepoints
+    - left View
+    - right View
+
+= left == right
+```
+
+```output
+Exception: Interface equality requires unrestricted effects: equal (without safepoints) → left == right
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+```
+
+```yumi crash
+. value = Pair(1, 2) as View
+-- equal(value, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (first I32, second I32)
+    is View
+
+━━━━━━━━━━━━━━━━━━━━
++ do equal without suspend
+    - left View
+    - right View
+
+= left == right
+```
+
+```output
+Exception: Interface equality requires unrestricted effects: equal (without suspend) → left == right
+<no file:17>
+    = left == right
+      ^^^^^^^^^^^^^
+```
+
+```yumi
+. shape Shape = Square(3)
+. base Base = Derived()
+-- measure(shape, base)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ do area Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+────────────────────
++ do area Int
+
+= side * side
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int without gc
+    - shape Shape
+    - base Base
+
+= shape.area() + base.area()
+```
+
+```output
+16
+```
+
+```yumi crash
+. shape Shape = Square(3)
+-- measure(shape)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Interface
+
+────────────────────
++ do area Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Square
+    is Shape
+
++ side Int
+
+────────────────────
++ This
+    - side
+
+────────────────────
++ do area Int
+
+. box = Box()
+= side * side
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int without gc
+    - shape Shape
+
+= shape.area()
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1): measure (without gc) → Shape.area → Square.area → Box()
+<no file:24>
+    . box = Box()
+            ^^^^^
+```
+
+```yumi crash
+. base Base = Derived()
+-- measure(base)
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ This
+
+────────────────────
++ do area Int
+
+. box = Box()
+= 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do measure Int without gc
+    - base Base
+
+= base.area()
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1): measure (without gc) → Base.area → Derived.area → Box()
+<no file:25>
+    . box = Box()
+            ^^^^^
+```
+
+```yumi crash
+-- run(:: n Int => n + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int without suspend
+    - action () Int
+        - Int
+
+= action(4)
+```
+
+```output
+Exception: Function value call requires unrestricted effects: run (without suspend) → action(4)
+<no file:9>
+    = action(4)
+      ^^^^^^^^^
+```
+
+### A GC-free block assigns a local declared outside it, at the top level and in a function
+
+```yumi
+. seed = 5
+. total = 0
+do without gc
+    total = seed + 8
+-- total
+-- run(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run I64
+    - seed I64
+
+. total = 0
+do without gc
+    total = seed + 8
+= total
+```
+
+```output
+13
+13
+```
+
+### A GC-free block assigns fields of an outer struct local
+
+```yumi
+. point = Point(1, 2)
+do without gc
+    point.x = 10
+    point.y += 5
+-- point.x
+-- point.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+```
+
+```output
+10
+7
+```
+
+### A loop in a GC-free block, and a nested GC-free block, update outer locals
+
+```yumi
+. sum = 0
+do without gc
+    for index in 0 .. < 5
+        sum += index
+-- sum
+. outer = 1
+do without gc
+    outer += 10
+    do without gc
+        outer += 100
+-- outer
+```
+
+```output
+10
+111
+```
+
+### A GC-free block assigns a global, arguments, and locals taken apart into
+
+```yumi
++ counter = 1
+
+counter = 2
+do without gc
+    counter += 40
+-- counter
+-- bump(5)
+-- shift(Point(1, 2))
+. left = 1
+. right = 2
+do without gc
+    (left, right) = (right, left)
+-- left
+-- right
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump I64
+    - seed I64
+
+do without gc
+    seed += 10
+= seed
+
+━━━━━━━━━━━━━━━━━━━━
++ do shift Int
+    - point Point
+
+do without gc
+    point.x += 100
+= point.x
+```
+
+```output
+42
+15
+101
+2
+1
+```
+
+### A GC-free block narrows outer locals as a plain block does
+
+```yumi
+. known Int? = 4
+. seen = 0
+if known
+    do without gc
+        seen = known + 1
+        known = 9
+    -- seen
+    -- known + 1
+. unset Int? = null
+do without gc
+    unset = 7
+-- unset + 1
+. cleared I64? = 3
+if cleared
+    do without gc
+        cleared = null
+    -- cleared ?? -1
+```
+
+```output
+5
+10
+8
+-1
+```
+
+### A GC-free block leaves the fields of an outer struct it assigns as a plain block does
+
+```yumi
+. holder = Holder(3)
+if holder.value
+    do without gc
+        holder.value = null
+    -- holder.value ?? -1
+do without gc
+    holder.value = 7
+-- holder.value ?? -1
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Struct
+
++ value Int?
+```
+
+```output
+-1
+7
+```
+
+```yumi crash
+. name = "before"
+. other = "after"
+do without gc
+    name = other
+-- name
+```
+
+```output
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:4:1); compute into a zone buffer and publish after the zone exits: main (do without gc) → name = other
+<no file:5>
+        name = other
+        ^^^^^^^^^^^^
+```
+
+### A runtime function that suspends the task, called where the code may not suspend
+
+```yumi compile-error
+/BxEvents/BxEvents.h
+
+-- direct()
+
+━━━━━━━━━━━━━━━━━━━━
++ do direct Int without suspend
+
+lock(C:brixNewMutex())
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do lock
+    - native CPointer'Char8
+
+C:brixLockMutex(native)
+```
+
+```output
+Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:brixLockMutex(native)
+<no file:16>
+    C:brixLockMutex(native)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### An interface member whose implementation suspends the task, called where the code may not suspend
+
+```yumi compile-error
+/BxEvents/BxEvents.h
+
+. source = Impl() as Source
+-- direct(source)
+
+━━━━━━━━━━━━━━━━━━━━
++ Source is Interface
+
+────────────────────
++ do take Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Impl
+    is Source
+
+────────────────────
++ do take Int
+
+C:brixLockMutex(C:brixNewMutex())
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do direct Int without suspend
+    - source Source
+
+= source.take()
+```
+
+```output
+Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:brixLockMutex(C:brixNewMutex())
+<no file:20>
+    C:brixLockMutex(C:brixNewMutex())
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A runtime function that makes text allocates
+
+```yumi compile-error
+/BxCore/BxNumber.h
+
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+. text = C:brixIntToString(n, 0)
+= n
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → C:brixIntToString(n, 0)
+<no file:10>
+    . text = C:brixIntToString(n, 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A lambda that captures a local allocates its environment
+
+```yumi compile-error
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply Int
+    - action
+
+= action()
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+= apply(=> n + 1)
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → => n + 1
+<no file:14>
+    = apply(=> n + 1)
+            ^^^^^^^^
+```
+
+### A converter an implicit conversion runs is typed under the caller's restriction
+
+```yumi compile-error
+. label = Label(3)
+-- outer(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+────────────────────
++ to Box
+
+Box()
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - label Label
+
+. box = label as Box
+= label.count
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → the converter of Label → Box()
+<no file:22>
+    Box()
+    ^^^^^
+```
+
+### Every allocation is reported, each with the chain from the restricted function
+
+```yumi compile-error
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ do helper Int
+    - n Int
+
+. box = Box()
+= box.value + n
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+. first = Box()
+. second = Box()
+= helper(n) + first.value + second.value
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → helper → Box()
+<no file:13>
+    . box = Box()
+            ^^^^^
+
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
+<no file:20>
+    . first = Box()
+              ^^^^^
+
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
+<no file:21>
+    . second = Box()
+               ^^^^^
+```
+
+### A struct made a value of an interface is boxed; an enum is not
+
+```yumi compile-error
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Weighted is Interface
+
+────────────────────
++ get weight Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Fill is U32
+    is Weighted
+
+| empty = 0
+| full = 1
+
+────────────────────
++ get weight Int
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Struct
+    is Weighted
+
++ a Int
+
+────────────────────
++ get weight Int
+
+a
+
+━━━━━━━━━━━━━━━━━━━━
++ do weigh Int
+    - item Weighted
+
+= item.weight
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+. total = weigh(Fill.full)
+= total + weigh(Pair(n))
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → Pair(n)
+<no file:44>
+    = total + weigh(Pair(n))
+                    ^^^^^^^
+```
+
+### A view of an array's rows makes the owner the runtime tracks it by
+
+```yumi compile-error
+. items = Array'Point(2)
+-- outer(items)
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - items Array'Point
+
+. rows = items.rows
+= 0
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → items.rows
+<no file:14>
+    . rows = items.rows
+             ^^^^^^^^^^
+```
+
+### A generator makes its frame where it is called
+
+```yumi compile-error
+. made = outer(3)
+-- made
+
+━━━━━━━━━━━━━━━━━━━━
++ do counted
+    - n Int
+
+<= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Generator'Int without heap
+    - n Int
+
+= counted(n)
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → counted
+<no file:6>
+    + do counted
+    ^^^^^^^^^^^
+```
+
+### A task or a GC-free block that captures a local is given a capture the collector owns
+
+```yumi compile-error
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+. total = n
+do new
+    total += 1
+do without gc
+    total += 1
+= total
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
+<no file:9>
+    do new
+    ^^^^^
+
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do without gc
+<no file:11>
+    do without gc
+    ^^^^^^^^^^^^
+```
+
+### A method bound to its object and made a function value is copied; a function is not
+
+```yumi compile-error
+. made = outer(Adder())
+-- made(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Maker is () Int
+    - n Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Adder
+
++ base Int = 1
+
+────────────────────
++ do add Int
+    - n Int
+
+= base + n
+
+━━━━━━━━━━━━━━━━━━━━
++ do twice Int
+    - n Int
+
+= n * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Maker without heap
+    - adder Adder
+
+. plain Maker = twice
+= adder.add
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → adder.add
+<no file:31>
+    = adder.add
+      ^^^^^^^^^
+```
+
+### A lazy global's first read runs its value, and may wait for another task; a plain global is set when its module starts
+
+```yumi compile-error
+-- heavy(3)
+-- waits(1)
+
+_ names [String] := ["a", "b"]
+_ plain [String] = ["c"]
+
+━━━━━━━━━━━━━━━━━━━━
++ do heavy Int without heap
+    - n Int
+
+= names.length + plain.length + n
+
+━━━━━━━━━━━━━━━━━━━━
++ do waits Int without suspend
+    - n Int
+
+= names.length + n
+```
+
+```output
+Exception: cannot read lazy global 'names' under 'without heap', since its first read runs its value: heavy (without heap) → names
+<no file:12>
+    = names.length + plain.length + n
+      ^^^^^
+
+Exception: cannot read lazy global 'names' under 'without suspend', since its first read runs its value: waits (without suspend) → names
+<no file:18>
+    = names.length + n
+      ^^^^^
+```
+
+### A C function that polls the collector and has no claim is taken to suspend; slicing text allocates
+
+```yumi compile-error
+/BxCore/BxCore.h
+/BxCore/BxString.h
+
+-- idle(3)
+-- slices("abc")
+
+━━━━━━━━━━━━━━━━━━━━
++ do idle Int without suspend
+    - n Int
+
+. collected = C:brixGCRuntimeIdleCollect(0u64)
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do slices String without heap
+    - text String
+
+= C:brixStringSlice(text, 0, 1) as String
+```
+
+```output
+Exception: cannot suspend under 'without suspend': idle (without suspend) → C:brixGCRuntimeIdleCollect(0u64)
+<no file:12>
+    . collected = C:brixGCRuntimeIdleCollect(0u64)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Exception: allocation is not allowed under 'without heap': slices (without heap) → C:brixStringSlice(text, 0, 1)
+<no file:19>
+    = C:brixStringSlice(text, 0, 1) as String
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A task that captures nothing is spawned with no allocation from the collector
+
+```yumi
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+do new
+    . unused = 1
+= n
+```
+
+```output
+3
+```
+
+### A task's handler takes the panic it handles into the collector's heap
+
+```yumi compile-error
+-- outer(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do outer Int without heap
+    - n Int
+
+do new
+    . unused = 1
+catch Panic
+    . handled = 2
+= n
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
+<no file:8>
+    do new
+    ^^^^^
+```
+
+### A without section restricts a block or a function's header, and code that keeps to it runs.
+
+```yumi
+. seed = 5
+do without gc
+    . value = seed + 7
+-- total(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do total Int without heap, suspend
+    - count Int
+
+. sum = 0
+for value in 1 .. count
+    sum += value
+= sum
+```
+
+```output
+6
+```
+
+### A do block kept from the heap, from suspending, from safepoints or from the probes runs in place.
+
+```yumi
+. count = 4
+. sum = 0
+do without heap
+    for value in 1 .. count
+        sum += value
+-- sum
+do without suspend
+    sum += total(count)
+-- sum
+do without safepoints, probe-safepoints
+    for value in 1 .. count
+        sum += value
+-- sum
+do without heap, suspend
+    sum += total(2)
+-- sum
+
+━━━━━━━━━━━━━━━━━━━━
++ do total Int
+    - count Int
+
+. sum = 0
+for value in 1 .. count
+    sum += value
+= sum
+```
+
+```output
+10
+20
+30
+33
+```
+
+### A cleanup opened outside a do block runs as it was opened, where the block is left.
+
+```yumi
+-- early(1)
+-- early(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ do early Int
+    - flag Int
+
+do finally
+    . task = do new
+        -- flag
+    task.wait()
+do without heap
+    if flag == 1
+        = 3
+= 4
+```
+
+```output
+1
+3
+0
+4
+```
+
+### Waiting for a task suspends
+
+```yumi compile-error
+/BxEvents/BxEvents.h
+
+do without suspend
+    C:brixWaitForTask(0)
+```
+
+```output
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixWaitForTask(0)
+<no file:5>
+        C:brixWaitForTask(0)
+        ^^^^^^^^^^^^^^^^^^^^
+```
+
+### Cancelling a task yields to it, so it suspends
+
+```yumi compile-error
+/BxEvents/BxEvents.h
+
+do without suspend
+    C:brixCancelTask(0)
+```
+
+```output
+Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixCancelTask(0)
+<no file:5>
+        C:brixCancelTask(0)
+        ^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi compile-error
+. sum = 0
+do without heap
+    sum = Box().value
+-- sum
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': main (do without heap) → Box()
+<no file:4>
+        sum = Box().value
+              ^^^^^
+```
+
+```yumi compile-error
+-- boxed()
+
+━━━━━━━━━━━━━━━━━━━━
++ do boxed Int without heap
+= Box().value
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 0
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': boxed (without heap) → Box()
+<no file:6>
+    = Box().value
+      ^^^^^
+```
+
+```yumi compile-error
+do without heap, network
+    . one = 1
+```
+
+```output
+Exception: Unknown name 'network' after without
+<no file:2>
+    do without heap, network
+    ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi compile-error
+-- 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do run without cancel
+-- 2
+```
+
+```output
+Exception: 'without cancel' is only for a do block
+<no file:5>
+    + do run without cancel
+    ^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A task an object owns allocates the record the object keeps of it, so a method under without heap cannot start one, though it can start a task marked @detached that captures nothing
+
+```yumi compile-error
+. holder = Holder()
+holder.start()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
+────────────────────
++ do start without heap
+
+do new
+    -- "owned"
+do new @detached
+    -- "detached"
+
+────────────────────
++ do close
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': Holder.start (without heap) → do new
+<no file:11>
+    do new
+    ^^^^^
+```

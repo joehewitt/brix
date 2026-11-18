@@ -1,0 +1,751 @@
+# Style defaults
+
+### A parameterless "This" rule auto-applies to every instance of its class at the defaults layer, below rule and inline declarations.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Fancy • accent
+        ink = 9
+
+-- style-authored-snapshot(demo.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
++ bold Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Box
+    using TextStyle
+
+• This
+    ink = 13
+    bold = true
+
+• accent
+    ink = 5
+```
+
+```output
+node TextStyle.ink layer=0 order=65536 kind=static bits=13
+node TextStyle.bold layer=0 order=65537 kind=static bits=1
+node TextStyle.ink layer=2 order=0 kind=static bits=5
+node TextStyle.ink layer=5 order=1 kind=static bits=9
+```
+
+### Markup property assignments still feed construction when the node also has style rule applications, so content created by the constructed object sees the assigned value.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. plain = Card()
+. child = ChildCard()
+
+-- title-child-of(plain)
+-- title-child-of(child)
+
+━━━━━━━━━━━━━━━━━━━━
++ title-child-of String
+    - card Card
+
+(((card.%first-child)! as TitleBox).%first-child! as TitleText).title
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
++ title = "Default"
+
+────────────────────
+
+<This
+    <TitleBox • marker
+        title = title
+
+━━━━━━━━━━━━━━━━━━━━
++ ChildCard is Card
+
++ title = "Child"
+
+━━━━━━━━━━━━━━━━━━━━
++ TitleBox is Box
+
++ title = "Box Default"
+
+• marker
+    flex = 1
+
+────────────────────
+
+<TitleText
+    title = title
+
+━━━━━━━━━━━━━━━━━━━━
++ TitleText is Box
+
++ title = "Text Default"
+```
+
+```output
+Default
+Child
+```
+
+### Computed values follow layer precedence: a class's "This" defaults yield to an applied rule, and reappear on instances with no rule applied.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Fancy plain
+    <Fancy styled • accent
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(plain)
+-- style-computed-snapshot(styled)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Box
+    using TextStyle
+
+• This
+    ink = 13
+
+• accent
+    ink = 5
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=13
+node TextStyle seg=owned gen=1 mask=1 ink=5
+```
+
+### "This" mirrors constructors: it is the class's one parameterless defaults rule, so declaring parameters on it is a compile error.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Box
+    using TextStyle
+
+• This:on Bool
+    ink = 13
+```
+
+```output
+Exception: Style rule "This" must be parameterless
+<no file:27>
+    • This:on Bool
+    ^^^^^^^^^^^^^^
+```
+
+### "This" is auto-applied only: it is not a legal rule name at markup application sites.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Fancy • This
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Box
+    using TextStyle
+
+• This
+    ink = 13
+```
+
+```output
+Exception: Syntax error
+<no file:7>
+        <Fancy • This
+                 ^
+```
+
+### A "when" state branch inside a "This" rule contributes its declarations only while the tracked condition is true, reverting to the rule's base declarations when it clears.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/task
+/core/tests/support/markup-fixtures
+
+. done = Semaphore()
+
+<BatchDemo demo
+    <Toggle t
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(t)
+
+t.is-on = true
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+t.is-on = false
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Toggle is Box
+    using TextStyle
+
++ is-on = false
+
+• This
+    ink = 9
+    when #is-on
+        ink = 11
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=9
+node TextStyle seg=owned gen=2 mask=1 ink=11
+node TextStyle seg=owned gen=3 mask=1 ink=9
+```
+
+### A negated "when" state branch contributes its declarations only while the tracked condition is false.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/task
+/core/tests/support/markup-fixtures
+
+. done = Semaphore()
+
+<BatchDemo demo
+    <Toggle t
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(t)
+
+t.is-on = true
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+t.is-on = false
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Toggle is Box
+    using TextStyle
+
++ is-on = false
+
+• This
+    ink = 9
+    when !#is-on
+        ink = 11
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=2 mask=1 ink=9
+node TextStyle seg=owned gen=3 mask=1 ink=11
+```
+
+### Gated blocks from the class "This" rule and from a markup-applied rule on the same object use distinct block bits: toggling one gate never disturbs the other.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/task
+/core/tests/support/markup-fixtures
+
+. done = Semaphore()
+
+<BatchDemo demo
+    <Toggle t • glow
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(t)
+
+t.is-on = true
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+t.is-lit = true
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+t.is-on = false
+do new
+    -- style-computed-snapshot(t)
+    done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
++ tone I64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Toggle is Box
+    using TextStyle
+
++ is-on = false
++ is-lit = false
+
+• This
+    ink = 9
+    when #is-on
+        ink = 11
+
+• glow
+    tone = 4
+    when #is-lit
+        tone = 5
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=3 ink=9 tone=4
+node TextStyle seg=owned gen=2 mask=1 ink=11 tone=4
+node TextStyle seg=owned gen=3 mask=2 ink=11 tone=5
+node TextStyle seg=owned gen=4 mask=1 ink=9 tone=5
+```
+
+### Root <This> style declarations apply at the defaults layer. They override a legacy "This" defaults rule for the same class, while rule and inline declarations still win.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Fancy plain
+    <Fancy styled • accent
+        ink = 2
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(plain)
+-- style-computed-snapshot(styled)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
++ bold Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Box
+    using TextStyle
+
+• This
+    ink = 9
+
+• accent
+    ink = 5
+
+────────────────────
+
+<This
+    ink = 13
+    bold = true
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=3 ink=13 bold=1
+node TextStyle seg=owned gen=1 mask=3 ink=2 bold=1
+```
+
+### Attributes authored on a node inside component content override that node's own class defaults; they sit on the content layer between class defaults and style-sheet rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel
+
+demo.markup-batch-queue.checkpoint()
+. badge = demo.%first-child!.%first-child!
+-- style-authored-snapshot(badge)
+-- style-computed-snapshot(badge)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 0
++ bold = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Badge is Box
+    using TextStyle
+
+• This
+    bold = true
+    ink = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <Badge
+        ink = 5
+```
+
+```output
+node TextStyle.bold layer=0 order=65536 kind=static bits=1
+node TextStyle.ink layer=0 order=65537 kind=static bits=2
+node TextStyle.ink layer=1 order=0 kind=static bits=5
+node TextStyle seg=owned gen=1 mask=3 ink=5 bold=1
+```
+
+### A class's rule `• This` that applies a rule of a style sheet and declares a style under a `when` follows the state the `when` names.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+panel.shown = false
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+
++ shown = true
+
+• This • primary
+    when #shown
+        ink = 5
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=5
+node TextStyle seg=owned gen=2 mask=1 ink=11
+```
+
+### Rules written under a `when` of a class's rule `• This`, which applies a rule itself, style the class's markup while the `when`'s state holds.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+-- style-computed-snapshot(panel.lab)
+panel.shown = false
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+-- style-computed-snapshot(panel.lab)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+• label-text
+    ink = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+
++ shown = true
+
+• This • primary
+    when #shown
+        • label-text • primary
+
+────────────────────
+
+<This
+    <Box lab • label-text
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=2 mask=1 ink=2
+```
+
+### A "This" default whose value fails to convert lets the error out of the constructor, and one that reads something tracked is declared again as it changes
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+_ failing = false
+
+-- made()
+failing = true
+-- made()
+failing = false
+
+<BatchDemo demo
+    <Shaded shaded
+
+demo.markup-batch-queue.checkpoint()
+-- shaded.$shade.level
+shaded.dark = false
+demo.markup-batch-queue.checkpoint()
+-- shaded.$shade.level
+
+━━━━━━━━━━━━━━━━━━━━
++ do made String
+
+. made = catch Shaded()
+= match made
+    | Shaded
+        "made"
+    | error SyntaxError
+        error.message
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Shade is Tuple
+
++ level I64
+
+────────────────────
++ from value String
+
+match value
+    ~ "dark" !.
+        This(2)
+    ~ "light" !.
+        This(1)
+    ?! SyntaxError("Invalid shade")
+
+━━━━━━━━━━━━━━━━━━━━
++ ShadeStyle is Style
+
++ shade = Shade(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Shaded is Box
+    using ShadeStyle
+
++ dark = true
+
+• This
+    shade = if failing then "bogus" else if #dark then "dark" else "light"
+```
+
+```output
+made
+Invalid shade
+2
+1
+```

@@ -1,0 +1,481 @@
+# Brix
+
+```brix
+(main
+  (println "hi")
+)
+```
+
+```output
+Exception: `println` is not a form. Write `(print value)`.
+<no file:3>
+      (println "hi")
+      ^
+```
+
+```brix
+(main
+  (frobnicate 1)
+)
+```
+
+```output
+Exception: `frobnicate` is not a form. To call a function named frobnicate, write `(call frobnicate …)`.
+<no file:3>
+      (frobnicate 1)
+      ^
+```
+
+```brix
+(fn-expr + total Int
+  (let sum 1)
+  sum
+)
+```
+
+```output
+Exception: (let …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:3>
+      (let sum 1)
+      ^
+```
+
+```brix
+(fn-expr + total Int
+  (before
+    (print "start")
+  )
+  (let sum 1)
+  sum
+)
+```
+
+```output
+Exception: (let …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:6>
+      (let sum 1)
+      ^
+```
+
+```brix
+(fn-do + total Int
+  1
+)
+```
+
+```output
+Exception: `1` cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:3>
+      1
+      ^
+```
+
+```brix
+(main
+  (if (= ready true)
+    (call start)
+  )
+)
+```
+
+```output
+Exception: (= …) cannot be the `condition` of (if …). `(= a b)` stores b in a. To compare, write `(== a b)`.
+<no file:3>
+      (if (= ready true)
+          ^
+```
+
+```brix
+(fn + start _)
+```
+
+```output
+Exception: `fn` is not a form. Write `fn-expr` for a function whose body is a value, or `fn-do` for one that runs steps.
+<no file:2>
+    (fn + start _)
+    ^
+```
+
+```brix
+(fn-do + start _
+  (call run
+)
+```
+
+```output
+Exception: Missing “)” for the form opened at line 2, column 1. The (call …) opened on line 3 is still open where line 4 closes a form that began further left. It probably needs its “)” before line 4.
+<no file:2>
+    (fn-do + start _
+    ^
+```
+
+```brix
+(main
+  (print "costs $5")
+)
+```
+
+```output
+Exception: Unescaped “$” in Brix text. Write “\$” for a dollar sign, or build the text from its parts with (str …).
+<no file:3>
+      (print "costs $5")
+                    ^
+```
+
+```brix
+(main
+  (if (&& ready done)
+    (call start)
+  )
+)
+```
+
+```output
+Exception: `&&` is not a form. Write `(and a b)`.
+<no file:3>
+      (if (&& ready done)
+          ^
+```
+
+```brix
+(main
+  (-- "start")
+)
+```
+
+```output
+Exception: (-- …) cannot be a `row` of (main …), which takes Step. Write `(print value)`.
+<no file:3>
+      (-- "start")
+      ^
+```
+
+```brix
+(main
+  (<> Label (• bold) (slot: trailing))
+)
+```
+
+```output
+Exception: (slot: …) cannot be a `row` of (<> …), which takes Child. It is an attribute: put it right after the element's type, before its `(• …)` rules and rows.
+<no file:3>
+      (<> Label (• bold) (slot: trailing))
+                         ^
+```
+
+```brix
+(main
+  (let (: count Int) 3)
+)
+```
+
+```output
+Exception: (let …) takes the name and its type as items of its own: write `(let name Type value)`.
+<no file:3>
+      (let (: count Int) 3)
+      ^
+```
+
+```brix
+(fn-do + reset _
+  (param size Int)
+  :static
+  (print size)
+)
+```
+
+```output
+Exception: `:static` goes on the header line, after the result type: `(fn-do + reset _ :static`.
+<no file:4>
+      :static
+      ^
+```
+
+```brix
+(main
+  (let run (=> () :do (print 1) (print 2)))
+)
+```
+
+```output
+Exception: A `:do` closure takes one step. To run several, put them in a block: `(=> (x) :do (block step …))`.
+<no file:3>
+      (let run (=> () :do (print 1) (print 2)))
+               ^
+```
+
+```brix
+(main
+  (let itemCount 3)
+)
+```
+
+```output
+Exception: `itemCount` is not a Brix name. A name is lowercase words joined by hyphens: write `item-count`.
+<no file:3>
+      (let itemCount 3)
+           ^
+```
+
+```brix
+(main
+  (let in 3)
+)
+```
+
+```output
+Exception: `in` is a Yumi keyword, and Brix cannot show it as this name. Choose another name.
+<no file:3>
+      (let in 3)
+           ^
+```
+
+```brix
+(fn-expr + total Int
+  4
+  5
+)
+```
+
+```output
+Exception: A `fn-expr` body has one value, and `5` follows the value `4`. Put checks, prints, probes and `do` forms in `(before …)`, other steps in a `(do …)` there, and lazies in `(where …)`, or write `fn-do` and return with `(return value)`.
+<no file:4>
+      5
+      ^
+```
+
+```brix
+(main
+  (call add (block 1 2))
+)
+```
+
+```output
+Exception: The rows of a call's block are steps, and only the last may be a value, but `1` is a value before it. To give arguments a row each, write `(arg value)`; otherwise write them as items of the `call`.
+<no file:3>
+      (call add (block 1 2))
+                         ^
+```
+
+```brix
+(main
+  (for (in x xs)
+    (while (> x 5))
+    (print x)
+  )
+)
+```
+
+```output
+Exception: A `while` needs rows. To stop the loop, put the clause in the source: `(in x xs (while c))`.
+<no file:4>
+        (while (> x 5))
+        ^
+```
+
+```brix
+(fn-expr + total Int
+  (lazy x 3)
+  (+ x 1)
+)
+```
+
+```output
+Exception: (+ …) cannot be a `row` of (fn-expr …), which takes Lazy. Only lazies follow a lazy, and a body of only lazies gives no value. Put the value before the lazies, which in an expression function go in `(where …)`.
+<no file:4>
+      (+ x 1)
+      ^
+```
+
+```brix
+(fn-expr + label String
+  (param n Int)
+  (match? n
+    (case? (> n 0) "a" "b")
+    (default "c")
+  )
+)
+```
+
+```output
+Exception: A `case?` gives one value, its last item, and the items before it are steps, but the text "a" is a value. Remove it or replace it with a step.
+<no file:5>
+        (case? (> n 0) "a" "b")
+                           ^
+```
+
+```brix
+(fn-expr + pick Int
+  (param ready Bool)
+  (if ready 1 2)
+)
+```
+
+```output
+Exception: (if …) cannot be the `body` of (fn-expr …), which takes Value. To give one value or another, write `(if-expr condition value otherwise)`. To run steps, write `(if condition step … (else step …))` in a `fn-do` body.
+<no file:4>
+      (if ready 1 2)
+      ^
+```
+
+```brix
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is -1foo))
+```
+
+```output
+Exception: A unit is declared from an amount of another unit with no sign, as in "+ Bar (bar) is 1foo"; to relate two units by a negative amount, declare Bar from a number type and write an equality, as in "+ 1bar = -1foo"
+<no file:3>
+    (type-line + Bar (alias bar) (is -1foo))
+                                     ^^^^
+```
+
+```brix
+(main
+  (print (?? (~ \digits (of: "12")) -1))
+)
+```
+
+```output
+<Print>
+    <BinaryExpression operator="??">
+        <Match>
+            <String text="12"/>
+            <StreamMatch>
+                <StreamCall name="digits"/>
+            </StreamMatch>
+        </Match>
+        <Integer value="-1"/>
+    </BinaryExpression>
+</Print>
+```
+
+```brix
+(main
+  (do
+    (print 1)
+    (without heap)
+  )
+)
+```
+
+```output
+Exception: (without …) cannot be a `row` of (do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:5>
+        (without heap)
+        ^
+```
+
+```brix
+(main
+  (call run (=> () (match n (case= 0 "zero") (default "some"))))
+)
+```
+
+```output
+<CallExpression>
+    <Id name="run"/>
+    <Argument>
+        <Function names="(closure)" access="private-access">
+            <Match>
+                <Id name="n"/>
+                <StructureMatch>
+                    <TypeOr>
+                        <TypeTransform>
+                            <TypeEquality>
+                                <Integer value="0"/>
+                            </TypeEquality>
+                            <Block>
+                                <String text="zero"/>
+                            </Block>
+                        </TypeTransform>
+                        <TypeTransform>
+                            <Block>
+                                <String text="some"/>
+                            </Block>
+                        </TypeTransform>
+                    </TypeOr>
+                </StructureMatch>
+            </Match>
+        </Function>
+    </Argument>
+</CallExpression>
+```
+
+```brix
+(main
+  (call show (<> Text (text: "x")))
+)
+```
+
+```output
+Exception: (<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or a bullet, as in (bullet (<> …)); or name it with (let name (<> …)) first.
+<no file:3>
+      (call show (<> Text (text: "x")))
+                 ^
+```
+
+```brix
+(main
+  (<> Text (text: "x") (id: t))
+)
+```
+
+```output
+Exception: (id: …) is out of order. An element's attributes follow its type in this order: (id: …), (slot: …), (param: …), (value: …) or (text: …), then its (• …) rules, then (for: …).
+<no file:3>
+      (<> Text (text: "x") (id: t))
+                           ^
+```
+
+```brix
+(main
+  (call run (=> () (match flag (case true "yes") (case false "no"))))
+)
+```
+
+```output
+<CallExpression>
+    <Id name="run"/>
+    <Argument>
+        <Function names="(closure)" access="private-access">
+            <Match>
+                <Id name="flag"/>
+                <StructureMatch>
+                    <TypeOr>
+                        <TypeTransform>
+                            <TypeEquality>
+                                <Id name="true"/>
+                            </TypeEquality>
+                            <Block>
+                                <String text="yes"/>
+                            </Block>
+                        </TypeTransform>
+                        <TypeTransform>
+                            <TypeEquality>
+                                <Id name="false"/>
+                            </TypeEquality>
+                            <Block>
+                                <String text="no"/>
+                            </Block>
+                        </TypeTransform>
+                    </TypeOr>
+                </StructureMatch>
+            </Match>
+        </Function>
+    </Argument>
+</CallExpression>
+```
+
+```brix
+(main
+  (<> Box (for: night) (• page))
+)
+```
+
+```output
+Exception: (• …) is out of order. An element's attributes follow its type in this order: (id: …), (slot: …), (param: …), (value: …) or (text: …), then its (• …) rules, then (for: …).
+<no file:3>
+      (<> Box (for: night) (• page))
+                           ^
+```

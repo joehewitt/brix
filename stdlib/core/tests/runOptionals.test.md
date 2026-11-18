@@ -1,0 +1,5353 @@
+# Optionals
+
+```yumi
+-- optional-middle(0, 42)
+-- optional-middle(1, 42)
+-- optional-middle(2, 42)
+-- optional-middle(0, null)
+-- optional-middle(1, null)
+-- optional-middle(2, null)
+-- optional-middle-with-fallthrough(0, 42)
+-- optional-middle-with-fallthrough(1, 42)
+-- optional-middle-with-fallthrough(2, 42)
+-- optional-middle-with-fallthrough(3, 42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do optional-middle
+    - branch Int
+    - value Int?
+
+if branch == 0
+    = value
+if branch == 1
+    = 7
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ do optional-middle-with-fallthrough
+    - branch Int
+    - value Int?
+
+if branch == 0
+    = value
+if branch == 1
+    = 7
+if branch == 2
+    = value
+```
+
+```output
+42
+7
+42
+unknown
+7
+unknown
+42
+7
+42
+unknown
+```
+
+```yumi
+. a I32?
+-- a
+```
+
+```output
+unknown
+```
+
+```yumi
+. a I32?
+-- a
+a = 1
+-- a
+a = Optional'I32()
+-- a
+```
+
+```output
+unknown
+1
+unknown
+```
+
+```yumi
+do new
+    . a I32?
+    -- a as I32
+catch failure
+    -- failure
+```
+
+```output
+Optional'core/number:I32 is null
+```
+
+```yumi
+. x Int?
+. y = 1
+. attempt = do new
+    y = x!
+catch failure
+    -- failure
+attempt.wait()
+-- y
+```
+
+```output
+Optional'core/number:I64 is null
+1
+```
+
+```yumi
+. a I32? = 1
+-- a as I32
+```
+
+```output
+1
+```
+
+### Pass optional to function
+
+```yumi
+. a I32? = 1
+foo(a)
+. b I32?
+foo(b)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32?
+
+-- if a then 5 else 3
+```
+
+```output
+5
+3
+```
+
+### A parameter that may be null can be left out when it is written with `= null`.
+
+```yumi
+. a I32? = 5
+foo(a)
+foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32? = null
+
+-- if a then 5 else 3
+```
+
+```output
+5
+3
+```
+
+### A parameter that may be null and has no written default must be given, even as null.
+
+```yumi crash
+. a I32? = 5
+foo(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32?
+    - b I32?
+
+-- if a then 5 else 3
+```
+
+```output
+Exception: No function "foo" accepts (I32?); it is declared as "foo(a I32?, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "b I32? = null"
+<no file:3>
+    foo(a)
+    ^^^^^^
+```
+
+### Parameters with written defaults, `= null` among them, can be left out.
+
+```yumi
+. a I32? = 5
+foo(a)
+foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32? = null
+    - b = 1
+    - c I32? = null
+
+-- if a then 5 else 3
+-- b
+-- if c then 4 else 2
+```
+
+```output
+5
+1
+2
+3
+1
+2
+```
+
+### A required parameter can follow one that may be null and has no written default.
+
+```yumi
+. a I32? = 5
+foo(a, 2)
+foo(null, 3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32?
+    - b I32
+
+-- a ?? 0
+-- b
+```
+
+```output
+5
+2
+0
+3
+```
+
+### Optional arguments not required to be passed to call (if at the end)
+
+```yumi
+. a I32?
+foo(a)
+
+. b I32? = 5
+foo(b)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32 = 1
+
+-- a
+
+━━━━━━━━━━━━━━━━━━━━
++ bar
+
+1
+```
+
+```output
+1
+5
+```
+
+```yumi
+. attempt = do new
+    -- foo(1) as I32
+catch failure
+    -- failure
+    -- foo(11) as I32
+attempt.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+
+if a > 10
+    = 5
+```
+
+```output
+Optional'core/number:I64 is null
+5
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo String?
+
+if false
+    = "foo"
+```
+
+```output
+unknown
+```
+
+```yumi
+-- foo()
+-- type-of foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo String?
+
+|? true
+    null
+??
+    "x"
+```
+
+```output
+unknown
+[TypeInfo Optional'String]
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo Int?
+
+if false
+    = 42
+```
+
+```output
+unknown
+```
+
+```yumi
+-- foo()
+-- type-of foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo Int?
+
+if false
+    = Optional'Int(42)
+else
+    = 3
+```
+
+```output
+3
+[TypeInfo Optional'I64]
+```
+
+```yumi
+-- foo()
+-- type-of foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo Int?
+
+if false
+    = Optional'Int(42)
+```
+
+```output
+unknown
+[TypeInfo Optional'I64]
+```
+
+```yumi
+-- foo()
+-- type-of foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo Int?
+
+if true
+    = Optional'Int(42)
+```
+
+```output
+42
+[TypeInfo Optional'I64]
+```
+
+```yumi
+-- foo(24)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo'T
+    - x T?
+
+x
+```
+
+```output
+24
+```
+
+```yumi
+-- Optional(24)
+```
+
+```output
+24
+```
+
+```yumi
+. a Int? = 42
+-- a!
+```
+
+```output
+42
+```
+
+### Force unwrap checks a null numeric optional.
+
+```yumi crash
+. value Int?
+-- value!
+```
+
+```stderr
+Unhandled panic: Optional'core/number:I64 is null
+<no file:3>
+
+Task 1
+
+Stack trace:
+  0  __source__:main no file:3:4
+  1  __source__:init.__source__ no file
+  2  __source__:brix.main no file
+```
+
+### Force unwrap checks a null class optional before dereferencing it.
+
+```yumi crash
+. value Foo?
+-- value!.zing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ zing = 100
+```
+
+```stderr
+Unhandled panic: Optional'[Object __source__:Foo] is null
+<no file:3>
+
+Task 1
+
+Stack trace:
+  0  __source__:main no file:3:4
+  1  __source__:init.__source__ no file
+  2  __source__:brix.main no file
+```
+
+### Forcing a value that is never null is illegal.
+
+```yumi crash
+. count Int = 1
+-- count!
+```
+
+```output
+Exception: "count" is I64, which is never null here, so it needs no "!"
+<no file:3>
+    -- count!
+       ^^^^^^
+```
+
+### Forcing an optional the flow knows holds a value is illegal.
+
+```yumi crash
+. count Int? = 1
+if count
+    -- count!
+```
+
+```output
+Exception: "count" is I64, which is never null here, so it needs no "!"
+<no file:4>
+        -- count!
+           ^^^^^^
+```
+
+### A force in generic code is legal when its operand is optional in some instance.
+
+```yumi
+-- first(3)
+-- first(4 as Int?)
+
+━━━━━━━━━━━━━━━━━━━━
++ first'T
+    - value T
+
+value!
+```
+
+```output
+3
+4
+```
+
+### A force is legal where a local the flow knows holds a value is tested, as it tests the value.
+
+```yumi
+. count Int? = 0
+if count != null
+    -- if count && true then "present" else "absent"
+    -- if count! && true then "nonzero" else "zero"
+```
+
+```output
+present
+zero
+```
+
+### A typed declaration does not unwrap an optional: write ! or ?? to take what it holds.
+
+```yumi crash
+. value Int?
+. unwrapped Int = value
+-- unwrapped
+```
+
+```output
+Exception: Expected I64 here, but this is I64?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
+<no file:3>
+    . unwrapped Int = value
+                ^^^
+```
+
+### An optional number on the right of an assigning operator is not unwrapped.
+
+```yumi crash
+. total = 1
+total += given(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ given Int?
+    - value Int
+
+value
+```
+
+```output
+Exception: Expected I64 here, but this is I64?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
+<no file:3>
+    total += given(2)
+             ^^^^^^^^
+```
+
+## Optional Chaining
+
+### Optional chaining on a non-optional receiver is illegal.
+
+```yumi crash
+. foo = Foo()
+-- foo?.zing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ zing = 100
+```
+
+```output
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.zing"
+<no file:3>
+    -- foo?.zing
+       ^^^^^^^^^
+```
+
+### Optional chaining on a narrowed optional receiver is illegal.
+
+```yumi crash
+. foo Foo? = Foo()
+if foo
+    -- foo?.zing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ zing = 100
+```
+
+```output
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.zing"
+<no file:4>
+        -- foo?.zing
+           ^^^^^^^^^
+```
+
+### A parameter written with no type needs `?` where one call gives it nothing, though another gives it a value that is never null.
+
+```yumi
+-- size(Inner())
+-- size(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Inner
+
++ width Int = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ size Int
+    - inner
+
+inner?.width ?? 0
+```
+
+```output
+3
+0
+```
+
+```yumi
+. foo Foo?
+-- foo?.zing
+-- type-of foo?.zing
+foo = Foo() as Foo?
+-- foo?.zing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ zing = 100
+```
+
+```output
+unknown
+[TypeInfo Optional'I64]
+100
+```
+
+```yumi
+. foo Foo?
+-- foo?.bar?.bing
+-- type-of foo?.bar?.bing
+foo = Foo() as Foo?
+-- foo?.bar?.bing
+. f = foo!
+f.bar = Bar()
+-- foo?.bar?.bing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Bar?
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+```
+
+```output
+unknown
+[TypeInfo Optional'I64]
+unknown
+100
+```
+
+```yumi
+. foo Foo?
+-- foo?.stuff.length
+-- type-of foo?.stuff.length
+foo = Foo() as Foo?
+-- foo?.stuff.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ stuff = [1, 2, 3]
+```
+
+```output
+unknown
+[TypeInfo Optional'Size]
+3
+```
+
+```yumi
+. foo Foo?
+-- foo?.bing()
+-- foo?.bing().boom
+-- type-of foo?.bing().boom
+foo = Foo() as Foo?
+-- foo?.bing()
+-- foo?.bing().boom
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ bing
+
+Bing()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bing
+
++ boom = 99
+```
+
+```output
+unknown
+unknown
+[TypeInfo Optional'I64]
+[Object __source__:Bing]
+99
+```
+
+### Optional void-returning method called as a statement
+
+```yumi
+. win Window?
+win?.focus()
+win = Window() as Window?
+win?.focus()
+
+━━━━━━━━━━━━━━━━━━━━
++ Window
+
+────────────────────
++ do focus
+
+-- "focus"
+```
+
+```output
+focus
+```
+
+### Optional void-returning interface method called as a statement
+
+```yumi
+. thing Thing?
+thing?.focus()
+thing = Window() as Thing?
+thing?.focus()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Interface
+
+────────────────────
++ focus Void
+
+━━━━━━━━━━━━━━━━━━━━
++ Window
+    is Thing
+
+────────────────────
++ do focus
+
+-- "focus"
+```
+
+```output
+focus
+```
+
+```yumi
+-- foo()?.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ foo Foo?
+
+Foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 42
+```
+
+```output
+42
+```
+
+```yumi
+. foo [Int]?
+-- foo?[0]
+foo = [1, 2, 3] as [Int]?
+-- foo?[0]
+```
+
+```output
+unknown
+1
+```
+
+## Optional assignment elimination
+
+```yumi
+. foo Foo?
+foo?.bar = 42
+-- foo?.bar
+foo = Foo() as Foo?
+foo?.bar = 42
+-- foo?.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Int
+```
+
+```output
+unknown
+42
+```
+
+```yumi
+. foo Foo?
+foo?.bar?.bing = 42
+-- foo?.bar?.bing
+foo = Foo() as Foo?
+foo?.bar = Bar()
+-- foo?.bar?.bing
+foo?.bar?.bing = 42
+-- foo?.bar?.bing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Bar?
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+```
+
+```output
+unknown
+100
+42
+```
+
+### Compound assignment through an optional chain updates a present target and skips an absent one.
+
+```yumi
+. foo Foo?
+foo?.bar += 1
+-- foo?.bar
+foo = Foo() as Foo?
+foo?.bar += 2
+foo?.bar += 3
+-- foo?.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Int = 10
+```
+
+```output
+unknown
+15
+```
+
+```yumi
+. foo Foo
+foo.bar?[0] = 1
+-- foo.bar?[0]
+foo.bar = Bar()
+-- foo.bar?[0]
+foo.bar?[0] = 1
+-- foo.bar?[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Bar?
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ v = 42
+
+────────────────────
++ this[index Index]
+
+v
+
+────────────────────
++ do this[index Index] = item Int
+
+v = item
+```
+
+```output
+unknown
+42
+1
+```
+
+```yumi
+. foo [Int]?
+foo?[0] = 10
+-- foo?[0]
+foo = [1, 2, 3] as [Int]?
+-- foo?[0]
+foo?[0] = 10
+-- foo?[0]
+```
+
+```output
+unknown
+1
+10
+```
+
+```yumi
+. foo Foo
+foo.bar?[0] = 1
+-- foo.bar?[0]
+foo.bar = [1, 2, 3]
+-- foo.bar?[0]
+foo.bar?[0] = 10
+-- foo.bar?[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar [Int]?
+```
+
+```output
+unknown
+1
+10
+```
+
+## Optional statement elimination
+
+```yumi
+-- foo()
+-- foo(42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - x Int? = null
+
+=? x
+= 99
+```
+
+```output
+99
+42
+```
+
+```yumi
+for v in foo()
+    -- v
+for v in foo(42)
+    -- v
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - x Int? = null
+
+<= 1
+<=? x
+<= 2
+```
+
+```output
+1
+2
+1
+42
+2
+```
+
+### Early-null return optionalizes a value continuation
+
+```yumi
+-- maybe(false)
+-- maybe(true)
+-- type-of maybe(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe
+    - keep Bool
+
+=? if !keep
+= 7
+```
+
+```output
+unknown
+7
+[TypeInfo Optional'I64]
+```
+
+### Early-null return does not nest optional continuation values
+
+```yumi
+. present Int? = 7
+-- maybe(false, present)
+-- maybe(true, present)
+-- type-of maybe(true, present)
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe
+    - keep Bool
+    - value Int?
+
+=? if !keep
+= value
+```
+
+```output
+unknown
+7
+[TypeInfo Optional'I64]
+```
+
+### Early-null return narrows optional continuations
+
+```yumi
+-- add-one(41)
+-- add-one(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ do add-one
+    - value Int?
+
+=? if !value
+= value + 1
+```
+
+```output
+42
+unknown
+```
+
+### Condition-only early return infers false in Bool continuations
+
+```yumi
+-- maybe(true)
+-- maybe(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe
+    - stop Bool
+
+=? if stop
+= true
+```
+
+```output
+false
+true
+```
+
+### Two-line optional early return can return no value with null
+
+```yumi
+voidy(true)
+voidy(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do voidy
+    - stop Bool
+
+=? if stop
+-- "ran"
+```
+
+```output
+ran
+```
+
+### Shorthand optional early return can return no value
+
+```yumi
+-- maybe(0)
+-- maybe(7)
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe
+    - value Int
+
+=? if value == 0
+= value
+```
+
+```output
+unknown
+7
+```
+
+### Shorthand optional early return can return void
+
+```yumi
+voidy(true)
+voidy(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do voidy
+    - stop Bool
+
+=? if stop
+-- "ran"
+```
+
+```output
+ran
+```
+
+### Guard-only early-null functions remain Void
+
+```yumi crash
+-- guard-only(false) ?? "optional"
+
+━━━━━━━━━━━━━━━━━━━━
++ do guard-only
+    - keep Bool
+
+=? if !keep
+```
+
+```output
+Exception: Operator "??" is not defined for Void and String
+<no file:2>
+    -- guard-only(false) ?? "optional"
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi
+. x Int?
+--? x
+x = 1
+--? x
+```
+
+```output
+1
+```
+
+```yumi
+. x I32?
+. y Float = 1
+-- y =? x
+-- y
+x = 10
+y =? x
+-- y
+```
+
+```output
+1
+1
+10
+```
+
+```yumi
+. x Int?
+. y Float = 1
+-- y +=? x
+-- y
+x = 10
+y +=? x
+-- y
+```
+
+```output
+1
+1
+11
+```
+
+```yumi
+. thing Thing?
+use? thing
+do use? thing
+    -- "using"
+thing = Thing() as Thing?
+use? thing
+do use? thing
+    -- "using"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ do begin-using
+
+-- "begin"
+= this
+
+────────────────────
++ do end-using
+
+-- "end"
+```
+
+```output
+begin
+begin
+using
+end
+end
+```
+
+## Assignment default values
+
+## Comparison
+
+```yumi
+. foo Int?
+-- foo == null
+-- null == foo
+foo = 1 as Int?
+-- foo == null
+-- null == foo
+```
+
+```output
+true
+true
+false
+false
+```
+
+```yumi
+. foo Int?
+. bar Int?
+-- foo == bar
+-- foo != bar
+foo = 1 as Int?
+-- foo == bar
+-- foo != bar
+bar = 1
+-- foo == bar
+-- foo != bar
+```
+
+```output
+true
+false
+false
+true
+true
+false
+```
+
+```yumi
+. foo Int?
+-- foo == 2
+-- foo != 2
+-- 2 == foo
+-- 2 != foo
+foo = 2
+-- foo == 2
+-- 2 == foo
+-- foo == 3
+-- 3 == foo
+```
+
+```output
+false
+true
+false
+true
+true
+true
+false
+false
+```
+
+```yumi
+-- "" ?? "foo"
+-- "bar" ?? "foo"
+```
+
+```output
+foo
+bar
+```
+
+```yumi
+-- if false then 0.0 else 1.0
+-- if false then 0 else 1.0
+```
+
+```output
+1
+1
+```
+
+```yumi
+. a Int?
+. aa Int = 3
+. b = if a then 1 else aa
+-- b
+-- type-of b
+
+. c = if aa then 1 else a
+-- c
+-- type-of c
+```
+
+```output
+3
+[TypeInfo I64]
+1
+[TypeInfo Optional'I64]
+```
+
+```yumi
+. a Int?
+. aa Int? = 3
+. b = if a then 1 else aa
+-- b
+-- type-of b
+```
+
+```output
+3
+[TypeInfo Optional'I64]
+```
+
+```yumi
+. a Int?
+. aa Int?
+. b = if a then 1 else aa
+-- b
+-- type-of b
+```
+
+```output
+unknown
+[TypeInfo Optional'I64]
+```
+
+### Conditional structure matches flatten optional transform results
+
+```yumi
+-- type-of maybe(true, false)
+if maybe(true, false)
+    -- "inner false passed"
+else
+    -- "inner false failed"
+if maybe(false, false)
+    -- "outer false passed"
+else
+    -- "outer false failed"
+if maybe(true, true)
+    -- maybe(true, true)!
+else
+    -- "true failed"
+
+━━━━━━━━━━━━━━━━━━━━
++ maybe-inner
+    - flag Bool
+
+"ok" if flag
+
+━━━━━━━━━━━━━━━━━━━━
++ maybe
+    - outer Bool
+    - inner Bool
+
+|? 1 if outer
+    maybe-inner(inner)
+```
+
+```output
+[TypeInfo Optional'String]
+inner false failed
+outer false failed
+ok
+```
+
+### An unwrapped optional converts to an alias of its type for dispatch
+
+```yumi
+. left I16? = 2i16
+. right I16? = 7i16
+-- clip-for-dispatch(left!, right!, 0i16, 10i16)
+
+━━━━━━━━━━━━━━━━━━━━
++ Coord is I16
+
+━━━━━━━━━━━━━━━━━━━━
++ clip-for-dispatch
+    - left Coord
+    - right Coord
+    - min Coord
+    - max Coord
+
+left, right
+```
+
+```output
+(2, 7)
+```
+
+### A null match arm preserves absence when the other arm returns a tuple.
+
+```yumi
+. content TupleOptionalContent = .none
+. pair = tuple-content(content)
+-- type-of pair
+-- if pair then "present" else "absent"
+. present = tuple-content(.item("name", TupleOptionalItem(7)))
+-- present!.name
+-- present!.item.value
+. switch-pair = switch-tuple-content(.none)
+-- if switch-pair then "present" else "absent"
+. switch-present = switch-tuple-content(.other("other", TupleOptionalItem(9)))
+-- switch-present!.name
+-- switch-present!.item.value
+
+━━━━━━━━━━━━━━━━━━━━
++ tuple-content (name String, item TupleOptionalItem)?
+    - content TupleOptionalContent
+
+match content
+    | .item(name, item)
+        (name, item)
+    ??
+        null
+
+━━━━━━━━━━━━━━━━━━━━
++ switch-tuple-content (name String, item TupleOptionalItem)?
+    - content TupleOptionalContent
+
+match content
+    | .item(name, item)
+        (name, item)
+    | .other(name, item)
+        (name, item)
+    ??
+        null
+
+━━━━━━━━━━━━━━━━━━━━
++ TupleOptionalContent is Union
+
+| none
+| item(name String, item TupleOptionalItem)
+| other(name String, item TupleOptionalItem)
+
+━━━━━━━━━━━━━━━━━━━━
++ TupleOptionalItem
+
++ value I32
+
+────────────────────
++ This
+    - value
+```
+
+```output
+[TypeInfo Optional'Tuple]
+absent
+name
+7
+absent
+other
+9
+```
+
+### A type pattern matches the present payload of an optional union without a prior null check.
+
+```yumi
+. items [DocValue]
+items += 1 as DocValue
+-- describe(items as DocValue)
+-- describe("text" as DocValue)
+-- describe(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value DocValue?
+
+match value
+    | values [DocValue]
+        "array ${values.length}"
+    | text String
+        "string $text"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ DocValue is Union
+
+| Null
+| Bool
+| Int
+| Float
+| String
+| [DocValue]
+| [String = DocValue]
+```
+
+```output
+array 1
+string text
+other
+```
+
+### An absent optional becomes a union's Null case with as.
+
+```yumi
+. values [String = DocValue]
+values["count"] = 2
+. count = values["count"] as DocValue
+. missing = values["missing"] as DocValue
+-- describe(count)
+-- describe(missing)
+-- describe(values["missing"] as DocValue)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - value DocValue
+
+if value is Null then "null" else "present"
+
+━━━━━━━━━━━━━━━━━━━━
++ DocValue is Union
+
+| Null
+| Int
+| String
+```
+
+```output
+present
+null
+null
+```
+
+### An optional becomes a union with a Null case and a case its value becomes, as an argument, a declared local and a variadic item.
+
+```yumi
+. missing String? = null
+. present String? = "x"
+. count I32? = 4
+. held Cell = present
+-- describe(missing)
+-- describe(count)
+-- describe(held)
+-- all(missing, present, 3, count)
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Union
+
+| Null
+| I64
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - cell Cell
+
+match cell
+    | Null!
+        "null"
+    | I64~
+        "int"
+    | String~
+        "text"
+
+━━━━━━━━━━━━━━━━━━━━
++ all String
+    ... cells [Cell]
+
+" ".join(describe(each) in cells)
+```
+
+```output
+null
+int
+text
+null text int int
+```
+
+### An optional does not become a union with no Null case unasked.
+
+```yumi compile-error
+. present String? = "x"
+-- describe(present)
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Union
+
+| I64
+| String
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - cell Cell
+
+match cell
+    | I64~
+        "int"
+    | String~
+        "text"
+```
+
+```output
+Exception: No function "describe" accepts (String?); it is declared as "describe(cell Cell)"
+<no file:3>
+    -- describe(present)
+       ^^^^^^^^^^^^^^^^^
+```
+
+### Force unwrap can appear in the middle of member, call, and index chains.
+
+```yumi
+. holder = ChainHolder(ChainNode(ChainNode(null, 3), 5))
+-- holder.node!.value
+-- holder.node!.next!.value
+-- holder.find(5)!.next!.value
+-- chain-node(7)!.value
+. nodes [ChainNode?]
+nodes += holder.node
+-- nodes[0]!.next!.value
+-- holder.node!.value != 4
+. forced = holder.node!
+-- forced.value
+-- holder.node != null
+-- holder.find(1) != null
+
+━━━━━━━━━━━━━━━━━━━━
++ chain-node ChainNode?
+    - value I32
+
+ChainNode(null, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainNode
+
++ next ChainNode?
++ value I32
+
+────────────────────
++ This
+    - next
+    - value
+
+━━━━━━━━━━━━━━━━━━━━
++ ChainHolder
+
++ node ChainNode?
+
+────────────────────
++ This
+    - node
+
+────────────────────
++ do find ChainNode?
+    - value I32
+
+. current = node
+=? current if current && current.value == value
+= null
+```
+
+```output
+5
+3
+3
+7
+3
+true
+5
+true
+false
+```
+
+### Comparing an absent optional with custom equality does not unwrap it.
+
+```yumi
+. absent Point2? = null
+. present = Point2(1, 2)
+-- absent != present
+-- absent == present
+-- present != absent
+. other Point2? = Point2(1, 2)
+-- other != present
+-- other == present
+. none Point2? = null
+-- absent == none
+. name String? = null
+-- name == "a"
+-- name != "a"
+
+━━━━━━━━━━━━━━━━━━━━
++ Point2 is Tuple
+
++ x Int
++ y Int
+
+────────────────────
++ this == other Point2
+
+x == other.x && y == other.y
+```
+
+```output
+true
+false
+true
+false
+true
+true
+false
+true
+```
+
+### A presence operand stays a presence test when the other side of a logical operator narrowed it.
+
+```yumi
+. a Pair2? = Pair2(1, 2)
+. b Pair2? = Pair2(1, 2)
+. c Pair2? = Pair2(3, 4)
+. none Pair2? = null
+-- same(a, b)
+-- same(a, c)
+-- same(none, none)
+-- same(a, none)
+-- both(a, b)
+-- both(a, none)
+-- both(none, b)
+. zero Int? = 0
+. one Int? = 1
+-- present-after(zero, one)
+-- present-after(zero, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ same Bool
+    - first Pair2?
+    - second Pair2?
+
+(!first && !second) || (first && second && first == second)
+
+━━━━━━━━━━━━━━━━━━━━
++ both Bool
+    - first Pair2?
+    - second Pair2?
+
+!first || (first && second)
+
+━━━━━━━━━━━━━━━━━━━━
++ present-after Bool
+    - first Int?
+    - second Int?
+
+!first || (first && second)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair2 is Tuple
+
++ x Int
++ y Int
+
+────────────────────
++ this == other Pair2
+
+x == other.x && y == other.y
+```
+
+```output
+true
+false
+true
+false
+true
+false
+true
+true
+false
+```
+
+### Unwrapping an optional text that holds nothing panics.
+
+```yumi crash
+. none String?
+. lost String = none!
+-- lost
+```
+
+```stderr
+Unhandled panic: Optional'core/string:String is null
+<no file:3>
+
+Task 1
+
+Stack trace:
+  0  __source__:main no file:3:17
+  1  __source__:init.__source__ no file
+  2  __source__:brix.main no file
+```
+
+### An optional argument given to a parameter with no default must be unwrapped.
+
+```yumi crash
+. a I32?
+strict(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do strict
+    - a I32
+
+-- a
+```
+
+```output
+Exception: No function "strict" accepts (I32?); it is declared as "strict(a I32)"
+<no file:3>
+    strict(a)
+    ^^^^^^^^^
+```
+
+### An optional argument that holds nothing takes the parameter's default, and one that holds a value is unwrapped.
+
+```yumi
+. a I32?
+. b I32? = 5
+foo(a)
+foo(b)
+bar("x", a)
+bar("y", b)
+zap(a)
+zap(b)
+Thing().go(a)
+Thing().go(b)
+foo(a ?? 9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a I32 = 1
+
+-- a
+
+━━━━━━━━━━━━━━━━━━━━
++ do bar
+    - s String
+    - a Float = 2.5
+
+-- a, s
+
+━━━━━━━━━━━━━━━━━━━━
++ do zap
+    - a I32? = 7
+
+-- a
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
+────────────────────
++ do go
+    - n I32 = 3
+
+-- n
+```
+
+```output
+1
+5
+(2.5, x)
+(5, y)
+7
+5
+3
+5
+9
+```
+
+### An optional text that holds nothing prints and interpolates as unknown, and ! takes what one holds.
+
+```yumi
+. x String?
+-- x
+. y String? = "hi"
+-- y
+-- "[$x]"
+. s String = y!
+-- s
+```
+
+```output
+unknown
+hi
+[unknown]
+hi
+```
+
+### An optional text that holds nothing is unknown as a field of a tuple.
+
+```yumi
+. x String?
+-- (x, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - s String
+
+-- s
+```
+
+```output
+(unknown, 1)
+```
+
+### A function that returns a value on some paths and nothing or null on others returns an optional.
+
+```yumi
+-- maybe(true)
+-- maybe(false)
+-- pick(1)
+-- pick(2)
+-- pick(3)
+-- name(true) ?? "none"
+-- name(false) ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe
+    - flag Bool
+
+if flag
+    = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick
+    - n Int
+
+if n == 1
+    = 10
+if n == 2
+    = null
+= 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do name
+    - flag Bool
+
+if flag
+    = "set"
+```
+
+```output
+7
+unknown
+10
+unknown
+30
+set
+none
+```
+
+### A return and a print written with a question mark act only where their optional holds a value, and a conditional return gives the optional itself.
+
+```yumi
+-- first(3, null)
+-- first(3, 8)
+-- late(1) ?? "none"
+-- late(5) ?? "none"
+show(null)
+show("here")
+. n Int? = 4
+--? n
+. m Int?
+--? m
+-- "end"
+
+━━━━━━━━━━━━━━━━━━━━
++ do first Int
+    - b Int
+    - a Int?
+
+=? a
+= b
+
+━━━━━━━━━━━━━━━━━━━━
++ do late String?
+    - n Int
+
+. label String? = "big"
+=? label if n > 3
+. none String?
+=? none if n > 0
+= "small"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - s String?
+
+--? s
+```
+
+```output
+3
+8
+none
+big
+here
+4
+end
+```
+
+### A conditional return of an optional returns it whether or not it holds a value.
+
+```yumi
+-- pick(1) ?? 0
+-- pick(5) ?? 0
+-- pick(9) ?? 0
+-- strict(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick
+    - n Int
+
+. held Int? = n
+. none Int?
+=? none if n == 1
+=? held if n == 5
+
+━━━━━━━━━━━━━━━━━━━━
++ do strict Int
+    - n Int
+
+. held Int? = n
+=? held! if n > 3
+= 0
+```
+
+```output
+0
+5
+0
+5
+```
+
+### An arm that is a test alone gives what the tested optional holds.
+
+```yumi
+-- test()
+-- test(2)
+-- test(0)
+-- word()
+-- word("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ test
+    - t Int? = null
+
+|? 0 > 1
+    1
+|? t
+?? 3
+
+━━━━━━━━━━━━━━━━━━━━
++ word
+    - w String? = null
+
+|? w
+?? "none"
+```
+
+```output
+3
+2
+0
+none
+x
+```
+
+### An optional compares with null on either side, for equal and for not equal.
+
+```yumi
+. x Int? = 5
+. y Int?
+-- x == null
+-- null == y
+-- x != null
+-- null != y
+if y == null
+    -- "y is null"
+. s String?
+-- s == null
+s = "set"
+-- s != null
+```
+
+```output
+false
+true
+true
+false
+y is null
+true
+true
+```
+
+### A local that holds an optional known to hold a value is not equal to null.
+
+```yumi
+. n Int? = 0
+n = 0
+-- n == null
+```
+
+```output
+false
+```
+
+### An optional local known to hold a value is unknown again after a branch that may assign it null.
+
+```yumi
+. flag = true
+. x Int?
+x = 5
+if flag
+    x = null
+-- x
+-- x == null
+```
+
+```output
+unknown
+true
+```
+
+### A local assigned null under a branch is null where that is tested after the branch.
+
+```yumi
+-- f(5)
+-- f(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do f String
+    - x Int?
+
+if x == null
+    = "null at start"
+if x > 3
+    x = null
+if x == null
+    = "null now"
+= "still $x"
+```
+
+```output
+null now
+still 2
+```
+
+### An assignment of null under an else, a block, a loop or a nested branch ends what was known of the local after it.
+
+```yumi
+. x Int? = 5
+if x
+    if x > 30
+        -- "big"
+    else
+        x = null
+    -- x
+. y Int? = 5
+if y
+    do
+        y = null
+    -- y
+. z Int? = 5
+while z
+    if z > 3
+        z = null
+    -- z
+    z = null
+. a Int? = 5
+. b Int? = 6
+if a && b
+    if a > 3
+        b = null
+    -- a
+    -- b
+```
+
+```output
+unknown
+unknown
+unknown
+5
+unknown
+```
+
+### A branch that assigns null and leaves, and one that assigns a value, both leave the local known to hold one.
+
+```yumi
+-- keep(true)
+-- keep(false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do keep Int
+    - flag Bool
+
+. x Int?
+x = 5
+if flag
+    x = null
+    = 0
+. y Int?
+y = 5
+if flag
+    y = 7
+= x + y
+```
+
+```output
+0
+10
+```
+
+### An optional struct assigned null under a nested branch is unknown after it.
+
+```yumi
+. p Point? = Point(1, 2)
+if p
+    if p.x == 1
+        p = null
+    -- p
+    -- p == null
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+```
+
+```output
+unknown
+true
+```
+
+### An optional property assigned null under a branch or a block is unknown after it.
+
+```yumi
+. box = Box()
+box.run(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ held Int?
+
+────────────────────
++ do run
+    - flag Bool
+
+held = 5
+if flag
+    held = null
+-- held
+-- held == null
+this.held = 4
+if flag
+    do
+        this.held = null
+-- this.held
+```
+
+```output
+unknown
+true
+unknown
+```
+
+### An operand read through `!` keeps what it held when an operand after it assigns the optional.
+
+```yumi
++ g Point? = Point(1, 2)
+
+. o Point? = Point(1, 2)
+-- take(o!, o = Point(8, 9))
+. s String? = "a"
+-- join(s!, s = "b")
+. n Int? = 1
+-- add(n!, n = 5)
+. t (Int, Int)? = (1, 2)
+-- pair(t!, t = (3, 4))
+-- take(g!, change())
+-- g
+. box = Box()
+-- take(box.p!, box.change())
+-- take(box.q, box.change())
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ p Point? = Point(1, 2)
++ q = Point(3, 4)
+
+────────────────────
++ do change Point
+
+p = Point(8, 9)
+q = Point(6, 7)
+= Point(5, 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do change Point
+
+g = Point(8, 9)
+= Point(5, 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ take
+    - p Point
+    - q Point
+
+p.x * 1000 + p.y * 100 + q.x * 10 + q.y
+
+━━━━━━━━━━━━━━━━━━━━
++ join
+    - a String
+    - b String
+
+a ++ b
+
+━━━━━━━━━━━━━━━━━━━━
++ add
+    - a Int
+    - b Int
+
+a * 10 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ pair
+    - a (Int, Int)
+    - b (Int, Int)
+
+a[0] * 1000 + a[1] * 100 + b[0] * 10 + b[1]
+```
+
+```output
+1289
+ab
+15
+1234
+1255
+(8, 9)
+1255
+6755
+```
+
+### The value of an optional that holds nothing is what its type has with nothing written: no bits set, and the empty text for a text.
+
+```yumi
+. s String?
+-- "[${s.value}] ${s.value.length}"
+. set String? = "a"
+set = null
+-- "[${set.value}] ${set.value.length}"
+. given = none()
+-- "[${given.value}] ${given.value.length}"
+. box = Box()
+-- "[${box.s.value}] ${box.s.value.length}"
+-- box.t
+-- box.u[1] == null
+-- box.q.value
+. t (Int, String)?
+-- t.value
+. named (name String, age Int)?
+-- named.value.name.length
+. n Int?
+-- n.value
+
+━━━━━━━━━━━━━━━━━━━━
++ do none String?
+
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ s String?
++ t (Int, String)
++ u (Int, Thing?)
++ q (Int, String)?
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ n = 1
+```
+
+```output
+[] 0
+[] 0
+[] 0
+[] 0
+(0, )
+true
+(0, )
+(0, )
+0
+0
+```
+
+### An optional returned as a Bool is whether it holds a value, also through a lazy local read once.
+
+```yumi
+-- has(3)
+-- has(0)
+
+━━━━━━━━━━━━━━━━━━━━
++ has Bool
+    - n Int
+
+found
+
+.. found = find(n)
+
+━━━━━━━━━━━━━━━━━━━━
++ do find Index?
+    - n Int
+
+if n > 1
+    = 5
+= null
+```
+
+```output
+true
+false
+```
+
+### `!` of an optional is true when it holds no value, whatever value it holds.
+
+```yumi
+. none Int?
+. some Int? = 0
+. flag Bool? = false
+-- !none, !some, !flag
+if !none
+    -- "none is empty"
+if !some
+    -- "some is empty"
+else
+    -- "some holds"
+-- count(null), count(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ do count Int
+    - given Int?
+
+. first Index?
+. other Index?
+for round in 0 .. < 3
+    if !first
+        if given
+            first = round + 10
+    else if !other
+        other = round
+if !other
+    = 99
+= 1
+```
+
+```output
+(true, false, false)
+none is empty
+some holds
+(99, 1)
+```
+
+### The value assigned through an optional chain is evaluated whatever the chain holds.
+
+```yumi
+. foo Foo?
+foo?.bar = side(1)
+-- foo?.bar
+foo = Foo() as Foo?
+foo?.bar = side(2)
+-- foo?.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ do side Int
+    - n Int
+
+-- "side $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Int
+```
+
+```output
+side 1
+unknown
+side 2
+2
+```
+
+### A link written with no `?` after another link reads and stores through the one test.
+
+```yumi
+. foo Foo?
+-- foo?.bar.bing
+foo = Foo() as Foo?
+-- foo?.bar.bing
+foo?.bar.bing = 7
+-- foo?.bar.bing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+```
+
+```output
+unknown
+100
+7
+```
+
+### A link of an optional chain that gives nothing gives an optional that holds nothing.
+
+```yumi
+. win Win?
+. a = win?.focus()
+-- a == null
+win = Win() as Win?
+. b = win?.focus()
+-- b == null
+if win?.focus()
+    -- "made"
+else
+    -- "not made"
+
+━━━━━━━━━━━━━━━━━━━━
++ Win
+
+────────────────────
++ do focus
+
+-- "focus"
+```
+
+```output
+true
+focus
+true
+focus
+not made
+```
+
+### An optional struct and an optional tuple are read through a link by name and by place.
+
+```yumi
+. p Point?
+-- p?.x
+-- p?[1]
+p = Point(3, 4) as Point?
+-- p?.x
+-- p?[1]
+. t (Int, String)?
+-- t?[0]
+-- t?[1]
+t = (5, "five") as (Int, String)?
+-- t?[0]
+-- t?[1]
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+```
+
+```output
+unknown
+unknown
+3
+4
+unknown
+unknown
+5
+five
+```
+
+### The receiver of a chain is evaluated once, and the arguments of a link only where it holds a value.
+
+```yumi
+-- make(false)?.bar
+-- make(true)?.bar
+-- make(true)?.twice(side(2))
+-- make(false)?.twice(side(3))
+-- make(true)?.maybe
+-- make(true)?.other?.bar
+-- make(true)?.name.length
+-- make(false)?.name.length
+make(true)?.twice(side(4))
+make(false)?.twice(side(5))
+
+━━━━━━━━━━━━━━━━━━━━
++ do side Int
+    - n Int
+
+-- "side $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Foo?
+    - really Bool
+
+-- "make $really"
+if really
+    = Foo()
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 42
++ maybe Int?
++ other Foo?
++ name = "abc"
+
+────────────────────
++ do twice Int
+    - n Int
+
+= n * 2
+```
+
+```output
+make false
+unknown
+make true
+42
+make true
+side 2
+4
+make false
+unknown
+make true
+unknown
+make true
+unknown
+make true
+3
+make false
+unknown
+make true
+side 4
+make false
+```
+
+### A value assigned through a chain is stored only where the chain holds a value.
+
+```yumi
+. foo Foo?
+. none Int?
+foo?.bar = none ?? 5
+-- foo?.bar
+foo = Foo() as Foo?
+foo?.bar = none ?? 5
+-- foo?.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 1
+```
+
+```output
+unknown
+5
+```
+
+### A call written with no `?` after a link is made of what the link gives.
+
+```yumi
+. foo Foo?
+-- foo?.bar.twice(2)
+foo = Foo() as Foo?
+-- foo?.bar.twice(2)
+foo?.bar.poke()
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+
+────────────────────
++ do twice Int
+    - n Int
+
+= n * bing
+
+────────────────────
++ do poke
+
+-- "poke"
+```
+
+```output
+unknown
+200
+poke
+```
+
+### An index written with no `?` after a link reads and stores what the link gives.
+
+```yumi
+. foo Foo?
+-- foo?.items[0]
+-- foo?.items.length
+foo?.items[0] = 9
+foo = Foo() as Foo?
+-- foo?.items[0]
+-- foo?.items.length
+foo?.items[0] = 9
+-- foo?.items[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ items = [1, 2, 3]
+```
+
+```output
+unknown
+unknown
+1
+3
+9
+```
+
+### A setter, a number converted, an optional and a field of a struct an object holds are assigned through a chain.
+
+```yumi
+. foo Foo?
+foo?.count = 5
+-- foo?.count
+foo = Foo() as Foo?
+foo?.count = 5
+-- foo?.count
+foo?.ratio = 2
+-- foo?.ratio
+foo?.maybe = 3
+-- foo?.maybe
+foo?.point.x = 8
+-- foo?.point.x
+-- foo?.point.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ held = 0
++ ratio Float = 1
++ maybe Int?
++ point = Point(1, 2)
+
+────────────────────
++ get count Int
+
+held
+
+────────────────────
++ do count = value Int
+
+-- "set $value"
+held = value
+```
+
+```output
+unknown
+set 5
+5
+2
+3
+8
+2
+```
+
+### An assignment through a chain evaluates its value, then the chain, then the key.
+
+```yumi
+make(true)?.bar = side(1)
+make(false)?.bar = side(2)
+make(true)?.other?.bar = side(3)
+make(true)?.items?[side(4)] = side(5)
+. foo = make(true)
+foo?.items = [1, 2, 3]
+foo?.items?[side(1)] = side(6)
+-- foo?.items?[1]
+-- foo?.items?[foo?.bar ?? 0]
+
+━━━━━━━━━━━━━━━━━━━━
++ do side Int
+    - n Int
+
+-- "side $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Foo?
+    - really Bool
+
+-- "make $really"
+if really
+    = Foo()
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 2
++ other Foo?
++ items [Int]?
+```
+
+```output
+side 1
+make true
+side 2
+make false
+side 3
+make true
+side 5
+make true
+make true
+side 6
+side 1
+6
+3
+```
+
+### A field of an optional struct a local holds is assigned through a chain where it lies.
+
+```yumi
+. p Point?
+p?.x = 5
+-- p?.x
+p = Point(1, 2) as Point?
+p?.x = 5
+-- p?.x
+-- p?.y
+. t (Int, Int)?
+t = (1, 2) as (Int, Int)?
+-- t?[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+```
+
+```output
+unknown
+5
+2
+1
+```
+
+### A property named alone is the receiver of a chain read and of one assigned.
+
+```yumi
+. box = Box()
+-- box.peek()
+box.fill()
+-- box.peek()
+box.poke(7)
+-- box.peek()
+box.inner?.hello()
+
+━━━━━━━━━━━━━━━━━━━━
++ Inner
+
++ value = 1
+
+────────────────────
++ do hello
+
+-- "hello $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ inner Inner?
+
+────────────────────
++ do fill
+
+inner = Inner()
+
+────────────────────
++ do peek Int?
+
+= inner?.value
+
+────────────────────
++ do poke
+    - n Int
+
+inner?.value = n
+this.inner?.value = n + 1
+```
+
+```output
+unknown
+1
+8
+hello 8
+```
+
+### An assignment of an optional after `?` gives what the place then holds, as the type of the place.
+
+```yumi
+. x I32?
+. y Float = 1.5
+. a = y =? x
+-- a
+-- type-of a
+x = 10
+. b = y =? x
+-- b
+-- type-of b
+-- y
+. n Int?
+. c = y +=? n
+-- c
+-- type-of c
+n = 2
+. d = y +=? n
+-- d
+-- type-of d
+-- y
+```
+
+```output
+1.5
+[TypeInfo F64]
+10
+[TypeInfo I32]
+10
+10
+[TypeInfo F64]
+12
+[TypeInfo F64]
+12
+```
+
+### An assignment after `?` of what a call gives stores only where it holds a value.
+
+```yumi
+. x Int?
+. y Float = 1.5
+. a = y =? pick(false)
+-- a
+-- type-of a
+. b = y =? pick(true)
+-- b
+-- type-of b
+-- y
+. c = y +=? pick(false)
+-- c
+-- type-of c
+. d = y +=? pick(true)
+-- d
+-- type-of d
+-- y
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick I32?
+    - really Bool
+
+-- "pick $really"
+if really
+    = 9
+= null
+```
+
+```output
+pick false
+1.5
+[TypeInfo F64]
+pick true
+9
+[TypeInfo F64]
+9
+pick false
+9
+[TypeInfo F64]
+pick true
+18
+[TypeInfo F64]
+18
+```
+
+### A property, a field, a global and a text are assigned after `?` only where the value holds one.
+
+```yumi
+. foo = Foo()
+. x Int?
+foo.bar =? x
+-- foo.bar
+foo.bar +=? x
+-- foo.bar
+x = 4
+foo.bar =? x
+-- foo.bar
+foo.bar +=? pick(true)
+-- foo.bar
+foo.bar +=? pick(false)
+-- foo.bar
+foo.ratio =? pick(true)
+-- foo.ratio
+foo.maybe =? pick(false)
+-- foo.maybe
+foo.maybe =? pick(true)
+-- foo.maybe
+. p = Point(1, 2)
+p.x =? pick(false)
+p.y =? pick(true)
+-- p.x
+-- p.y
+total =? pick(false)
+-- total
+total =? pick(true)
+-- total
+total +=? pick(true)
+-- total
+. t = "a"
+t =? word(false)
+-- t
+t =? word(true)
+-- t
+t +=? word(true)
+-- t
+t +=? word(false)
+-- t
+_ total = 100
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick I32?
+    - really Bool
+
+-- "pick $really"
+if really
+    = 9
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do word String?
+    - really Bool
+
+if really
+    = "w"
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 1
++ ratio Float = 0.5
++ maybe Int?
+```
+
+```output
+1
+1
+4
+pick true
+13
+pick false
+13
+pick true
+9
+pick false
+unknown
+pick true
+9
+pick false
+pick true
+1
+9
+pick false
+100
+pick true
+9
+pick true
+18
+a
+w
+ww
+ww
+```
+
+### A list takes an item after `?` only where the item holds one, as from `catch?`.
+
+```yumi
+. found = List'Int()
+for n in [1, -2, 3]
+    found +=? catch? doubled(n)
+-- found
+
+━━━━━━━━━━━━━━━━━━━━
+_ do doubled Int ?! Error
+    - n Int
+
+?! Error("negative")
+    if n < 0
+= n * 2
+```
+
+```output
+2, 6
+```
+
+### An assignment after `?` in a loop and as a value.
+
+```yumi
+-- run(false)
+-- run(true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - really Bool
+
+. total = 1
+. n = 0
+while n < 3
+    total +=? pick(really && n != 1)
+    n += 1
+. last = total =? pick(really)
+= last + total
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick Int?
+    - really Bool
+
+if really
+    = 9
+= null
+```
+
+```output
+2
+18
+```
+
+### A link written with no `?` after a link that gives an optional reads no property of it.
+
+```yumi crash
+. foo Foo?
+-- foo?.bar.bing
+foo = Foo() as Foo?
+-- foo?.bar.bing
+foo!.bar = Bar()
+-- foo?.bar.bing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar Bar?
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+```
+
+```output
+Exception: Property "bing" is read from Bar?, which may be null; unwrap it first with ! or ?.
+<no file:3>
+    -- foo?.bar.bing
+       ^^^^^^^^^^^^^
+```
+
+### An assigning operator updates a place after a link of an optional chain where the chain holds a value, and skips it where the chain holds none.
+
+```yumi
+. foo Foo?
+foo?.bar.bing += 1
+foo = Foo() as Foo?
+foo?.bar.bing += 1
+-- foo?.bar.bing
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = Bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ bing = 100
+```
+
+```output
+101
+```
+
+### An assigning operator updates an index after a link of an optional chain where the chain holds a value, and skips it where the chain holds none.
+
+```yumi
+. foo Foo?
+foo?.items[0] += 1
+foo = Foo() as Foo?
+foo?.items[0] += 1
+-- foo?.items[0]
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ items = [1, 2, 3]
+```
+
+```output
+2
+```
+
+### An index written after `?` needs an optional to read from.
+
+```yumi crash
+. items = [1, 2, 3]
+-- items?[0]
+```
+
+```output
+Exception: "items" is [I64], which is never null, so it needs no "?"; write "items[0]"
+<no file:3>
+    -- items?[0]
+       ^^^^^^^^^
+```
+
+### A property assigned after `?` needs an optional to read from.
+
+```yumi crash
+. foo Foo
+foo?.bar = 2
+-- foo.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ bar = 1
+```
+
+```output
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.bar"
+<no file:3>
+    foo?.bar = 2
+    ^^^^^^^^
+```
+
+### An index assigned after `?` needs an optional to read from.
+
+```yumi crash
+. items = [1, 2, 3]
+items?[0] = 5
+-- items[0]
+```
+
+```output
+Exception: "items" is [I64], which is never null, so it needs no "?"; write "items[0]"
+<no file:3>
+    items?[0] = 5
+    ^^^^^^^^^
+```
+
+### Optional compared with a value by the == its class declares
+
+```yumi
+. a Foo? = null
+. b = Foo(1)
+. c Foo? = Foo(1)
+. d Foo? = Foo(2)
+-- c == b
+-- b == c
+-- c != b
+-- d == b
+-- b != d
+-- c == d
+-- c == c
+-- c != d
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ this == other Foo
+
+x == other.x
+```
+
+```output
+true
+true
+false
+false
+true
+false
+true
+true
+```
+
+### An optional that holds nothing is not equal to a value, whatever == its class declares
+
+```yumi
+. a Foo? = null
+. b = Foo(1)
+-- "start"
+-- a == b
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ this == other Foo
+
+x == other.x
+```
+
+```output
+start
+false
+```
+
+### Two optionals that hold nothing are equal without the == their class declares
+
+```yumi
+. a Foo? = null
+. n Foo? = null
+-- "start"
+-- a == n
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ this == other Foo
+
+x == other.x
+```
+
+```output
+start
+true
+```
+
+### Optionals of a class compared as the objects they hold
+
+```yumi
+. box = Box()
+. other = Box()
+. a Box? = null
+. n Box? = null
+. p Box? = box
+. q Box? = other
+-- a == n
+-- a == box
+-- box == a
+-- p == box
+-- box == p
+-- p == q
+-- p != q
+-- p == p
+-- a != p
+-- p != a
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int = 1
+```
+
+```output
+true
+false
+false
+true
+true
+false
+true
+true
+true
+true
+```
+
+### Optionals of different numbers are compared as numbers and never both empty
+
+```yumi
+. a Int? = null
+. b I8? = null
+. c Int? = 5
+. d I8? = 5
+. f Float = 5.0
+. u U64? = 5
+. m Int? = -1
+. w U64? = 18446744073709551615
+-- a == b
+-- c == d
+-- d == c
+-- a == d
+-- c == f
+-- f == c
+-- a == f
+-- c == u
+-- m == w
+-- w == m
+-- c != d
+-- a != b
+```
+
+```output
+false
+true
+true
+false
+true
+true
+false
+true
+false
+false
+false
+true
+```
+
+### Optionals of text and of atoms compared
+
+```yumi
+. a String? = null
+. n String? = null
+. s String? = "hi"
+. t String? = "h" ++ "i"
+. plain = "hi"
+-- a == n
+-- a == plain
+-- plain == a
+-- s == plain
+-- plain == s
+-- s == t
+-- s != t
+-- a != s
+-- s == "hi"
+-- "ho" == s
+. x Atom? = "name" as Atom
+. y Atom? = "name" as Atom
+. z Atom? = null
+. k = "name" as Atom
+-- x == y
+-- x != y
+-- x == z
+-- z == z
+-- x == k
+-- k == x
+-- z == k
+```
+
+```output
+true
+false
+false
+true
+true
+true
+false
+true
+true
+false
+true
+false
+false
+true
+true
+true
+false
+```
+
+### Optionals of tuples compared field by field
+
+```yumi
+. a (Int, Int)? = null
+. n (Int, Int)? = null
+. p (Int, Int)? = (1, 2)
+. q = (1, 2)
+-- a == n
+-- a == p
+-- p == q
+-- q == p
+-- p != q
+-- a == q
+-- q != a
+```
+
+```output
+true
+false
+true
+true
+false
+false
+true
+```
+
+### Optional tuple that holds nothing compared with a tuple that declares ==
+
+```yumi
+. absent Point2? = null
+. present = Point2(1, 2)
+-- "start"
+-- absent != present
+-- absent == present
+-- present != absent
+. other Point2? = Point2(1, 2)
+-- other != present
+-- other == present
+-- present == other
+
+━━━━━━━━━━━━━━━━━━━━
++ Point2 is Tuple
+
++ x Int
++ y Int
+
+────────────────────
++ this == other Point2
+
+x == other.x && y == other.y
+```
+
+```output
+start
+true
+false
+true
+false
+true
+true
+```
+
+### A comparison with an optional is false where it holds nothing, and otherwise calls == on what it holds: on the right one's where both are optional
+
+```yumi
+. a Foo? = Foo(1)
+. b Foo? = Foo(2)
+. c = Foo(3)
+. n Foo? = null
+-- a == b
+-- b == a
+-- a != b
+-- a == c
+-- c == a
+-- c != a
+-- n == a
+-- a == n
+-- n != n
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ do this == other Foo
+
+-- "eq $x with ${other.x}"
+= x == other.x
+```
+
+```output
+eq 2 with 1
+false
+eq 1 with 2
+false
+eq 2 with 1
+true
+eq 1 with 3
+false
+eq 1 with 3
+false
+eq 1 with 3
+true
+false
+false
+false
+```
+
+### An optional number is ordered against a number only once it is unwrapped
+
+```yumi compile-error
+. limit Int? = 3
+. count = 1
+-- count < limit
+```
+
+```output
+Exception: Operator "<" is not defined for I64 and I64?
+<no file:4>
+    -- count < limit
+       ^^^^^^^^^^^^^
+```
+
+### Floats of two widths compare in the wider of the two, whether or not either is optional
+
+```yumi
+. x F64 = 0.1
+. y F32? = 0.1
+. z F64? = 0.1
+. w F32 = 0.1
+-- x == y
+-- y == x
+-- z == w
+-- w == z
+-- y == z
+-- z == y
+-- x != y
+-- z != w
+. i Int? = 16777217
+. f F32 = 16777216.0
+-- i == f
+-- f == i
+. g F32? = 16777216.0
+-- i == g
+-- g == i
+```
+
+```output
+false
+false
+false
+false
+false
+false
+true
+true
+true
+true
+true
+true
+```
+
+### Optional comparison evaluates each operand once in order
+
+```yumi
+. p = Pair(1, 2)
+-- first() == second()
+-- first() != second()
+-- second() == first()
+-- hold(p) == bump(p)
+-- hold(p) == hold(p)
+. count = 0
+. o Int? = 1
+-- o == step()
+-- step() == o
+-- o != step()
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Struct
+
++ a Int
++ b Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do first Int?
+
+-- "first"
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do second Int?
+
+-- "second"
+= null
+
+━━━━━━━━━━━━━━━━━━━━
++ do hold Pair?
+    - pair Pair
+
+-- "hold"
+= pair
+
+━━━━━━━━━━━━━━━━━━━━
++ do bump Pair?
+    - pair Pair
+
+-- "bump"
+= Pair(pair.a + 1, pair.b)
+
+━━━━━━━━━━━━━━━━━━━━
++ do step Int
+
+-- "step"
+= 1
+```
+
+```output
+first
+second
+false
+first
+second
+true
+second
+first
+false
+hold
+bump
+false
+hold
+hold
+true
+step
+true
+step
+true
+step
+false
+```
+
+### Optional enums and unions compared
+
+```yumi
+. a Level? = null
+. h Level? = Level.high
+. l = Level.low
+-- a == h
+-- h == Level.high
+-- Level.low == h
+-- a == l
+-- a != l
+-- h != l
+-- h == h
+-- a == a
+. t Shape? = Shape.round
+. u Shape? = null
+. v = Shape.square
+-- t == u
+-- t == v
+-- t == .round
+-- .round == t
+-- u == .round
+-- u != .round
+-- t != v
+-- u == u
+-- t == t
+
+━━━━━━━━━━━━━━━━━━━━
++ Level is Int
+
+| low = 1
+| high = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| butt
+| round
+| square
+```
+
+```output
+false
+true
+false
+false
+true
+true
+true
+true
+false
+false
+true
+true
+false
+true
+true
+true
+true
+```
+
+### Optional comparison through a declared != and a declared ==
+
+```yumi
+. a Foo? = Foo(1)
+. b Foo? = Foo(1)
+. n Foo? = null
+-- a == b
+-- a != b
+-- n == a
+-- n != a
+-- n == n
+-- n != n
+. c Bar? = Bar(1)
+. d Bar? = Bar(1)
+. e Bar? = Bar(2)
+. m Bar? = null
+-- c == d
+-- c != d
+-- c == e
+-- c != e
+-- m != c
+-- m == m
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ do this != other Foo
+
+-- "ne"
+= x != other.x
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ do this == other Bar
+
+-- "bar eq"
+= x == other.x
+
+────────────────────
++ do this != other Bar
+
+-- "bar ne"
+= true
+```
+
+```output
+ne
+true
+ne
+false
+false
+true
+true
+false
+bar eq
+true
+bar eq
+false
+bar eq
+false
+bar eq
+true
+true
+true
+```
+
+### Optional comparison as a condition and of properties
+
+```yumi
+. a Int? = 3
+. b Int? = null
+. c Int? = 3
+if a == c
+    -- "a is c"
+if a == b
+    -- "a is b"
+else
+    -- "a is not b"
+if a != b && a == c && b != c
+    -- "chain"
+. same = a == c
+. differ = a != c
+-- same
+-- differ
+-- check(a, c)
+-- check(a, b)
+-- check(b, b)
+-- (if a == c then 1 else 2)
+while a != c
+    -- "never"
+. box = Box()
+-- box.value == a
+-- box.value != box.other
+-- box.other == box.other
+box.other = 3
+-- box.other == a
+-- box.missing() == box.value
+-- box.missing() == box.missing()
+
+━━━━━━━━━━━━━━━━━━━━
++ check String
+    - left Int?
+    - right Int?
+
+if left == right then "same" else "differ"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ value Int? = 3
++ other Int? = null
+
+────────────────────
++ missing Int?
+
+null
+```
+
+```output
+a is c
+a is not b
+chain
+true
+false
+same
+differ
+same
+1
+true
+true
+true
+true
+false
+true
+```
+
+### Optional structs and mixed optionals compared
+
+```yumi
+. a (Int, Int)? = (1, 2)
+. b (Int, String)? = (1, "2")
+. s Rec? = Rec(1, 2)
+. t Rec? = Rec(1, 2)
+. u Rec? = null
+. r = Rec(1, 3)
+-- s == t
+-- s != t
+-- s == u
+-- u == u
+-- s == r
+-- r == s
+-- r != u
+. x String? = "a"
+. k Atom? = "a" as Atom
+. i Int? = 1
+. j I8? = 1
+. e U8? = null
+. o I8? = null
+-- i == j
+-- e == o
+-- j == i
+-- o != e
+
+━━━━━━━━━━━━━━━━━━━━
++ Rec is Struct
+
++ a Int
++ b Int
+```
+
+```output
+true
+false
+false
+true
+false
+false
+true
+true
+false
+true
+true
+```
+
+### Optional compared by an == that takes an optional
+
+```yumi
+. a Foo? = null
+. b = Foo(1)
+. c Foo? = Foo(2)
+-- b == a
+-- a == b
+-- a != b
+-- c == b
+-- b == c
+-- a == c
+-- c == a
+-- c == c
+-- a == a
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
++ x Int
+
+────────────────────
++ This
+    - x
+
+────────────────────
++ do this == other Foo?
+
+if other
+    -- "eq $x with ${other.x}"
+    = x == other.x
+-- "eq $x with nothing"
+= false
+```
+
+```output
+eq 1 with nothing
+false
+eq 1 with nothing
+false
+eq 1 with nothing
+true
+eq 1 with 2
+false
+eq 1 with 2
+false
+false
+false
+eq 2 with 2
+true
+true
+```
+
+### Optional tuples compared by the == one declares for another
+
+```yumi
+. a Point? = null
+. b = Point(1, 2)
+. c Point? = Point(1, 2)
+. d Other? = Other(1, 2)
+. e Other? = null
+-- a == b
+-- b == a
+-- c == b
+-- c == c
+-- a == a
+-- c == d
+-- d == c
+-- a == e
+-- e == a
+-- a == d
+-- c != e
+-- b == d
+-- d == b
+-- b == e
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Tuple
+
++ x Int
++ y Int
+
+────────────────────
++ do this == other Point
+
+-- "point eq"
+= x == other.x && y == other.y
+
+────────────────────
++ do this == other Other
+
+-- "point eq other"
+= x == other.x && y == other.y
+
+━━━━━━━━━━━━━━━━━━━━
++ Other is Tuple
+
++ x Int
++ y Int
+```
+
+```output
+false
+false
+point eq
+true
+point eq
+true
+true
+point eq other
+true
+point eq other
+true
+true
+true
+false
+true
+point eq other
+true
+point eq other
+true
+false
+```
+
+### An optional number compared with text has no answer.
+
+```yumi crash
+. a Int? = null
+. c Int? = 5
+-- c == "5"
+```
+
+```output
+Exception: Operator "==" is not defined for I64 and String
+<no file:4>
+    -- c == "5"
+       ^^^^^^^^
+```
+
+### Equality pattern over an optional subject
+
+```yumi
+. a Int? = 3
+. n Int? = null
+-- name(a)
+-- name(n)
+-- name(4)
+-- text("a")
+-- text(null)
+-- text("b")
+
+━━━━━━━━━━━━━━━━━━━━
++ name String
+    - value Int?
+
+match value
+    |= 3
+        "three"
+    |= 4
+        "four"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ text String
+    - value String?
+
+match value
+    |= "a"
+        "is a"
+    ??
+        "other"
+```
+
+```output
+three
+other
+four
+is a
+other
+other
+```
+
+### Equality pattern of an optional over an optional subject
+
+```yumi
+. a Int? = 3
+. n Int? = null
+-- pick(a, a)
+-- pick(a, n)
+-- pick(n, n)
+-- pick(n, a)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick String
+    - value Int?
+    - wanted Int?
+
+match value
+    |= wanted
+        "wanted"
+    ??
+        "other"
+```
+
+```output
+wanted
+other
+wanted
+other
+```
+
+### A table of conditions with no else holds nothing where no arm is taken
+
+```yumi
+-- pick(1) ?? "none"
+-- pick(2) ?? "none"
+-- pick(3) ?? "none"
+-- count(true) ?? -1
+-- count(false) ?? -1
+. kept = pick(2)
+-- kept!
+-- type-of pick(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick
+    - n Int
+
+|? n == 1
+    "one"
+|? n == 2
+    "two"
+
+━━━━━━━━━━━━━━━━━━━━
++ count
+    - on Bool
+
+|? on
+    5
+```
+
+```output
+one
+two
+none
+5
+-1
+two
+[TypeInfo Optional'String]
+```
+
+### A table of conditions with no else gives an optional struct and an optional text
+
+```yumi
+-- where(true)!.y
+-- if !where(false) then "none" else "some"
+-- named(true)!
+-- named(false) ?? "anonymous"
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ where
+    - on Bool
+
+|? on
+    Point(1, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ named String?
+    - on Bool
+
+|? on
+    "name"
+```
+
+```output
+2
+none
+name
+anonymous
+```
+
+### A local known to hold a value is tested by && for whether it holds one, not for what it holds
+
+```yumi
+. zero Int? = 0
+. one Int? = 1
+-- present-after(zero, one)
+-- present-after(zero, null)
+-- present-after(null, one)
+-- chain(zero)
+-- chain(one)
+-- chain(null)
+-- text-after("", "x")
+-- text-after(null, "x")
+
+━━━━━━━━━━━━━━━━━━━━
++ present-after Bool
+    - first Int?
+    - second Int?
+
+!first || (first && second)
+
+━━━━━━━━━━━━━━━━━━━━
++ chain String
+    - first Int?
+
+if first && first then "present" else "absent"
+
+━━━━━━━━━━━━━━━━━━━━
++ text-after Bool
+    - first String?
+    - second String?
+
+!first || (first && second)
+```
+
+```output
+true
+false
+true
+present
+present
+absent
+true
+true
+```
+
+### Where a local known to hold zero is tested for holding a value and where for the value
+
+```yumi
+. zero Int? = 0
+-- "n1 ${n1(zero)}"
+-- "n2 ${n2(zero)}"
+-- "n3 ${n3(zero)}"
+-- "n4 ${n4(zero)}"
+-- "n5 ${n5(zero)}"
+-- "n6 ${n6(zero)}"
+-- "n7 ${n7(zero)}"
+-- "n8 ${n8(zero)}"
+-- "n9 ${n9(zero)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n1 String
+    - first Int?
+
+if first
+    if first
+        = "held"
+    = "lost"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n2 String
+    - first Int?
+
+if !first
+    = "absent"
+if first
+    = "held"
+= "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n3 String
+    - first Int?
+
+if first
+    if first && true
+        = "held"
+    = "lost"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n4 String
+    - first Int?
+
+if first
+    if !first
+        = "denied"
+    = "kept"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n5 String
+    - first Int?
+
+if first
+    if !!first
+        = "held"
+    = "lost"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n6 String
+    - first Int?
+
+if first
+    . turns = 0
+    while first
+        turns += 1
+        if turns == 2
+            break
+    = "turns $turns"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n7 String
+    - first Int?
+
+if !first
+    = "absent"
+. turns = 0
+while first
+    turns += 1
+    if turns == 2
+        break
+= "turns $turns"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n8 String
+    - first Int?
+
+if first
+    =? "held" if first
+    = "lost"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n9 String
+    - first Int?
+
+if first
+    . kept = first || false
+    = "kept $kept"
+= "none"
+```
+
+```output
+n1 lost
+n2 lost
+n3 held
+n4 kept
+n5 held
+n6 turns 2
+n7 turns 2
+n8 held
+n9 kept true
+```
+
+### Conditions that test what a local known to hold a value holds
+
+```yumi
+. zero Int? = 0
+. five Int? = 5
+-- "n1 ${n1(zero)} ${n1(five)}"
+-- "n2 ${n2(zero)} ${n2(five)}"
+-- "w1 ${w1(zero)} ${w1(five)}"
+-- "a1 ${a1(zero)}"
+. raising = do new
+    -- "a1 ${a1(five)}"
+catch failure
+    -- "a1 $failure"
+raising.wait()
+-- "t1 ${t1(zero)} ${t1(five)}"
+-- "t2 ${t2(zero)} ${t2(five)}"
+-- "e1 ${e1(zero)} ${e1(five)}"
+-- "q1 ${q1(zero) ?? "none"} ${q1(five) ?? "none"}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n1 String
+    - first Int?
+
+if first
+    if first
+        = "held"
+    = "lost"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do n2 String
+    - first Int?
+
+if !first
+    = "absent"
+if first
+    = "held"
+= "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ do w1 String
+    - first Int?
+
+if first
+    . wrapped = "w" if first
+    = wrapped ?? "unwrapped"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do a1 String
+    - first Int?
+
+if first
+    ?! Panic("raised")
+        if first
+    = "passed"
+= "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ do t1 String
+    - first Int?
+
+if !first
+    = "absent"
+|? first
+    = "held"
+= "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ t2 String
+    - first Int?
+
+|? !first
+    "absent"
+|? first
+    "held"
+??
+    "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ do e1 String
+    - first Int?
+
+if !first
+    = "absent"
+else if first
+    = "held"
+= "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ do q1 String?
+    - first Int?
+
+if first
+    = if first then null else "value"
+= "none"
+```
+
+```output
+n1 lost held
+n2 lost held
+w1 unwrapped w
+a1 passed
+a1 raised
+t1 lost held
+t2 lost held
+e1 lost held
+q1 value none
+```
+
+### Operators that test whether a local known to hold a value holds one
+
+```yumi
+. zero Int? = 0
+. five Int? = 5
+-- "f1 ${f1(zero)} ${f1(five)}"
+-- "f2 ${f2(zero)} ${f2(five)}"
+-- "f4 ${f4(zero)} ${f4(five)}"
+-- "f5 ${f5(zero)} ${f5(five)}"
+-- "f6 ${f6(zero) ?? "none"} ${f6(five) ?? "none"}"
+-- "f7 ${f7(zero) ?? "none"} ${f7(five) ?? "none"}"
+-- "m2 ${m2(zero)} ${m2(five)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do f1 String
+    - first Int?
+
+if !first
+    = "absent"
+. denied = !first
+= "denied $denied"
+
+━━━━━━━━━━━━━━━━━━━━
++ do f2 String
+    - first Int?
+
+if !first
+    = "absent"
+. either = first || false
+= "either $either"
+
+━━━━━━━━━━━━━━━━━━━━
++ do f4 String
+    - first Int?
+
+if !first
+    = "absent"
+= if first then "yes" else "no"
+
+━━━━━━━━━━━━━━━━━━━━
++ do f5 String
+    - first Int?
+
+if !first
+    = "absent"
+. pair = first && true
+= "pair $pair"
+
+━━━━━━━━━━━━━━━━━━━━
++ do f6 String?
+    - first Int?
+
+if !first
+    = "absent"
+= "w" if first
+
+━━━━━━━━━━━━━━━━━━━━
++ do f7 String?
+    - first Int?
+
+if !first
+    = "absent"
+= if first then null else "value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do m2 String
+    - first Int?
+
+. seen = ""
+if first != null
+    if first
+        seen = "truthy"
+    else
+        seen = "falsy"
+= seen
+```
+
+```output
+f1 denied false denied false
+f2 either true either true
+f4 no yes
+f5 pair true pair true
+f6 none w
+f7 value none
+m2 falsy truthy
+```
+
+### Arms that give null and a value under an optional the function declares, and a tuple held under other names
+
+```yumi
+-- find(0) ?? -100
+-- find(20) ?? -100
+-- find(5) ?? -100
+-- look(0) ?? -100
+-- look(20) ?? -100
+-- look(5) ?? -100
+-- named(Kind.pair(3, "three"))!.label
+-- named(Kind.pair(3, "three"))!.count
+-- if !named(.empty) then "none" else "some"
+-- loose(Kind.pair(4, "four"))!.label
+-- if !loose(.empty) then "none" else "some"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is Union
+
+| empty
+| pair(count Int, label String)
+
+━━━━━━━━━━━━━━━━━━━━
++ find Int?
+    - n Int
+
+match n
+    | 0
+        null
+    | {it > 10}
+        it
+    ??
+        -1
+
+━━━━━━━━━━━━━━━━━━━━
++ look
+    - n Int
+
+match n
+    | 0
+        null
+    | {it > 10}
+        it
+    ??
+        -1
+
+━━━━━━━━━━━━━━━━━━━━
++ named (count Int, label String)?
+    - kind Kind
+
+match kind
+    | .empty
+        null
+    | .pair(count, label)
+        (count, label)
+
+━━━━━━━━━━━━━━━━━━━━
++ loose (count Int, label String)?
+    - kind Kind
+
+match? kind
+    | .pair(count, label)
+        (count, label)
+```
+
+```output
+-100
+20
+-1
+-100
+20
+-1
+three
+3
+none
+four
+none
+```
+
+### An optional made with no value holds nothing
+
+```yumi
+. none = Optional'Int()
+-- none ?? -1
+. some = Optional'Int(4)
+-- some ?? -1
+. text = Optional'String()
+-- text ?? "(no text)"
+. thing = Optional'Thing()
+-- if thing then thing.n else 0
+. flags = [Optional'Bool(true), Optional'Bool(), Optional'Bool(false)]
+for flag in flags
+    -- if flag != null then "set" else "unset"
+for value in [Optional'Int(1), Optional'Int(), Optional'Int(3)] when value
+    -- value + 1
+-- absent() ?? 9
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ n = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ absent Int?
+
+Optional'Int()
+```
+
+```output
+-1
+4
+(no text)
+0
+set
+unset
+set
+2
+4
+9
+```
+
+### use? of an optional the flow knows holds a value uses it.
+
+```yumi
+. t Thing? = null
+. a = use? t
+-- a == null
+t = Thing(4)
+. b = use? t
+-- b!.n
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ n = 0
+
+────────────────────
++ This
+    - n
+
+-- "hello $n"
+
+────────────────────
++ begin-using
+
+this
+
+────────────────────
++ do end-using
+
+-- "bye $n"
+```
+
+```output
+true
+hello 4
+4
+bye 4
+```
+
+### A fallback on an optional already known to be present yields the optional's own value.
+
+```yumi
+-- inline("-", "-")
+-- inline("-", "+")
+-- inline("", "")
+-- bound("-", "-")
+-- lazy("-", "-")
+-- lazy("", "")
+-- chosen("-")
+-- chosen("")
+-- passed("-")
+-- widened("-") ?? "none"
+-- counted(0)
+-- counted(4)
+
+━━━━━━━━━━━━━━━━━━━━
+_ pick String?
+    - value String
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
+_ same String
+    - value String
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
+_ number Int?
+    - value Int
+
+value
+
+━━━━━━━━━━━━━━━━━━━━
+_ inline Bool
+    - value String
+    - mark String
+
+raw != null && (raw ?? "fallback") == mark
+
+.. raw = pick(value)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do bound Bool
+    - value String
+    - mark String
+
+. raw = pick(value)
+= raw != null && (raw ?? "fallback") == mark
+
+━━━━━━━━━━━━━━━━━━━━
+_ lazy Bool
+    - value String
+    - mark String
+
+raw != null && text == mark
+
+.. raw = pick(value)
+.. text = raw ?? "fallback"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do chosen String
+    - value String
+
+. raw = pick(value)
+if raw != null
+    = raw ?? "fallback"
+= "null"
+
+━━━━━━━━━━━━━━━━━━━━
+_ passed String
+    - value String
+
+if raw != null then text else "null"
+
+.. raw = pick(value)
+.. text = same(raw ?? "fallback")
+
+━━━━━━━━━━━━━━━━━━━━
+_ do widened String?
+    - value String
+
+. raw = pick(value)
+. other String? = null
+if raw != null
+    = raw ?? other
+= null
+
+━━━━━━━━━━━━━━━━━━━━
+_ do counted Int
+    - value Int
+
+. raw = number(value)
+if raw != null
+    = raw ?? 9
+= -1
+```
+
+```output
+true
+false
+true
+true
+true
+true
+-
+
+-
+-
+0
+4
+```
+
+### A local declared as an optional atom with no value holds none.
+
+```yumi
+/core/atom-pool
+
+. pool = AtomPool()
+-- pick(pool, ["a", "task", "b"])
+-- pick(pool, ["a"])
+
+━━━━━━━━━━━━━━━━━━━━
++ do pick String
+    - pool AtomPool
+    - names [String]
+
+. found Atom?
+for name in names
+    if name == "task"
+        found = pool.store(name)
+= found?.text ?? "none"
+```
+
+```output
+task
+none
+```
+
+### An optional object is cast to a pointer to the object it holds.
+
+```yumi
+. u = Thing()
+. t Thing? = u
+-- t as Pointer == u as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+```
+
+```output
+true
+```
+
+### A `|?` line with no body gives what its condition tested, which is evaluated again for it.
+
+```yumi
+. counter = Counter()
+-- kind(counter, "b") ?? 9
+-- kind(counter, "z") ?? 9
+-- counter.count
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ count Index = 0
+
+────────────────────
++ do same Bool
+    - left String
+    - right String
+
+count += 1
+= left == right
+
+━━━━━━━━━━━━━━━━━━━━
++ kind U8?
+    - counter Counter
+    - name String
+
+|? 1 if name == "a"
+|? 2 if counter.same(name, "b")
+?? null
+```
+
+```output
+2
+9
+3
+```
+
+### An optional atom field of a tuple, once a test finds it holds a value, is read as the atom it holds, and still is after it is compared with an optional atom.
+
+```yumi
+/core/atom-pool
+
+
+. pool = AtomPool()
+. box Atom? = pool.store("box")
+. lid Atom? = pool.store("lid")
+. a = check(Square(pool.store("box")), box, lid)
+. b = check(Square(null), box, lid)
+. c = check(Square(pool.store("lid")), box, lid)
+. d = check(Square(pool.store("cap")), box, lid)
+-- "$a $b $c $d"
+
+━━━━━━━━━━━━━━━━━━━━
++ check Bool
+    - row Square
+    - first Atom?
+    - second Atom?
+
+|? !row.name
+    false
+??
+    row.name == first || row.name == second
+
+━━━━━━━━━━━━━━━━━━━━
++ Square is Tuple
+
++ name Atom?
+```
+
+```output
+true false true false
+```
+
+### `??` after a value that is always nothing gives the value after it.
+
+```yumi
+-- pick(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Int
+    - value
+
+value ?? 5
+```
+
+```output
+5
+```
+
+### A choice of two values gives the value its condition chooses even when that value is nothing; the other value is not tried in its place.
+
+```yumi
+show(7, get(3))
+show(7)
+show(9, get(-1))
+show(9, get(4))
+both(5, get(4))
+both(null, get(4))
+both(null, get(3))
+both(6)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - owner Int
+    - variable Int? = null
+
+. bound = if variable then lookup(variable) else owner
+-- "bound ${bound ?? -100}"
+
+━━━━━━━━━━━━━━━━━━━━
++ get Int?
+    - n Int
+
+n if n > 0
+
+━━━━━━━━━━━━━━━━━━━━
++ lookup Int?
+    - n Int
+
+|? found && n != 4
+    n * 10
+??
+    null
+
+.. found = n > 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do both
+    - owner Int?
+    - variable Int? = null
+
+. bound = if variable then lookup(variable) else owner
+-- "both ${bound ?? -100}"
+```
+
+```output
+bound 30
+bound 7
+bound 9
+bound -100
+both -100
+both -100
+both 30
+both 6
+```
+
+### `??` after a value written with `if` is refused, since it reads as a choice of two values without being one.
+
+```yumi crash
+. ready = true
+-- 1 if ready ?? 2
+```
+
+```output
+Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
+<no file:3>
+    -- 1 if ready ?? 2
+       ^^^^^^^^^^^^^^^
+```
+
+### `??` after a value written with `if` is refused when parentheses hold the value.
+
+```yumi crash
+. ready = true
+-- (1 if ready) ?? 2
+```
+
+```output
+Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
+<no file:3>
+    -- (1 if ready) ?? 2
+       ^^^^^^^^^^^^^^^^^
+```
+
+### `??` after a chain whose last value is written with `if` is refused.
+
+```yumi crash
+. ready = true
+. held Int? = null
+-- held ?? 1 if ready ?? 2
+```
+
+```output
+Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
+<no file:4>
+    -- held ?? 1 if ready ?? 2
+       ^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Conditions alone with no else give an optional, which a function of a type that is no optional does not return.
+
+```yumi crash
+-- name(2)
+
+━━━━━━━━━━━━━━━━━━━━
+_ name String
+    - n Int
+
+|? "two" if n == 2
+|? "three" if n == 3
+```
+
+```output
+Exception: Expected String here, but this is String?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
+<no file:8>
+    |? "two" if n == 2
+    ^^^^^^^^^^^^^^^^^^
+```
+
+### A getter a condition tests for a value is called again where it is read after the test, and `!` takes what that call answers.
+
+```yumi
+. rock = Rock()
+rock.held-by = Pit()
+-- rock.describe()
+rock.held-by = Rock()
+-- rock.describe()
+rock.held-by = null
+-- rock.describe()
+
+━━━━━━━━━━━━━━━━━━━━
++ Hole is Interface
+
+────────────────────
++ do depth I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ held-by Thing?
+
+────────────────────
++ do get holder Thing?
+
+= held-by
+
+━━━━━━━━━━━━━━━━━━━━
++ Rock is Thing
+
+────────────────────
++ do describe String
+
+if holder != null && holder! is Hole
+    = "in a hole ${(holder! as Hole).depth()}"
+= if holder != null then "held" else "free"
+
+━━━━━━━━━━━━━━━━━━━━
++ Pit is Thing
+    is Hole
+
+────────────────────
++ do depth I32
+
+= 3
+```
+
+```output
+in a hole 3
+held
+free
+```
+
+```yumi
+. holder = Holder()
+holder.add(1)
+holder.run = Run()
+holder.add(2)
+holder.add(3)
+-- holder.run!.reported.length
+
+━━━━━━━━━━━━━━━━━━━━
++ Run
+
++ reported [Int]
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ run Run?
+
+────────────────────
++ do add
+    - value Int
+
+run?.reported += value
+```
+
+```output
+2
+```
+
+```yumi
+. found = catch? load(true)
+-- found?.name ?? "none"
+. missing = catch? load(false)
+-- missing?.name ?? "none"
+-- (catch? load(false)) == null
+. failed = catch? fail()
+-- failed?.name ?? "failed"
+
+━━━━━━━━━━━━━━━━━━━━
++ Config
+
++ name = "config"
+
+━━━━━━━━━━━━━━━━━━━━
++ do load Config? ?! Error
+    - exists Bool
+
+=? null if !exists
+= Config()
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail Config? ?! Error
+
+?! Error("missing")
+```
+
+```output
+config
+none
+true
+failed
+```
+
+```yumi
+. found = match? "[n]"
+    ~ value Val
+        "matched"
+
+-- found ?? "none"
+
+━━━━━━━━━━━━━━━━━━━━
++ Val is Union
+
+| Null
+| [Val]
+
+────────────────────
++ This ~ Char
+
+~ \value
+
+.. blank ~
+    ~ "n"
+        null
+.. array ~
+    ~ "[" items \delimited(~ ",", ~ \value) "]"
+        items
+.. value Val ~
+    ~ \blank | \array
+```
+
+```output
+matched
+```
+
+### A literal in an optional choice with null takes the declared optional type.
+
+```yumi
+. flag = true
+. chosen I32? = if flag then 5 else null
+-- chosen ?? 0
+```
+
+```output
+5
+```

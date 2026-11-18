@@ -1,0 +1,1864 @@
+# Enums
+
+```yumi
+-- Foo.bar
+-- Foo.baz
+-- 0 as Foo == Foo.bar
+-- 1 as Foo == Foo.baz
+-- 0 as Foo == Foo.baz
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar
+| baz
+
+`-----
+`+ to String
+
+`"Foo $number"
+```
+
+```output
+[Object __source__:Foo]
+[Object __source__:Foo]
+true
+true
+false
+```
+
+```yumi
+-- Foo.bar
+-- Foo.baz
+-- 0 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is (a Int, b String)
+
+| bar = (1, "BAR")
+| baz = (2, "BAZ")
+
+────────────────────
++ to String
+
+b
+```
+
+```output
+BAR
+BAZ
+BAR
+```
+
+```yumi
+. value Foo = Foo.baz
+-- match value
+    |= Foo.bar
+        "bar"
+    |= Foo.baz
+        "baz"
+    ??
+        "unknown"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is (a Int, b String)
+
+| bar = (1, "BAR")
+| baz = (2, "BAZ")
+
+────────────────────
++ to String
+
+b
+```
+
+```output
+baz
+```
+
+```yumi
+-- Foo.bar
+-- Foo.baz
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Int
+
+| bar
+| baz
+```
+
+```output
+0
+1
+```
+
+```yumi
+. value Foo = Foo.baz
+-- match value
+    |= .bar
+        "bar"
+    |= .baz
+        "baz"
+    |= .qux
+        "qux"
+    ??
+        "unknown"
+-- match Foo.qux
+    |= Foo.bar
+        "bar"
+    |= Foo.baz
+        "baz"
+    |= Foo.qux
+        "qux"
+    ??
+        "unknown"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Int
+
+| bar
+| baz
+| qux
+```
+
+```output
+baz
+qux
+```
+
+```yumi crash
+-- match Foo.bar
+    | .bar
+        "union case"
+    ??
+        "fallback"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is U8
+
+| bar
+| baz
+```
+
+```output
+Exception: Foo.bar is an enum value, not a union case; match it with '|= .bar'
+<no file:3>
+        | .bar
+          ^^^^
+```
+
+```yumi
+-- Foo.bar
+-- Foo.baz
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo is Float
+
+| bar
+| baz
+```
+
+```output
+0
+1
+```
+
+```yumi
+-- Foo.bar
+-- 0 as Foo
+-- 0 as Foo == Foo.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+
++ name String
+
+────────────────────
++ This
+    - name String
+
+────────────────────
++ to String
+
+"[Foo $name]"
+```
+
+```output
+[Foo hello]
+[Foo hello]
+true
+```
+
+```yumi crash
+-- Foo.bar
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+```
+
+```output
+Exception: Expected Foo here, but this is String, and there is no conversion between them
+<no file:7>
+    | bar = "hello"
+            ^^^^^^^
+```
+
+### U8 enum values match with value patterns, including inside the enum's own methods.
+
+```yumi
+for kind in [Kind.first, Kind.second, Kind.third]
+    -- kind.label
+    -- describe(kind)
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - kind Kind
+
+match kind
+    |= .first
+        "one"
+    |= Kind.second
+        "two"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| first
+| second
+| third
+
+────────────────────
++ get label
+
+match this
+    |= .first
+        "one"
+    |= .second
+        "two"
+    ??
+        "other"
+```
+
+```output
+one
+one
+two
+two
+other
+other
+```
+
+### Values of enums of a number, a tuple and a class, named, compared and matched
+
+```yumi
+-- Level.low
+-- Level.high
+-- Level.low == Level.low
+-- Level.low == Level.high
+-- rank(.low)
+-- rank(.mid)
+-- rank(Level.high)
+. picked Level = .mid
+-- picked
+-- Tone.warm
+-- Tone.cool.name
+-- Tone.warm == Tone.cool
+-- Mark.plain.label
+-- Mark.bold.label
+-- Mark.plain == Mark.plain
+-- Mark.plain == Mark.bold
+
+━━━━━━━━━━━━━━━━━━━━
++ rank Int
+    - level Level
+
+match level
+    |= .low
+        1
+    |= Level.mid
+        2
+    ??
+        3
+
+━━━━━━━━━━━━━━━━━━━━
++ Level is U8
+
+| low
+| mid
+| high
+
+━━━━━━━━━━━━━━━━━━━━
++ Tone is (heat Int, name String)
+
+| warm = (30, "warm")
+| cool = (5, "cool")
+
+────────────────────
++ to String
+
+"tone $name $heat"
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
+| plain = "p"
+| bold = "b"
+
++ label String
+
+────────────────────
++ This
+    - label String
+```
+
+```output
+0
+2
+true
+false
+1
+2
+3
+1
+tone warm 30
+cool
+false
+p
+b
+true
+false
+```
+
+### Number converted to an enum of a class by its place
+
+```yumi
+-- 0 as Foo
+-- 1 as Foo
+-- 2 as Foo
+-- -1 as Foo
+. n = 1
+-- n as Foo
+. wide I64 = 0
+-- wide as Foo
+. small U8 = 1
+-- small as Foo
+-- (5 as Foo).name
+-- (0 as Foo) == Foo.bar
+-- take(0 as Foo)
+-- take(7 as Foo)
+
+━━━━━━━━━━━━━━━━━━━━
++ take String
+    - foo Foo
+
+"took ${foo.name}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+| baz = "there"
+
++ name String = "made"
+
+────────────────────
++ This
+    - name String = "none"
+
+────────────────────
++ to String
+
+"[Foo $name]"
+```
+
+```output
+[Foo hello]
+[Foo there]
+[Foo none]
+[Foo none]
+[Foo there]
+[Foo hello]
+[Foo there]
+none
+true
+took hello
+took none
+```
+
+### A number becomes an enum of a class only when asked
+
+```yumi compile-error
+. place = 1
+. chosen Foo = place
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+| baz = "there"
+```
+
+```output
+Exception: Expected Foo here, but this is I64, which becomes Foo only when asked; write "as Foo"
+<no file:3>
+    . chosen Foo = place
+             ^^^
+```
+
+### Number converted to an enum of a tuple by its place
+
+```yumi
+-- 0 as Pair
+-- 1 as Pair
+-- 3 as Pair
+-- (1 as Pair).b
+-- (4 as Pair).a
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is (a Int, b String)
+
+| one = (1, "ONE")
+| two = (2, "TWO")
+
+────────────────────
++ to String
+
+"$a $b"
+```
+
+```output
+1 ONE
+2 TWO
+0 
+TWO
+0
+```
+
+### Number past the values of an enum constructs it with nothing
+
+```yumi
+-- 0 as Foo
+-- 2 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+| baz = "there"
+
++ name String
+
+────────────────────
++ This
+    - name String
+
+────────────────────
++ to String
+
+"[Foo $name]"
+```
+
+```output
+[Foo hello]
+[Foo ]
+```
+
+### Number converted to an enum whose values are never named
+
+```yumi
+-- 0 as Foo
+-- 2 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar
+| baz
+
++ name String = "made"
+
+────────────────────
++ to String
+
+"[Foo $name]"
+```
+
+```output
+[Foo made]
+[Foo made]
+```
+
+### A number an argument's call gives does not become an enum unasked.
+
+```yumi crash
+-- take(compute())
+
+━━━━━━━━━━━━━━━━━━━━
++ do compute Int
+
+-- "compute"
+= 0
+
+━━━━━━━━━━━━━━━━━━━━
++ take String
+    - foo Foo
+
+"took ${foo.name}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+| baz = "there"
+
++ name String
+
+────────────────────
++ This
+    - name String = "none"
+```
+
+```output
+Exception: No function "take" accepts (I64); it is declared as "take(foo Foo)"
+<no file:2>
+    -- take(compute())
+       ^^^^^^^^^^^^^^^
+```
+
+### A number converted to an enum with as where returned, declared and compared
+
+```yumi
+-- pick(0).name
+-- pick(1).name
+-- pick(5).name
+-- choose(true).name
+-- choose(false).name
+-- each()
+. made = next(0) as Foo
+-- made.name
+. later = next(1) as Foo
+-- later.name
+-- (next(4) as Foo).name
+. same = (1 as Foo) == Foo.baz
+-- same
+-- (1 as Foo) == (1 as Foo)
+-- (9 as Foo) == (9 as Foo)
+
+━━━━━━━━━━━━━━━━━━━━
++ do next Int
+    - from Int
+
+-- "next $from"
+= from + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Foo
+    - n Int
+
+n as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ do choose Foo
+    - first Bool
+
+if first
+    = 0 as Foo
+= 1 as Foo
+
+━━━━━━━━━━━━━━━━━━━━
++ do each String
+
+. text = ""
+. n = 0
+while n < 4
+    . foo = n as Foo
+    text = text ++ foo.name ++ " "
+    n += 1
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+| bar = "hello"
+| baz = "there"
+
++ name String
+
+────────────────────
++ This
+    - name String = "none"
+```
+
+```output
+hello
+there
+none
+hello
+there
+hello there none none 
+next 0
+there
+next 1
+none
+next 4
+none
+true
+true
+false
+```
+
+### Match over some values of a class is open
+
+```yumi
+. level = Level.low
+-- match level
+    |= .low
+        "low"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level
+
+| low
+| middle
+| high
+```
+
+```output
+low
+```
+
+### Match over the values of a class by equality
+
+```yumi
+. level = Level.low
+-- match level
+    | .low
+        "low"
+    |= .middle
+        "middle"
+    |= .high
+        "high"
+    |= .low
+        "really low"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level
+
+| low
+| middle
+| high
+```
+
+```output
+really low
+```
+
+### Match over a class with values that no arm takes
+
+```yumi crash
+. level = Level.low
+-- match level
+    | .low
+        "low"
+    |= .middle
+        "middle"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level
+
+| low
+| middle
+```
+
+### Match over a class with values falls through
+
+```yumi crash
+-- name(Level.low)
+-- name(Level.middle)
+-- name(Level.high)
+
+━━━━━━━━━━━━━━━━━━━━
++ name String
+    - level Level
+
+match level
+    |= .low
+        "low"
+    |= .middle
+        "middle"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level
+
+| low
+| middle
+| high
+```
+
+```output
+low
+middle
+```
+
+### Arm naming a value of a number type as a case
+
+```yumi crash
+. level = Level.low
+-- match level
+    | .low
+        "low"
+    |= .middle
+        "middle"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level is Int
+
+| low = 1
+| middle = 2
+```
+
+```output
+Exception: Level.low is an enum value, not a union case; match it with '|= .low'
+<no file:4>
+        | .low
+          ^^^^
+```
+
+### Match over some values of a number type is closed
+
+```yumi crash
+-- name(Level.low)
+-- name(Level.high)
+
+━━━━━━━━━━━━━━━━━━━━
++ name String
+    - level Level
+
+match level
+    |= .low
+        "low"
+    |= .middle
+        "middle"
+
+━━━━━━━━━━━━━━━━━━━━
++ Level is Int
+
+| low = 1
+| middle = 2
+| high = 3
+```
+
+```output
+Exception: This match on Level does not handle Level.high; add "|= Level.high", or "??" for the rest
+<no file:10>
+        |= .low
+        ^^^^^^
+```
+
+### A case of an enum may hold a value as large as the enum's type holds.
+
+```yumi
+. f = Fill.fill-empty
+-- "f ${f as U32}"
+-- "v ${Fill.fill-variadic as U32}"
+. g Fill = .fill-variadic
+-- "same ${g == Fill.fill-variadic} ${f == g}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Fill is U32
+
+| fill-empty = 4294967295
+| fill-variadic = 4294967294
+```
+
+```output
+f 4294967295
+v 4294967294
+same true false
+```
+
+### The tuple written for a case of a tuple enum fills its fields in order.
+
+```yumi
+. day = Day.monday
+-- "[${day.name}] [${day.short-name}]"
+-- "[${Day.sunday.name}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ Day is Tuple
+
+| sunday = ("sunday", "sun")
+| monday = ("monday", "mon")
+
++ name = ""
++ short-name = ""
+```
+
+```output
+[monday] [mon]
+[sunday]
+```
+
+### A case named by its symbol alone, given for a parameter whose enum has the case, is that enum's case, though an enum imported earlier has a case of the name too.
+
+```yumi
+./lib/near
+./lib/far
+
+-- describe(.stated) as U32
+-- describe(.stated, "named") as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe Far
+    - kind Far
+    - label String? = null
+
+= kind
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+20
+20
+```
+
+### A choice between cases named by their symbols alone, given for a parameter whose enum has both cases, is a choice of that enum's cases, though an enum the module declares has cases of the names too.
+
+```yumi
+./lib/far
+
+-- pick(true) as U32
+-- pick(false) as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ Near is U32
+
+| first = 3
+| stated = 7
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pick Far
+    - first Bool
+
+= describe(if first then .first else .stated)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do describe Far
+    - kind Far
+
+= kind
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+0
+20
+```
+
+### A case named by its symbol alone that two imported enums have, on the left of an operator that only one of them declares for the other operand, is that enum's case, though the other's case is the one its name alone gives.
+
+```yumi
+./lib/near
+./lib/far
+
+-- .stated + "!"
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is Union
+
+| first
+| stated
+
+────────────────────
++ this + mark String
+
+"far $this$mark"
+
+```
+
+```output
+far stated!
+```
+
+### A case named by its symbol alone that two imported enums have is of neither in a local declared without a type, which casts it to nothing.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. kind = .stated
+-- kind as U32
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    . kind = .stated
+             ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it in a local declared with a type that has no such case, though the case converts to it.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. kind U32 = .stated
+-- kind
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    . kind U32 = .stated
+                 ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it where it is assigned to a local of a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. kind U32 = 0
+kind = .stated
+-- kind
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:6>
+    kind = .stated
+           ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it as the default of a property of a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- Box().kind
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ kind U32 = .stated
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:10>
+    + kind U32 = .stated
+                 ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it where a function returns it as a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- pick()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do pick U32
+
+= .stated
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:10>
+    = .stated
+      ^^^^^^^
+```
+
+### The case named by its symbol alone that a function written without do gives is the case of the enum it returns, though an enum imported earlier has a case of the name too.
+
+```yumi
+./lib/near
+./lib/far
+
+-- pick() as U32
+
+━━━━━━━━━━━━━━━━━━━━
+_ pick Far
+
+.stated
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+20
+```
+
+### The cases an `if` gives by their symbols alone are of the type expected of it, though another union has a case of the name too: as the value of a function written without do, and as the value of an arm of a match.
+
+```yumi
+for seed in 0 .. < 3
+    -- given(seed)
+    -- armed(seed)
+
+━━━━━━━━━━━━━━━━━━━━
++ Cap is Union
+
+| butt
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ Join is Union
+
+| miter
+| round
+| bevel
+
+━━━━━━━━━━━━━━━━━━━━
+_ given Cap
+    - seed Int
+
+if seed == 0 then .round else if seed == 1 then .square else .butt
+
+━━━━━━━━━━━━━━━━━━━━
+_ armed Cap
+    - seed Int
+
+|? seed == 0
+    .butt
+??
+    if seed == 1 then .round else .square
+```
+
+```output
+round
+butt
+square
+round
+butt
+square
+```
+
+### A case named by its symbol alone is of neither enum that has it where a function written without do gives it as a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- pick()
+
+━━━━━━━━━━━━━━━━━━━━
+_ pick U32
+
+.stated
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:10>
+    .stated
+    ^^^^^^^
+```
+
+### A case named by its symbol alone cast with `as` to an enum that has the case is that enum's case, though an enum imported earlier has a case of the name too.
+
+```yumi
+./lib/near
+./lib/far
+
+-- .stated as Far as U32
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+20
+```
+
+### A case named by its symbol alone cast with `as` to a type that has no such case is of neither enum that has it, though only an explicit cast converts it.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- .stated as U8
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    -- .stated as U8
+       ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it where it is given for a parameter of a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- show(.stated)
+
+━━━━━━━━━━━━━━━━━━━━
+_ show U32
+    - value U32
+
+value
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    -- show(.stated)
+            ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it where it is given for what a union's case holds, of a type that has no such case.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- type-of Holder.held(.stated)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Union
+
+| held(count U32)
+| empty
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    -- type-of Holder.held(.stated)
+                           ^^^^^^^
+```
+
+### A case named by its symbol alone is of neither enum that has it as a field of a tuple, which casts it to nothing.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. pair = (.stated, 1)
+-- pair
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    . pair = (.stated, 1)
+              ^^^^^^^
+```
+
+### A case named by its symbol alone compared with a value of a type that has no such case is of neither enum that has it.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. count U32 = 7
+-- count == .stated
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:6>
+    -- count == .stated
+                ^^^^^^^
+```
+
+### A case named by its symbol alone that two imported number enums have is printed and made text by its enum's own method, which settles it as the case of the enum its name alone gives.
+
+```yumi
+./lib/near
+./lib/far
+
+-- .stated
+-- "[${.stated}]"
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is U32
+
+| first = 0
+| stated = 7
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is U32
+
+| first = 0
+| stated = 20
+
+```
+
+```output
+7
+[7]
+```
+
+### A case named by its symbol alone that two imported unions have, made text where the union has no method for it, is of neither.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- "[${.stated}]"
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is Union
+
+| first
+| stated
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is Union
+
+| first
+| stated
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    -- "[${.stated}]"
+           ^^^^^^^
+```
+
+### The type of a case named by its symbol alone that two imported classes have is read from the object, so the case is of neither.
+
+```yumi crash
+./lib/near
+./lib/far
+
+-- type-of .stated
+```
+
+```yumi file=lib/base.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = ""
+
+```
+
+```yumi file=lib/near.yumi
+
+./base
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is Base
+
+| first
+| stated
+
+```
+
+```yumi file=lib/far.yumi
+
+./base
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is Base
+
+| first
+| stated
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:5>
+    -- type-of .stated
+               ^^^^^^^
+```
+
+### A case named by its symbol alone that two imported classes have, joined with another class's case, is cast to their base class, which has no such case, so it is of neither.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. chosen = true
+. kind = if chosen then .stated else Far.first
+-- kind.name
+```
+
+```yumi file=lib/base.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
++ name = ""
+
+```
+
+```yumi file=lib/near.yumi
+
+./base
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is Base
+
+| first
+| stated
+
+```
+
+```yumi file=lib/far.yumi
+
+./base
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is Base
+
+| first
+| stated
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:6>
+    . kind = if chosen then .stated else Far.first
+                            ^^^^^^^
+```
+
+### A case named by its symbol alone that two imported unions have, given where an optional is empty, joins the optional's union with its own, so it is of neither.
+
+```yumi crash
+./lib/near
+./lib/far
+
+. held Far? = null
+-- type-of (held ?? .stated)
+```
+
+```yumi file=lib/near.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Near is Union
+
+| first
+| stated
+
+```
+
+```yumi file=lib/far.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Far is Union
+
+| first
+| stated
+
+```
+
+```output
+Exception: Case '.stated' is ambiguous between 'Far', 'Near'
+<no file:6>
+    -- type-of (held ?? .stated)
+                        ^^^^^^^
+```
+
+### A function with no return type that returns cases by their symbols alone returns the union that has every one of them, though its first case is also another union's.
+
+```yumi
+/core
+
+for seed in 0 .. < 3
+    -- describe(cut(seed))
+
+━━━━━━━━━━━━━━━━━━━━
++ Edge is Union
+
+| sharp
+| soft
+
+━━━━━━━━━━━━━━━━━━━━
++ Blade is Union
+
+| sharp
+| dull
+
+━━━━━━━━━━━━━━━━━━━━
++ describe String
+    - edge Edge
+
+if edge == .soft then "soft" else "sharp"
+
+━━━━━━━━━━━━━━━━━━━━
++ do cut
+    - seed Int
+
+if seed == 1
+    = .sharp
+= .soft
+```
+
+```output
+soft
+sharp
+soft
+```
+
+### A case named by its symbol alone that no enum the module imports has is the case of the type expected of it: of the other side of a comparison, a parameter, or a property stored to.
+
+```yumi
+./lib/rows
+
+. row = make-row()
+-- row.kind == .second
+-- .second == row.kind
+-- describe(.second)
+. box = Box()
+box.kind = .second
+-- describe(box.kind)
+```
+
+```yumi file=lib/rows.yumi
+
+./kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-row Row
+
+. row Row
+row.kind = Kind.second
+= row
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - kind Kind
+
+= if kind == Kind.first then "first" else "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ kind = Kind.first
+
+```
+
+```yumi file=lib/kinds.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| first = 0
+| second = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Struct
+
++ kind Kind = .first
+```
+
+```output
+true
+true
+second
+second
+```
+
+### A case named by its symbol alone that no enum the module imports has is not found where nothing expected of it is a type with the case.
+
+```yumi crash
+./lib/rows
+
+. kind = .second
+-- kind as U32
+```
+
+```yumi file=lib/rows.yumi
+
+./kinds
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-row Row
+
+. row Row
+row.kind = Kind.second
+= row
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - kind Kind
+
+= if kind == Kind.first then "first" else "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ kind = Kind.first
+
+```
+
+```yumi file=lib/kinds.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U32
+
+| first = 0
+| second = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Struct
+
++ kind Kind = .first
+```
+
+```output
+Exception: Case ".second" belongs to Kind, which this module does not import, so the case cannot be named alone; write "Kind.second" and add the import ./lib/kinds
+<no file:4>
+    . kind = .second
+             ^^^^^^^
+```
+
+### A match that returns from every arm ends a function over an enum of a number
+
+```yumi
+-- describe(Kind.first)
+-- describe(Kind.second)
+
+━━━━━━━━━━━━━━━━━━━━
++ Kind is U8
+
+| first
+| second
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - kind Kind
+
+match kind
+    |= .first
+        = "one"
+    |= .second
+        = "two"
+```
+
+```output
+one
+two
+```

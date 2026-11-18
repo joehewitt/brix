@@ -1,0 +1,35 @@
+# Chunked read all
+
+```yumi
+/core/tokenstream
+
+. source = "a" * 5000000
+
+for size in [0, 1024, 1500, 4194304]
+    . stream = ChunkedTokenStream'Char(source[0 .. < size].codepoints)
+    . chars = stream.read()
+    -- chars.size == size
+    -- stream.has-more
+    -- stream.read().size
+
+. unicode = "aé中🙂" * 400
+. stream = ChunkedTokenStream'Char(unicode.codepoints)
+. chars = stream.read()
+-- chars.slice-string() == unicode
+```
+
+```output
+true
+false
+0
+true
+false
+0
+true
+false
+0
+true
+false
+0
+true
+```

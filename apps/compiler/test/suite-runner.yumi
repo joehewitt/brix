@@ -27,6 +27,14 @@
 + docs-suite = "docs"
 _ suite-names [String] = [parse-suite, core-suite, diagnostics-suite, scratch-suite, docs-suite]
 _ batch-name-rounds Index = 8
+_ spec-extension = ".test.md"
+_ fence-flags [String] = ["crash", "compile-error", "warn", "probes"]
+_ stage-none = 0
+_ stage-program = 1
+_ stage-twin = 2
+_ stage-file = 3
+_ stage-errors = 4
+_ stage-output = 5
 
 ━━━━━━━━━━━━━━━━━━━━
 + TestCase
@@ -37,31 +45,35 @@ _ batch-name-rounds Index = 8
 + file-label String
 + case-index Int
 + source String
-+ expected String
++ is-brix Bool
++ twin String?
++ output String?
++ errors String?
 + line-no-start Int
 + line-no-end Int
-+ is-focused Bool
 + options [String = String]
 + files [String = String]
-+ brix String?
 + title String?
 
 ────────────────────
 + This
-    - suite String
-    - source-path String
-    - relative-path String
-    - file-label String
-    - case-index Int
-    - source String
-    - expected String
-    - line-no-start Int
-    - line-no-end Int
-    - is-focused Bool
-    - options [String = String]
-    - files [String = String]
-    - brix String? = null
-    - title String? = null
+    - suite
+    - source-path
+    - relative-path
+    - file-label
+    - case-index
+    - parsed ParsedCase
+
+.. source = parsed.source
+.. is-brix = parsed.is-brix
+.. twin = parsed.twin
+.. output = parsed.output
+.. errors = parsed.errors
+.. line-no-start = parsed.line-no-start
+.. line-no-end = parsed.line-no-end
+.. options = parsed.options
+.. files = parsed.files
+.. title = parsed.title
 
 ────────────────────
 + get id String
@@ -84,235 +96,76 @@ _ batch-name-rounds Index = 8
 title ?? (if source.length > 50 then source[0 .. < 50] else source)
 
 ────────────────────
++ get source-name String
+
+if is-brix then "__source__$brix-extension" else "__source__.yumi"
+
+────────────────────
++ get source-extension String
+
+if is-brix then brix-extension else ".yumi"
+
+────────────────────
 + has-option
     - name String
 
 options[name] != null
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ParsedSource is (text String, line-no Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParsedSetting is Union
-
-| option(name String, value String)
-| file(path String, content String)
-| brix(content String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParsedTail is Tuple
-
-+ expected String
-+ line-no-end Int
-+ options [String = String]
-+ files [String = String]
-+ brix String?
-
-━━━━━━━━━━━━━━━━━━━━
 + ParsedCase
 
 + source String
-+ expected String
++ is-brix Bool
 + line-no-start Int
 + line-no-end Int
-+ is-focused Bool
 + options [String = String]
 + files [String = String]
-+ brix String?
++ twin String? = null
++ output String? = null
++ errors String? = null
 + title String? = null
 
 ────────────────────
 + This
-    - parsed ParsedSource
-    - tail ParsedTail
-    - is-focused Bool
+    - source
+    - is-brix
+    - line-no-start
+    - options
+    - title
 
-source = parsed.text.trim()
-expected = tail.expected
-line-no-start = parsed.line-no
-line-no-end = tail.line-no-end
-this.is-focused = is-focused
-.. options = tail.options
-.. files = tail.files
-.. brix = tail.brix
+.. line-no-end = line-no-start
 
 ━━━━━━━━━━━━━━━━━━━━
-_ without-test-notes String
-    - text String
-
-"\n".join(each in text.split("\n") when !each.starts-with("?"))
+_ DocumentFence is (line Int, info String, content String, end Int)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ParsedTestFile
+_ DocumentBlock is Union
 
-+ cases [ParsedCase]
-
-────────────────────
-+ This
-    - cases [ParsedCase]
-
-────────────────────
-+ This ~ Char
-
-~ entries \file-entry* \blank-line* /
-    This(parsed-cases(entries))
-
-.. file-entry ParsedCase? ~
-    ~ \blank-line* test \test-case
-        test
-    ~ \blank-line* \comment
-        null
-    ~ \blank-line* \ignored-remainder
-        null
-    ~ \blank-line* \empty-trailing-test
-        null
-
-.. test-case ParsedCase ~
-    ~ focused \head-separator source \test-source tail \test-tail
-        ParsedCase(source, tail, focused)
-
-.. test-tail ParsedTail ~
-    ~ \mid-separator settings \test-setting* expected \test-expected end-line \tail-separator
-        parsed-tail(expected, end-line, settings)
-
-.. test-source ParsedSource ~
-    ~ \source-comment-line* first \source-content-line rest \source-part*
-        combined-source(first, rest)
-    ~ \source-comment-line* &(\mid-separator)
-        ParsedSource("", 0)
-
-.. source-part ParsedSource? ~
-    ~ \source-comment-line
-        null
-    ~ line \source-content-line
-        line
-
-.. source-content-line ParsedSource ~
-    ~ !(\mid-separator | \source-comment-line) text \source-line \nl
-        ParsedSource("$text\n", location.begin.line)
-    ~ !(\mid-separator | \source-comment-line) text \source-line
-        ParsedSource(text, location.begin.line)
-
-.. source-line String ~
-    ~ chars \line-char*
-        Array'Char(chars).slice-string()
-
-.. source-comment-line ~
-    ~ "#" \horizontal-space \line-char* \nl
-
-.. test-setting ParsedSetting ~
-    ~ file \file-block
-        file
-    ~ brix \brix-block
-        brix
-    ~ option \option-line
-        option
-
-.. file-block ParsedSetting ~
-    ~ "%file:" \horizontal-space+ name \source-line \nl content \file-content \mid-separator
-        ParsedSetting.file(name.trim(), content)
-
-.. brix-block ParsedSetting ~
-    ~ "%brix" \horizontal-space* \nl content \file-content \mid-separator
-        ParsedSetting.brix(content)
-
-.. file-content String ~
-    ~ chars \file-char*
-        without-final-newline(Array'Char(chars).slice-string())
-
-.. file-char Char ~
-    ~ !(\mid-separator) .
-
-.. option-line ParsedSetting ~
-    ~ "%" !("file" (":" | &\nl)) name \option-name value \option-value? \nl
-        .option(name, value ?? "true")
-
-.. option-name String ~
-    ~ chars \option-name-char*
-        chars
-
-.. option-name-char ~
-    ~ !(\nl | \option-value-start) .
-
-.. option-value String ~
-    ~ \option-value-start value \line-char*
-        value.trim()
-
-.. option-value-start ~
-    ~ ":" \horizontal-space+
-
-.. test-expected String ~
-    ~ chars \expected-char*
-        Array'Char(chars).slice-string()
-
-.. expected-char Char ~
-    ~ !(\tail-separator) .
-
-.. comment ~
-    ~ \comment-separator \comment-char* \comment-separator
-
-.. comment-char ~
-    ~ !(\comment-separator) .
-
-.. ignored-remainder ~
-    ~ "/:===" "="* .*
-
-.. empty-trailing-test ~
-    ~ \head-separator /
-
-.. head-separator Bool ~
-    ~ "::===" "="* \nl
-        true
-    ~ ":===" "="* \nl
-        false
-
-.. mid-separator ~
-    ~ ":---" "-"* \nl
-
-.. tail-separator Int ~
-    ~ ";===" "="* \nl?
-        (location.begin.line as Int) + 1
-
-.. comment-separator ~
-    ~ "===" "="* \nl
-
-.. horizontal-space ~
-    ~ " " | "\t" | "\r" | "\v" | "\f"
-
-.. blank-line ~
-    ~ \horizontal-space* \nl
-
-.. line-char ~
-    ~ !(\nl) .
-
-━━━━━━━━━━━━━━━━━━━━
-_ DocumentEntry is Union
-
-| example ParsedCase
-| heading String
+| fence DocumentFence
+| heading String?
+| unclosed Int
 | prose
-
-━━━━━━━━━━━━━━━━━━━━
-_ DocumentOutput is (text String, line-no-end Int)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ParsedDocument
 
-+ cases [ParsedCase]
++ blocks [DocumentBlock]
 
 ────────────────────
 + This
-    - cases [ParsedCase]
+    - blocks [DocumentBlock]
 
 ────────────────────
 + This ~ Char
 
-~ entries \document-entry* /
-    This(titled-cases(entries))
+~ blocks \document-block* /
+    This(blocks)
 
-.. document-entry DocumentEntry ~
-    ~ example \document-example
-        .example(example)
+.. document-block DocumentBlock ~
+    ~ fence \fence
+        .fence(fence)
+    ~ line \unclosed-opening
+        .unclosed(line)
     ~ title \heading
         .heading(title)
     ~ \line-char* \nl
@@ -320,16 +173,24 @@ _ ParsedDocument
     ~ \line-char+
         .prose
 
-.. document-example ParsedCase ~
-    ~ start \opening info \fence-info source \fenced end \closing output \example-output?
-        document-case(start, info, source, end, output)
+.. fence DocumentFence ~
+    ~ start \long-opening info \fence-info content \long-fenced end \long-closing
+        DocumentFence(start, info.trim(), opened(content), end)
+    ~ start \opening info \fence-info content \fenced end \closing
+        DocumentFence(start, info.trim(), opened(content), end)
 
-.. example-output DocumentOutput ~
-    ~ \blank-line* "```output" \fence-info text \fenced end \closing
-        DocumentOutput(text, end)
+.. unclosed-opening Int ~
+    ~ start \long-opening .*
+        start
+    ~ start \opening .*
+        start
+
+.. long-opening Int ~
+    ~ "````"
+        (location.begin.line as Int) + 1
 
 .. opening Int ~
-    ~ "```brix" &(" " | \nl)
+    ~ "```" !"`"
         (location.begin.line as Int) + 1
 
 .. fence-info String ~
@@ -343,55 +204,183 @@ _ ParsedDocument
 .. fenced-char Char ~
     ~ !(\closing) .
 
+.. long-fenced String ~
+    ~ chars \long-fenced-char*
+        Array'Char(chars).slice-string()
+
+.. long-fenced-char Char ~
+    ~ !(\long-closing) .
+
 .. closing Int ~
-    ~ \nl "```" \horizontal-space* (\nl | !.)
+    ~ \nl "```" "`"* \horizontal-space* (\nl | !.)
         (location.begin.line as Int) + 2
 
-.. heading String ~
-    ~ "#"+ " " chars \line-char* (\nl | !.)
+.. long-closing Int ~
+    ~ \nl "````" "`"* \horizontal-space* (\nl | !.)
+        (location.begin.line as Int) + 2
+
+.. heading String? ~
+    ~ "#" "#"+ " " chars \line-char* (\nl | !.)
         Array'Char(chars).slice-string().trim()
+    ~ "# " \line-char* (\nl | !.)
+        null
 
 .. horizontal-space ~
     ~ " " | "\t" | "\r" | "\v" | "\f"
-
-.. blank-line ~
-    ~ \horizontal-space* \nl
 
 .. line-char ~
     ~ !(\nl) .
 
 ━━━━━━━━━━━━━━━━━━━━
-_ document-case ParsedCase
-    - start Int
-    - info String
-    - source String
-    - end Int
-    - output DocumentOutput?
+_ opened String
+    - content String
 
-ParsedCase(ParsedSource(source, start), tail, false)
-
-.. tail = ParsedTail(output?.text ?? "", output?.line-no-end ?? end, options, files, null)
-.. files = Map'String'String()
-.. options =
-    ** info.split(" ")
-    ?> each.length != 0
-    *> (each, "true")
-    |> Map
+if content.starts-with("\n") then content[1 ...] else content
 
 ━━━━━━━━━━━━━━━━━━━━
-_ do titled-cases [ParsedCase]
-    - entries <DocumentEntry>
+_ DocumentCases
 
-. cases [ParsedCase]
-. title String?
-for entry in entries
-    do match? entry
++ cases [ParsedCase]
+
+_ path String
+_ allows-twins Bool
+_ title String?
+_ heading Index = -1
+_ headings [Index]
+_ current ParsedCase?
+_ stage = stage-none
+
+────────────────────
++ This
+    - path
+    - allows-twins
+
+────────────────────
++ do read ?! Error
+    - blocks [DocumentBlock]
+
+for block in blocks
+    do match? block
+        | .fence(fence)
+            add(fence)
         | .heading(text)
             title = text
-        | .example(example)
-            example.title = title
-            cases += example
-= cases
+            heading += 1
+            current = null
+            stage = stage-none
+        | .unclosed(line)
+            ?! Error("$path:$line: The fence is never closed")
+number-shared-titles()
+
+────────────────────
+_ do add ?! Error
+    - fence DocumentFence
+
+. words = List'String(each in fence.info.split(" ") when each.length != 0)
+. kind = if words then words[0] else ""
+. file = file-name(words)
+if file
+    take-file(fence, words, file)
+else if kind == "yumi" || kind == "brix"
+    take-program(fence, words, kind == "brix")
+else if kind == "stderr" || kind == "output"
+    take-expected(fence, words, kind)
+
+────────────────────
+_ do take-program ?! Error
+    - fence DocumentFence
+    - words [String]
+    - is-brix Bool
+
+. found = current
+if found && stage == stage-program && found.is-brix != is-brix
+    ?! Error("$path:${fence.line}: A program in both languages is allowed only in the parse suite")
+        if !allows-twins
+    ?! Error("$path:${fence.line}: The program's other language takes no flags")
+        if words.length != 1
+    found.twin = fence.content.trim()
+    found.line-no-end = fence.end
+    stage = stage-twin
+    =
+. made = ParsedCase(fence.content.trim(), is-brix, fence.line, flag-options(words, fence.line), title)
+made.line-no-end = fence.end
+cases += made
+headings += heading
+current = made
+stage = stage-program
+
+────────────────────
+_ do take-file ?! Error
+    - fence DocumentFence
+    - words [String]
+    - name String
+
+. found = current
+?! Error("$path:${fence.line}: A file fence must follow its case's program, before its expected output")
+    if !found || stage > stage-file
+?! Error("$path:${fence.line}: A file fence takes only its language and its file=")
+    if words.length != 2 || !name
+found.files[name] = fence.content
+found.line-no-end = fence.end
+stage = stage-file
+
+────────────────────
+_ do take-expected ?! Error
+    - fence DocumentFence
+    - words [String]
+    - kind String
+
+. found = current
+. latest = if kind == "stderr" then stage-file else stage-errors
+?! Error("$path:${fence.line}: The $kind fence is out of order; a case is its program, files, stderr and output")
+    if !found || stage > latest
+?! Error("$path:${fence.line}: The $kind fence takes no other words")
+    if words.length != 1
+if kind == "stderr"
+    found.errors = fence.content.trim()
+    stage = stage-errors
+else
+    found.output = fence.content.trim()
+    stage = stage-output
+found.line-no-end = fence.end
+
+────────────────────
+_ do flag-options [String = String] ?! Error
+    - words [String]
+    - line Int
+
+. options [String = String]
+for word in words[1 ...]
+    if word.starts-with("probes=")
+        options["probes"] = word["probes=".length ...]
+    else if fence-flags has word
+        options[word] = "true"
+    else
+        ?! Error("$path:$line: Unknown word \"$word\" on a program fence")
+= options
+
+────────────────────
+_ do number-shared-titles
+
+. counts [Index = Int]
+for index in headings
+    counts[index] = (counts[index] ?? 0) + 1
+. numbers [Index = Int]
+for position in 0 .. < cases.length
+    . index = headings[position]
+    . named = cases[position].title
+    if named && (counts[index] ?? 0) > 1
+        . number = (numbers[index] ?? 0) + 1
+        numbers[index] = number
+        cases[position].title = "$named ($number)"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do file-name String?
+    - words [String]
+
+for word in words
+    =? word["file=".length ...] if word.starts-with("file=")
+= null
 
 ━━━━━━━━━━━━━━━━━━━━
 + TestFile
@@ -417,43 +406,26 @@ file-label = test-file-label(source-path)
 
 . source-file = use File(source-path)
 . text = source-file as String
-. is-document = source-path.ends-with(".md")
-. cases = if is-document then document-cases(text) ++ inline-form-cases(text) else test-file-cases(text)
-
-= <* index, test-case in indexed(cases)
-    TestCase()
-        - suite
-        - source-path
-        - relative-path
-        - file-label
-        - index + 1
-        - test-case.source
-        - case-expected(test-case.expected, is-document)
-        - test-case.line-no-start
-        - test-case.line-no-end
-        - test-case.is-focused
-        - test-case.options
-        - test-case.files
-        - test-case.brix
-        - test-case.title
+. cases = document-cases(text) ++ inline-form-cases(text)
+= <* index, parsed in indexed(cases)
+    TestCase(suite, source-path, relative-path, file-label, index + 1, parsed)
 
 ────────────────────
-_ document-cases [ParsedCase] ?! Error
+_ do document-cases [ParsedCase] ?! Error
+    - text String
+
+. reader = DocumentCases(relative-path, suite == parse-suite)
+reader.read(document-blocks(text))
+= reader.cases
+
+────────────────────
+_ document-blocks [DocumentBlock] ?! Error
     - text String
 
 match text
     ~ ParsedDocument
-        it.cases
+        it.blocks
     ?! Error("Malformed document $relative-path")
-
-────────────────────
-_ test-file-cases [ParsedCase] ?! Error
-    - text String
-
-match text
-    ~ ParsedTestFile
-        it.cases
-    ?! Error("Malformed test file $relative-path")
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do inline-form-cases [ParsedCase]
@@ -463,11 +435,7 @@ _ do inline-form-cases [ParsedCase]
 =? List'ParsedCase() if forms.length == 0
 . checked = " ".join("(tuple ${each[0]} ${brix-quoted(each[1])})" in forms)
 . source = "(import /lang/brix/inline)\n\n(main\n  (for (in (tuple line form) (list $checked))\n    (if (not (call brix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"
-. options = Map'String'String()
-. files = Map'String'String()
-. inline = ParsedCase(ParsedSource(source, 1), ParsedTail("", 1, options, files, null), false)
-inline.title = "Inline forms"
-= [inline]
+= [ParsedCase(source, true, 1, Map'String'String(), "Inline forms")]
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do inline-forms [(Int, String)]
@@ -493,14 +461,29 @@ _ do unfenced-lines [String]
     - text String
 
 . lines [String]
-. fenced = false
+. ticks Size = 0
 for line in text.split("\n")
-    if line.starts-with("```")
-        fenced = !fenced
+    . run = backtick-run(line)
+    if ticks == 0 && run >= 3
+        ticks = run
+        lines += ""
+    else if ticks != 0 && run >= ticks && line.trim().length == run
+        ticks = 0
         lines += ""
     else
-        lines += if fenced then "" else line
+        lines += if ticks != 0 then "" else line
 = lines
+
+━━━━━━━━━━━━━━━━━━━━
+_ do backtick-run Size
+    - line String
+
+. count Size = 0
+for char in line
+    if char != '`'
+        break
+    count += 1
+= count
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do line-count Int
@@ -522,67 +505,6 @@ for c in text
 = quoted ++ "\""
 
 ━━━━━━━━━━━━━━━━━━━━
-_ case-expected String
-    - expected String
-    - is-document Bool
-
-if is-document then expected.trim() else without-test-notes(expected).trim()
-
-━━━━━━━━━━━━━━━━━━━━
-_ parsed-cases
-    - entries <ParsedCase?>
-
-** entries
-?*> each
-|> List
-
-━━━━━━━━━━━━━━━━━━━━
-_ parsed-tail ParsedTail
-    - expected String
-    - line-no-end Int
-    - settings [ParsedSetting]
-
-ParsedTail(expected, line-no-end, options, files, brix)
-
-.. options =
-    ** settings
-    ?*> match? each
-        | .option(name, value)
-            name, value
-    |> Map
-.. files =
-    ** settings
-    ?*> match? each
-        | .file(path, content)
-            path, content
-    |> Map
-.. brix =
-    ** settings
-    ?*> match? each
-        | .brix(content)
-            content
-    |> first
-
-━━━━━━━━━━━━━━━━━━━━
-_ without-final-newline String
-    - text String
-
-if text.ends-with("\n") then text[0 .. < text.length - 1] else text
-
-━━━━━━━━━━━━━━━━━━━━
-_ combined-source
-    - first ParsedSource
-    - rest <ParsedSource?>
-
-ParsedSource(text, first.line-no)
-
-.. text = "".join
-    * first.text
-    **
-        rest
-        ?*> each?.text
-
-━━━━━━━━━━━━━━━━━━━━
 _ relative-test-path String
     - source-path String
     - project-path String
@@ -599,7 +521,10 @@ _ do test-file-label String
 . words [String]
 . word = ""
 . previous Char?
-for char in Path(source-path).base-name
+. name = Path(source-path).name
+. is-spec = name.ends-with(spec-extension)
+. base = if is-spec then name[0 .. < name.length - spec-extension.length] else Path(name).base-name
+for char in base
     . is-separator = char == '-' || char == '_'
     . starts-after-lowercase = previous && previous >= 'a' && previous <= 'z'
     . starts-camel-word = starts-after-lowercase && char >= 'A' && char <= 'Z'
@@ -613,7 +538,7 @@ for char in Path(source-path).base-name
 if word
     words += word
 
-. first = if source-path.ends-with(".md") then 0 else 1
+. first = if is-spec then 1 else 0
 = " ".join
     ** first .. < words.length
     *> words[each].lowercased
@@ -646,7 +571,6 @@ status = if actual.trim() == expected.trim() then "passed" else "failed"
 + scratch String
 + project String
 + library String
-+ is-brix Bool
 + case-count = 0
 
 ────────────────────
@@ -656,17 +580,6 @@ status = if actual.trim() == expected.trim() then "passed" else "failed"
     - scratch String
     - project String
     - library String
-    - is-brix Bool
-
-────────────────────
-+ get source-name String
-
-if is-brix then "__source__$brix-extension" else "__source__.yumi"
-
-────────────────────
-+ get source-extension String
-
-if is-brix then brix-extension else ".yumi"
 
 ━━━━━━━━━━━━━━━━━━━━
 + do run-batch Int ?! Error
@@ -680,9 +593,8 @@ check-suite(suite, project-path, tests-path)
 . scratch = env("BRIX_TEST_SCRATCH") ?? ""
 if suite != parse-suite && (!compiler || !scratch)
     ?! Error("The $suite suite needs BRIX_TEST_COMPILER and BRIX_TEST_SCRATCH")
-. is-brix = (env("BRIX_TEST_BRIX") ?? "") != ""
 . stdlib = (toolchain-root / "stdlib") as String
-. context = RunContext(suite, compiler, scratch, project-path, stdlib, is-brix)
+. context = RunContext(suite, compiler, scratch, project-path, stdlib)
 emit-run(context, project-path, tests-path, selected-test-ids(payload))
 = 0
 
@@ -770,15 +682,13 @@ emit-json(run-start-json(selected-ids))
 . results [CaseResult] = run-cases(selected-cases, context)
 . passed-results [CaseResult] = <* result in results when result.status == "passed"
 . failed-results [CaseResult] = <* result in results when result.status == "failed"
-. skipped-results [CaseResult] = <* result in results when result.status == "skipped"
 . crashed-results [CaseResult] = <* result in results when result.status == "crashed"
 . passed = passed-results.length
 . failed = failed-results.length
-. skipped = skipped-results.length
 . crashed = crashed-results.length
-. killed = results.length - passed - failed - skipped - crashed
+. killed = results.length - passed - failed - crashed
 
-emit-json(run-end-json(selected-ids.length, passed, failed, skipped, crashed, killed))
+emit-json(run-end-json(selected-ids.length, passed, failed, 0, crashed, killed))
 
 ━━━━━━━━━━━━━━━━━━━━
 + do file-cases [TestCase] ?! Error
@@ -830,7 +740,7 @@ for test-case in cases
     . result = CaseResult()
     results += result
     emit-json(test-start-json(test-case.id))
-    if test-case.has-option("skip") || test-case.has-option("nyi") || runs-alone(test-case)
+    if runs-alone(test-case)
         run-into(test-case, result, context)
         emit-json(test-result-json(test-case, result))
     else if !expects-compile-failure(test-case) || compiles-alone(test-case, result, context)
@@ -847,14 +757,16 @@ _ runs-alone Bool
     - test-case TestCase
 
 ` Whether a case runs by itself: one that expects what the compiler warns, which the compiler
-` warns of for a whole batch at once, one that compiles probes in, or one that stops the runner.
-some(["warnings", "warn", "probes", "runner-panic"]) • where test-case.has-option(each)
+` warns of for a whole batch at once, or one that compiles probes in.
+some(["warn", "probes"]) • where test-case.has-option(each)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ expects-compile-failure Bool
     - test-case TestCase
 
-some(["crash", "compile-error"]) • where test-case.has-option(each)
+test-case.errors == null && fails
+
+.. fails = some(["crash", "compile-error"]) • where test-case.has-option(each)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do run-into
@@ -893,10 +805,10 @@ for name, content in test-case.files
     * "cd ${shell-quoted(directory)} &&"
     * shell-quoted(context.compiler)
     * "--reached-only"
-    * source-switch(context, directory, test-case.source)
+    * source-switch(directory, test-case)
     * "2>${shell-quoted(errors-path)}"
 . process = Process("/bin/sh", "-c", command)
-. output = unsourced(process as String, directory, context)
+. output = unsourced(process as String, directory, test-case)
 . status = process.wait(null) ?? 1
 process.close()
 if status == 0
@@ -904,7 +816,7 @@ if status == 0
 if status != diagnostic-status
     run-into(test-case, result, context)
     = false
-. errors = unsourced(read-text(errors-path), directory, context)
+. errors = unsourced(read-text(errors-path), directory, test-case)
 . run = CompilerRun(output, errors, status, "$directory/case", "", errors)
 finish-case(test-case, run, result, context, directory)
 result.duration = clock() - started
@@ -927,10 +839,7 @@ emit-json(test-result-json(test-case, result))
 
 . result = CaseResult()
 . started = clock()
-if test-case.has-option("skip") || test-case.has-option("nyi")
-    result.status = "skipped"
-else
-    execute-case(test-case, result, context)
+execute-case(test-case, result, context)
 result.duration = clock() - started
 = result
 
@@ -943,8 +852,6 @@ result.duration = clock() - started
 ` Runs the case in a task of its own, with the main task's stack, and waits for it. A panic that
 ` ends that task marks the case crashed.
 . running = do new @large-stack
-    if test-case.has-option("runner-panic")
-        ?! Panic("Test runner panic boundary")
     . execution = catch execute-case-body(test-case, result, context)
     if execution is Error
         result.status = "crashed"
@@ -961,7 +868,7 @@ running.wait()
     - context RunContext
 
 if context.suite == parse-suite
-    parse-case-body(test-case, result, context.is-brix)
+    parse-case-body(test-case, result)
 else
     core-case-body(test-case, result, context)
 
@@ -969,18 +876,14 @@ else
 + do parse-case-body
     - test-case TestCase
     - result CaseResult
-    - is-brix Bool
 
-if is-brix
-    parse-compare("\n$test-case.source", true, test-case.expected, result)
-    =
-if test-case.source
-    parse-compare("\n$test-case.source", false, test-case.expected, result)
-. brix = test-case.brix
-if brix && (result.status == "passed" || !test-case.source)
-    parse-compare("\n$brix", true, test-case.expected, result)
+. expected = test-case.output ?? ""
+parse-compare("\n$test-case.source", test-case.is-brix, expected, result)
+. twin = test-case.twin
+if twin && result.status == "passed"
+    parse-compare("\n$twin", !test-case.is-brix, expected, result)
     if result.status != "passed"
-        result.errors = "The case's %brix source does not read as expected.\n$result.errors"
+        result.errors = "The case's program in its other language does not read as expected.\n$result.errors"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do parse-compare
@@ -1043,13 +946,13 @@ Path(directory).make-directory()
 for name, content in test-case.files
     write-case-file(directory, name, content)
 
-. warns = test-case.has-option("warnings") || test-case.has-option("warn")
 . probes = test-case.options["probes"] ?? ""
 . run = run-compiler
     - context
     - directory
-    - source-switch(context, directory, test-case.source)
-    - warns
+    - test-case
+    - source-switch(directory, test-case)
+    - test-case.has-option("warn")
     - probes
 finish-case(test-case, run, result, context, directory)
 
@@ -1070,9 +973,34 @@ if crash
     result.errors = crash
     result.actual = run.output
 else
-    result.compare
-        - case-output(test-case, run, context.library, context.source-extension, directory)
-        - test-case.expected
+    compare-case(test-case, run, result, context.library, directory)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do compare-case
+    - test-case TestCase
+    - run CompilerRun
+    - result CaseResult
+    - library String
+    - directory String
+
+. actual [String]
+. expected [String]
+. matches = true
+. errors = test-case.errors
+if errors != null
+    . reported = case-errors(test-case, run, library, directory)
+    actual += reported
+    expected += errors
+    matches = reported.trim() == errors.trim()
+if test-case.output != null || errors == null
+    . printed = without-case-directory(run.output, directory)
+    . wanted = test-case.output ?? ""
+    actual += printed
+    expected += wanted
+    matches = matches && printed.trim() == wanted.trim()
+result.actual = "\n".join(actual)
+result.expected = "\n".join(expected)
+result.status = if matches then "passed" else "failed"
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do run-batch ?! Error ?! IOError
@@ -1103,8 +1031,9 @@ for position in batched
     Path(case-directory).make-directory()
     for name, content in cases[position].files
         write-case-file(case-directory, name, content)
-    write-case-file(case-directory, context.source-name, "\n${cases[position].source}")
-    lines += "${cases[position].id}\t$case-directory\t$case-directory/${context.source-name}"
+    . source-name = cases[position].source-name
+    write-case-file(case-directory, source-name, "\n${cases[position].source}")
+    lines += "${cases[position].id}\t$case-directory\t$case-directory/$source-name"
     directories += case-directory
 write-case-file(directory, "manifest", "\n".join(lines))
 write-case-file(directory, "stdout", "")
@@ -1121,8 +1050,8 @@ process.close()
 if status != 0 || !Path(executable).is-file
     split-batch(cases, batched, results, context, read-text("$directory/build"), rounds)
     =
-for case-directory in directories
-    Path("$case-directory/${context.source-name}").delete()
+for position in 0 .. < directories.length
+    Path("${directories[position]}/${cases[batched[position]].source-name}").delete()
 . next = 0
 while next < batched.length
     next = run-batch-from(next, cases, batched, results, context, directory, directories)
@@ -1248,9 +1177,9 @@ for position in first .. < batched.length
     . reported = errors.slice-string
         - mark.errors-start .. < (if ended then mark.errors-end else errors.size)
     . case-directory = directories[position]
-    . held = task-numbers(in-case(reported, case-directory, context))
+    . held = task-numbers(in-case(reported, case-directory, test-case))
     . run = CompilerRun
-        - in-case(printed, case-directory, context)
+        - in-case(printed, case-directory, test-case)
         - held
         - if ended then 0 else status
         - "$directory/batch"
@@ -1277,7 +1206,7 @@ for position in first .. < batched.length
 _ do in-case String
     - text String
     - directory String
-    - context RunContext
+    - test-case TestCase
 
 ` What a case of a batch printed as the case would print it alone: its module and the modules
 ` beside it are named without the place the batch gives them, its source has no file, and what the
@@ -1290,7 +1219,7 @@ for position in 1 .. < pieces.length
         kept += piece[7 ...]
     else
         kept += "__test__/t$piece"
-. placed = unsourced("".join(kept), directory, context)
+. placed = unsourced("".join(kept), directory, test-case)
 . dispatched = without-number(placed, "__source__:union-dispatch-", "__source__:union-dispatch-1")
 . transitioned = without-number
     - dispatched
@@ -1397,6 +1326,7 @@ for char in text
 _ do run-compiler CompilerRun
     - context RunContext
     - directory String
+    - test-case TestCase
     - source-switch String
     - warns Bool
     - probes String
@@ -1407,10 +1337,10 @@ _ do run-compiler CompilerRun
 . output = process as String
 . status = process.wait(null) ?? 1
 process.close()
-. warned = unsourced(read-text(warnings-path), directory, context)
-. ran = unsourced(read-text(errors-path), directory, context)
+. warned = unsourced(read-text(warnings-path), directory, test-case)
+. ran = unsourced(read-text(errors-path), directory, test-case)
 = CompilerRun
-    - unsourced(output, directory, context)
+    - unsourced(output, directory, test-case)
     - "$warned$ran"
     - status
     - executable
@@ -1431,7 +1361,7 @@ process.close()
     * source-switch
     * "-o ${shell-quoted(executable)}"
     * "$switches $probing 2>${shell-quoted(warnings-path)} &&"
-    * if context.is-brix then "rm -f ${context.source-name} &&" else ""
+    * if test-case.is-brix then "rm -f ${test-case.source-name} &&" else ""
     * "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 $tracing exec ${shell-quoted(executable)}"
     * "2>>${shell-quoted(errors-path)}"
 
@@ -1451,45 +1381,40 @@ _ crash-reason String?
     null
 
 .. produced = Path(run.executable).is-file
-.. expects-failure = some • stream ["crash", "compile-error", "runtime-crash", "crash-stderr"] • where
-    test-case.has-option(each)
+.. expects-failure = some • stream ["crash", "compile-error"] • where test-case.has-option(each)
 
 ━━━━━━━━━━━━━━━━━━━━
-_ case-output String
+_ case-errors String
     - test-case TestCase
     - run CompilerRun
     - library String
-    - extension String
     - directory String
 
-|? test-case.has-option("crash-stderr")
-    without-library-locations(run.errors, library, extension)
-|? test-case.has-option("warnings")
+|? test-case.has-option("warn")
     without-case-directory(warned, directory)
 ??
-    without-case-directory(run.output, directory)
+    without-library-locations(run.errors, library, test-case.source-extension)
 
-.. warned = "\n".join(each in [run.warnings, run.ran, run.output] when each.length != 0)
+.. warned = "\n".join(each in [run.warnings, run.ran] when each.length != 0)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ do source-switch String
-    - context RunContext
     - directory String
-    - source String
+    - test-case TestCase
 
-=? "-c ${shell-quoted("\n$source")}" if !context.is-brix
-write-case-file(directory, context.source-name, "\n$source")
-= context.source-name
+=? "-c ${shell-quoted("\n$test-case.source")}" if !test-case.is-brix
+write-case-file(directory, test-case.source-name, "\n$test-case.source")
+= test-case.source-name
 
 ━━━━━━━━━━━━━━━━━━━━
 _ unsourced String
     - text String
     - directory String
-    - context RunContext
+    - test-case TestCase
 
-"no file".join(unplaced.split(context.source-name))
+"no file".join(unplaced.split(test-case.source-name))
 
-.. unplaced = "no file".join(text.split("$directory/${context.source-name}"))
+.. unplaced = "no file".join(text.split("$directory/${test-case.source-name}"))
 
 ━━━━━━━━━━━━━━━━━━━━
 _ without-case-directory String
@@ -1612,7 +1537,7 @@ while directories
     for child in directory.contents
         if child.is-dir
             directories += child
-        else if child.is-file && child.ext == extension
+        else if child.is-file && child.name.ends-with(extension)
             paths += child as String
 = paths
 
@@ -1620,7 +1545,7 @@ while directories
 _ test-file-extension String
     - suite String
 
-if suite == docs-suite then "md" else "test"
+if suite == docs-suite then ".md" else spec-extension
 
 ━━━━━━━━━━━━━━━━━━━━
 + test-catalog-json [String = JSON]

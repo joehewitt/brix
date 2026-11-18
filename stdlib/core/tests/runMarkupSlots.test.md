@@ -1,0 +1,5704 @@
+# Markup slots
+
+### Demonstrates named slots, default slot routing, declaration order, and slot overlay updates.
+
+```yumi
+. title = "Settings"
+
+<Panel panel
+    <MarkText (header) = #title
+    <MarkText = "body one"
+    <MarkText = "body two"
+
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+-- text-at(panel, 2)
+-- text-at(panel, 3)
+-- count-children(panel)
+title = "Account"
+panel.footer-label = "Done"
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+<OrderedPanel ordered
+    <MarkText (beta) = "B"
+    <MarkText (alpha) = "A"
+-- text-at(ordered, 0)
+-- text-at(ordered, 1)
+
+<OverlayPanel overlay
+    <MarkText (header) = "caller"
+-- text-at(overlay, 0)
+overlay.header-title = "Updated"
+-- text-at(overlay, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
++ footer-label = "Foot"
+
+────────────────────
++ <MarkText header
++ <MarkText footer
+    <MarkText = #footer-label
+
+━━━━━━━━━━━━━━━━━━━━
++ OrderedPanel is MarkNode
+
+────────────────────
++ <MarkText alpha
++ <MarkText beta
+
+━━━━━━━━━━━━━━━━━━━━
++ OverlayPanel is MarkNode
+
++ header-title = "Overlay"
+
+────────────────────
++ <MarkText header
+    text = #header-title
+```
+
+```output
+Settings
+Foot
+body one
+body two
+4
+Account
+Done
+A
+B
+Overlay
+Updated
+```
+
+### A named object supplied to a slot remains the caller's binding when the host absorbs it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<AbsorbingRoot root
+. absorbed = root.host.absorbed!
+-- absorbed.name
+-- absorbed as Pointer == root.named as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ AbsorbedSlotValue
+
++ name = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ AbsorbingSlotHost is Box
+
++ absorbed AbsorbedSlotValue?
+
+────────────────────
++ <AbsorbedSlotValue
+
+────────────────────
++ do markup-absorb
+    - content AbsorbedSlotValue
+
+absorbed = content
+
+━━━━━━━━━━━━━━━━━━━━
++ AbsorbingRoot is Box
+
++ host AbsorbingSlotHost
++ named AbsorbedSlotValue
+
+────────────────────
+
+<This
+    <AbsorbingSlotHost host
+        <AbsorbedSlotValue named
+            name = "slot"
+```
+
+```output
+slot
+true
+```
+
+### Demonstrates repeated row slots that receive a component-owned item value.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<RowHost host
+host.items += RowData("a")
+host.items += RowData("b")
+host.markup-batch-queue.checkpoint()
+. panel = host.panel
+-- row-texts(panel)
+host.items += RowData("c")
+host.markup-batch-queue.checkpoint()
+-- row-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+    is MarkupRootElement
+
++ items [Item] = List'Item()
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    for item in #items
+        <Box
+            + <Box row - item Item
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-texts String
+    - panel Box
+
+. parts [String] = List'String()
+. region = panel.%first-child
+if region
+    for child in region.children
+        parts += (child.%first-child! as TextBox).text
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowHost is Box
+    is MarkupRootElement
+
++ items [RowData] = List'RowData()
++ panel RowPanel'RowData
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
+
+<This
+    <RowPanel'RowData panel
+        items = #items
+        <TextBox (row) - item = item.text
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+. ignored = flush.applied
+```
+
+```output
+a,b
+a,b,c
+```
+
+### Demonstrates nested repeated row slot forwarding through another component.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. left = List'RowData([RowData("a"), RowData("b")])
+. right = List'RowData([RowData("x")])
+. columns [[RowData]] = List'(List'RowData)()
+columns += left
+columns += right
+
+<GridPanel'RowData panel
+    columns = #columns
+    <TextBox (row) - item = item.text
+
+-- grid-texts(panel)
+left += RowData("c")
+-- grid-texts(panel)
+columns += List'RowData([RowData("z")])
+-- grid-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+
++ items [Item]
+
+────────────────────
+
+<This
+    for item in #items
+        + <Box row - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ GridPanel'Item is Box
+
++ columns [[Item]]
+
+────────────────────
+
+<This
+    for items in #columns
+        <RowPanel'Item
+            items = items
+            <+ (row)
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-texts String
+    - panel Box
+
+. column-texts [String] = List'String()
+. column-region = panel.%first-child
+if column-region
+    for column in column-region.children
+        . row-texts [String] = List'String()
+        . row-region = column.%first-child
+        if row-region
+            for child in row-region.children
+                row-texts += (child as TextBox).text
+        column-texts += ",".join(row-texts)
+= "|".join(column-texts)
+```
+
+```output
+a,b|x
+a,b,c|x
+a,b,c|x|z
+```
+
+### Demonstrates inherited repeated row slots see markup-provided properties during initial content construction.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a"), RowData("b")])
+<DerivedRowPanel'RowData panel
+    items = #items
+    <TextBox (row) - item = item.text
+
+-- row-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+
++ items [Item]
+
+────────────────────
+
+<This
+    for item in #items
+        + <Box row - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedRowPanel'Item is RowPanel'Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-texts String
+    - panel Box
+
+. parts [String] = List'String()
+. region = panel.%first-child
+if region
+    for child in region.children
+        parts += (child as TextBox).text
+= ",".join(parts)
+```
+
+```output
+a,b
+```
+
+### Demonstrates nested repeated row forwarding into inherited base content.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. left = List'RowData([RowData("a"), RowData("b")])
+. right = List'RowData([RowData("x")])
+. columns [[RowData]] = List'(List'RowData)()
+columns += left
+columns += right
+
+<DerivedGridPanel'RowData panel
+    columns = #columns
+    <TextBox (row) - item = item.text
+
+-- grid-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+
++ items [Item]
+
+────────────────────
+
+<This
+    for item in #items
+        + <Box row - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedRowPanel'Item is RowPanel'Item
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedGridPanel'Item is Box
+
++ columns [[Item]]
+
+────────────────────
+
+<This
+    for items in #columns
+        <DerivedRowPanel'Item
+            items = items
+            <+ (row)
+
+━━━━━━━━━━━━━━━━━━━━
++ do grid-texts String
+    - panel Box
+
+. column-texts [String] = List'String()
+. column-region = panel.%first-child
+if column-region
+    for column in column-region.children
+        . row-texts [String] = List'String()
+        . row-region = column.%first-child
+        if row-region
+            for child in row-region.children
+                row-texts += (child as TextBox).text
+        column-texts += ",".join(row-texts)
+= "|".join(column-texts)
+```
+
+```output
+a,b|x
+```
+
+### Demonstrates repeated row slot content can pass the item as a property to an explicit row constructor.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a"), RowData("b")])
+<RowPanel'RowData panel
+    items = #items
+    <ExplicitRow (row) - item
+        item = item
+
+-- row-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+
++ items [Item]
+
+────────────────────
+
+<This
+    for item in #items
+        + <Box row - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ ExplicitRow is TextBox
+
++ item RowData
+
+────────────────────
++ This
+    - item
+
+text = item.text
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-texts String
+    - panel Box
+
+. parts [String] = List'String()
+. region = panel.%first-child
+if region
+    for child in region.children
+        parts += (child as TextBox).text
+= ",".join(parts)
+```
+
+```output
+a,b
+```
+
+### Demonstrates that a slot outlet can be referenced locally inside the component body.
+
+```yumi
+<ReferencePanel panel
+    <MarkText (header) = "slot"
+
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ first-child MarkNode?
++ last-child MarkNode?
++ next MarkNode?
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+. child = first-child
+while child
+    if cursor == index
+        = child
+    cursor += 1
+    child = child.next
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ ReferencePanel is MarkNode
+
+────────────────────
++ <MarkText header
+<MarkText = header.text
+```
+
+```output
+slot
+slot
+```
+
+### Demonstrates that a slot outlet that sets attributes on its content can be referenced locally inside the component body.
+
+```yumi
+<ReferencePanel panel
+    <MarkText (header) = "slot"
+
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ first-child MarkNode?
++ last-child MarkNode?
++ next MarkNode?
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+. child = first-child
+while child
+    if cursor == index
+        = child
+    cursor += 1
+    child = child.next
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ ReferencePanel is MarkNode
+
+────────────────────
++ <MarkText header
+    text = "overlaid"
+<MarkText = header.text
+```
+
+```output
+overlaid
+overlaid
+```
+
+### Demonstrates local ids on slotted nodes and live property overlays on slot fallbacks.
+
+```yumi
+. title = "Inline"
+
+<Panel panel
+    <MarkText (header) = #title
+    <MarkText footer-text(footer) = "Tail"
+    <MarkText = "body"
+
+-- count-children(panel)
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+-- text-at(panel, 2)
+-- footer-text.text
+title = "Changed"
+panel.footer-label = "Overlay Tail"
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
++ footer-label = "Foot"
+
+────────────────────
++ <MarkText header
++ <MarkText footer
+    text = #footer-label
+```
+
+```output
+3
+Inline
+Foot
+body
+Foot
+Changed
+Overlay Tail
+```
+
+### Demonstrates that default slot content can be a single host node containing nested children.
+
+```yumi
+<DefaultPanel panel
+    <MarkGroup
+        <MarkText = "one"
+        <MarkText = "two"
+
+-- count-children(panel)
+-- child-texts(panel.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ do child-texts String
+    - node MarkNode
+
+. parts = List'String()
+for child in node.children
+    parts += (child as MarkText).text
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkGroup is MarkNode
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ DefaultPanel is MarkNode
+
+────────────────────
++ <MarkNode
+```
+
+```output
+1
+one,two
+```
+
+### Demonstrates inherited default slot routing and caller override precedence for the default slot.
+
+```yumi
+<DefaultSubPanel panel
+
+-- count-children(panel)
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+-- text-at(panel, 2)
+
+<DefaultSubPanel caller
+    <MarkText = "caller body"
+-- text-at(caller, 0)
+-- text-at(caller, 1)
+-- text-at(caller, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is MarkNode
+
+────────────────────
++ <MarkText header
+    <MarkText = "base header"
+
++ <MarkNode
+    <MarkText = "base body"
+
++ <MarkText footer
+    <MarkText = "base footer"
+
+━━━━━━━━━━━━━━━━━━━━
++ DefaultSubPanel is BasePanel
+
+────────────────────
+
+<MarkText = "sub body"
+```
+
+```output
+3
+base header
+sub body
+base footer
+base header
+caller body
+base footer
+```
+
+### The lines of a class's markup that give the default slot of the class above make each element where it is written, and an element written with a name gives the class's property of the name its object.
+
+```yumi
+<Sub sub
+-- sub.spare.label
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ Note is MarkNode
+
++ label String
+
+────────────────────
++ This
+    - label String
+
+-- "made $label"
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
+
+<This
+    + <MarkNode
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Panel
+
+────────────────────
+
+<This
+    <Note "one"
+        <Note spare "two"
+    <Note "three"
+```
+
+```output
+made one
+made two
+made three
+two
+```
+
+### Demonstrates subclass-provided named slot defaults and caller override precedence.
+
+```yumi
+<SubPanel panel
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+<SubPanel caller
+    <MarkText (header) = "caller header"
+-- text-at(caller, 0)
+-- text-at(caller, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is MarkNode
+
+────────────────────
++ <MarkText header
+    <MarkText = "base header"
+
++ <MarkNode
+    <MarkText = "base body"
+
+━━━━━━━━━━━━━━━━━━━━
++ SubPanel is BasePanel
+
+────────────────────
+
+<MarkText (header) = "sub header"
+<MarkText = "sub body"
+```
+
+```output
+sub header
+sub body
+caller header
+sub body
+```
+
+### Demonstrates that subclasses can declare additional named slot outlets.
+
+```yumi
+<SubPanel panel
+    <MarkText (footer) = "caller footer"
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+-- text-at(panel, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is MarkNode
+
+────────────────────
++ <MarkText header
+    <MarkText = "base header"
+
+━━━━━━━━━━━━━━━━━━━━
++ SubPanel is BasePanel
+
+────────────────────
++ <MarkText footer
+<MarkText = "sub body"
+```
+
+```output
+base header
+caller footer
+sub body
+```
+
+### Demonstrates that subclasses cannot redeclare inherited slot outlets.
+
+```yumi crash
+<SubPanel panel
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is MarkNode
+
+────────────────────
++ <MarkText header
+
+━━━━━━━━━━━━━━━━━━━━
++ SubPanel is BasePanel
+
+────────────────────
++ <MarkText header
+```
+
+```output
+Exception: Duplicate slot outlet
+<no file:38>
+    + <MarkText header
+    ^^^^^^^^^^^^^^^^^^
+```
+
+### Demonstrates recursive slot signature discovery reports a diagnostic instead of recursing.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<RecursivePanel
+    <TextBox (header) = "caller"
+
+━━━━━━━━━━━━━━━━━━━━
++ RecursivePanel is Box
+
+────────────────────
+
+<This
+    <RecursivePanel
+        <+ (header)
+    + <Box header
+```
+
+```output
+Exception: Recursive markup slot signature discovery for RecursivePanel
+<no file:13>
+        <RecursivePanel
+        ^^^^^^^^^^^^^^
+```
+
+### Demonstrates that subclass body content appends as ordinary child content when the base has no default slot.
+
+```yumi
+<ChildSubPanel panel
+-- count-children(panel)
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ ShellPanel is MarkNode
+
+────────────────────
+
+<MarkText = "base shell"
+
+━━━━━━━━━━━━━━━━━━━━
++ ChildSubPanel is ShellPanel
+
+────────────────────
+
+<MarkText = "sub child"
+```
+
+```output
+2
+base shell
+sub child
+```
+
+### Demonstrates that legacy slot element syntax is rejected.
+
+```yumi crash
+<Panel panel
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
+────────────────────
+<slot
+```
+
+```output
+Exception: Syntax error
+<no file:8>
+    <slot
+```
+
+### Demonstrates that legacy nested slot element syntax is rejected.
+
+```yumi crash
+<Panel
+    <header
+        <MarkText = "a"
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
++ <MarkText header
+```
+
+```output
+Exception: Syntax error
+<no file:3>
+        <header
+               ^
+```
+
+### Demonstrates that a caller cannot provide duplicate content for the same slot.
+
+```yumi crash
+<Panel
+    <MarkText (header) = "a"
+    <MarkText (header) = "b"
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
++ <MarkText header
+```
+
+```output
+Exception: Duplicate slot content
+<no file:4>
+        <MarkText (header) = "b"
+                   ^^^^^^
+```
+
+### Demonstrates that a caller cannot provide content for an undeclared slot.
+
+```yumi crash
+<Panel
+    <MarkText (footer) = "x"
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
++ <MarkText header
+```
+
+```output
+Exception: Unknown slot
+<no file:3>
+        <MarkText (footer) = "x"
+                   ^^^^^^
+```
+
+### Demonstrates that slot declarations reject same-line property assignments.
+
+```yumi crash
++ Box
++ flex Int
++ color Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel
+
+────────────────────
++ <Box body flex = 1
+```
+
+```output
+Exception: Syntax error
+<no file:10>
+    + <Box body flex = 1
+                ^
+```
+
+### Root <This> unwraps before inherited slot default routing.
+
+```yumi
+<ChildPanel panel
+
+-- text-at(panel, 0)
+-- text-at(panel, 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ text-at String
+    - node MarkNode
+    - index Index
+
+((node.child-at(index))! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is MarkNode
+
+────────────────────
++ <MarkText header
+
+━━━━━━━━━━━━━━━━━━━━
++ ChildPanel is BasePanel
+
+────────────────────
+
+<This
+    <MarkText (header) = "Root"
+    <MarkText = "Body"
+```
+
+```output
+Root
+Body
+```
+
+### Component-authored named slot content can wrap supplied content in an identified node without requiring that id to exist in the caller scope.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
+<ConfirmLike confirm
+
+. actions Box = (confirm.child-at(0))!
+. ok = first-text-descendant(actions)
+-- ok.text
+
+━━━━━━━━━━━━━━━━━━━━
++ DialogLike is Box
+
+────────────────────
+
+<This
+    + <Box actions
+        <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ ConfirmLike is DialogLike
+
+────────────────────
+
+<This
+    <Box (actions)
+        <TextBox ok = "OK"
+
+━━━━━━━━━━━━━━━━━━━━
++ do first-text-descendant TextBox
+    - box Box
+
+. first = (box.child-at(0))!
+if first is TextBox
+    = first as TextBox
+. wrapper = first as Box
+= (wrapper.child-at(0))! as TextBox
+```
+
+```output
+OK
+```
+
+### A rebindable repeated-slot scope updates tracked reads without rebuilding the physical row, and a closure that reads the stable scope directly observes its current item when invoked.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a"), RowData("b")])
+<RebindPanel'RowData panel
+    items = items
+    <RebindCommandRow (row) - slot
+        text = slot.#item.text
+        command = => slot.item.text
+
+. region = panel.%first-child!
+. first = region.%first-child! as RebindCommandRow
+first.uid = 41
+-- row-texts(panel)
+-- first.uid
+
+panel.rebind(0, 10, 100, RowData("x"))
+panel.markup-batch-queue.checkpoint()
+
+. rebound = region.%first-child! as RebindCommandRow
+-- row-texts(panel)
+-- rebound.uid
+-- (rebound.command!)()
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RebindCommandRow is TextBox
+
++ uid U64 = 0
++ command Getter'String?
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-texts String
+    - panel Box
+
+. texts [String] = List'String()
+. row-region = panel.%first-child
+if row-region
+    for child in row-region.children
+        texts += (child as TextBox).text
+= ",".join(texts)
+```
+
+```output
+a,b
+41
+x,b
+41
+x
+```
+
+### Branches, nested loops, and styles all re-evaluate from one stable rebindable scope.
+
+```yumi
+/core/tests/support/markup-fixtures
+/core/style
+
+. items = List'RebindComplexData([RebindComplexData(true, List'String(["a", "b"])), RebindComplexData(false, List'String(["z"]))])
+<RebindPanel'RebindComplexData panel
+    items = items
+    <RebindComplexRow (row) - slot
+        address = slot.#address
+        if slot.#item.flag
+            <TextBox = "on"
+        else
+            <TextBox = "off"
+        for part in slot.#item.parts
+            <TextBox = part
+
+. region = panel.%first-child!
+. row = region.%first-child! as RebindComplexRow
+-- "${row.$address}:${descendant-texts(row)}"
+
+panel.rebind(0, 9, 90, RebindComplexData(false, List'String(["x"])))
+panel.markup-batch-queue.checkpoint()
+-- "${row.$address}:${descendant-texts(row)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ RebindComplexData
+
++ flag Bool
++ parts [String]
+
+────────────────────
++ This
+    - flag
+    - parts
+
+━━━━━━━━━━━━━━━━━━━━
++ RebindAddressStyle is Style
+
++ address I64 = 0
+
+. address -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ RebindComplexRow is Box
+    using RebindAddressStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ do descendant-texts String
+    - box Box
+
+. texts [String] = List'String()
+for child in box.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    else
+        . nested = descendant-texts(child)
+        if nested
+            texts += nested
+= "|".join(texts)
+```
+
+```output
+0:on|a|b
+9:off|x
+```
+
+### Untracked long-lived reads of a rebindable slot scope are rejected at the member access.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<RebindPanel'RowData
+    items = List'RowData([RowData("a")])
+    <TextBox (row) - slot = slot.item.text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+```
+
+```output
+Exception: Rebindable slot scope reads must be tracked as slot.#item; use an explicit snapshot inside do for a stable value
+<no file:6>
+        <TextBox (row) - slot = slot.item.text
+                                    ^^^^^
+```
+
+### Closure locals and parameters may shadow a rebindable-scope-derived outer local.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<RebindPanel'RowData panel
+    items = List'RowData([RowData("a")])
+    <ShadowCaptureRow (row) - slot
+        . text = slot.#item.text
+        eager = => do
+            . text = "eager"
+            = text
+        parameter = :: text String => text
+        nested = => do
+            . text = "nested"
+            . read = => text
+            = read()
+
+. region = panel.%first-child!
+. row = region.%first-child! as ShadowCaptureRow
+-- (row.eager!)()
+-- (row.parameter!)("parameter")
+-- (row.nested!)()
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ TextMapper is () String
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ ShadowCaptureRow is Box
+
++ eager Getter'String?
++ parameter TextMapper?
++ nested Getter'String?
+```
+
+```output
+eager
+parameter
+nested
+```
+
+### Eager values derived from a rebindable scope cannot escape in an event-style closure.
+
+```yumi warn crash
+/core/tests/support/markup-fixtures
+
+<RebindPanel'RowData
+    items = List'RowData([RowData("a")])
+    <CaptureRow (row) - slot
+        . text = slot.#item.text
+        command = => do
+            if false
+                . text = "unrelated"
+            = text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ CaptureRow is Box
+
++ command Getter'String
+```
+
+```output
+Exception: Local text derived from rebindable slot scope slot cannot escape into a closure; read slot directly in the closure or take an explicit snapshot inside do
+<no file:11>
+                = text
+                  ^^^^
+```
+
+### Closures in supplied slot content may refer to the slot host's own markup id; the id resolves to the owning class property when the closure runs.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <Holder panel
+        <Clicker (actions)
+            action = => do panel.hits += 1
+
+────────────────────
++ do run
+
+. callback = find-clicker(panel)!.action
+if callback
+    callback()
+= panel.hits
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ hits = 0
+
+────────────────────
+
+<This
+    + <Box actions
+
+
+━━━━━━━━━━━━━━━━━━━━
++ Clicker is Box
+
++ action Doer?
+
+━━━━━━━━━━━━━━━━━━━━
++ do find-clicker Clicker?
+    - node Box
+
+if node is Clicker
+    = node as Clicker
+for child in node.children
+    if child is Box
+        . found = find-clicker(child as Box)
+        =? found if found
+= null
+```
+
+```output
+1
+```
+
+### A closure in a named element of top-level markup may read an earlier named element whose class has slots it gives no content to.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Box root
+    <Holder holder
+        hits = 4
+    <Trigger trigger
+        action = => do -- holder.hits
+
+trigger.action()
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ hits = 0
+
+────────────────────
+
+<This
+    + <Box actions
+
+━━━━━━━━━━━━━━━━━━━━
++ Trigger is Box
+
++ action Doer = => do -- "none"
+```
+
+```output
+4
+```
+
+### A closure may refer to a slot host declared later in the same content; the reference reads the owning class property when the closure runs instead of constructing the host early.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.run()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ hits = 0
+
+────────────────────
+
+<This
+    <Clicker
+        action = => do panel.fire()
+    <Holder panel
+        <Box (body)
+            <TextBox field = "hello"
+
+────────────────────
+for value on panel.fired
+
+hits += field.text.length
+
+────────────────────
++ do run
+
+. callback = find-clicker(this)!.action
+if callback
+    callback()
+= hits
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ event fired Bool
+
+────────────────────
+
+<This
+    + <Box body
+
+────────────────────
++ do fire
+
+fired <- true
+
+━━━━━━━━━━━━━━━━━━━━
++ Clicker is Box
+
++ action Doer?
+
+━━━━━━━━━━━━━━━━━━━━
++ do find-clicker Clicker?
+    - node Box
+
+if node is Clicker
+    = node as Clicker
+for child in node.children
+    if child is Box
+        . found = find-clicker(child as Box)
+        =? found if found
+= null
+```
+
+```output
+5
+```
+
+### A repeated slot outlet inside a keyed row rebuilds its caller content when the row item is replaced by a new object under the same key, while the physical row is preserved. Arguments passed through a derived local follow the replacement too.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+<KeyedSlotPanel panel
+    items = items
+    <TextBox (row) - item = item.text
+    <TextBox (label) - item = "${item.text}~"
+
+. region = panel.%first-child!
+. first = region.%first-child!
+-- slot-texts(panel)
+items[0] = RowData("a", "Z")
+-- slot-texts(panel)
+-- if first == region.%first-child! then "preserved" else "lost"
+items[1] = RowData("b", "B")
+-- slot-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id String
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyedSlotPanel is Box
+
++ items [RowData] = List'RowData()
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        . same = item
+        <Box
+            + <Box row - item RowData
+            + <Box label - same RowData
+
+━━━━━━━━━━━━━━━━━━━━
++ do slot-texts String
+    - panel Box
+
+. parts [String] = List'String()
+for child in panel.%first-child!.children
+    for slot in (child as Box).children
+        parts += text-in(slot as Box)
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-in String
+    - box Box
+
+=? (box as TextBox).text if box is TextBox
+for child in box.children
+    = text-in(child as Box)
+= ""
+```
+
+```output
+A,A~,B,B~
+Z,Z~,B,B~
+preserved
+Z,Z~,B,B~
+```
+
+### Slot outlets under an `if` in a keyed markup row, one plain and one that rebuilds on the row's item, come and go with the condition.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+<KeyedSlotPanel panel
+    items = items
+    <TextBox (mark) = "*"
+    <TextBox (label) - item = item.text
+
+-- slot-texts(panel)
+panel.show = false
+-- slot-texts(panel)
+items[0] = RowData("a", "Z")
+panel.show = true
+-- slot-texts(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id String
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyedSlotPanel is Box
+
++ items [RowData] = List'RowData()
++ show = true
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        <Box
+            if #show
+                + <Box mark
+                + <Box label - item RowData
+
+━━━━━━━━━━━━━━━━━━━━
++ do slot-texts String
+    - panel Box
+
+. parts [String] = List'String()
+for row in panel.%first-child!.children
+    parts += texts-in(row as Box)
+= "|".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do texts-in String
+    - box Box
+
+=? (box as TextBox).text if box is TextBox
+. parts [String] = List'String()
+for child in box.children
+    parts += texts-in(child as Box)
+= "".join(parts)
+```
+
+```output
+*A|*B
+|
+*Z|*B
+```
+
+### A repeated slot outlet placed directly in a static loop inside a keyed row also rebuilds its caller content when the row item is replaced, while the physical row is preserved.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+<KeyedSlotPanel panel
+    items = items
+    <TextBox (row) - item = item.text
+
+. region = panel.%first-child!
+. first = region.%first-child!
+-- slot-texts(panel)
+items[0] = RowData("a", "Z")
+-- slot-texts(panel)
+-- if first == region.%first-child! then "preserved" else "lost"
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ id String
++ text String
+
+────────────────────
++ This
+    - id String
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyedSlotPanel is Box
+
++ items [RowData] = List'RowData()
++ passes = List'String(["x", "y"])
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        <Box
+            for pass in passes
+                + <Box row - item RowData
+
+━━━━━━━━━━━━━━━━━━━━
++ do slot-texts String
+    - panel Box
+
+. parts [String] = List'String()
+for child in panel.%first-child!.children
+    for slot in (child as Box).children
+        parts += text-in(slot as Box)
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do text-in String
+    - box Box
+
+=? (box as TextBox).text if box is TextBox
+for child in box.children
+    = text-in(child as Box)
+= ""
+```
+
+```output
+A,A,B,B
+Z,Z,B,B
+preserved
+```
+
+### A loop that is the only default slot content fills a node of the slot's type.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+. plain = ["x", "y"]
+
+<Card keyed
+    for name in #names keyed by name
+        <TextBox = name
+
+<Card unkeyed
+    for name in #names
+        <TextBox = name
+
+<Card static
+    for name in plain
+        <TextBox = name
+
+-- dump(keyed)
+-- dump(unkeyed)
+-- dump(static)
+names += "c"
+-- dump(keyed)
+-- dump(unkeyed)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    <TextBox = "head"
+    + <Box
+```
+
+```output
+head,[[a,b]]
+head,[[a,b]]
+head,[x,y]
+head,[[a,b,c]]
+head,[[a,b,c]]
+```
+
+### A branch or match that is the only default slot content fills a node of the slot's type.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+. kind = "a"
+. is-fixed = false
+
+<Card branched
+    if #is-shown
+        <TextBox = "shown"
+
+<Card matched
+    match #kind
+        |= "a"
+            <TextBox = "alpha"
+        | _
+            <TextBox = "other"
+
+<Card static
+    if is-fixed
+        <TextBox = "fixed"
+    else
+        <TextBox = "loose"
+
+-- dump(branched)
+-- dump(matched)
+-- dump(static)
+is-shown = false
+kind = "b"
+-- dump(branched)
+-- dump(matched)
+is-shown = true
+-- dump(branched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    <TextBox = "head"
+    + <Box
+```
+
+```output
+head,[[shown]]
+head,[[alpha]]
+head,[loose]
+head,[[]]
+head,[[other]]
+head,[[shown]]
+```
+
+### A slot outlet's styles apply to the node that holds lone control flow, as they do to the node that holds several children.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+
+<BatchDemo demo
+    <Card looped
+        for name in #names keyed by name
+            <TextBox = name
+
+    <Card paired
+        <TextBox = "x"
+        <TextBox = "y"
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(looped.%last-child!)
+-- style-computed-snapshot(paired.%last-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    <TextBox = "head"
+    + <Box • flex:2
+```
+
+```output
+node BoxPlacement seg=owned gen=1 mask=1 flex=2
+node BoxPlacement seg=owned gen=1 mask=1 flex=2
+```
+
+### A slot outlet's fallback content can be lone control flow, and caller content replaces it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Listing listing
+-- dump(listing)
+listing.names += "c"
+-- dump(listing)
+
+<Listing replaced
+    <TextBox = "caller"
+-- dump(replaced)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Listing is Box
+
++ names = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    + <Box
+        for name in #names keyed by name
+            <TextBox = name
+```
+
+```output
+[[a,b]]
+[[a,b,c]]
+caller
+```
+
+### Loops and branches in slot content under a batch root read locals of the enclosing function.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+. is-shown = true
+
+<BatchDemo demo
+    <Card keyed
+        <Box
+            for name in #names keyed by name
+                <TextBox = name
+
+    <Card unkeyed
+        <Box
+            for name in #names
+                <TextBox = name
+
+    <Card branched
+        <Box
+            if #is-shown
+                <TextBox = "shown"
+
+demo.markup-batch-queue.checkpoint()
+-- dump(keyed)
+-- dump(unkeyed)
+-- dump(branched)
+names += "c"
+is-shown = false
+demo.markup-batch-queue.checkpoint()
+-- dump(keyed)
+-- dump(unkeyed)
+-- dump(branched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    <TextBox = "head"
+    + <Box
+```
+
+```output
+head,[[a,b]]
+head,[[a,b]]
+head,[[shown]]
+head,[[a,b,c]]
+head,[[a,b,c]]
+head,[[]]
+```
+
+### A slot filled inside a live if holds the caller's content, one region deeper, while the condition holds, and nothing otherwise, as the unfilled slot shows.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+
+<Card card
+    if #is-shown
+        <TextBox (icon) = "badge"
+
+-- dump(card)
+is-shown = false
+-- dump(card)
+is-shown = true
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+[badge]
+[]
+[badge]
+```
+
+### A slot filled inside a live if holds the caller's content while the condition holds, and the slot's fallback otherwise.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+
+<Card card
+    if #is-shown
+        <TextBox (icon) = "badge"
+    <TextBox = "body"
+
+-- dump(card)
+is-shown = false
+-- dump(card)
+is-shown = true
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+```
+
+```output
+[badge],body
+[no icon],body
+[badge],body
+```
+
+### A static if decides the slot's content as the element is made.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. shown = true
+. hidden = false
+
+<Card visible
+    if shown
+        <TextBox (icon) = "badge"
+<Card invisible
+    if hidden
+        <TextBox (icon) = "badge"
+
+-- dump(visible)
+-- dump(invisible)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[badge],no body
+[no icon],no body
+```
+
+### Each arm of an if and else, or of a match, may fill the same slot; an arm that fills nothing leaves the fallback.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-draft = true
+. kind = "a"
+
+<Card toggled
+    if #is-draft
+        <TextBox (icon) = "draft"
+    else
+        <TextBox (icon) = "final"
+<Card matched
+    match #kind
+        |= "a"
+            <TextBox (icon) = "alpha"
+        |= "b"
+            <TextBox (icon) = "beta"
+        | _
+            <TextBox = "plain"
+
+-- dump(toggled)
+-- dump(matched)
+is-draft = false
+kind = "b"
+-- dump(toggled)
+-- dump(matched)
+kind = "c"
+-- dump(matched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[draft],no body
+[alpha],[[]]
+[final],no body
+[beta],[[]]
+[no icon],[[plain]]
+```
+
+### An arm may fill a slot and give the default slot content too, and both come and go with it. A fallback that reads the component's state follows it while it shows.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-open = true
+
+<Card card
+    if #is-open
+        <TextBox (icon) = "badge"
+        <TextBox = "details"
+
+-- dump(card)
+is-open = false
+-- dump(card)
+card.label = "closed"
+-- dump(card)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
++ label = "no icon"
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = #label
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[badge],[[details]]
+[no icon],[[]]
+[closed],[[]]
+```
+
+### One component given a slot unfilled, filled and filled in a branch in one program.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. is-shown = false
+
+<Card plain
+<Card filled
+    <TextBox (icon) = "given"
+<Card branched
+    if #is-shown
+        <TextBox (icon) = "maybe"
+
+-- dump(plain)
+-- dump(filled)
+-- dump(branched)
+is-shown = true
+-- dump(branched)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+```
+
+```output
+no icon
+given
+[no icon]
+[maybe]
+```
+
+### Each arm of an else-if chain may fill the slot, alone or with default slot content, and an arm that fills nothing leaves the fallback.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. level = 0
+. extra = "x"
+
+<Card only
+    if #level == 0
+        <TextBox (icon) = "zero"
+    else if #level == 1
+        <TextBox (icon) = "one $extra"
+    else if #level == 2
+        <TextBox (icon) = "two"
+<Card mixed
+    if #level == 0
+        <TextBox (icon) = "zero"
+    else if #level == 1
+        <TextBox (icon) = "one"
+        <TextBox = "one body"
+    else
+        <TextBox = "else body"
+
+-- "${dump(only)} | ${dump(mixed)}"
+level = 1
+-- "${dump(only)} | ${dump(mixed)}"
+level = 2
+-- "${dump(only)} | ${dump(mixed)}"
+level = 0
+-- "${dump(only)} | ${dump(mixed)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[zero],no body | [zero],[[]]
+[one x],no body | [one],[[one body]]
+[two],no body | [no icon],[[else body]]
+[zero],no body | [zero],[[]]
+```
+
+### A slot filled both outside and inside a branch is filled twice.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. is-shown = true
+
+<Card card
+    <TextBox (icon) = "first"
+    if #is-shown
+        <TextBox (icon) = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: Duplicate slot content
+<no file:9>
+            <TextBox (icon) = "second"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Two branches filling one slot fill it twice.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. a = true
+. b = false
+
+<Card card
+    if #a
+        <TextBox (icon) = "first"
+    if #b
+        <TextBox (icon) = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: Duplicate slot content
+<no file:11>
+            <TextBox (icon) = "second"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### One arm filling a slot twice fills it twice.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. a = true
+
+<Card card
+    if #a
+        <TextBox (icon) = "first"
+        <TextBox (icon) = "second"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: Duplicate slot content
+<no file:9>
+            <TextBox (icon) = "second"
+                      ^^^^
+```
+
+### A slot filled in a branch inside a loop is rejected.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+
+<Card card
+    for name in names
+        if name == "a"
+            <TextBox (icon) = name
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:9>
+                <TextBox (icon) = name
+                          ^^^^
+```
+
+### A slot filled in a loop inside a branch is rejected.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. a = true
+. names = List'String(["a", "b"])
+
+<Card card
+    if #a
+        for name in names
+            <TextBox (icon) = name
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:10>
+                <TextBox (icon) = name
+                          ^^^^
+```
+
+### A match arm that binds names does not fill a slot.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. pick Int? = 3
+
+<Card card
+    match pick
+        | n Int
+            <TextBox (icon) = "number"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does
+<no file:8>
+            | n Int
+              ^^^^^
+```
+
+### A slot filled in an if two deep is rejected.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. shown = true
+. more = true
+
+<Card card
+    if shown
+        if more
+            <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:10>
+                <TextBox (icon) = "badge"
+                          ^^^^
+```
+
+### A slot is not passed on with <+ inside an if.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<Wrap wrap
+    <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
++ shown = true
+
+────────────────────
+
+<This
+    <Card
+        if shown
+            <+ (icon)
+```
+
+```output
+Exception: A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body
+<no file:26>
+                <+ (icon)
+                ^^^^^^^^^
+```
+
+### A slot filled inside an if is not passed on with <+.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Wrap wrap
+    if shown
+        <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    <Card
+        <+ (icon)
+```
+
+```output
+Exception: A slot filled inside an if or match is not passed on with <+; give it content here instead
+<no file:26>
+            <+ (icon)
+            ^^^^^^^^^
+```
+
+### A subclass does not fill its base's slots inside an if.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<Sub sub
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Card
+
++ shown = true
+
+────────────────────
+
+if shown
+    <TextBox (icon) = "badge"
+```
+
+```output
+Exception: A subclass fills its base's slots with lines of its content, not inside an if or match
+<no file:22>
+    if shown
+    ^^^^^^^
+```
+
+### A component does not read an outlet by its name where its slot is filled inside an if.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Card card
+    if shown
+        <TextBox (icon) = "badge"
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    <TextBox = dump(icon)
+```
+
+```output
+Exception: Outlet "icon" is not read by its name where its slot is filled inside an if or match
+<no file:29>
+        <TextBox = dump(icon)
+                        ^^^^
+```
+
+### A slot filled inside a live if reaches an outlet in each row of a keyed loop, rows added later too.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<List list
+    if #shown
+        <TextBox (icon) = "badge"
+
+-- dump(list)
+shown = false
+-- dump(list)
+list.names += "c"
+-- dump(list)
+shown = true
+-- dump(list)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
++ names = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    for name in #names keyed by name
+        <Box
+            + <Box icon
+                <TextBox = "no icon"
+            <TextBox = name
+```
+
+```output
+[[[badge],a],[[badge],b]]
+[[[no icon],a],[[no icon],b]]
+[[[no icon],a],[[no icon],b],[[no icon],c]]
+[[[badge],a],[[badge],b],[[badge],c]]
+```
+
+### A repeated slot is not filled inside an if.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<List list
+    if shown
+        <TextBox (row) - who = who
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
++ names = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    for name in names
+        + <TextBox row - name String
+```
+
+```output
+Exception: A repeated slot cannot be filled inside an if or match
+<no file:8>
+            <TextBox (row) - who = who
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A slot filled inside a live if in a class's content follows the class's property.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Page page
+-- dump(page)
+page.shown = false
+-- dump(page)
+page.shown = true
+-- dump(page)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+━━━━━━━━━━━━━━━━━━━━
++ Page is Box
+
++ shown = true
+
+────────────────────
+
+<This
+    <Card
+        if #shown
+            <TextBox (icon) = "badge"
+```
+
+```output
+[[badge],no body]
+[[no icon],no body]
+[[badge],no body]
+```
+
+### An element whose slot is filled inside a live if may itself be in the arm of a live if.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. outer = true
+. inner = true
+
+<Box root
+    if #outer
+        <Card
+            if #inner
+                <TextBox (icon) = "badge"
+
+-- dump(root)
+inner = false
+-- dump(root)
+outer = false
+-- dump(root)
+outer = true
+-- dump(root)
+inner = true
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[[[badge],no body]]
+[[[no icon],no body]]
+[]
+[[[no icon],no body]]
+[[[badge],no body]]
+```
+
+### A slot filled inside an if in a keyed loop row follows the row's item.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "bb"])
+
+<Box root
+    for name in #names keyed by name
+        <Card
+            if name == "bb"
+                <TextBox (icon) = name
+
+-- dump(root)
+names += "cc"
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[[[no icon],no body],[[bb],no body]]
+[[[no icon],no body],[[bb],no body],[[no icon],no body]]
+```
+
+### A fill reads a local as the arm's condition narrows it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. maybe-name String? = "ann"
+. none String? = null
+
+<Card a
+    if maybe-name
+        <TextBox (icon) = maybe-name
+<Card b
+    if none
+        <TextBox (icon) = none
+
+-- dump(a)
+-- dump(b)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+[ann],no body
+[no icon],no body
+```
+
+### A slot whose outlet sets attributes on its content gets them on content given inside an if.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Card a
+    if #shown
+        <TextBox (header) = "slot"
+<Card b
+    <TextBox (header) = "slot"
+
+-- dump(a)
+-- dump(b)
+shown = false
+-- dump(a)
+shown = true
+-- dump(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <TextBox header
+        text = "overlaid"
+    <TextBox = "end"
+```
+
+```output
+[overlaid],end
+overlaid,end
+[],end
+[overlaid],end
+```
+
+### A subclass that leaves a slot alone passes on what its caller fills inside an if.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Sub a
+    if #shown
+        <TextBox (icon) = "badge"
+
+-- dump(a)
+shown = false
+-- dump(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Card
+
+────────────────────
+
+<TextBox = "sub body"
+```
+
+```output
+[badge],sub body
+[no icon],sub body
+```
+
+### An if that fills a slot tests a condition, not a pattern.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. pick Int? = 3
+
+<Card a
+    if | n Int = pick
+        <TextBox (icon) = "num $n"
+
+-- dump(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+```
+
+```output
+Exception: An if that fills a slot tests a condition, not a pattern; write is or == instead
+<no file:7>
+        if | n Int = pick
+             ^^^^^
+```
+
+### A subclass does not fill a slot its caller fills inside an if.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. shown = true
+
+<Sub a
+    if #shown
+        <TextBox (icon) = "badge"
+<Sub plain
+
+-- dump(a)
+-- dump(plain)
+shown = false
+-- dump(a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+        <TextBox = "no icon"
+    + <Box
+        <TextBox = "no body"
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Card
+
+────────────────────
+
+<TextBox (icon) = "sub icon"
+<TextBox = "sub body"
+```
+
+```output
+Exception: Slot "icon" is filled inside an if or match where this object is made, so the class's content does not fill it too
+<no file:44>
+    <TextBox (icon) = "sub icon"
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A slot binding on a loop row is rejected.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. names = List'String(["a", "b"])
+
+<Card card
+    for name in #names keyed by name
+        <TextBox (icon) = name
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Box
+
+────────────────────
+
+<This
+    + <Box icon
+    + <Box
+```
+
+```output
+Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
+<no file:8>
+            <TextBox (icon) = name
+                      ^^^^
+```
+
+### An id on the only node supplied to a default slot names the node the slot mounts, as it does when the slot receives several nodes, and ids nested beneath it resolve the same way.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Box demo
+    <Holder one
+        <Box sole
+            <Box inner
+    <Holder two
+        <Box first
+        <Box second
+
+-- "sole is the slot node ${(one.%first-child as Pointer?) == (sole as Pointer?)}"
+-- "inner is its child ${(sole.%first-child as Pointer?) == (inner as Pointer?)}"
+-- "first is mounted ${first.%parent != null}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+────────────────────
+
+<This
+    + <Box
+```
+
+```output
+sole is the slot node true
+inner is its child true
+first is mounted true
+```
+
+### A class subscription to an event on the only node supplied to a default slot receives the event, as it does for a direct child and for one of several slot nodes.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+
+demo.direct.pinged <- 1
+demo.multi.pinged <- 1
+demo.single.pinged <- 1
+-- "direct=${demo.direct-pings} multi=${demo.multi-pings} single=${demo.single-pings}"
+-- "single is the slot node ${(demo.holder.%first-child as Pointer?) == (demo.single as Pointer?)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ direct-pings = 0
++ multi-pings = 0
++ single-pings = 0
+
+────────────────────
+
+<This
+    <Pinger direct
+    <Holder
+        <Pinger multi
+        <Box
+    <Holder holder
+        <Pinger single
+
+────────────────────
+for event on direct.pinged
+
+direct-pings += 1
+
+────────────────────
+for event on multi.pinged
+
+multi-pings += 1
+
+────────────────────
+for event on single.pinged
+
+single-pings += 1
+```
+
+```output
+direct=1 multi=1 single=1
+single is the slot node true
+```
+
+### An id on a slot host supplied through nested slot content binds from inside the inner slot builder, both as a class property and as a module-level name.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- "class name=${demo.inner.name} mounted=${demo.inner.%parent != null}"
+
+<Box root
+    <Wrap
+        <Wrap
+            <Host local
+                name = "local"
+
+-- "module name=${local.name} mounted=${local.%parent != null}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ inner Host
+
+────────────────────
+
+<This
+    <Wrap
+        <Wrap
+            <Host inner
+                name = "bound"
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Host is Box
+
++ name = ""
+
+────────────────────
+
+<This
+    + <Box extra
+```
+
+```output
+class name=bound mounted=true
+module name=local mounted=true
+```
+
+### An id on the only node supplied to a default slot binds the owning class property when the slot host sits inside another element, whether or not the node is itself a slot host.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- "host name=${demo.inner.name} mounted=${demo.inner.%parent != null}"
+-- "plain name=${demo.plain.name} mounted=${demo.plain.%parent != null}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ inner Host
++ plain Plain
+
+────────────────────
+
+<This
+    <Box
+        <Wrap
+            <Host inner
+                name = "bound"
+    <Box
+        <Wrap
+            <Plain plain
+                name = "bound"
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Host is Box
+
++ name = ""
+
+────────────────────
+
+<This
+    + <Box extra
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+
++ name = ""
+```
+
+```output
+host name=bound mounted=true
+plain name=bound mounted=true
+```
+
+### Supplied slot content reads its slot host by the host's markup id, in named and default slots. The id is bound before the host builds its content, so an untracked read sees the host and a tracked read follows it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- pane-labels(demo)
+demo.named.title = "two"
+demo.plain.title = "two"
+-- pane-labels(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <NamedHolder named
+        <Pane named-pane(detail)
+            tracked = named.#title
+            untracked = named.title
+    <PlainHolder plain
+        <Pane plain-pane
+            tracked = plain.#title
+            untracked = plain.title
+
+━━━━━━━━━━━━━━━━━━━━
++ NamedHolder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ PlainHolder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ tracked = ""
++ untracked = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do pane-labels String
+    - demo Demo
+
+. named = demo.named-pane
+. plain = demo.plain-pane
+= "named=${named.tracked}/${named.untracked} plain=${plain.tracked}/${plain.untracked}"
+```
+
+```output
+named=one/one plain=one/one
+named=two/one plain=two/one
+```
+
+### A slot outlet nested inside an element of a generic host's content receives content that reads a computed field of the host by the host's markup id, including when the host is itself supplied as slot content.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- "${demo.direct-pane.shown ?? "none"} ${demo.nested-pane.shown ?? "none"}"
+demo.direct.title = "two"
+demo.nested.title = "two"
+-- "${demo.direct-pane.shown ?? "none"} ${demo.nested-pane.shown ?? "none"}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <Holder'String direct
+        seed = "x"
+
+        <Pane direct-pane(detail)
+            shown = direct.#shown
+    <Wrap
+        <Holder'String nested
+            <Pane nested-pane(detail)
+                shown = nested.#shown
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Item is Box
+
++ seed Item?
++ title = "one"
++ shown String? = #title
+
+────────────────────
+
+<This
+    <Box detail-pane
+        + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ shown String?
+```
+
+```output
+one one
+two two
+```
+
+### Slot content that reads its slot host through an explicitly declared id property sees the host the markup constructs, not the property's default value.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.pane.label
+-- demo.pane.holder as Pointer == demo.columns as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ columns Holder
++ pane Pane
+
+────────────────────
+
+<This
+    <Holder columns
+        title = "markup"
+
+        <Pane pane(detail)
+            label = columns.title
+            holder = columns
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "default"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ label = ""
++ holder Holder?
+```
+
+```output
+markup
+true
+```
+
+### An element's own property value cannot read the element by its markup id.
+
+```yumi compile-error
+/core/tests/support/markup-fixtures
+
+<Demo demo
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <Holder columns
+        label = columns.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "one"
++ label = ""
+```
+
+```output
+Exception: Named markup element "columns" is read before its markup constructs it
+<no file:13>
+            label = columns.title
+                    ^^^^^^^
+```
+
+### Supplied slot content in module-level markup reads its slot host by the host's markup id, in named and default slots. The id is bound before the host builds its content, so an untracked read sees the host and a tracked read follows it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Box root
+    <NamedHolder named
+        <Pane named-pane(detail)
+            tracked = named.#title
+            untracked = named.title
+    <PlainHolder plain
+        <Pane plain-pane
+            tracked = plain.#title
+            untracked = plain.title
+
+-- pane-labels(named-pane, plain-pane)
+named.title = "two"
+plain.title = "two"
+-- pane-labels(named-pane, plain-pane)
+
+━━━━━━━━━━━━━━━━━━━━
++ NamedHolder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ PlainHolder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ tracked = ""
++ untracked = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ do pane-labels String
+    - named Pane
+    - plain Pane
+
+= "named=${named.tracked}/${named.untracked} plain=${plain.tracked}/${plain.untracked}"
+```
+
+```output
+named=one/one plain=one/one
+named=two/one plain=two/one
+```
+
+### Supplied slot content in function-level markup reads its slot host by the host's markup id, and a closure in that content reads the host when it runs.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+show("one")
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - first String
+
+<Box root
+    <Holder columns
+        title = first
+
+        <Pane pane(detail)
+            label = columns.#title
+            action = => do columns.hits += 1
+
+-- pane.label
+columns.title = "two"
+-- pane.label
+. action = pane.action
+if action
+    action()
+-- columns.hits
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = ""
++ hits = 0
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ label = ""
++ action Doer?
+```
+
+```output
+one
+two
+1
+```
+
+### A slot host that is itself supplied as slot content outside class content is read by its markup id from its own slot content.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Box root
+    <Wrap
+        <Holder columns
+            <Pane pane(detail)
+                label = columns.#title
+
+-- pane.label
+columns.title = "two"
+-- pane.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ label = ""
+```
+
+```output
+one
+two
+```
+
+### Outside class content, a slot host's own property value cannot read the host by its markup id.
+
+```yumi compile-error
+/core/tests/support/markup-fixtures
+
+<Box root
+    <Holder columns
+        label = columns.title
+
+        <Pane (detail)
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "one"
++ label = ""
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+```
+
+```output
+Exception: Named markup element "columns" is read before its markup constructs it
+<no file:6>
+            label = columns.title
+                    ^^^^^^^
+```
+
+### Supplied slot content in a method's markup reads its slot host by the host's markup id, which is not a property of the method's class.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
++ do show String
+
+<Box outer
+    <Holder columns
+        <Pane pane(detail)
+            label = columns.#title
+
+columns.title = "two"
+= pane.label
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ label = ""
+```
+
+```output
+two
+```
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<NestedHost host
+    <NestedLeaf (row) - row
+        address = row.#address
+
+. opening = leaves(host)
+-- addresses(opening)
+
+host.panel.rebind(0, 10, 100, "x")
+host.panel.markup-batch-queue.checkpoint()
+
+. closing = leaves(host)
+-- addresses(closing)
+-- opening.length == closing.length && opening[0] == closing[0] && opening[1] == closing[1]
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedRow is Box
+
++ address I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedLeaf is Box
+
++ address I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ NestedHost is Box
+
+────────────────────
+
+<This
+    <RebindPanel'String panel
+        items = List'String(["a", "b"])
+        <NestedRow host-row(row) - slot
+            address = slot.#address
+
+            + <Box row - host-row NestedRow
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaves [NestedLeaf]
+    - box Box
+
+. found [NestedLeaf] = List'NestedLeaf()
+collect-leaves(box, found)
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ do collect-leaves
+    - box Box
+    - found [NestedLeaf]
+
+if box is NestedLeaf
+    found += box as NestedLeaf
+for child in box.children
+    collect-leaves(child, found)
+
+━━━━━━━━━━━━━━━━━━━━
++ addresses String
+    - found [NestedLeaf]
+
+",".join("${each.address}" in found)
+```
+
+```output
+0,1
+10,1
+true
+```
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+./lib/panel
+
+<Panel panel
+    <Box
+    <Box
+
+-- size(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ do size Int
+    - box Box
+
+. total = 1
+for child in box.children
+    total += size(child)
+= total
+```
+
+```yumi file=lib/panel.yumi
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <PanelFrame
+        + <Box
+
+━━━━━━━━━━━━━━━━━━━━
+_ PanelFrame is Box
+
+```
+
+```output
+5
+```
+
+### A closure an attribute of an element whose class has slots gives reads the name of a markup element of its body, made after the closure, as the receiver's property when it runs.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. panel = Panel()
+. holder = panel.%first-child! as Holder
+holder.fire()
+-- panel.seen
+panel.later.title = "changed"
+holder.fire()
+-- panel.seen
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ title = ""
+
+────────────────────
++ This
+    - title = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ run Doer?
+
+────────────────────
+
+<This
+    + <Box trailing
+
+────────────────────
++ do fire
+
+. callback = run
+if callback
+    callback()
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ seen = ""
+
+────────────────────
+
+<This
+    <Holder
+        run = => do note(later.title)
+        <Item later "b"
+
+────────────────────
++ do note
+    - text String
+
+seen = text
+```
+
+```output
+b
+changed
+```
+
+### The lines of an element's body that give its class's default slot are built into a node of the slot's type of their own, though the body also gives an attribute and another slot content.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. panel = Panel()
+-- describe(panel)
+-- (panel.%first-child! as Frame).size
+panel.n = 5
+-- describe(panel)
+-- (panel.%first-child! as Frame).size
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - node Box
+
+. text = ""
+if node is TextBox
+    text = (node as TextBox).text
+. child = node.%first-child
+if child
+    text = text ++ "["
+    while child
+        text = text ++ describe(child) ++ " "
+        child = child.%next-sibling
+    text = text ++ "]"
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is Box
+
++ size = 0
+
+────────────────────
+
+<This
+    + <Box header
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ n = 2
+
+────────────────────
+
+<This
+    <Frame
+        size = #n
+        <TextBox "a"
+        <TextBox "b ${#n}"
+        <TextBox (header) "h ${#n}"
+```
+
+```output
+[[h 2 [a b 2 ] ] ]
+2
+[[h 5 [a b 5 ] ] ]
+5
+```
+
+### The name of a slot outlet written in a nested element body holds the node it mounts for the lines after it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Panel panel
+    <TextBox (header) = "H"
+
+for child in (panel.%first-child! as Box).children
+    -- (child as TextBox).text
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <Box
+        + <TextBox header
+        <TextBox = "n${header.text}"
+```
+
+```output
+H
+nH
+```
+
+### A class whose markup gives the default slot of the class above several lines builds them into one node, and a line it binds to another slot fills that slot.
+
+```yumi
+. panel = Fancy()
+show(panel, "")
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - node MarkNode
+    - indent String
+
+if node is MarkText
+    -- "$indent${(node as MarkText).text}"
+else
+    -- "${indent}node"
+for child in node.children
+    show(child, "$indent  ")
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ do child-at MarkNode?
+    - index Index
+
+. cursor Index = 0
+for child in children
+    if cursor == index
+        = child
+    cursor += 1
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !first-child
+    first-child = last-child = child
+else
+    last-child?.next = child
+    child.previous = last-child
+    last-child = child
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is MarkNode
+
+────────────────────
+
++ <MarkText header
+    <MarkText = "head"
++ <MarkNode
++ <MarkText footer
+    <MarkText = "foot"
+
+━━━━━━━━━━━━━━━━━━━━
++ Fancy is Panel
+
+────────────────────
+
+<This
+    <MarkText = "one"
+    <MarkText = "two"
+    <MarkText (footer) = "fancy foot"
+```
+
+```output
+node
+  head
+  node
+    one
+    two
+  fancy foot
+```
+
+### A named element among the lines a subclass gives its base's default slot binds the property while its own slot content reads it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- row-texts(demo.panel)
+-- demo.size()
+
+━━━━━━━━━━━━━━━━━━━━
++ RowData
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel'Item is Box
+
++ items [Item] = List'Item()
+
+────────────────────
+
+<This
+    for item in #items
+        <Box
+            + <Box row - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ Wrap is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ do row-texts String
+    - panel Box
+
+. parts [String] = List'String()
+. region = panel.%first-child
+if region
+    for child in region.children
+        parts += (child.%first-child! as TextBox).text
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Base is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Base
+
++ items [RowData] = [RowData("a"), RowData("b")]
++ names [String] = ["x"]
+
+────────────────────
+
+<This
+    <RowPanel'RowData panel
+        items = #items
+        <TextBox (row) - item = "${item.text}${panel.items.length}"
+    for name in #names keyed by name
+        <TextBox
+            text = name
+
+────────────────────
++ do size Size
+
+= panel.items.length
+```
+
+```output
+a2,b2
+2
+```
+
+### An element whose class has slots but whose body gives none is made as any other: a named element among its lines is made where the block starts, so an attribute of the host reads it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.button.is-on
+demo.button.clicked <- 1
+do new
+    -- demo.button.is-on
+
+━━━━━━━━━━━━━━━━━━━━
++ Pop is Box
+
++ is-open Bool = false
+
+────────────────────
++ do toggle
+
+is-open = !is-open
+
+━━━━━━━━━━━━━━━━━━━━
++ Btn is Box
+
++ is-on Bool = false
++ event clicked Int
+
+────────────────────
+
+<This
+    <Box
+        + <Box trailing
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <Btn button
+        is-on = pop.#is-open
+        for n on clicked
+            pop.toggle()
+        <Pop pop
+```
+
+```output
+false
+true
+```
+
+### Content a repeated slot gives that holds an outlet of its class's own slot, whose fallback reads the item tracked: where the caller gives that slot, the fallback is not built and reads nothing.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Box panel
+    <View view
+        <Bar (content) - item-box
+            item = item-box.#item
+-- found(panel)
+-- bars(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Tuple
+
++ id String
++ selected Bool
+
+━━━━━━━━━━━━━━━━━━━━
++ ItemBox is Box
+
++ item Row = Row("", false)
+
+━━━━━━━━━━━━━━━━━━━━
++ LaneBox is Box
+
++ items [Row] = List'Row()
+
+────────────────────
+
+<This
+    for item in #items keyed by item.id
+        <ItemBox item-box
+            item = item
+            + <Box content - item-box ItemBox
+
+━━━━━━━━━━━━━━━━━━━━
++ Body is Box
+
++ is-selected Bool = false
+
+━━━━━━━━━━━━━━━━━━━━
++ View is Box
+
++ lanes [[Row]] = [[Row("a", true), Row("b", false)]]
+
+────────────────────
+
+<This
+    for lane in #lanes
+        <LaneBox
+            items = lane
+            <Box (content) - item-box
+                + <Box content - item-box ItemBox
+                    <Body
+                        is-selected = item-box.#item.selected
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Box
+
++ item Row = Row("", false)
+
+━━━━━━━━━━━━━━━━━━━━
++ do bars String
+    - box Box
+
+. parts [String] = List'String()
+for child in box.children
+    if child is Bar
+        parts += (child as Bar).item.id
+    . inner = bars(child)
+    if inner.size != 0
+        parts += inner
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ do found String
+    - box Box
+
+. parts [String] = List'String()
+for child in box.children
+    if child is Body
+        parts += "${(child as Body).is-selected}"
+    . inner = found(child)
+    if inner.size != 0
+        parts += inner
+= ",".join(parts)
+```
+
+```output
+a,b
+```
+
+### A class whose markup holds the default slot outlet does not change how an element of a class of the same name in another module takes the lines of its body.
+
+```yumi
+./lib/outlet
+./lib/plain
+
+-- outlet-size()
+-- plain-size()
+```
+
+```yumi file=lib/outlet.yumi
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
++ do outlet-size Int
+
+<Panel panel
+= size(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ do size Int
+    - box Box
+
+. total = 1
+for child in box.children
+    total += size(child)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ Panel is Box
+
+────────────────────
+
+<This
+    <Box
+        + <Box
+
+```
+
+```yumi file=lib/plain.yumi
+
+/core/markup
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain-size Int
+
+<Panel panel
+    <Box
+    <Box
+= size(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ do size Int
+    - box Box
+
+. total = 1
+for child in box.children
+    total += size(child)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
+_ Panel is Box
+
+```
+
+```output
+2
+3
+```
+
+### A named slot outlet whose body holds only attributes and no default content mounts nothing when its slot is not supplied, and mounts the supplied node when it is.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Panel bare
+<Panel full
+    <TextBox (footer) = "foot"
+-- "bare=${bare.%first-child == null} full=${(full.%first-child! as TextBox).text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    + <Box footer
+        flex = 1
+```
+
+```output
+bare=true full=foot
+```
+
+### A named slot outlet whose body holds only an attribute that reads a tracked property mounts nothing when its slot is not supplied, and gives the supplied node the attribute again when the property changes.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Panel bare
+<Panel full
+    <TextBox (footer) = "foot"
+-- "bare=${bare.%first-child == null} full=${(full.%first-child! as TextBox).text}"
+full.is-wide = true
+-- "full=${(full.%first-child! as TextBox).text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-wide = false
+
+────────────────────
+
+<This
+    + <TextBox footer
+        text = if #is-wide then "wide" else "narrow"
+```
+
+```output
+bare=true full=narrow
+full=wide
+```
+
+### The one line of an element's body that gives its class's default slot content may be a value rather than an element: the value is converted to the slot's type.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<CaptionHost first
+    Label("plain")
+<CaptionHost second
+    Plain("converted")
+-- first.caption!.text
+-- second.caption!.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain
+
++ text String
+
+────────────────────
++ This
+    - text
+
+────────────────────
++ to Label
+
+Label(text)
+
+━━━━━━━━━━━━━━━━━━━━
++ CaptionHost is Box
+
++ caption Label?
+
+────────────────────
++ <Label
+
+────────────────────
++ do markup-absorb
+    - content Label
+
+caption = content
+```
+
+```output
+plain
+converted
+```
+
+### Default slot content that a `use` lends is converted to the slot's type before the `use` ends.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<CaptionHost host
+    use Lender()
+-- host.caption!.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Lender
+
++ open = false
+
+────────────────────
++ do begin-using
+
+open = true
+= this
+
+────────────────────
++ do end-using
+
+open = false
+-- "end-using"
+
+────────────────────
++ to Label
+
+Label(if open then "open" else "closed")
+
+━━━━━━━━━━━━━━━━━━━━
++ CaptionHost is Box
+
++ caption Label?
+
+────────────────────
++ <Label
+
+────────────────────
++ do markup-absorb
+    - content Label
+
+caption = content
+```
+
+```output
+end-using
+open
+```
+
+### A slot host named under an `if` line binds the owning class property before it builds its content, so the content reads the host by its markup id, as it does outside the `if`.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ is-shown = true
+
+────────────────────
+
+<This
+    if #is-shown
+        <Holder picked
+            <Pane (detail)
+                untracked = picked.title
+
+────────────────────
++ do label String
+
+. pane = picked.%first-child! as Pane
+= "${picked.title} ${pane.untracked}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ title = "one"
+
+────────────────────
+
+<This
+    + <Box detail
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ untracked = ""
+```
+
+```output
+one one
+```
+
+### Demonstrates that a subclass of a class that forwards a named slot appends its own lines as ordinary child content.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<ForwardingSubPanel panel
+    <TextBox (extra) "added"
+
+-- count-children(panel)
+-- count-children(panel.holder)
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children Index
+    - box Box
+
+. found = 0
+for child in box.children
+    found += 1
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtraHolder is Box
+
+────────────────────
+
+<This
+    + <Box extra
+
+━━━━━━━━━━━━━━━━━━━━
++ ForwardingPanel is Box
+
+────────────────────
+
+<This
+    <ExtraHolder holder
+        <+ (extra)
+
+━━━━━━━━━━━━━━━━━━━━
++ ForwardingSubPanel is ForwardingPanel
+
+────────────────────
+
+<This
+    <TextBox "own"
+```
+
+```output
+2
+1
+```
+
+### Demonstrates that forwarding a slot the component was not given gives the inner element nothing for that slot.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<ForwardingPanel panel
+    <TextBox "plain"
+
+-- count-children(panel)
+-- count-children(panel.holder)
+. made = ForwardingPanel()
+-- count-children(made.holder)
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children Index
+    - box Box
+
+. found = 0
+for child in box.children
+    found += 1
+= found
+
+━━━━━━━━━━━━━━━━━━━━
++ ExtraHolder is Box
+
+────────────────────
+
+<This
+    + <Box extra
+
+━━━━━━━━━━━━━━━━━━━━
++ ForwardingPanel is Box
+
+────────────────────
+
+<This
+    <ExtraHolder holder
+        <+ (extra)
+```
+
+```output
+2
+0
+0
+```
+
+### A named element of a slot's default content panics where it is read once a caller fills the slot.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<Holder holder
+    <Box (detail)
+-- holder.marker.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+────────────────────
+
+<This
+    + <Box detail
+        <Pane marker
+
+━━━━━━━━━━━━━━━━━━━━
++ Pane is Box
+
++ title = "one"
+```
+
+```stderr
+Unhandled panic: Named markup element "marker" is read before its markup constructs it
+<no file:6>
+
+Task 1
+
+Stack trace:
+  0  __source__:main no file:6:4
+  1  __source__:init.__source__ no file
+  2  __source__:brix.main no file
+```
+
+### Slot content cannot read an element it writes later: it makes its elements in order.
+
+```yumi compile-error
+/core/tests/support/markup-fixtures
+
+<Pair pair
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ value = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Shelf is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Shelf
+
+────────────────────
+
+<This
+    <Holder first
+        value = second.value
+    <Holder second
+        value = true
+```
+
+```output
+Exception: Named markup element "second" is read before its markup constructs it
+<no file:26>
+            value = second.value
+                    ^^^^^^
+```
+
+### A tracked read in slot content cannot read an element the content writes later.
+
+```yumi compile-error
+/core/tests/support/markup-fixtures
+
+<Pair pair
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ value = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Shelf is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Shelf
+
+────────────────────
+
+<This
+    <Holder first
+        value = second.#value
+    <Holder second
+        value = true
+
+────────────────────
++ do peek Bool
+
+= second.value
+```
+
+```output
+Exception: Named markup element "second" is read before its markup constructs it
+<no file:26>
+            value = second.#value
+                    ^^^^^^
+```
+
+### Class content cannot read a slot host it writes above an element it names: the host is made where it is written, after the elements the block makes where it starts.
+
+```yumi compile-error
+/core/tests/support/markup-fixtures
+
+<Demo demo
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ value = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Shelf is Box
+
++ value = true
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+────────────────────
+
+<This
+    <Shelf shelf
+        <Box
+    <Holder holder
+        value = shelf.value
+```
+
+```output
+Exception: Named markup element "shelf" is read before its markup constructs it
+<no file:30>
+            value = shelf.value
+                    ^^^^^
+```

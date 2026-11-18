@@ -392,7 +392,7 @@ Exception: Global 'base' is read before it is initialized
 Read through a function, or from a module that starts earlier, it is a panic when the program
 runs:
 
-```brix crash-stderr
+```brix crash
 (prop + first _ (= (call read-name)))
 
 (prop + name _ (= (call noisy "world")))
@@ -411,7 +411,7 @@ runs:
 )
 ```
 
-```output
+```stderr
 
 Unhandled panic: Global 'name' is read before it is initialized
 <no file:11>

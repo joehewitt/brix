@@ -1,0 +1,1684 @@
+# Functions
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+```
+
+```brix
+(fn-expr + func _)
+```
+
+```output
+<Function names="func" access="public-access"/>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ static func Int
+```
+
+```brix
+(fn-expr + func Int :static)
+```
+
+```output
+<Function names="func" access="public-access" static="true">
+    <TypeId name="Int"/>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ static do release
+```
+
+```brix
+(fn-do + release _ :static)
+```
+
+```output
+<Function names="release" access="public-access" imperative="true" static="true">
+    <Block/>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do func
+```
+
+```brix
+(fn-do + func _)
+```
+
+```output
+<Function names="func" access="public-access" imperative="true">
+    <Block/>
+</Function>
+```
+
+## Declared Errors
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do func
+
+= 1
+```
+
+```brix
+(fn-do + func _
+  (return 1)
+)
+```
+
+```output
+<Function names="func" access="public-access" imperative="true">
+    <Block>
+        <Return>
+            <Integer value="1"/>
+        </Return>
+    </Block>
+</Function>
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ do This ~ Char
+
+~ "a"
+```
+
+```output
+Exception: Stream-pattern functions do not support do
+<no file:2>
+    ━━━━━━━━━━━━━━━━━━━━
+    ^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi
+≤
++ Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ do This
+
+━━━━━━━━━━━━━━━━━━━━
++ do get name String
+
+= "thing"
+
+━━━━━━━━━━━━━━━━━━━━
++ do name = value String
+
+-- value
+
+━━━━━━━━━━━━━━━━━━━━
++ do to String
+
+= name
+
+━━━━━━━━━━━━━━━━━━━━
++ do from value String
+
+= Thing()
+≥
+```
+
+```brix
+(type + Thing
+  (fn-do + This _)
+  (fn-do + name String :get
+    (return "thing")
+  )
+  (fn-do + name _ :set (param value String)
+    (print value)
+  )
+  (fn-to-do + String
+    (return name)
+  )
+  (fn-from-do + (: value String)
+    (return (call Thing))
+  )
+)
+```
+
+```output
+<Class name="Thing" access="public-access">
+    <Function names="This" access="public-access" imperative="true"/>
+    <Function names="name" access="public-access" getter="true" imperative="true">
+        <TypeId name="String"/>
+        <Block>
+            <Return>
+                <String text="thing"/>
+            </Return>
+        </Block>
+    </Function>
+    <Function names="name" access="public-access" setter="true" imperative="true">
+        <ArgumentDecl>
+            <TypeCapture>
+                <Id name="value"/>
+                <TypeId name="String"/>
+            </TypeCapture>
+        </ArgumentDecl>
+        <Block>
+            <Print>
+                <Id name="value"/>
+            </Print>
+        </Block>
+    </Function>
+    <Converter access="public-access" imperative="true">
+        <TypeId name="String"/>
+        <Block>
+            <Return>
+                <Id name="name"/>
+            </Return>
+        </Block>
+    </Converter>
+    <Fromverter access="public-access" imperative="true">
+        <TypeCapture>
+            <Id name="value"/>
+            <TypeId name="String"/>
+        </TypeCapture>
+        <Block>
+            <Return>
+                <CallExpression>
+                    <TypeId name="Thing"/>
+                </CallExpression>
+            </Return>
+        </Block>
+    </Fromverter>
+</Class>
+```
+
+```yumi
++ name String => do
+    = "ok"
+```
+
+```brix
+(prop + name String
+  (=> :do
+    (block
+      (return "ok")
+    )
+  )
+)
+```
+
+```output
+<Function names="name" access="public-access" getter="true" imperative="true">
+    <TypeId name="String"/>
+    <Block>
+        <Return>
+            <String text="ok"/>
+        </Return>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ read-file String ?! IOError
+```
+
+```brix
+(fn-expr + read-file String (?! IOError))
+```
+
+```output
+<Function names="read-file" access="public-access">
+    <TypeId name="String"/>
+    <errors>
+        <TypeId name="IOError"/>
+    </errors>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ read-file String ?! IOError ?! TypeError
+```
+
+```brix
+(fn-expr + read-file String (?! IOError) (?! TypeError))
+```
+
+```output
+<Function names="read-file" access="public-access">
+    <TypeId name="String"/>
+    <errors>
+        <TypeId name="IOError"/>
+        <TypeId name="TypeError"/>
+    </errors>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ read-file String
+```
+
+```brix
+(fn-expr + read-file String)
+```
+
+```output
+<Function names="read-file" access="public-access">
+    <TypeId name="String"/>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ read-file String without safepoints
+```
+
+```brix
+(fn-expr + read-file String (without safepoints))
+```
+
+```output
+<Function names="read-file" access="public-access" effects="no-safepoint">
+    <TypeId name="String"/>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ scan-zone U64 without gc
+```
+
+```brix
+(fn-expr + scan-zone U64 (without gc))
+```
+
+```output
+<Function names="scan-zone" access="public-access" effects="no-gc">
+    <TypeId name="U64"/>
+</Function>
+```
+
+### A restriction is written in a without section, not as an annotation.
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ scan-zone U64 @no-gc
+```
+
+```output
+Exception: Write 'without gc' in place of '@no-gc'
+<no file:3>
+    + scan-zone U64 @no-gc
+                   ^^^^^^
+```
+
+```brix
+(fn-expr + scan-zone U64 @no-heap)
+```
+
+```output
+Exception: Write 'without heap' in place of '@no-heap'
+<no file:2>
+    (fn-expr + scan-zone U64 @no-heap)
+                             ^^^^^^^
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
+_ func
+```
+
+```brix
+(fn-expr _ func _)
+```
+
+```output
+<Function names="func" access="private-access"/>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+
+body
+```
+
+```brix
+(fn-expr + func _
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+
+body
+
+━━━━━━━━━━━━━━━━━━━━
++ func2
+
+body
+```
+
+```brix
+(fn-expr + func _
+  body
+)
+
+(fn-expr + func2 _
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+<Function names="func2" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+## Arguments
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+
+body
+```
+
+```brix
+(fn-expr + func _
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+
+body
+```
+
+```brix
+(fn-expr + func _
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func Func
+
+body
+```
+
+```brix
+(fn-expr + func Func
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <TypeId name="Func"/>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ prop = value
+
+body
+```
+
+```brix
+(fn-expr + prop _ :set (param value _)
+  body
+)
+```
+
+```output
+<Function names="prop" access="public-access" setter="true">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="value"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ prop = value Type
+
+body
+```
+
+```brix
+(fn-expr + prop _ :set (param value Type)
+  body
+)
+```
+
+```output
+<Function names="prop" access="public-access" setter="true">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="value"/>
+            <TypeId name="Type"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ -this
+
+body
+```
+
+```brix
+(fn-expr + (prefix - this) _
+  body
+)
+```
+
+```output
+<Function names="-neg" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ !this
+
+body
+```
+
+```brix
+(fn-expr + (prefix ! this) _
+  body
+)
+```
+
+```output
+<Function names="!" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ this + foo
+
+body
+```
+
+```brix
+(fn-expr + (infix this + (param foo _)) _
+  body
+)
+```
+
+```output
+<Function names="+" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="foo"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ this + foo Type
+
+body
+```
+
+```brix
+(fn-expr + (infix this + (param foo Type)) _
+  body
+)
+```
+
+```output
+<Function names="+" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="foo"/>
+            <TypeId name="Type"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ this += foo Type
+
+body
+```
+
+```brix
+(fn-expr + (infix this += (param foo Type)) _
+  body
+)
+```
+
+```output
+<Function names="+=" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="foo"/>
+            <TypeId name="Type"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ this[a]
+
+body
+```
+
+```brix
+(fn-expr + (index-get this (param a _)) _
+  body
+)
+```
+
+```output
+<Function names="[]" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ this[a] = b
+
+body
+```
+
+```brix
+(fn-expr + (index-set this (param a _) (param b _)) _
+  body
+)
+```
+
+```output
+<Function names="[]=" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="b"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo.bar
+
+body
+```
+
+```brix
+(fn-expr + foo.bar _
+  body
+)
+```
+
+```output
+<Function names="foo, bar" access="public-access">
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+## Arguments
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - a
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param a _)
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - a
+    - b
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param a _)
+  (param b _)
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="b"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - a Int
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param a Int)
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - Int
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param _ Int)
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeId name="Int"/>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - a Int = 42
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param a Int (= 42))
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="a"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+        <Integer value="42"/>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - foo [Foo]
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param foo (list Foo))
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="foo"/>
+            <TypeArguments>
+                <TypeId name="List"/>
+                <TypeId name="Foo"/>
+            </TypeArguments>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func
+    - cb () Int
+        - Arg
+
+body
+```
+
+```brix
+(fn-expr + func _
+  (param cb (fn-type Int (param _ Arg)))
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="cb"/>
+            <TypeFunction>
+                <TypeId name="Int"/>
+                <ArgumentDecl>
+                    <TypeId name="Arg"/>
+                </ArgumentDecl>
+            </TypeFunction>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func'Name
+    - foo
+
+body
+```
+
+```brix
+(fn-expr + (of func Name) _
+  (param foo _)
+  body
+)
+```
+
+```output
+<Function names="func" access="public-access">
+    <TypeId name="Name"/>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="foo"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+## Match Functions
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo ~ Foo
+
+body
+```
+
+```brix
+(fn-expr + foo _ (over: Foo)
+  body
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <pattern>
+        <TypeId name="Foo"/>
+    </pattern>
+    <TypeId name="StreamItem"/>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="(stream)"/>
+            <TypeArguments>
+                <TypeId name="TokenStream"/>
+                <TypeId name="Foo"/>
+            </TypeArguments>
+        </TypeCapture>
+    </ArgumentDecl>
+    <TypeConstraint op="exactly">
+        <TypeId name="StreamItem"/>
+        <TypeId name="Foo"/>
+    </TypeConstraint>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo'Bar ~ Foo
+
+body
+```
+
+```brix
+(fn-expr + (of foo Bar) _ (over: Foo)
+  body
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <pattern>
+        <TypeId name="Foo"/>
+    </pattern>
+    <TypeId name="StreamItem"/>
+    <TypeId name="Bar"/>
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="(stream)"/>
+            <TypeArguments>
+                <TypeId name="TokenStream"/>
+                <TypeId name="Foo"/>
+            </TypeArguments>
+        </TypeCapture>
+    </ArgumentDecl>
+    <TypeConstraint op="exactly">
+        <TypeId name="StreamItem"/>
+        <TypeId name="Foo"/>
+    </TypeConstraint>
+    <Block>
+        <Id name="body"/>
+    </Block>
+</Function>
+```
+
+## Type Constraints
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo'T
+    - T is Bar
+```
+
+```brix
+(fn-expr + (of foo T) _
+  (constraint is T Bar)
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <TypeId name="T"/>
+    <TypeConstraint op="convertible">
+        <TypeId name="T"/>
+        <TypeId name="Bar"/>
+    </TypeConstraint>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo'T
+    - T is! Bar
+```
+
+```brix
+(fn-expr + (of foo T) _
+  (constraint is! T Bar)
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <TypeId name="T"/>
+    <TypeConstraint op="exactly">
+        <TypeId name="T"/>
+        <TypeId name="Bar"/>
+    </TypeConstraint>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo'T
+    - T is~ Bar
+```
+
+```brix
+(fn-expr + (of foo T) _
+  (constraint is~ T Bar)
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <TypeId name="T"/>
+    <TypeConstraint op="similar">
+        <TypeId name="T"/>
+        <TypeId name="Bar"/>
+    </TypeConstraint>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
+for foo in bar
+and foo in bar
+
+x()
+```
+
+```brix
+(subscribe-for (in foo bar)
+  (and-for (in foo bar))
+  (call x)
+)
+```
+
+```output
+<Subscriber>
+    <For>
+        <In>
+            <TypeCapture>
+                <Id name="foo"/>
+            </TypeCapture>
+            <Id name="bar"/>
+            <In>
+                <TypeCapture>
+                    <Id name="foo"/>
+                </TypeCapture>
+                <Id name="bar"/>
+            </In>
+        </In>
+        <Block>
+            <CallExpression>
+                <Id name="x"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
+on bar
+
+x()
+```
+
+```brix
+(subscribe (on bar)
+  (call x)
+)
+```
+
+```output
+<Subscriber>
+    <For>
+        <On>
+            <Id name="bar"/>
+        </On>
+        <Block>
+            <CallExpression>
+                <Id name="x"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do foo'T
+    - A = 42
+    - B = Item as T
+```
+
+```brix
+(fn-do + (of foo T) _
+  (constraint = A 42)
+  (constraint = B (as Item T))
+)
+```
+
+```output
+<Function names="foo" access="public-access" imperative="true">
+    <TypeId name="T"/>
+    <ConstAssignment>
+        <TypeId name="A"/>
+        <Integer value="42"/>
+    </ConstAssignment>
+    <ConstAssignment>
+        <TypeId name="B"/>
+        <CastExpression>
+            <TypeId name="Item"/>
+            <TypeId name="T"/>
+        </CastExpression>
+    </ConstAssignment>
+    <Block/>
+</Function>
+```
+
+## Variadic arguments
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    ... foo [Int]
+```
+
+```brix
+(fn-expr + foo _
+  (param ... foo (list Int))
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <ArgumentDecl variadic="true">
+        <TypeCapture>
+            <Id name="foo"/>
+            <TypeArguments>
+                <TypeId name="List"/>
+                <TypeId name="Int"/>
+            </TypeArguments>
+        </TypeCapture>
+    </ArgumentDecl>
+</Function>
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ unused Int
+
+1
+
+────────────────────
++ second Int
+
+2
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:7>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+_ do unused
+
+-- 1
+
+
+────────────────────
+_ do second
+
+-- 2
+
+━━━━━━━━━━━━━━━━━━━━
++ later Int
+
+3
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:8>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ unused'T T
+    - value T
+
+value
+
+────────────────────
+_ second Int
+
+2
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:8>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+_ unused Int
+
+1
+
+────────────────────
++ second Int
+
+2
+
+────────────────────
+_ third Int
+
+3
+```
+
+```output
+Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
+<no file:7>
+    ────────────────────
+    ^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ green = Color("#9CC56B")
++ shade = Color("#86B35A")
+```
+
+```output
+Exception: A divider made this line a function header, and a function body cannot start on its header line. Declare values before the first divider, or leave a blank line after a thick divider (━).
+<no file:3>
+    + green = Color("#9CC56B")
+                   ^^^^^^^^^^
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ first Int
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
+_ second Int
+
+2
+```
+
+```brix
+(fn-expr + first Int
+  1
+)
+
+(fn-expr _ second Int
+  2
+)
+```
+
+```output
+<Function names="first" access="public-access">
+    <TypeId name="Int"/>
+    <Block>
+        <Integer value="1"/>
+    </Block>
+</Function>
+<Function names="second" access="private-access">
+    <TypeId name="Int"/>
+    <Block>
+        <Integer value="2"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func Int @inline without gc
+```
+
+```brix
+(fn-expr + func Int @inline (without gc))
+```
+
+```output
+<Function names="func" access="public-access" effects="no-gc" inline="true">
+    <TypeId name="Int"/>
+</Function>
+```
+
+### A live function keeps state across the runs of the live value that calls it.
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ func Int @live
+```
+
+```brix
+(fn-expr + func Int @live)
+```
+
+```output
+<Function names="func" access="public-access" live="true">
+    <TypeId name="Int"/>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ get value @inline
+
+7
+```
+
+```brix
+(fn-expr + value _ :get @inline
+  7
+)
+```
+
+```output
+<Function names="value" access="public-access" getter="true" inline="true">
+    <Block>
+        <Integer value="7"/>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do get value Int @inline without gc
+
+= 7
+```
+
+```brix
+(fn-do + value Int :get @inline (without gc)
+  (return 7)
+)
+```
+
+```output
+<Function names="value" access="public-access" getter="true" imperative="true" effects="no-gc" inline="true">
+    <TypeId name="Int"/>
+    <Block>
+        <Return>
+            <Integer value="7"/>
+        </Return>
+    </Block>
+</Function>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do get size Int ?! TypeError
+
+= 7
+```
+
+```brix
+(fn-do + size Int :get (?! TypeError)
+  (return 7)
+)
+```
+
+```output
+<Function names="size" access="public-access" getter="true" imperative="true">
+    <TypeId name="Int"/>
+    <errors>
+        <TypeId name="TypeError"/>
+    </errors>
+    <Block>
+        <Return>
+            <Integer value="7"/>
+        </Return>
+    </Block>
+</Function>
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ get value @rollback
+```
+
+```output
+Exception: @rollback is only supported on stream-pattern functions
+<no file:2>
+    ━━━━━━━━━━━━━━━━━━━━
+    ^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ extend Value
+
+────────────────────
++ to Int @inline without gc
+
+7
+```
+
+```brix
+(extend + Value
+  (fn-to-expr + Int @inline (without gc)
+    7
+  )
+)
+```
+
+```output
+<Extension access="public-access">
+    <TypeId name="Value"/>
+    <Converter access="public-access" effects="no-gc" inline="true">
+        <TypeId name="Int"/>
+        <Block>
+            <Integer value="7"/>
+        </Block>
+    </Converter>
+</Extension>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+1
+
+━━━━━━━━━━━━━━━━━━━━
+on bar
+
+x()
+
+━━━━━━━━━━━━━━━━━━━━
+in baz
+
+y()
+```
+
+```brix
+(fn-expr + foo _
+  1
+)
+
+(subscribe (on bar)
+  (call x)
+)
+
+(subscribe (in baz)
+  (call y)
+)
+```
+
+```output
+<Function names="foo" access="public-access">
+    <Block>
+        <Integer value="1"/>
+    </Block>
+</Function>
+<Subscriber>
+    <For>
+        <On>
+            <Id name="bar"/>
+        </On>
+        <Block>
+            <CallExpression>
+                <Id name="x"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+<Subscriber>
+    <For>
+        <In>
+            <Id name="baz"/>
+        </In>
+        <Block>
+            <CallExpression>
+                <Id name="y"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+```
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
+on bar
+
+f()
+
+━━━━━━━━━━━━━━━━━━━━
+for foo in bar
+
+g(foo)
+```
+
+```brix
+(subscribe (on bar)
+  (call f)
+)
+
+(subscribe-for (in foo bar)
+  (call g foo)
+)
+```
+
+```output
+<Subscriber>
+    <For>
+        <On>
+            <Id name="bar"/>
+        </On>
+        <Block>
+            <CallExpression>
+                <Id name="f"/>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+<Subscriber>
+    <For>
+        <In>
+            <TypeCapture>
+                <Id name="foo"/>
+            </TypeCapture>
+            <Id name="bar"/>
+        </In>
+        <Block>
+            <CallExpression>
+                <Id name="g"/>
+                <Argument>
+                    <Id name="foo"/>
+                </Argument>
+            </CallExpression>
+        </Block>
+    </For>
+</Subscriber>
+```
+
+### A function's header takes a without section after its annotations, and a do function's a with section that binds for its whole body.
+
+```yumi
+━━━━━━━━━━━━━━━━━━━━
++ do func Int ?! Error @inline without heap, suspend with depth = 2, request = depth
+    - value Int
+
+= value
+```
+
+```brix
+(fn-do + func Int (?! Error) @inline (without heap suspend) (with depth 2) (with request depth)
+  (param value Int)
+  (blank)
+  (return value)
+)
+```
+
+```output
+<Function names="func" access="public-access" imperative="true" effects="no-heap,no-suspend" inline="true">
+    <ArgumentDecl>
+        <TypeCapture>
+            <Id name="value"/>
+            <TypeId name="Int"/>
+        </TypeCapture>
+    </ArgumentDecl>
+    <TypeId name="Int"/>
+    <errors>
+        <TypeId name="Error"/>
+    </errors>
+    <Block>
+        <StackLocalBinding name="depth">
+            <Integer value="2"/>
+            <Block>
+                <StackLocalBinding name="request">
+                    <Id name="depth"/>
+                    <Block>
+                        <Return>
+                            <Id name="value"/>
+                        </Return>
+                    </Block>
+                </StackLocalBinding>
+            </Block>
+        </StackLocalBinding>
+    </Block>
+</Function>
+```

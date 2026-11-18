@@ -1,0 +1,2175 @@
+# Markup branches
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if demo.#flag
+        <TextBox = "on"
+    else
+        <TextBox = "off"
+
+-- dump(demo)
+demo.flag = false
+-- dump(demo)
+demo.flag = true
+-- dump(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ dump String
+    - demo Demo
+
+"$count:$text"
+
+.. region = demo.%first-child!
+.. count = count-children(region)
+.. text = (region.%first-child! as TextBox).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - box Box
+
+. count = 0
+for child in box.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ flag = true
+```
+
+```output
+1:on
+1:off
+1:on
+```
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if demo.#flag
+        <TextBox = "shown"
+
+-- dump(demo)
+demo.flag = false
+-- dump(demo)
+demo.flag = true
+-- dump(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - demo Demo
+
+if count == 0
+    = "0"
+= "$count:${(region.%first-child! as TextBox).text}"
+
+.. region = demo.%first-child!
+.. count = count-children(region)
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - box Box
+
+. count = 0
+for child in box.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ flag = true
+```
+
+```output
+1:shown
+0
+1:shown
+```
+
+```yumi
+. flag = true
+. cleanup-flag = true
+. holder = Holder(MarkText("live"))
+
+<MarkNode root
+    if #flag
+        <MarkText = "yes"
+    else
+        <MarkText = "no"
+
+-- dump(root)
+flag = false
+-- dump(root)
+flag = true
+-- dump(root)
+
+<MarkNode cleanup-root
+    if #cleanup-flag
+        holder.#node
+    else
+        <MarkText = "off"
+
+-- dump(cleanup-root)
+cleanup-flag = false
+-- dump(cleanup-root)
+holder.node = MarkText("stale")
+-- dump(cleanup-root)
+
+━━━━━━━━━━━━━━━━━━━━
++ dump String
+    - node MarkNode
+
+"$count:$text"
+
+.. region = node.first-child!
+.. count = count-children(region)
+.. text = (region.first-child! as MarkText).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - node MarkNode
+
+. count = 0
+for child in node.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
++ parent MarkNode?
++ first-child MarkNode?
++ last-child MarkNode?
++ previous MarkNode?
++ next MarkNode?
+
+────────────────────
++ do get children
+
+. maybe-child = first-child
+if maybe-child
+    . child = maybe-child
+    while true
+        <= child
+        if !child.next
+            break
+        child = child.next
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+child.parent = this
+if !anchor
+    if !first-child
+        first-child = last-child = child
+    else
+        last-child?.next = child
+        child.previous = last-child
+        last-child = child
+else
+    . target = anchor
+    child.previous = target.previous
+    child.next = target
+    if target.previous
+        target.previous.next = child
+    else
+        first-child = child
+    target.previous = child
+
+────────────────────
++ do markup-detach-child
+    - child MarkNode
+
+if child.parent == this
+    child.parent = null
+    if first-child == child
+        first-child = child.next
+    if last-child == child
+        last-child = child.previous
+    child.previous?.next = child.next
+    child.next?.previous = child.previous
+    child.next = null
+    child.previous = null
+
+────────────────────
++ do clear-children Void
+
+while true
+    . maybe-child = first-child
+    if !maybe-child
+        break
+    . child = maybe-child
+    markup-remove(this, child)
+    child.close()
+
+────────────────────
++ do close Void
+
+markup-close-region(this)
+clear-children()
+
+────────────────────
++ markup-make-region MarkNode?
+
+MarkNode()
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkText is MarkNode
+
++ text String
+
+────────────────────
++ This
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ node MarkNode
+
+────────────────────
++ This
+    - node
+```
+
+```output
+1:yes
+1:no
+1:yes
+1:live
+1:off
+1:off
+```
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    match demo.#state
+        |= "a"
+            <TextBox = "alpha"
+        |= "b"
+            <TextBox = "beta"
+        | _
+            <TextBox = "fallback"
+
+-- dump(demo)
+demo.state = "b"
+-- dump(demo)
+demo.state = "z"
+-- dump(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ dump String
+    - demo Demo
+
+"$count:$text"
+
+.. region = demo.%first-child!
+.. count = count-children(region)
+.. text = (region.%first-child! as TextBox).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - box Box
+
+. count = 0
+for child in box.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ state = "a"
+```
+
+```output
+1:alpha
+1:beta
+1:fallback
+```
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    match demo.#state
+        | text String
+            <TextBox = text
+
+-- dump(demo)
+demo.state = "changed"
+-- dump(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ dump String
+    - demo Demo
+
+"$count:$text"
+
+.. region = demo.%first-child!
+.. count = count-children(region)
+.. text = (region.%first-child! as TextBox).text
+
+━━━━━━━━━━━━━━━━━━━━
++ do count-children
+    - box Box
+
+. count = 0
+for child in box.children
+    count += 1
+= count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ state = "initial"
+```
+
+```output
+1:initial
+1:changed
+```
+
+```yumi crash
+. flag = true
+
+<Plain root
+    if #flag
+        <Plain
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain
+
+────────────────────
++ this += child Plain
+```
+
+```output
+Exception: Dynamic markup branch parent must implement MarkupElement
+<no file:5>
+        if #flag
+        ^^^^^^^
+```
+
+```yumi crash
+. flag = true
+
+<MarkNode root
+    if #flag
+        "bad"
+
+━━━━━━━━━━━━━━━━━━━━
++ MarkNode
+    is MarkupParent'MarkNode
+
+────────────────────
++ markup-content MarkNode
+    - child MarkNode
+
+child
+
+────────────────────
++ do markup-attach-child
+    - child MarkNode
+    - anchor MarkNode?
+
+────────────────────
++ do close
+
+markup-close-region(this)
+
+────────────────────
++ markup-make-region MarkNode?
+
+MarkNode()
+```
+
+```output
+Exception: Content not accepted
+<no file:6>
+            "bad"
+            ^^^^^
+```
+
+### Storing an equal tuple into a tracked property keeps branch children and keyed rows in place.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if demo.#state.enabled
+        <TextBox branch = "on"
+    for index in 0 .. < demo.#state.count keyed by index
+        <TextBox = "row"
+
+. region = demo.%first-child!
+. original = region.%first-child!
+. original-rows = demo.row-pointers()
+demo.state = DemoState(true, 2)
+-- region.%first-child! as Pointer == original as Pointer
+-- demo.row-pointers() == original-rows
+demo.state = DemoState(true, 3)
+-- region.%first-child! as Pointer == original as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoState is Tuple
+
++ enabled Bool
++ count I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ state = DemoState(true, 2)
+
+────────────────────
++ do row-pointers [Pointer]
+
+. result [Pointer]
+. first = true
+for child in children
+    if first
+        first = false
+    else
+        for row in child.children
+            result += row as Pointer
+= result
+```
+
+```output
+true
+true
+true
+```
+
+### An if nested in another if's else arm follows its own condition while the outer arm is kept.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+demo.visible = false
+-- demo.label()
+demo.removing = true
+-- demo.label()
+demo.removing = false
+-- demo.label()
+demo.visible = true
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ removing = false
++ visible = true
+
+────────────────────
+
+<This
+    if #removing
+        <TextBox = "remove"
+    else
+        if #visible
+            <TextBox = "shown"
+        else
+            <TextBox = "hidden"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= ",".join(texts)
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+shown
+hidden
+remove
+hidden
+shown
+```
+
+### An if nested in another if's then arm of class markup follows its own condition.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+demo.visible = false
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shown = true
++ visible = true
+
+────────────────────
+
+<This
+    if #shown
+        if #visible
+            <TextBox = "shown"
+        else
+            <TextBox = "hidden"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= ",".join(texts)
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+shown
+hidden
+```
+
+### An if nested in an else arm of top-level markup follows its own condition.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if demo.#removing
+        <TextBox = "remove"
+    else
+        if demo.#visible
+            <TextBox = "shown"
+        else
+            <TextBox = "hidden"
+
+-- demo.label()
+demo.visible = false
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ removing = false
++ visible = true
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= ",".join(texts)
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+shown
+hidden
+```
+
+### An if inside a loop row follows the element's own property.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+demo.visible = false
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ items [String]
++ visible = true
+
+────────────────────
++ This
+
+items = List'String(["a", "b"])
+
+────────────────────
+
+<This
+    for item in #items
+        <Box
+            if #visible
+                <TextBox = "shown"
+            else
+                <TextBox = "hidden"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= ",".join(texts)
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+shown,shown
+hidden,hidden
+```
+
+### A named child inside an else-if or else branch is a property of its owner.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. picker = Picker()
+picker.mode = 1
+-- picker.one-box.text
+picker.mode = 3
+-- picker.three-box.text
+picker.mode = 4
+-- picker.four-box.text
+
+━━━━━━━━━━━━━━━━━━━━
++ Picker is Box
+
++ mode = 0
+
+────────────────────
+
+<This
+    if #mode == 0
+        <TextBox zero-box = "zero"
+    else if #mode == 1
+        <TextBox one-box = "one"
+    else if #mode == 2
+        <TextBox two-box = "two"
+    else if #mode == 3
+        <TextBox three-box = "three"
+    else
+        <TextBox four-box = "four"
+```
+
+```output
+one
+three
+four
+```
+
+### A named element in an if nested in another if's else arm is assigned to its host.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+demo.editing = true
+-- demo.label()
+demo.editing = false
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ editing = false
++ extra = true
++ name = "row"
+
+────────────────────
+
+<This
+    if #editing
+        <TextBox = "entry ${#name}"
+    else
+        <TextBox = #name
+        if #extra
+            <TextBox extra-box = "extra ${#name}"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${",".join(texts)}:${extra-box.text}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+row,extra row:extra row
+entry row:extra row
+row,extra row:extra row
+```
+
+### A local tracked by an if and again inside its arm keeps one subscriber list.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. note = Note("one")
+
+<Box demo
+    if note.#text.size > 0
+        <TextBox = note.#text
+
+-- label(demo)
+note.text = ""
+-- label(demo)
+note.text = "back"
+-- label(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ do label String
+    - node Box
+
+. texts [String]
+for child in node.children
+    for inner in child.children
+        if inner is TextBox
+            texts += (inner as TextBox).text
+= "${texts.length}:${",".join(texts)}"
+```
+
+```output
+1:one
+0:
+1:back
+```
+
+### An if nested in a match arm follows a property of the arm's binding.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+(demo.item as Note).text = ""
+-- demo.label()
+(demo.item as Note).text = "back"
+-- demo.label()
+demo.item = Mark(5)
+-- demo.label()
+demo.item = Note("again")
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| Note
+| Mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item = Note("one")
+
+────────────────────
+
+<This
+    match #item
+        | note Note
+            if note.#text.size > 0
+                <TextBox = note.#text
+        | mark Mark
+            <TextBox = "mark ${mark.#count}"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${texts.length}:${",".join(texts)}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+1:one
+0:
+1:back
+1:mark 5
+1:again
+```
+
+### A pattern condition binds its arm and follows the tracked subject.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+(demo.item as Note).text = "mutated"
+-- demo.label()
+demo.item = Note("replaced")
+-- demo.label()
+demo.item = Mark(5)
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| Note
+| Mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item = Note("one")
+
+────────────────────
+
+<This
+    if | note Note = #item
+        <TextBox = note.#text
+    else if | mark Mark = #item
+        <TextBox = "mark ${mark.#count}"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${texts.length}:${",".join(texts)}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+1:one
+1:mutated
+1:replaced
+1:mark 5
+```
+
+### A pattern condition shares a branch chain with plain conditions.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+demo.is-hidden = true
+-- demo.label()
+demo.item = Mark(1)
+-- demo.label()
+demo.is-hidden = false
+-- demo.label()
+demo.item = Note("back")
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| Note
+| Mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item = Note("one")
++ is-hidden = false
+
+────────────────────
+
+<This
+    if #is-hidden
+        <TextBox = "hidden"
+    else if | note Note = #item
+        <TextBox = note.#text
+    else
+        <TextBox = "other"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${texts.length}:${",".join(texts)}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+1:one
+1:hidden
+1:hidden
+1:other
+1:back
+```
+
+### A pattern condition over an untracked subject picks its arm once.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. first = Demo(Note("one"), false)
+. second = Demo(Mark(5), false)
+. third = Demo(Mark(5), true)
+-- first.label()
+-- second.label()
+-- third.label()
+(first.item as Note).text = "mutated"
+first.item = Mark(7)
+-- first.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| Note
+| Mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item
++ is-plain Bool
+
+────────────────────
++ This
+    - item
+    - is-plain
+
+────────────────────
+
+<This
+    if is-plain
+        <TextBox = "plain"
+    else if | note Note = item
+        <TextBox = note.#text
+    else if | mark Mark = item
+        <TextBox = "mark ${mark.count}"
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${texts.length}:${",".join(texts)}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+1:one
+1:mark 5
+1:plain
+1:mutated
+```
+
+### A tracked member read through a cast follows the member and the cast subject.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.label()
+(demo.item as Note).text = "mutated"
+-- demo.label()
+demo.item = Note("replaced")
+-- demo.label()
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Union
+
+| Note
+| Mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Note
+
++ text String
+
+────────────────────
++ This
+    - text
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark
+
++ count Int
+
+────────────────────
++ This
+    - count
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item = Note("one")
+
+────────────────────
+
+<This
+    <TextBox = (#item as Note).#text
+
+────────────────────
++ do label String
+
+. texts [String]
+collect(this, texts)
+= "${texts.length}:${",".join(texts)}"
+
+────────────────────
++ do collect
+    - node Box
+    - texts [String]
+
+for child in node.children
+    if child is TextBox
+        texts += (child as TextBox).text
+    collect(child, texts)
+```
+
+```output
+1:one
+1:mutated
+1:replaced
+```
+
+### A class-level subscription follows a named element that a dynamic branch builds after mount, hearing each rebuilt element once and none that the branch removed.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+demo.shows = true
+. first = demo.pinger
+first.pinged <- 1
+-- "late=${demo.pings}"
+
+demo.shows = false
+demo.shows = true
+demo.pinger.pinged <- 1
+-- "rebuilt=${demo.pings}"
+
+first.pinged <- 1
+-- "removed=${demo.pings}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shows = false
++ pings = 0
+
+────────────────────
+
+<This
+    if #shows
+        <Pinger pinger
+
+────────────────────
+for event on pinger.pinged
+
+pings += 1
+```
+
+```output
+late=1
+rebuilt=2
+removed=2
+```
+
+### A named element a dynamic branch of a class's markup makes is given to the class's property of that name each time the branch makes it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. section = Section()
+-- section.header.title
+section.title = "B"
+-- section.header.title
+section.title = ""
+-- section.header.title
+section.title = "C"
+-- section.header.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Titled is Box
+
++ title = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Section is Box
+
++ title = "A"
+
+────────────────────
+
+<This
+    if #title != ""
+        <Titled header
+            title = #title
+```
+
+```output
+A
+B
+B
+C
+```
+
+### A named element of a branch the markup has not made panics where it is read.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- demo.panel.syncs
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ syncs Size = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shows = false
+
+────────────────────
+
+<This
+    if #shows
+        <Panel panel
+```
+
+```stderr
+Unhandled panic: Named markup element "panel" is read before its markup constructs it
+<no file:5>
+
+Task 1
+
+Stack trace:
+  0  __source__:main no file:5:4
+  1  __source__:init.__source__ no file
+  2  __source__:brix.main no file
+```
+
+### A branch arm of top-level markup reads a property of the element around it by its name alone, and follows it while the arm is shown.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if demo.#shown
+        <TextBox = demo.#label
+
+-- demo.text()
+demo.label = "two"
+-- demo.text()
+demo.shown = false
+-- demo.text()
+demo.shown = true
+-- demo.text()
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shown = true
++ label = "one"
+
+────────────────────
++ do text String
+
+. region = this.%first-child!
+= if !region.%first-child then "none" else (region.%first-child! as TextBox).text
+```
+
+```output
+one
+two
+none
+two
+```
+
+### A class subscription to an element a branch removes ends when the branch removes it
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+demo.shows = true
+. first = demo.pinger
+first.pinged <- 1
+-- "shown=${demo.pings}"
+demo.shows = false
+first.pinged <- 1
+-- "hidden, old element pinged=${demo.pings}"
+demo.shows = true
+first.pinged <- 1
+-- "rebuilt, old element pinged=${demo.pings}"
+demo.pinger.pinged <- 1
+-- "rebuilt, new element pinged=${demo.pings}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shows = false
++ pings = 0
+
+────────────────────
+
+<This
+    if #shows
+        <Pinger pinger
+
+────────────────────
+for event on pinger.pinged
+
+pings += 1
+```
+
+```output
+shown=1
+hidden, old element pinged=1
+rebuilt, old element pinged=1
+rebuilt, new element pinged=2
+```
+
+### A class loop on an event nothing publishes, of an element a branch builds, subscribes nothing
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. demo = Demo()
+-- "constructed"
+demo.shows = true
+-- "shown pings=${demo.pings}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shows = false
++ pings = 0
+
+────────────────────
+
+<This
+    if #shows
+        <Pinger pinger
+
+────────────────────
+for event on pinger.pinged
+
+pings += 1
+```
+
+```output
+constructed
+shown pings=0
+```
+
+### A tracked property tested in a conditional expression holds a value in the branch that found it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Demo demo
+
+-- (demo.%first-child! as TextBox).text
+. tag = Tag()
+tag.label = "ada"
+demo.tag = tag
+-- (demo.%first-child! as TextBox).text
+
+━━━━━━━━━━━━━━━━━━━━
++ Tag
+
++ label = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ tag Tag?
+
+────────────────────
+
+<This
+    <TextBox
+        text = if #tag then #tag.label else "none"
+```
+
+```output
+none
+ada
+```
+
+### A departing parent waits for its leaving child, then closes with it.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
++ log = List'String()
+
+<Demo demo
+    if demo.#shown
+        <Box
+            for name in demo.#names keyed by name
+                <Leaver
+                    name = name
+
+demo.names.remove(0)
+-- dump(demo)
+demo.shown = false
+-- dump(demo)
+markup-departed(demo.%first-child!.%first-child!.%first-child!.%first-child!)
+-- dump(demo)
+-- " ".join(log)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - demo Demo
+
+. branch = demo.%first-child!
+=? "empty"
+    if !branch.%first-child
+. parts = List'String()
+for child in branch.%first-child!.%first-child!.children
+    . leaver = child as Leaver
+    if leaver.is-leaving
+        parts += "${leaver.name}*"
+    else
+        parts += leaver.name
+. text = " ".join(parts)
+=? "($text)"
+    if markup-is-departing(branch.%first-child!)
+= text
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shown = true
++ names = List'String(["a", "b"])
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaver is Box
+
++ name = ""
++ is-leaving = false
+
+────────────────────
++ do markup-depart Bool
+
+is-leaving = true
+= true
+
+────────────────────
++ do markup-revive
+
+is-leaving = false
+
+────────────────────
++ do close
+
+log += "close:$name"
+super.close()
+```
+
+```output
+a* b
+(a* b)
+empty
+close:a close:b
+```
+
+### A branch that is shown again while its old arm departs revives that arm instead of building it.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
++ log = List'String()
+
+<Demo demo
+    if demo.#shown
+        <Leaver
+
+demo.shown = false
+-- dump(demo)
+demo.shown = true
+-- dump(demo)
+demo.shown = false
+markup-departed(demo.%first-child!.%first-child!)
+-- dump(demo)
+-- " ".join(log)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - demo Demo
+
+. parts = List'String()
+for child in demo.%first-child!.children
+    if (child as Leaver).is-leaving
+        parts += "leaving"
+    else
+        parts += "shown"
+= "[${" ".join(parts)}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shown = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaver is Box
+
++ is-leaving = false
+
+────────────────────
++ This
+
+log += "build"
+
+────────────────────
++ do markup-depart Bool
+
+is-leaving = true
+= true
+
+────────────────────
++ do markup-revive
+
+is-leaving = false
+
+────────────────────
++ do close
+
+log += "close"
+super.close()
+```
+
+```output
+[leaving]
+[shown]
+[]
+build close
+```
+
+### A branch shown again after only part of its old arm departed builds the arm again.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
++ log = List'String()
+
+<Demo demo
+    if demo.#shown
+        <Leaver
+        <Plain
+
+demo.shown = false
+-- dump(demo)
+demo.shown = true
+-- dump(demo)
+-- " ".join(log)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - demo Demo
+
+. parts = List'String()
+for child in demo.%first-child!.children
+    do match child
+        | leaver Leaver
+            parts += if leaver.is-leaving then "leaving" else "leaver"
+        | _
+            parts += "plain"
+= "[${" ".join(parts)}]"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ shown = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaver is Box
+
++ is-leaving = false
+
+────────────────────
++ This
+
+log += "leaver"
+
+────────────────────
++ do markup-depart Bool
+
+is-leaving = true
+= true
+
+────────────────────
++ do markup-revive
+
+is-leaving = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+
+────────────────────
++ This
+
+log += "plain"
+```
+
+```output
+[leaving]
+[leaving leaver plain]
+leaver plain leaver plain
+```
+
+### Bindings in a departing arm hold still while it leaves, and catch up when it revives.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
+<HeldRoot root
+. demo = Demo()
+markup-adopt(demo, null, root)
+root.markup-batch-queue.checkpoint()
+-- dump(demo)
+demo.item = null
+root.markup-batch-queue.checkpoint()
+-- dump(demo)
+demo.item = Item("second")
+root.markup-batch-queue.checkpoint()
+-- dump(demo)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - demo Demo
+
+. leaver = demo.%first-child!.%first-child! as Leaver
+. state = if leaver.is-leaving then "leaving" else "shown"
+= "$state ${(leaver.%first-child! as TextBox).text}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Tuple
+
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ HeldRoot is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
+
+────────────────────
++ This
+
+markup-mount-root(this, this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
++ item Item? = Item("first")
+
+────────────────────
+
+<This
+    if #item != null
+        <Leaver
+            <TextBox
+                text = #item!.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaver is Box
+
++ is-leaving = false
+
+────────────────────
++ do markup-depart Bool
+
+is-leaving = true
+= true
+
+────────────────────
++ do markup-revive
+
+is-leaving = false
+```
+
+```output
+shown first
+leaving first
+shown second
+```
+
+### A line of an arm that forces a tracked optional gives the arm what it holds again as it changes.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Holder holder
+    item = Box()
+
+. region = holder.%first-child!
+-- region.%first-child! as Pointer == holder.item! as Pointer
+holder.item = Box()
+-- region.%first-child! as Pointer == holder.item! as Pointer
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ item Box?
+
+────────────────────
+
+<This
+    if #item
+        #item!
+```
+
+```output
+true
+true
+```
+
+### With no batch to order them, an arm's binding that forces what the branch tests is not run once that is gone.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+<Holder holder
+
+-- shown(holder)
+holder.item = null
+-- shown(holder)
+
+━━━━━━━━━━━━━━━━━━━━
++ shown String
+    - holder Holder
+
+if named then (named as Named).name else "none"
+
+.. named = holder.%first-child!.%first-child
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Tuple
+
++ name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ item Item? = Item("first")
+
+────────────────────
+
+<This
+    if #item != null
+        <Named
+            name = #item!.name
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is Box
+
++ name = ""
+```
+
+```output
+first
+none
+```
+
+### A branch closes what its arm embedded when the arm leaves, so an arm that embeds a box held elsewhere panics when it is built again, though the box is still linked inside what closed.
+
+```yumi crash
+/core/tests/support/markup-fixtures
+
+<Holder holder
+
+holder.open = false
+holder.open = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ open = true
++ empty = Box()
+
+────────────────────
+<This
+    if #open
+        <Box
+            #empty
+```
+
+```stderr
+Unhandled panic: Markup child was closed by the markup that embedded it and cannot be embedded again
+<core/markup.yumi>
+
+Task 1
+
+Stack trace:
+  0  core/markup:markup-assert-structural-child-linkable core/markup.yumi
+  1  core/markup:markup-attach-new-child core/markup.yumi
+  2  core/markup:markup-append core/markup.yumi
+  3  __source__:markup-branch-arm no file:19:13
+  4  __source__:markup-branch-armCasting no file:17:5
+  5  core/markup:MarkupBranchController:select-markup-branch core/markup.yumi
+  6  core/markup:markup-select-branch-region core/markup.yumi
+  7  __source__:markup-branch no file:17:5
+  8  __source__:markup-branchCasting no file:17:5
+  9  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
+  10  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
+  11  core/markup:MarkupBatchAction:run-markup-batch-action-now core/markup.yumi
+  12  core/markup:MarkupBatchAction:run-markup-batch-action core/markup.yumi
+  13  core/markup:MarkupBatchAction:refresh-markup-batch-action core/markup.yumi
+  14  core/markup:MarkupBatchAction:run-now core/markup.yumi
+  15  core/tracker:LiveAction:run-queued core/tracker.yumi
+  16  core/tracker:LiveBatch:run core/tracker.yumi
+  17  core/tracker:LiveBatch:leave core/tracker.yumi
+  18  core/tracker:property-dispatch core/tracker.yumi
+  19  __source__:main no file:7:1
+  20  __source__:init.__source__ no file
+  21  __source__:brix.main no file
+```
+
+### Making the arm a match selects is not tracked by the match's action. An element that reads a style-sheet slot while it is made does not run the match again when that read settles after mounting.
+
+```yumi
+/core/markup
+/core/style
+/core/tests/support/markup-fixtures
+
++ builds = 0
+
+<Demo demo
+
+demo.markup-batch-queue.checkpoint()
+demo.kind = 2
+demo.markup-batch-queue.checkpoint()
+-- "builds=$builds pending=${demo.markup-batch-queue.actions.length}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
++ kind = 1
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
+
+<This
+    match #kind
+        | 1
+            <Row
+                value = 1
+        | _
+            <Row
+                value = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ row-ink I64
+    - row Row
+
+row.$bright
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Box
+    using AppTheme
+    using TextStyle
+
++ value I64
++ bright-at-build I64
+
+────────────────────
++ This
+
+builds += 1
+bright-at-build = $bright
+
+────────────────────
+
+<This
+    ink = row-ink(this) + #value
+```
+
+```output
+builds=2 pending=0
+```
+
+### An object's `close` closes the live actions it owns before its body closes its children, so a child that changes what a branch reads as it closes does not select an arm of a region that has closed.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
+<Demo demo
+    if !panel.#is-open
+        <Box
+    <Panel panel
+
+panel.is-open = true
+demo.close()
+-- "closed ${panel.is-open}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Demo is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-open = false
+
+────────────────────
++ do close
+
+is-open = false
+super.close()
+```
+
+```output
+closed false
+```
+
+### A named element in an arm of a match that is a region is made by the arm, so a later line of the arm reads it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. model = Model()
+
+<Box root
+    match model.#name
+        | name String
+            <TextBox first = name
+            <TextBox = "${first.text}!"
+        | _
+            <TextBox none = "none"
+            <TextBox = "${none.text}?"
+
+-- dump(root)
+model.name = null
+-- dump(root)
+model.name = "back"
+-- dump(root)
+
+━━━━━━━━━━━━━━━━━━━━
++ do dump String
+    - box Box
+
+. parts = List'String()
+for child in box.children
+    if child is TextBox
+        parts += (child as TextBox).text
+    else
+        parts += "[${dump(child)}]"
+= ",".join(parts)
+
+━━━━━━━━━━━━━━━━━━━━
++ Model
+
++ name String? = "on"
+```
+
+```output
+[on,on!]
+[none,none?]
+[back,back!]
+```
+
+### A handler in a named element of an arm of a match in a keyed row reads the element by its name.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. heard = List'String()
+. places = List'Place([Place("a"), Place(null)])
+
+<Box root
+    for place in #places keyed by place
+        match place.name
+            | name String
+                <Pinger named
+                    label = name
+                    for event on pinged
+                        heard += "named ${named.label}"
+            | _
+                <Pinger plain
+                    label = "plain"
+                    for event on pinged
+                        heard += "plain ${plain.label}"
+
+ping(root)
+-- ",".join(heard)
+
+━━━━━━━━━━━━━━━━━━━━
++ do ping
+    - box Box
+
+for child in box.children
+    if child is Pinger
+        (child as Pinger).pinged <- 1
+    ping(child)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pinger is Box
+
++ label = ""
++ event pinged Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Place
+
++ name String?
+
+────────────────────
++ This
+    - name
+```
+
+```output
+named a,plain plain
+```
+
+### A named element an arm of a match in a class's markup makes is given to the class's property of that name each time the arm makes it.
+
+```yumi
+/core/tests/support/markup-fixtures
+
+. section = Section()
+-- section.header.title
+section.title = "B"
+-- section.header.title
+section.title = null
+-- section.header.title
+section.title = "C"
+-- section.header.title
+
+━━━━━━━━━━━━━━━━━━━━
++ Titled is Box
+
++ title = ""
+
+━━━━━━━━━━━━━━━━━━━━
++ Section is Box
+
++ title String? = "A"
+
+────────────────────
+
+<This
+    match #title
+        | text String
+            <Titled header
+                title = text
+        | _
+            <Box
+```
+
+```output
+A
+B
+B
+C
+```

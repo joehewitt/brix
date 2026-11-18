@@ -1,0 +1,6921 @@
+# Style sheets
+
+### StyleSheet slots resolve statically in markup style declarations and read late-bound values: without a provider the style-sheet's default record supplies initial values, installing a provider record changes the subtree's computed values, and slot writes propagate on the next settle, including through inherited flow-through aliasing.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright
+        <Plain
+
+demo.markup-batch-queue.checkpoint()
+
+. label = demo.%first-child!
+. plain = label.%first-child!
+
+-- style-authored-snapshot(label)
+-- style-computed-snapshot(label)
+-- style-sheet-snapshot(label, "AppTheme")
+
+. theme = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme.set-slot-named("bright", 42, false)
+style-provide-style-sheet(demo, theme)
+demo.markup-batch-queue.checkpoint()
+
+-- style-computed-snapshot(label)
+-- style-sheet-snapshot(label, "AppTheme")
+
+theme.set-slot-named("bright", 50, false)
+demo.markup-batch-queue.checkpoint()
+
+-- style-computed-snapshot(label)
+-- style-computed-snapshot(plain)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+```
+
+```output
+node TextStyle.ink layer=5 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle seg=owned gen=1 mask=1 ink=11
+style-sheet AppTheme record=1 version=0 bright=11
+node TextStyle seg=owned gen=2 mask=1 ink=42
+style-sheet AppTheme record=2 version=1 bright=42
+node TextStyle seg=owned gen=3 mask=1 ink=50
+node TextStyle seg=parent gen=3 mask=1 ink=50
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ accent I64 = 1
+
+━━━━━━━━━━━━━━━━━━━━
+• extend AppTheme
+
++ highlight I64 = 2
+```
+
+```output
+Exception: StyleSheet extensions may not declare slots
+<no file:10>
+    + highlight I64 = 2
+    ^^^^^^^^^^^^^^^^^^^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
+• primary
+    value = 1
+
+━━━━━━━━━━━━━━━━━━━━
+• extend AppTheme
+
+• primary
+    value = 2
+```
+
+```output
+Exception: Redefinition of style rule
+<no file:11>
+    • primary
+    ^^^^^^^^^
+```
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ Plain
+
+━━━━━━━━━━━━━━━━━━━━
+• extend Plain
+
++ accent I64 = 2
+```
+
+```output
+Exception: StyleSheet extension target "Plain" is not a StyleSheet
+<no file:6>
+    • extend Plain
+    ^^^^^^^^^^^^^
+```
+
+### A rule written in a rule of a style sheet is typed with the rule around it, though nothing applies it: its value names a case the property's union does not have.
+
+```yumi compile-error
+/core/style
+/core/tests/support/markup-fixtures
+
+<Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeStyle is Style
+
++ shape Shape = Shape.round
++ size I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using ShapeStyle
+
+• Thing
+    • part
+        shape = Shape.missing
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Box
+    using AppTheme
+```
+
+```output
+Exception: Shape has no case "missing"
+<no file:25>
+            shape = Shape.missing
+                    ^^^^^^^^^^^^^
+```
+
+### A rule written in a rule of a style sheet is typed with the rule around it, though nothing applies it: its value is of a type the property does not convert from.
+
+```yumi compile-error
+/core/style
+/core/tests/support/markup-fixtures
+
+<Thing
+
+━━━━━━━━━━━━━━━━━━━━
++ Shape is Union
+
+| round
+| square
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeStyle is Style
+
++ shape Shape = Shape.round
++ size I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using ShapeStyle
+
+• Thing
+    • part
+        size = Shape.round
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Box
+    using AppTheme
+```
+
+```output
+Exception: Expected I64 here, but this is Shape, and there is no conversion between them
+<no file:25>
+            size = Shape.round
+            ^^^^^^^^^^^^^^^^^^
+```
+
+### A rule written in a rule of a style sheet reads, in an expression, a slot of a style sheet the style sheet uses.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Thing thing
+
+demo.markup-batch-queue.checkpoint()
+-- thing.part.$size
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ShapeStyle is Style
+
++ size I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• Metrics
+
++ height I64 = 24
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using ShapeStyle
+    using Metrics
+
+• Thing
+    • part
+        size = height - 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Part is Box
+    using ShapeStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is Box
+    using AppTheme
+
+────────────────────
+
+<This
+    <Part part
+```
+
+```output
+22
+```
+
+### Unmounting a style-sheet provider removes its scalar owner identity from the record's provider list. Fresh owners may reuse the released logical IDs without inheriting its generation.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Holder provider
+        <Label
+            ink = bright
+
+. theme = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+style-provide-style-sheet(provider, theme)
+-- "providers=${theme.providers.length}"
+
+markup-remove(demo, provider)
+-- "after-unmount=${theme.providers.length}"
+
+. first = Holder()
+. second = Holder()
+markup-append(demo, first)
+markup-append(demo, second)
+-- style-attachment-snapshot(first)
+-- style-attachment-snapshot(second)
+
+theme.set-slot-named("bright", 22, false)
+-- "after-change=${theme.providers.length}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+```
+
+```output
+providers=1
+after-unmount=0
+live id=3 root=1 parent=1 node=- gen=0 dirty=SI
+live id=2 root=1 parent=1 node=- gen=0 dirty=SI
+after-change=0
+```
+
+### Moving under a different style-sheet provider (unmount + remount) re-derives style-sheet-backed declarations against the new effective style-sheet, and slot writes are equality-gated: an unchanged value raises no pending domain bits.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Holder pa
+    <Holder pb
+    <Label
+        ink = bright
+
+. child = pb.%next-sibling!
+
+. theme-a = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme-a.set-slot-named("bright", 100, false)
+style-provide-style-sheet(pa, theme-a)
+
+. theme-b = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme-b.set-slot-named("bright", 200, false)
+style-provide-style-sheet(pb, theme-b)
+
+markup-remove(demo, child)
+markup-append(pa, child)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(child)
+
+markup-remove(pa, child)
+markup-append(pb, child)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(child)
+
+child.$is-paint-invalid = false
+
+` Clear the bits the containers raised imperatively while the child was moved between parents.
+demo.$is-paint-invalid = false
+demo.$is-layout-invalid = false
+pa.$is-paint-invalid = false
+pa.$is-layout-invalid = false
+pb.$is-paint-invalid = false
+pb.$is-layout-invalid = false
+
+theme-b.set-slot-named("bright", 200, false)
+demo.markup-batch-queue.checkpoint()
+-- "equal " + style-pending-snapshot(demo)
+
+theme-b.set-slot-named("bright", 250, false)
+demo.markup-batch-queue.checkpoint()
+-- "changed " + style-pending-snapshot(demo)
+-- style-computed-snapshot(child)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=100
+node TextStyle seg=owned gen=1 mask=1 ink=200
+equal paint=0 layout=0
+changed paint=1 layout=0
+node TextStyle seg=owned gen=2 mask=1 ink=250
+```
+
+### A bare name in a style declaration that names both a StyleSheet slot and a lexical value is a diagnosed ambiguity, never a silent choice.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. bright = 5
+
+<BatchDemo demo
+    <Label
+        ink = bright
+
+print(bright)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: "bright" is ambiguous: it names both a StyleSheet slot of AppTheme and a lexical value
+<no file:10>
+            ink = bright
+                  ^^^^^^
+```
+
+### A StyleSheet slot must be convertible to the style property's declared value type.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright RGBA = RGBA(1, 0, 0)
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: StyleSheet slot "bright" has type RGBA, which cannot be converted to style property "ink" type I64
+<no file:8>
+            ink = bright
+                  ^^^^^^
+```
+
+### A normally convertible StyleSheet slot is still rejected if it would require decoded typed computation during settle instead of a zero-allocation bit projection.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = tiny
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ tiny U8 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: StyleSheet slot "tiny" can convert to I64, but not as a zero-allocation style-sheet projection; declare the slot as I64 or assign a concrete value.
+<no file:8>
+            ink = tiny
+                  ^^^^
+```
+
+### StyleSheet slots use normal compile-time coercion when assigned to TUI background-color: inferred AnsiColor and optional AnsiColor slots project into BackgroundColor? while staying late-bound to the effective provider record. Painter slots project separately into background.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+/core/tests/support/markup-colors
+
+<BatchDemo demo
+    <Box panel
+        background-color = accent
+    <Box nullable
+        background-color = maybe
+    <Box rgb
+        background-color = glow
+    <Box hsv
+        background-color = wash
+    <Box painted
+        background = custom
+
+demo.markup-batch-queue.checkpoint()
+
+-- style-authored-snapshot(panel)
+-- background-color-label(panel.$background-color)
+-- background-color-label(nullable.$background-color)
+-- background-color-label(rgb.$background-color)
+-- background-color-label(hsv.$background-color)
+-- painter-label(painted.$background)
+
+. theme = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme.set-slot-named("accent", 12, false)
+theme.set-slot-named("maybe", 9, false)
+style-provide-style-sheet(demo, theme)
+demo.markup-batch-queue.checkpoint()
+
+-- background-color-label(panel.$background-color)
+-- background-color-label(nullable.$background-color)
+
+theme.set-slot-named("maybe", 0, true)
+demo.markup-batch-queue.checkpoint()
+-- background-color-label(nullable.$background-color)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ accent = grey
++ maybe AnsiColor? = null
++ glow RGBA = RGBA(0.25, 0.5, 0.75, 1)
++ wash HSVA = HSVA(0.5, 0.25, 0.75, 1)
++ custom Painter = TestBackgroundPainter(aqua)
+
+━━━━━━━━━━━━━━━━━━━━
++ TestBackgroundPainter is Painter
+
++ color AnsiColor
+
+────────────────────
++ This
+    - color
+
+────────────────────
++ paint
+    - node Box
+    - rect Rect
+    - canvas Canvas
+
+━━━━━━━━━━━━━━━━━━━━
+_ do background-color-label String
+    - background BackgroundColor?
+
+=? "null"
+
+    if !background
+
+. live = background
+= match live
+    | .ansi(color)
+        "ansi($color)"
+    | .rgba(color)
+        "rgba(${(color.red * 100) as I64} ${(color.green * 100) as I64} ${(color.blue * 100) as I64} ${(color.alpha * 100) as I64})"
+    | .hsva(color)
+        "hsva(${(color.hue * 100) as I64} ${(color.saturation * 100) as I64} ${(color.value * 100) as I64} ${(color.alpha * 100) as I64})"
+    ??
+        "other"
+
+━━━━━━━━━━━━━━━━━━━━
+_ painter-label String
+    - painter Painter?
+
+|? painter
+    "painter"
+??
+    "null"
+```
+
+```output
+node BoxPaint.background-color layer=5 order=0 kind=style-sheet-projected bits=0 style-sheet=AppTheme@0
+ansi(8)
+null
+rgba(25 50 75 100)
+hsva(50 25 75 100)
+painter
+ansi(12)
+ansi(9)
+null
+```
+
+### Two distinct visible style sheets declaring the same slot name is a diagnosed ambiguity.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using OtherTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+
++ bright I64 = 12
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: StyleSheet slot "bright" is ambiguous between visible style sheets AppTheme and OtherTheme
+<no file:8>
+            ink = bright
+            ^^^^^^^^^^^^
+```
+
+### Ordinary expressions and method bodies do not gain style-sheet fallback lookup: slot names are only meaningful inside managed style authoring contexts.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+
+print(demo.ordinary())
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+────────────────────
++ ordinary I64
+
+bright
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 11
+```
+
+```output
+Exception: Name "bright" not found
+<no file:25>
+    bright
+    ^^^^^^
+```
+
+### A StyleSheet can provide style rules: `using AppTheme` on a class makes the rule applicable to markup anywhere under that class, the rule's declarations resolve property names through the style-sheet's own style usings, and slot references stay late-bound through the effective style-sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Plain
+        <Plain inner • primary
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(inner)
+
+. theme = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme.set-slot-named("accent", 42, false)
+style-provide-style-sheet(demo, theme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(inner)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=2 mask=1 ink=42
+```
+
+### StyleSheet-provided style rules can also project a differently typed slot into a style property. The rule declaration is static, but the slot value remains late-bound through the effective provider record.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+/core/tests/support/markup-colors
+
+<BatchDemo demo
+    <Box panel • primary
+
+demo.markup-batch-queue.checkpoint()
+-- background-label(panel.$background-color)
+
+. theme = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+theme.set-slot-named("accent", 12, false)
+style-provide-style-sheet(demo, theme)
+demo.markup-batch-queue.checkpoint()
+-- background-label(panel.$background-color)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using BoxPaint
+
++ accent = grey
+
+• primary
+    background-color = accent
+
+━━━━━━━━━━━━━━━━━━━━
+_ do background-label String
+    - background BackgroundColor?
+
+=? "null"
+
+    if !background
+
+. live = background
+= match live
+    | .ansi(color)
+        "ansi($color)"
+    ??
+        "other"
+```
+
+```output
+ansi(8)
+ansi(12)
+```
+
+### StyleSheet-provided rules stay visible through nested markup bodies even when an intermediate component class does not name the style sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel • primary
+        <Label inner • primary
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(inner)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### StyleSheet-provided rules stay visible through component-owned markup content when the component is instantiated under a themed parent.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. label = panel.%first-child!
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### StyleSheet-provided rules override style attributes authored inside component content.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. label = panel.%first-child!
+-- style-authored-snapshot(label)
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<Label • primary
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle.ink layer=1 order=1 kind=static bits=3
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### Call-site style attributes on component instances remain inline and override StyleSheet rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label • primary
+        ink = 3
+
+demo.markup-batch-queue.checkpoint()
+-- style-authored-snapshot(label)
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle.ink layer=5 order=1 kind=static bits=3
+node TextStyle seg=owned gen=1 mask=1 ink=3
+```
+
+### Root <This> style attributes are component defaults that StyleSheet rules can override.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel • primary
+
+demo.markup-batch-queue.checkpoint()
+-- style-authored-snapshot(panel)
+-- style-computed-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+
+────────────────────
+
+<This
+    ink = 3
+```
+
+```output
+node TextStyle.ink layer=0 order=65536 kind=static bits=3
+node TextStyle.ink layer=2 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### Nested StyleSheet rules apply to a class a component writes on its root <This> when the component is made inside the rule's scope, over the sheet's own rule for that class.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using BaseTheme
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• BaseTheme
+    using TextStyle
+
+• inner
+    ink = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• outer
+    • inner
+        ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This • outer
+    <Comp
+
+━━━━━━━━━━━━━━━━━━━━
++ Comp is Box
+    using TextStyle
+
+────────────────────
+
+<This • inner
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### A rule a class gets by name from a style sheet its own chain uses is one of its defaults: the classes a subclass writes on its root <This> override it, ungated and under a "when".
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Holder holder
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(holder.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
++ mark I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• BaseTheme
+    using TextStyle
+
+• Bar
+    ink = 5
+    when #flag
+        mark = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using BaseTheme
+
+• sub
+    ink = 21
+    when #flag
+        mark = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar is Box
+    using BaseTheme
+    using TextStyle
+
++ flag = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Bar
+
+────────────────────
+
+<This • sub
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+────────────────────
+
+<This
+    <Sub
+        flag = true
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=3 ink=21 mark=21
+```
+
+### Slot builders preserve whether their content was authored at a call site or inside component content.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <SlotPanel caller
+        <Label (header)
+            ink = 3
+    <DerivedPanel authored
+
+demo.markup-batch-queue.checkpoint()
+. caller-label = caller.%first-child!
+. authored-label = authored.%first-child!
+-- style-authored-snapshot(caller-label)
+-- style-computed-snapshot(caller-label)
+-- style-authored-snapshot(authored-label)
+-- style-computed-snapshot(authored-label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ SlotPanel is Box
+
+────────────────────
++ <Label header • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedPanel is SlotPanel
+
+────────────────────
+
+<Label (header)
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=5 order=0 kind=static bits=3
+node TextStyle.ink layer=2 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle.ink layer=1 order=0 kind=static bits=3
+node TextStyle.ink layer=2 order=0 kind=style-sheet bits=0 style-sheet=AppTheme@0
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### Nested StyleSheet rules under implicit base type selectors can refine explicit component rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. button = panel.%first-child!
+-- style-authored-snapshot(button)
+-- style-computed-snapshot(button)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using BaseTheme
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• BaseTheme
+    using TextStyle
+
+• accent
+    ink = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Button
+    • accent
+        ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<SpecialButton • accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Button is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ SpecialButton is Button
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=static bits=5
+node TextStyle.ink layer=2 order=1 kind=static bits=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### StyleSheet owner type selectors apply to root <This> component content.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. segment = panel.%first-child!
+-- style-authored-snapshot(segment)
+-- style-computed-snapshot(segment)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using BaseTheme
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• BaseTheme
+    using TextStyle
+
+• part
+    ink = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Panel
+    • part
+        ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <Segment • part
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=static bits=5
+node TextStyle.ink layer=2 order=1 kind=static bits=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### Constructor-built component content sees the class's own StyleSheet usings when resolving slot outlet style rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+
+. panel = DerivedPanel()
+markup-append(demo, panel)
+demo.markup-batch-queue.checkpoint()
+. segment = panel.%first-child!
+-- style-authored-snapshot(segment)
+-- style-computed-snapshot(segment)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• accent
+    ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is Box
+    using AppTheme
+
+────────────────────
+
+<This
+    + <Segment body • accent
+        <Segment
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedPanel is BasePanel
+
+────────────────────
+
+<Segment (body)
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### Nested StyleSheet owner type selectors scope inherited slot outlet rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. panel = DerivedPanel()
+<BatchDemo demo
+    <Plain
+
+markup-append(demo, panel)
+demo.markup-batch-queue.checkpoint()
+. segment = panel.%first-child!
+-- style-authored-snapshot(segment)
+-- style-computed-snapshot(segment)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• BasePanel
+    • part
+        ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ BasePanel is Box
+    using AppTheme
+
+────────────────────
+
+<This
+    + <Segment body • part
+        <Segment
+
+━━━━━━━━━━━━━━━━━━━━
++ DerivedPanel is BasePanel
+
+────────────────────
+
+<Segment (body)
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### Nested StyleSheet rules scope component-owned markup content.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel • themed
+
+demo.markup-batch-queue.checkpoint()
+. segment = panel.%first-child!
+-- style-authored-snapshot(segment)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• themed
+    • part
+        ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+• This
+    <Segment • part
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+```
+
+### Nested StyleSheet rules reject markup content that is not generated style content.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel • themed
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
+• themed
+    • part
+        <Segment
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+• This
+    <Segment • part
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+```
+
+```output
+Exception: StyleSheet style rules may only contain style declarations and generated content
+<no file:25>
+            <Segment
+            ^^^^^^^^
+```
+
+### StyleSheet rules attach generated style content without a state condition.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel • themed
+
+demo.markup-batch-queue.checkpoint()
+. generated = panel.%first-child!
+
+-- markup-is-style-shadow(generated)
+-- markup-style-parent-host(generated)! as Pointer == panel as Pointer
+-- style-authored-snapshot(generated)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• themed
+    <Segment (first-child) • part
+
+• part
+    ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+true
+true
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+```
+
+### Nested StyleSheet rules matched by type attach generated style content inside a component.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel • themed
+    <Panel plain
+
+demo.markup-batch-queue.checkpoint()
+. generated = panel.segment.%next-sibling!
+
+-- markup-is-style-shadow(generated)
+-- markup-style-parent-host(generated)! as Pointer == panel.segment as Pointer
+-- style-authored-snapshot(generated)
+-- plain.segment.%next-sibling == null
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• themed
+    • Segment
+        <Mark (after) • part
+
+• part
+    ink = 21
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<This
+    <Segment segment
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Mark is Box
+    using TextStyle
+```
+
+```output
+true
+true
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+true
+```
+
+### Generated style content does not receive generated content from the rule that produced it.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Segment segment
+
+demo.markup-batch-queue.checkpoint()
+. generated = segment.%first-child!
+
+-- markup-is-style-shadow(generated)
+-- style-authored-snapshot(generated)
+-- generated.%first-child == null
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Segment
+    ink = 21
+
+    <Segment (first-child)
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+true
+node TextStyle.ink layer=2 order=0 kind=static bits=21
+true
+```
+
+### Nested rules inside "when" state branches of a type-matched StyleSheet rule follow the matched element's state, including the negated branch.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+        <Segment • part
+    <Panel shut
+        is-open = false
+        <Segment • part
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+-- style-computed-snapshot(shut.%first-child!)
+
+panel.is-open = false
+shut.is-open = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+-- style-computed-snapshot(shut.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Panel
+    when #is-open
+        • part
+            ink = 21
+
+    when !#is-open
+        • part
+            ink = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-open = true
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=21
+node TextStyle seg=owned gen=1 mask=1 ink=9
+node TextStyle seg=owned gen=2 mask=1 ink=9
+node TextStyle seg=owned gen=2 mask=1 ink=21
+```
+
+### Nested rules inside a "when" state branch of a type-matched StyleSheet rule apply once to a component's own content.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. generated = panel.inner.%first-child!
+-- markup-is-style-shadow(generated)
+-- generated.%next-sibling == null
+
+panel.is-open = false
+demo.markup-batch-queue.checkpoint()
+-- panel.inner.%first-child == null
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
+• Panel
+    when #is-open
+        • part
+            <Segment (first-child)
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-open = true
+
+────────────────────
+
+<This
+    <Segment inner • part
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+```
+
+```output
+true
+true
+true
+```
+
+### A component with markup content is specialized once per distinct visible style-sheet context.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <ThemeABox
+        <Panel panel-a
+    <ThemeBBox
+        <Panel panel-b
+
+demo.markup-batch-queue.checkpoint()
+. label-a = panel-a.%first-child!
+. label-b = panel-b.%first-child!
+-- style-computed-snapshot(label-a)
+-- style-computed-snapshot(label-b)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ThemeABox is Box
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ ThemeBBox is Box
+    using OtherTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+    using TextStyle
+
++ accent I64 = 22
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+node TextStyle seg=owned gen=1 mask=1 ink=22
+```
+
+### A themed component-content specialization is not reused for an unthemed instantiation.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <ThemeBox
+        <Panel themed
+    <Panel unthemed
+
+demo.markup-batch-queue.checkpoint()
+. themed-label = themed.%first-child!
+. unthemed-label = unthemed.%first-child!
+-- style-computed-snapshot(themed-label)
+-- style-computed-snapshot(unthemed-label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ThemeBox is Box
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+initial
+```
+
+### Ambiguous visible style sheets are still diagnosed inside recursively instantiated component content.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <AmbiguousBox
+        <Panel
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ AmbiguousBox is Box
+    using AppTheme
+    using OtherTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+    using TextStyle
+
++ accent I64 = 22
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+────────────────────
+
+<Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+Exception: Style rule "primary" is ambiguous between visible style sheets AppTheme and OtherTheme
+<no file:53>
+    <Label • primary
+             ^^^^^^^
+```
+
+### A class-local style rule shadows a style-sheet-provided rule with the same matching signature, while overloads with different signatures still resolve across providers.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label a • primary
+    <Label b • primary:9
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(a)
+-- style-computed-snapshot(b)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+• primary
+    ink = 5
+
+• primary:v I64
+    ink = v
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=5
+node TextStyle seg=owned gen=1 mask=1 ink=9
+```
+
+### Two visible style sheets providing a style rule with the same matching signature is a diagnosed ambiguity.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+    using OtherTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+    using TextStyle
+
++ accent I64 = 12
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: Style rule "primary" is ambiguous between visible style sheets AppTheme and OtherTheme
+<no file:7>
+        <Label • primary
+                 ^^^^^^^
+```
+
+### Two style sheets a class uses together that both write a rule by its name, one of them in a variant, make its defaults ambiguous. The error is at the class the rules name, even where a subclass is made.
+
+```yumi compile-error
+/core/style
+
+. sub = Sub()
+-- "made"
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Bar
+    ink = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• MotionTheme
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• CalmTheme is MotionTheme for calm
+
+• Bar
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Bar
+    using AppTheme
+    using MotionTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ Sub is Bar
+```
+
+```output
+Exception: Style rule "Bar" is ambiguous between visible style sheets AppTheme and MotionTheme
+<no file:30>
+    + Bar
+    ^^^
+```
+
+### StyleSheets may not declare a "This" defaults rule: defaults belong to classes.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• This
+    ink = accent
+```
+
+```output
+Exception: StyleSheets may not declare a "This" defaults rule
+<no file:30>
+    • This
+    ^^^^^^
+```
+
+### StyleSheet declarations auto-import /core/style, so modules can declare styles and style sheets without spelling the core runtime import directly.
+
+```yumi
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • primary
+
+-- "auto-style-sheet"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ accent I64 = 11
+
+• primary
+    ink = accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+auto-style-sheet
+```
+
+### StyleSheet rule values are evaluated in the rule module's lexical/import scope, not just the markup application scope, so imported enum-like union cases are visible inside theme rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+./theme
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- "scoped=${style-authored-snapshot(panel)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using DemoTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using DemoStyle
+```
+
+```yumi file=edge.yumi
+
+━━━━━━━━━━━━━━━━━━━━
++ Edge is Union
+
+| none
+| single
+
+```
+
+```yumi file=theme.yumi
+
+/core/style
+./edge
+
+━━━━━━━━━━━━━━━━━━━━
++ DemoStyle is Style
+
++ edge Edge = Edge.none
+
+━━━━━━━━━━━━━━━━━━━━
+• DemoTheme
+    using DemoStyle
+
+• Panel
+    edge = Edge.single
+
+```
+
+```output
+scoped=node DemoStyle.edge layer=2 order=0 kind=static bits=257
+```
+
+### Scoped StyleSheet nested rules layer over same-node base StyleSheet rules.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Container container
+
+demo.markup-batch-queue.checkpoint()
+. panel = container.%first-child!
+-- style-authored-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ AccentStyle is Style
+
++ ink I64 = 0
++ pad I64 = 0
+
+. ink -> paint
+. pad -> layout
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using DemoTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Container is Box
+
+────────────────────
+
+<This
+    <Panel
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using AccentStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• DemoTheme
+    using AccentStyle
+
+• Panel
+    ink = 1
+
+• Container
+    • Panel
+        pad = 2
+```
+
+```output
+node AccentStyle.ink layer=2 order=0 kind=static bits=1
+node AccentStyle.pad layer=2 order=1 kind=static bits=2
+```
+
+### Imported modules can extend a StyleSheet with usings and rules. Rule bodies resolve lexical names from the extension module, not from the original style sheet module.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+./theme
+./component
+
+<BatchDemo demo
+    <Panel panel • panel-rule
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+```
+
+```yumi file=theme.yumi
+
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ base-accent AnsiColor = AnsiColor(11)
+
+```
+
+```yumi file=palette.yumi
+
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
++ PaletteColor is AnsiColor
+
+```
+
+```yumi file=component.yumi
+
+/core/tests/support/markup-fixtures
+./theme
+./palette
+
+━━━━━━━━━━━━━━━━━━━━
+• extend AppTheme
+    using TextPaint
+
+• panel-rule
+    color = PaletteColor(9)
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+```
+
+```output
+node TextPaint seg=owned gen=1 mask=1 color=9
+```
+
+### A StyleSheet extension in an unimported component module is not merged into the theme.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+./theme
+
+<BatchDemo demo
+    <Box panel • panel-rule
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+```
+
+```yumi file=theme.yumi
+
+/core/tests/support/markup-fixtures
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextPaint
+
++ base-accent AnsiColor = AnsiColor(11)
+
+• panel-rule
+    color = base-accent
+
+```
+
+```yumi file=component.yumi
+
+/core/tests/support/markup-fixtures
+./theme
+
+━━━━━━━━━━━━━━━━━━━━
+• extend AppTheme
+    using TextPaint
+
+• panel-rule
+    color = AnsiColor(9)
+
+```
+
+```output
+node TextPaint seg=owned gen=1 mask=1 color=11
+```
+
+### StyleSheet-provided rules stay visible inside markup loops of a component that does not name the style sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. region = panel.%first-child!
+-- style-computed-snapshot(region.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ items [String] = ["a", "b"]
++ shown = true
++ state = "a"
+
+────────────────────
+
+<This
+    for item in #items keyed by item
+        <Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### StyleSheet-provided rules stay visible inside dynamic markup conditionals of a component that does not name the style sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. region = panel.%first-child!
+-- style-computed-snapshot(region.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ items [String] = ["a", "b"]
++ shown = true
++ state = "a"
+
+────────────────────
+
+<This
+    if #shown
+        <Label • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### StyleSheet-provided rules stay visible inside dynamic markup match arms of a component that does not name the style sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. region = panel.%first-child!
+-- style-computed-snapshot(region.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ items [String] = ["a", "b"]
++ shown = true
++ state = "a"
+
+────────────────────
+
+<This
+    match #state
+        |= "a"
+            <Label • primary
+        | _
+            <Label
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### A component constructed inside another component's markup loop sees the ancestor style sheet in its own content.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+. region = panel.%first-child!
+. row = region.%first-child!
+-- style-computed-snapshot(row.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ items [String] = ["a", "b"]
++ shown = true
++ state = "a"
+
+────────────────────
+
+<This
+    for item in #items keyed by item
+        <Row
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Box
+
+────────────────────
+
+<Label • primary
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### A component's own defaults rule resolves StyleSheet-provided rules through the style sheet visible where the component is placed.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ items [String] = ["a", "b"]
++ shown = true
++ state = "a"
+
+• This • primary
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+```
+
+### A component whose defaults rule uses a StyleSheet-provided rule is specialized per placement: an unthemed placement does not reuse the themed constructor.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <ThemeBox
+        <Panel themed
+    <Panel unthemed
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(themed)
+-- style-computed-snapshot(unthemed)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ ThemeBox is Box
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• primary
+    ink = 11
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
+• This • primary
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11
+initial
+```
+
+### A StyleSheet rule matched on an element inside a component's template scopes its nested rules over the slot content a caller supplies beneath that element, and a "when" branch follows the template element's state.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Box • side
+        <List list
+            <Row leaf(row)
+
+demo.markup-batch-queue.checkpoint()
+-- "idle ${style-computed-snapshot(leaf.icon)}"
+list.item.is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- "selected ${style-computed-snapshot(leaf.icon)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• side
+    • Item
+        when #is-selected
+            • icon
+                ink = 21
+
+• icon
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
+────────────────────
+
+<This
+    <Item item
+        + <Box row
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ is-selected = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Row is Box
+
+────────────────────
+
+<This
+    <Segment icon • icon
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+```
+
+```output
+idle node TextStyle seg=owned gen=1 mask=1 ink=3
+selected node TextStyle seg=owned gen=2 mask=1 ink=21
+```
+
+### Slot content sees the rules matched along the whole template path to its outlet: an element a component places in another component's row slot, the inner component itself, and an element inside the inner component's own template. Each row follows the state of its own elements.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. names = ["a", "b"]
+
+<BatchDemo demo
+    <Tree tree
+        names = names
+        <Leaf (row) - name
+            name = name
+
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(tree)
+item-at(tree, 1).is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(tree)
+tree.region.is-keyed = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(tree)
+tree.region.is-keyed = false
+((tree.region.%first-child!.child-at(0))! as Cell).is-marked = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(tree)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Item
+    when #is-selected
+        • icon
+            ink = 21
+
+• Region
+    when #is-keyed
+        • mark
+            ink = 5
+
+• Cell
+    when #is-marked
+        • mark
+            ink = 9
+
+• icon
+    ink = 3
+
+• mark
+    ink = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Tree is Box
+
++ names [String]
+
+────────────────────
+
+<This
+    <Region region
+        names = #names
+        <Item (row) - name
+            + <Box row - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Region is Box
+
++ names [String]
++ is-keyed = false
+
+────────────────────
+
+<This
+    for name in #names
+        <Cell
+            + <Box row - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Box
+
++ is-marked = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ is-selected = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+
++ name String
+
+────────────────────
+
+<This
+    <Segment icon • icon
+    <Segment mark • mark
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ do item-at Item
+    - tree Tree
+    - index Index
+
+= ((tree.region.%first-child!.child-at(index))!.%first-child!) as Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf-inks String
+    - tree Tree
+
+. parts [String] = List'String()
+for cell in tree.region.%first-child!.children
+    . leaf = cell.%first-child!.%first-child! as Leaf
+    parts += "${leaf.name} ${style-computed-snapshot(leaf.icon)} / ${style-computed-snapshot(leaf.mark)}"
+= "\n".join(parts)
+```
+
+```output
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=2 mask=1 ink=5
+b node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=2 mask=1 ink=5
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=3 mask=1 ink=9
+b node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=3 mask=1 ink=1
+```
+
+### Rules matched in a base class template reach slot content whether the outlet lives in the base or in content a derived class supplies to the base's slot.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Card card
+        <Segment icon(body) • icon
+    <Plain plain
+        <Segment • icon
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+-- style-computed-snapshot(plain.frame.%first-child!)
+card.item.is-selected = true
+plain.frame.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+-- style-computed-snapshot(plain.frame.%first-child!)
+card.item.is-selected = false
+card.frame.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Item
+    when #is-selected
+        • icon
+            ink = 21
+
+• Frame
+    when #is-lit
+        • icon
+            ink = 30
+
+• icon
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Shell is Box
+
+────────────────────
+
+<This
+    <Frame frame
+        + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Card is Shell
+
+────────────────────
+
+<This
+    <Item item
+        + <Box body
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is Shell
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is Box
+
++ is-lit = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ is-selected = false
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=2 mask=1 ink=21
+node TextStyle seg=owned gen=2 mask=1 ink=30
+node TextStyle seg=owned gen=3 mask=1 ink=30
+```
+
+### A component nested in its own slot content keeps each level's state apart: content follows every enclosing instance's template element, innermost included.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <List outer
+        <Segment a • icon
+        <List inner
+            <Segment • icon
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(a)
+-- style-computed-snapshot(inner.item.%first-child!)
+inner.item.is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(a)
+-- style-computed-snapshot(inner.item.%first-child!)
+inner.item.is-selected = false
+outer.item.is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(a)
+-- style-computed-snapshot(inner.item.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Item
+    when #is-selected
+        • icon
+            ink = 21
+
+• icon
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
+────────────────────
+
+<This
+    <Item item
+        + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ is-selected = false
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=2 mask=1 ink=21
+node TextStyle seg=owned gen=2 mask=1 ink=21
+node TextStyle seg=owned gen=2 mask=1 ink=21
+```
+
+### Nested rules of a rule that takes arguments are not carried from a template element to slot content; the same content placed in the template still resolves them.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <List list
+        <Segment icon • icon
+        <Segment mark • mark
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+-- style-computed-snapshot(mark)
+-- style-computed-snapshot(list.inside)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• tint:amount I64
+    • icon
+        ink = amount
+
+    • mark
+        ink = 40
+
+• icon
+    ink = 3
+
+• mark
+    ink = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ List is Box
+
+────────────────────
+
+<This
+    <Item item • tint:5
+        <Segment inside • icon
+        + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=1 mask=1 ink=1
+node TextStyle seg=owned gen=1 mask=1 ink=5
+```
+
+### A class rule applied by type binds style sheet slots through the style sheets visible at each element, and an unrelated visible style sheet changes nothing.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <AppBox
+        <Panel app
+    <OtherBox
+        <Panel other
+    <AppSpareBox
+        <Panel spared
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(app)
+-- style-computed-snapshot(other)
+-- style-computed-snapshot(spared)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ ink I64 = 0
++ tone I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ accent I64 = 11
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+
++ accent I64 = 22
+
+━━━━━━━━━━━━━━━━━━━━
+• SpareTheme
+
++ spare I64 = 33
+
+━━━━━━━━━━━━━━━━━━━━
++ AppBox is Box
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherBox is Box
+    using OtherTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ AppSpareBox is Box
+    using SpareTheme
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TintStyle
+
+• Panel
+    ink = accent
+    tone = 2
+```
+
+```output
+node TintStyle seg=owned gen=1 mask=3 ink=11 tone=2
+node TintStyle seg=owned gen=1 mask=3 ink=22 tone=2
+node TintStyle seg=owned gen=1 mask=3 ink=11 tone=2
+```
+
+### A class rule applied by type applies style-sheet-provided rules through the style sheets visible at each element, and an unrelated visible style sheet changes nothing.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <AppBox
+        <Panel app
+    <OtherBox
+        <Panel other
+    <AppSpareBox
+        <Panel spared
+
+demo.markup-batch-queue.checkpoint()
+-- style-authored-snapshot(app)
+-- style-authored-snapshot(other)
+-- style-authored-snapshot(spared)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ ink I64 = 0
++ tone I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TintStyle
+
+• chrome
+    ink = 5
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+    using TintStyle
+
+• chrome
+    ink = 6
+
+━━━━━━━━━━━━━━━━━━━━
+• SpareTheme
+    using TintStyle
+
+• trim
+    ink = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ AppBox is Box
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherBox is Box
+    using OtherTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ AppSpareBox is Box
+    using SpareTheme
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TintStyle
+
+• Panel • chrome
+    tone = 2
+```
+
+```output
+node TintStyle.ink layer=2 order=0 kind=static bits=5
+node TintStyle.tone layer=2 order=1 kind=static bits=2
+node TintStyle.ink layer=2 order=0 kind=static bits=6
+node TintStyle.tone layer=2 order=1 kind=static bits=2
+node TintStyle.ink layer=2 order=0 kind=static bits=5
+node TintStyle.tone layer=2 order=1 kind=static bits=2
+```
+
+### A forwarded row slot carries rules from both components to the caller's content: an ancestor of the forwarding element and that element itself in the forwarding template, and an element inside the template that holds the outlet. Each row follows its own elements.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. names = ["a", "b"]
+
+<BatchDemo demo
+    <Grid grid
+        names = names
+        <Leaf (row) - name
+            name = name
+
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+grid.band.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+grid.rows.is-keyed = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+cell-at(grid, 1).is-marked = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Band
+    when #is-lit
+        • icon
+            ink = 30
+
+• RowPanel
+    when #is-keyed
+        • mark
+            ink = 5
+
+• Cell
+    when #is-marked
+        • dot
+            ink = 9
+
+• icon
+    ink = 3
+
+• mark
+    ink = 2
+
+• dot
+    ink = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Grid is Box
+
++ names [String]
+
+────────────────────
+
+<This
+    <Band band
+        <RowPanel rows
+            names = #names
+            <+ (row)
+
+━━━━━━━━━━━━━━━━━━━━
++ Band is Box
+
++ is-lit = false
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel is Box
+
++ names [String]
++ is-keyed = false
+
+────────────────────
+
+<This
+    for name in #names
+        <Cell
+            + <Box row - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Box
+
++ is-marked = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+
++ name String
+
+────────────────────
+
+<This
+    <Segment icon • icon
+    <Segment mark • mark
+    <Segment dot • dot
+
+━━━━━━━━━━━━━━━━━━━━
++ do cell-at Cell
+    - grid Grid
+    - index Index
+
+= (grid.rows.%first-child!.child-at(index))! as Cell
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf-inks String
+    - grid Grid
+
+. parts [String] = List'String()
+for cell in grid.rows.%first-child!.children
+    . leaf = cell.%first-child! as Leaf
+    parts += "${leaf.name} ${style-computed-snapshot(leaf.icon)} / ${style-computed-snapshot(leaf.mark)} / ${style-computed-snapshot(leaf.dot)}"
+= "\n".join(parts)
+```
+
+```output
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=2 mask=1 ink=9
+```
+
+### A forwarded slot carries the forwarding component's root rules along with rules matched on the forwarding element and inside the component that holds the outlet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+        <Segment icon(header) • icon
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+panel.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+panel.is-lit = false
+panel.inner.is-keyed = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+panel.inner.is-keyed = false
+panel.inner.frame.is-marked = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(icon)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• lit-frame
+    when #is-lit
+        • icon
+            ink = 30
+
+• Inner
+    when #is-keyed
+        • icon
+            ink = 5
+
+• Frame
+    when #is-marked
+        • icon
+            ink = 9
+
+• icon
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-lit = false
+
+────────────────────
+
+<This • lit-frame
+    <Inner inner
+        <+ (header)
+
+━━━━━━━━━━━━━━━━━━━━
++ Inner is Box
+
++ is-keyed = false
+
+────────────────────
+
+<This
+    <Frame frame
+        + <Box header
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is Box
+
++ is-marked = false
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=2 mask=1 ink=30
+node TextStyle seg=owned gen=3 mask=1 ink=5
+node TextStyle seg=owned gen=4 mask=1 ink=9
+```
+
+### A type-matched StyleSheet rule's nested rules reach id-bound content a caller supplies to the component's slot, and the markup of components in that content, whether or not a rule names them.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Frame
+        <Leaf direct
+        <Named named
+        <Other other
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(direct)
+-- style-computed-snapshot(named.%first-child!)
+-- style-computed-snapshot(other.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Frame
+    • Leaf
+        ink = 21
+
+    • Named
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Named is Box
+
+────────────────────
+
+<This
+    <Leaf
+
+━━━━━━━━━━━━━━━━━━━━
++ Other is Box
+
+────────────────────
+
+<This
+    <Leaf
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+node TextStyle seg=owned gen=1 mask=1 ink=21
+```
+
+### A rule written in a `when` of a style sheet's rule that a markup element applies is seen once in the markup of the element's class, though the class's root `<This` matches the sheet's rule again: its declaration is made once.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-authored-snapshot(panel.inner)
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ ink I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+
++ is-open = true
+
+────────────────────
+
+<This
+    <Segment inner • part
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TintStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TintStyle
+
+• Panel
+    when #is-open
+        • part
+            ink = 7
+```
+
+```output
+node TintStyle.ink layer=4 order=0 kind=static bits=7 block=0
+```
+
+### A rule nested under the `when`s of two or three rules applies only while every one of those states holds, through a component's content and a forwarded row slot, each row on its own.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. names = ["a", "b"]
+
+<BatchDemo demo
+    <Grid grid
+        names = names
+        <Leaf (row) - name
+            name = name
+
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+cell-at(grid, 1).is-marked = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+grid.band.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+grid.rows.is-keyed = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+grid.band.is-lit = false
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+cell-at(grid, 0).is-marked = true
+grid.band.is-lit = true
+demo.markup-batch-queue.checkpoint()
+-- leaf-inks(grid)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Band
+    when #is-lit
+        • Cell
+            when #is-marked
+                • icon
+                    ink = 30
+
+        • RowPanel
+            when #is-keyed
+                • Cell
+                    when #is-marked
+                        • dot
+                            ink = 9
+
+• RowPanel
+    when #is-keyed
+        • Cell
+            when #is-marked
+                • mark
+                    ink = 5
+
+• icon
+    ink = 3
+
+• mark
+    ink = 2
+
+• dot
+    ink = 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Grid is Box
+
++ names [String]
+
+────────────────────
+
+<This
+    <Band band
+        <RowPanel rows
+            names = #names
+            <+ (row)
+
+━━━━━━━━━━━━━━━━━━━━
++ Band is Box
+
++ is-lit = false
+
+━━━━━━━━━━━━━━━━━━━━
++ RowPanel is Box
+
++ names [String]
++ is-keyed = false
+
+────────────────────
+
+<This
+    for name in #names
+        <Cell
+            + <Box row - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Box
+
++ is-marked = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+
++ name String
+
+────────────────────
+
+<This
+    <Segment icon • icon
+    <Segment mark • mark
+    <Segment dot • dot
+
+━━━━━━━━━━━━━━━━━━━━
++ do cell-at Cell
+    - grid Grid
+    - index Index
+
+= (grid.rows.%first-child!.child-at(index))! as Cell
+
+━━━━━━━━━━━━━━━━━━━━
++ do leaf-inks String
+    - grid Grid
+
+. parts [String] = List'String()
+for cell in grid.rows.%first-child!.children
+    . leaf = cell.%first-child! as Leaf
+    parts += "${leaf.name} ${style-computed-snapshot(leaf.icon)} / ${style-computed-snapshot(leaf.mark)} / ${style-computed-snapshot(leaf.dot)}"
+= "\n".join(parts)
+```
+
+```output
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=2 mask=1 ink=9
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=1
+b node TextStyle seg=owned gen=3 mask=1 ink=3 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=3 mask=1 ink=1
+a node TextStyle seg=owned gen=2 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=2 mask=1 ink=9
+b node TextStyle seg=owned gen=4 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=5 / node TextStyle seg=owned gen=4 mask=1 ink=9
+```
+
+### A rule nested under two `when`s reaches markup a slot builder makes and rows a slot gives, each gated by the outer element's state and its own item's.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Tree tree • tree-frame
+        names = ["a", "b"]
+        <Leaf (entry) - row
+            name = row
+
+demo.markup-batch-queue.checkpoint()
+-- inks(tree)
+tree.is-focused = true
+demo.markup-batch-queue.checkpoint()
+-- inks(tree)
+tree.item.is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- inks(tree)
+((tree.rows.%first-child!.child-at(1))!.%first-child! as Item).is-selected = true
+demo.markup-batch-queue.checkpoint()
+-- inks(tree)
+tree.is-focused = false
+demo.markup-batch-queue.checkpoint()
+-- inks(tree)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
++ Segment is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• tree-frame
+    when #is-focused
+        • Item
+            when #is-selected
+                • icon
+                    ink = 21
+
+• icon
+    ink = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Tree is Box
+
++ is-focused = false
++ names [String]
+
+────────────────────
+
+<This
+    <Holder holder
+        <Item item
+            <Segment icon • icon
+    <Rows rows
+        names = #names
+        <Item (row) - name
+            <Segment • icon
+            + <Box entry - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
+────────────────────
+
+<This
+    + <Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Rows is Box
+
++ names [String]
+
+────────────────────
+
+<This
+    for name in #names
+        <Box
+            + <Box row - name String
+
+━━━━━━━━━━━━━━━━━━━━
++ Item is Box
+
++ is-selected = false
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+
++ name String
+
+────────────────────
+
+<This
+    <Segment icon • icon
+
+━━━━━━━━━━━━━━━━━━━━
++ do inks String
+    - tree Tree
+
+. parts [String] = List'String()
+parts += "holder ${style-computed-snapshot(tree.icon)}"
+for box in tree.rows.%first-child!.children
+    . item = box.%first-child! as Item
+    . own = item.%first-child! as Segment
+    . leaf = (item.child-at(1))! as Leaf
+    parts += "${leaf.name} ${style-computed-snapshot(own)} / ${style-computed-snapshot(leaf.icon)}"
+= "\n".join(parts)
+```
+
+```output
+holder node TextStyle seg=owned gen=1 mask=1 ink=3
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+holder node TextStyle seg=owned gen=1 mask=1 ink=3
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+holder node TextStyle seg=owned gen=2 mask=1 ink=21
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+b node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+holder node TextStyle seg=owned gen=2 mask=1 ink=21
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+b node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=2 mask=1 ink=21
+holder node TextStyle seg=owned gen=3 mask=1 ink=3
+a node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+b node TextStyle seg=owned gen=3 mask=1 ink=3 / node TextStyle seg=owned gen=3 mask=1 ink=3
+```
+
+### A style sheet derived from another (`• Name is Base for tags`) overrides slots of its base by restating them with a value, and registers under its own name as a record of the base's slots: providing it changes the subtree's values, and a sheet derived from a derived one keeps the overrides above it. A class that uses a derived sheet resolves slots against the sheet its family derives from, so using both names one sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright
+    <Label
+        ink = dim
+
+demo.markup-batch-queue.checkpoint()
+
+. first = demo.%first-child!
+. second = first.%next-sibling!
+
+-- style-computed-snapshot(first)
+-- style-computed-snapshot(second)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+
+-- style-computed-snapshot(first)
+-- style-computed-snapshot(second)
+
+style-use-theme(demo, ContrastTheme)
+demo.markup-batch-queue.checkpoint()
+
+-- style-computed-snapshot(first)
+-- style-computed-snapshot(second)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using DarkTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
++ dim I64 = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=1 mask=1 ink=2
+node TextStyle seg=owned gen=2 mask=1 ink=20
+node TextStyle seg=owned gen=1 mask=1 ink=2
+node TextStyle seg=owned gen=2 mask=1 ink=20
+node TextStyle seg=owned gen=2 mask=1 ink=0
+```
+
+### A derived style sheet only overrides slots of the sheet it derives from: it declares none of its own.
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme
+
++ extra I64 = 3
+```
+
+```output
+Exception: Derived StyleSheet "DarkTheme" can only override slots of AppTheme, which has no slot "extra"
+<no file:10>
+    + extra I64 = 3
+    ^^^^^^^^^^^^^^^
+```
+
+### A style sheet derives only from another style sheet.
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
++ Plain
+
+━━━━━━━━━━━━━━━━━━━━
+• OddTheme is Plain
+```
+
+```output
+Exception: StyleSheet base "Plain" is not a StyleSheet
+<no file:6>
+    • OddTheme is Plain
+                  ^^^^^
+```
+
+### A style sheet's base must be found.
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+• OddTheme is Missing
+```
+
+```output
+Exception: StyleSheet base "Missing" not found
+<no file:3>
+    • OddTheme is Missing
+                  ^^^^^^^
+```
+
+### A derived style sheet names each of its tags once.
+
+```yumi crash
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark, dark
+```
+
+```output
+Exception: StyleSheet tag "dark" is repeated
+<no file:8>
+    • DarkTheme is AppTheme for dark, dark
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A style value that reads StyleSheet slots inside an expression, a slot given alone to a rule that declares what it takes, and a line of a sheet's rule that computes with the sheet's slots all take their values from the subtree's effective record of the sheet, each worked out once per record and kept until a slot of the record is written. A derived sheet holds every slot whose value reads another, so `doubled` follows `bright` in DarkTheme.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright + 1
+    <Label • ink-of:dim
+    <Label • glow
+    <Label
+        ink = doubled
+
+demo.markup-batch-queue.checkpoint()
+
+. labels = [demo.%first-child!]
+labels += labels[0].%next-sibling!
+labels += labels[1].%next-sibling!
+labels += labels[2].%next-sibling!
+
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, ContrastTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+. custom = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+style-provide-style-sheet(demo, custom)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+custom.set-slot-named("bright", 5, false)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using InkRules
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ dim I64 = 2
++ doubled I64 = bright * 2
+
+• glow
+    ink = dim * 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=11 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=20 / node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=1 mask=1 ink=2 / node TextStyle seg=owned gen=1 mask=1 ink=20 / node TextStyle seg=owned gen=2 mask=1 ink=40
+node TextStyle seg=owned gen=2 mask=1 ink=21 / node TextStyle seg=owned gen=2 mask=1 ink=0 / node TextStyle seg=owned gen=2 mask=1 ink=0 / node TextStyle seg=owned gen=2 mask=1 ink=40
+node TextStyle seg=owned gen=3 mask=1 ink=11 / node TextStyle seg=owned gen=3 mask=1 ink=2 / node TextStyle seg=owned gen=3 mask=1 ink=20 / node TextStyle seg=owned gen=3 mask=1 ink=20
+node TextStyle seg=owned gen=4 mask=1 ink=6 / node TextStyle seg=owned gen=3 mask=1 ink=2 / node TextStyle seg=owned gen=3 mask=1 ink=20 / node TextStyle seg=owned gen=3 mask=1 ink=20
+```
+
+### A style value that reads StyleSheet slots reads nothing else that differs from one making to the next.
+
+```yumi crash
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+. extra = 3
+<BatchDemo demo
+    <Label
+        ink = bright + extra
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using InkRules
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ dim I64 = 2
++ doubled I64 = bright * 2
+
+• glow
+    ink = dim * 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: A style value that reads StyleSheet slots may read no local, member, style or tracked value; read a slot as "$name" to compute with one
+<no file:10>
+            ink = bright + extra
+                  ^^^^^^^^^^^^^^
+```
+
+### A style rule takes a StyleSheet slot only alone.
+
+```yumi crash
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • ink-of:(dim + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using InkRules
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ dim I64 = 2
++ doubled I64 = bright * 2
+
+• glow
+    ink = dim * 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+Exception: A style rule takes a StyleSheet slot only alone, as in "• bg:panel-color", not in an expression
+<no file:8>
+        <Label • ink-of:(dim + 1)
+                         ^^^
+```
+
+### A style rule given a StyleSheet slot computes with it where it is applied: the runtime evaluates the line from the subtree's theme, for each slot the rule is given, and again on a theme switch.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label dimmed • twice:dim
+    <Label lit • twice:bright
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(dimmed)
+-- style-computed-snapshot(lit)
+style-use-theme(demo, ContrastTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(dimmed)
+-- style-computed-snapshot(lit)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using InkRules
+    using MoreRules
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ dim I64 = 2
++ doubled I64 = bright * 2
+
+• glow
+    ink = dim * 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• MoreRules
+    using TextStyle
+
+• twice:value I64
+    ink = value * 2
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=4
+node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=2 mask=1 ink=0
+node TextStyle seg=owned gen=2 mask=1 ink=40
+```
+
+### A style value reads the slots of one StyleSheet.
+
+```yumi crash
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright + other
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+    using InkRules
+    using OtherTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ dim I64 = 2
++ doubled I64 = bright * 2
+
+• glow
+    ink = dim * 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
++ dim = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+
++ other I64 = 1
+```
+
+```output
+Exception: A style value reads slots of one StyleSheet: "other" is a slot of OtherTheme, and others it reads are slots of AppTheme
+<no file:9>
+            ink = bright + other
+                           ^^^^^
+```
+
+### A family's members are layers of its rules: the rules that apply are those of the active member, each name taken from the nearest sheet up its chain that writes it. DarkTheme restates "glow" and adds "shine", ContrastTheme takes both from DarkTheme and restates "Tag", and a rule a rule applies after its name follows the active member too.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • glow
+    <Label • shine
+    <Tag
+    <Label • boxed
+
+demo.markup-batch-queue.checkpoint()
+
+. labels = [demo.%first-child!]
+labels += labels[0].%next-sibling!
+labels += labels[1].%next-sibling!
+labels += labels[2].%next-sibling!
+
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, ContrastTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-provide-style-sheet(demo, StyleSheetRecord(style-sheet-info-named("AppTheme")!))
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
++ @inherited size I64 = 1
+
+. ink -> paint
+. size -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+• glow
+    ink = 1
+
+• Tag
+    ink = 50
+
+• boxed • glow
+    size = 3
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+• glow
+    ink = 2
+
+• shine
+    ink = bright + 10
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for dark, high-contrast
+
+• Tag
+    ink = 60
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Tag is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=1 size=1 / initial / node TextStyle seg=owned gen=1 mask=1 ink=50 size=1 / node TextStyle seg=owned gen=1 mask=3 ink=1 size=3
+node TextStyle seg=owned gen=2 mask=1 ink=2 size=1 / node TextStyle seg=owned gen=1 mask=1 ink=30 size=1 / node TextStyle seg=owned gen=1 mask=1 ink=50 size=1 / node TextStyle seg=owned gen=2 mask=1 ink=2 size=3
+node TextStyle seg=owned gen=2 mask=1 ink=2 size=1 / node TextStyle seg=owned gen=1 mask=1 ink=30 size=1 / node TextStyle seg=owned gen=2 mask=1 ink=60 size=1 / node TextStyle seg=owned gen=2 mask=1 ink=2 size=3
+node TextStyle seg=owned gen=3 mask=1 ink=1 size=1 / initial / node TextStyle seg=owned gen=3 mask=1 ink=50 size=1 / node TextStyle seg=owned gen=3 mask=1 ink=1 size=3
+```
+
+### A derived sheet's rule that a class gets by name replaces the root's rule among the class's defaults while that member is active, its "when" included.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Chip
+    <Chip
+        ink = 5
+
+demo.markup-batch-queue.checkpoint()
+
+. labels = [demo.%first-child!]
+labels += labels[0].%next-sibling!
+
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+(labels[0] as Chip).is-hovered = true
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-provide-style-sheet(demo, StyleSheetRecord(style-sheet-info-named("AppTheme")!))
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
++ @inherited size I64 = 1
+
+. ink -> paint
+. size -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
+• Chip
+    ink = 1
+    size = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
+• Chip
+    ink = 3
+    when #is-hovered
+        size = 9
+
+━━━━━━━━━━━━━━━━━━━━
++ Chip is Box
+    using TextStyle
+    using AppTheme
+
++ is-hovered = false
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=3 ink=1 size=2 / node TextStyle seg=owned gen=1 mask=3 ink=5 size=2
+node TextStyle seg=owned gen=2 mask=3 ink=3 size=1 / node TextStyle seg=owned gen=2 mask=2 ink=5 size=1
+node TextStyle seg=owned gen=3 mask=2 ink=3 size=9 / node TextStyle seg=owned gen=2 mask=2 ink=5 size=1
+node TextStyle seg=owned gen=4 mask=3 ink=1 size=2 / node TextStyle seg=owned gen=3 mask=2 ink=5 size=2
+```
+
+### A rule a derived sheet restates with the same values takes what the markup gives it, including a slot given alone and values a sheet's rule gives a rule it applies.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • ink-of:3
+    <Label • ink-of:bright
+    <Label • strong
+
+demo.markup-batch-queue.checkpoint()
+
+. labels = [demo.%first-child!]
+labels += labels[0].%next-sibling!
+labels += labels[1].%next-sibling!
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
++ @inherited size I64 = 1
++ @inherited weight I64 = 0
+
+. ink -> paint
+. size -> paint
+. weight -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+• ink-of:value I64
+    ink = value
+
+• strong • ink-of:5
+    weight = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+• ink-of:value I64
+    ink = value
+    size = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3 size=1 weight=0 / node TextStyle seg=owned gen=1 mask=1 ink=10 size=1 weight=0 / node TextStyle seg=owned gen=1 mask=5 ink=5 size=1 weight=2
+node TextStyle seg=owned gen=2 mask=2 ink=3 size=4 weight=0 / node TextStyle seg=owned gen=2 mask=3 ink=20 size=4 weight=0 / node TextStyle seg=owned gen=2 mask=2 ink=5 size=4 weight=2
+```
+
+### A subtree's theme tags are those turned on nearest it, and in each family its active member is the most specific variant of the theme it uses whose tags all hold, or that theme itself. A variant of a variant needs the tags of both. Turning a tag off, or using another theme, holds for the subtree; a tag set to null is inherited again. A theme a subtree uses by name stays active where no variant of it matches.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+        ink = bright
+    <Panel panel
+        <Label • glow
+
+demo.markup-batch-queue.checkpoint()
+
+. labels = [demo.%first-child!]
+labels += panel.%first-child!
+
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-set-theme-tag(demo, "dark", true)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-set-theme-tag(demo, "high-contrast", true)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-set-theme-tag(panel, "dark", false)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(panel, FlatTheme)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-set-theme-tag(panel, "dark", null)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+style-use-theme(demo, DarkTheme)
+style-set-theme-tag(demo, "dark", null)
+style-set-theme-tag(demo, "high-contrast", null)
+demo.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in labels)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+• glow
+    ink = 1
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+• glow
+    ink = 2
+
+━━━━━━━━━━━━━━━━━━━━
+• ContrastTheme is DarkTheme for high-contrast
+
++ bright = 30
+
+━━━━━━━━━━━━━━━━━━━━
+• FlatTheme is AppTheme
+
++ bright = 40
+
+• glow
+    ink = 4
+
+━━━━━━━━━━━━━━━━━━━━
+• FlatDark is FlatTheme for dark
+
++ bright = 50
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=1
+node TextStyle seg=owned gen=2 mask=1 ink=20 / node TextStyle seg=owned gen=2 mask=1 ink=2
+node TextStyle seg=owned gen=3 mask=1 ink=30 / node TextStyle seg=owned gen=2 mask=1 ink=2
+node TextStyle seg=owned gen=3 mask=1 ink=30 / node TextStyle seg=owned gen=3 mask=1 ink=1
+node TextStyle seg=owned gen=3 mask=1 ink=30 / node TextStyle seg=owned gen=4 mask=1 ink=4
+node TextStyle seg=owned gen=3 mask=1 ink=30 / node TextStyle seg=owned gen=4 mask=1 ink=4
+node TextStyle seg=owned gen=4 mask=1 ink=20 / node TextStyle seg=owned gen=4 mask=1 ink=4
+```
+
+### An element binds a theme tag with `for`, without calling anything: the tag follows the value, which may read tracked state, from the time the element mounts. False turns the tag off beneath the element, null inherits it, and a binding written without a value turns it on.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<Scene scene
+
+show(scene)
+scene.is-night = true
+show(scene)
+scene.override = false
+show(scene)
+scene.override = null
+scene.is-night = false
+show(scene)
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - scene Scene
+
+scene.markup-batch-queue.checkpoint()
+-- " / ".join(style-computed-snapshot(each) in [scene.lit, scene.held, scene.always])
+
+━━━━━━━━━━━━━━━━━━━━
++ Scene is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
++ is-night = false
++ override Bool? = null
+
+────────────────────
+
+<This
+    <Box for dark = #is-night
+        <Ink lit
+            ink = bright
+        <Box for dark = #override
+            <Ink held
+                ink = bright
+    <Box for dark
+        <Ink always
+            ink = bright
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Ink is Box
+    using TextStyle
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=2 mask=1 ink=20 / node TextStyle seg=owned gen=2 mask=1 ink=20 / node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=2 mask=1 ink=20 / node TextStyle seg=owned gen=3 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=3 mask=1 ink=10 / node TextStyle seg=owned gen=3 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=20
+```
+
+### A class's rule "• This" that applies no other rule takes the StyleSheet slot a line names from the sheets the object sees.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(demo.%first-child!)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(demo.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using AppTheme
+
+• This
+    ink = bright
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=20
+```
+
+### Code reads a StyleSheet slot as "$name" where no style property answers the name: the value of the slot in the node's active theme. A theme switch or a slot write raises the domains the sheet names for each slot on the nodes that read one, and only on those.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+    <Label other
+
+demo.markup-batch-queue.checkpoint()
+-- "${label.shade()} ${label.$tint}"
+label.$is-paint-invalid = false
+other.$is-paint-invalid = false
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- "${label.$is-paint-invalid} ${other.$is-paint-invalid}"
+-- "${label.shade()} ${label.$tint}"
+label.$is-paint-invalid = false
+
+. custom = StyleSheetRecord(style-sheet-info-named("AppTheme")!)
+style-provide-style-sheet(demo, custom)
+demo.markup-batch-queue.checkpoint()
+-- "${label.shade()} ${label.$is-paint-invalid}"
+label.$is-paint-invalid = false
+
+custom.set-slot-named("bright", 5, false)
+demo.markup-batch-queue.checkpoint()
+-- "${label.$is-paint-invalid} ${label.shade()}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
++ tint I64? = null
+
+. bright -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
++ tint = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using AppTheme
+
+────────────────────
++ do shade I64
+
+= $bright
+```
+
+```output
+10 unknown
+true false
+20 3
+10 true
+true 5
+```
+
+### "$name" names a slot of only one of the StyleSheets a class uses.
+
+```yumi crash
+/core/style
+
+. label = Label()
+-- label.shade()
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• OtherTheme
+    using TextStyle
+
++ bright I64 = 30
+
+━━━━━━━━━━━━━━━━━━━━
++ Label
+    using TextStyle
+    using AppTheme
+    using OtherTheme
+
+────────────────────
++ do shade I64
+
+= $bright
+```
+
+```output
+Exception: "bright" is a slot of both AppTheme and OtherTheme
+<no file:33>
+    = $bright
+      ^^^^^^^
+```
+
+### A domain line of a StyleSheet names one of its slots.
+
+```yumi crash
+/core/style
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+. dim -> paint
+```
+
+```output
+Exception: StyleSheet slot "dim" does not exist
+<no file:15>
+    . dim -> paint
+      ^^^
+```
+
+### A StyleSheet slot raises its domains on the node that reads it, so they name no target.
+
+```yumi crash
+/core/style
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+. bright -> paint on parent
+```
+
+```output
+Exception: A StyleSheet slot raises its domains on the node that reads it, so they name no target
+<no file:15>
+    . bright -> paint on parent
+                         ^^^^^^
+```
+
+### Only the root of a family names the domains of its slots.
+
+```yumi crash
+/core/style
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+. bright -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+. bright -> paint
+```
+
+```output
+Exception: Derived StyleSheet "DarkTheme" names no domains; its slots raise those AppTheme names
+<no file:22>
+    . bright -> paint
+    ^^^^^^^^^^^^^^^^^
+```
+
+### "$name" in a tracked value of markup reads the slot from the theme of the object the markup belongs to, and is read again when that theme changes as when anything else it tracks changes. An object made after a switch reads the theme it mounts into.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+    <Holder holder
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+
+panel.flag = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+
+panel.flag = false
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+
+holder.show = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(holder.%first-child!.%first-child!.%first-child!)
+
+style-use-theme(demo, AppTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.%first-child!)
+-- style-computed-snapshot(holder.%first-child!.%first-child!.%first-child!)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+    using AppTheme
+
++ flag = false
+
+────────────────────
+
+<This
+    <Label
+        ink = if #flag then 1 else $bright
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder is Box
+
++ show = false
+
+────────────────────
+
+<This
+    if #show
+        <Panel
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=20
+node TextStyle seg=owned gen=3 mask=1 ink=1
+node TextStyle seg=owned gen=4 mask=1 ink=20
+node TextStyle seg=owned gen=1 mask=1 ink=20
+node TextStyle seg=owned gen=5 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=10
+```
+
+### "$name" in a tracked value of markup made while another action runs is noted by the value's own action alone: the running action does not depend on what it made, so it runs once.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Host host
+
+. maker = host.maker
+demo.markup-batch-queue.checkpoint()
+-- "mounted ${maker.builds}"
+host.view = "b"
+demo.markup-batch-queue.checkpoint()
+-- "rebuilt ${maker.builds}"
+maker.made!.flag = true
+demo.markup-batch-queue.checkpoint()
+-- "flagged ${maker.builds}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
++ Swatch is Box
+    using TextStyle
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using TextStyle
+    using AppTheme
+
++ flag = false
+
+────────────────────
+
+<This
+    <Swatch
+        ink = if #flag then 1 else $bright
+
+━━━━━━━━━━━━━━━━━━━━
++ Maker
+
++ builds = 0
++ made Panel?
+
+────────────────────
++ do make Panel
+    - view String
+
+builds += 1
+. panel = Panel()
+made = panel
+= panel
+
+━━━━━━━━━━━━━━━━━━━━
++ Host is Box
+
++ maker = Maker()
++ view = "a"
+
+────────────────────
+
+<This
+    maker.make(#view)
+```
+
+```output
+mounted 1
+rebuilt 2
+flagged 2
+```
+
+### A "when" of a class's rule "• This" gives a rule a StyleSheet slot, as in "• ink-of:bright".
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+label.is-on = true
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using InkRules
+    using AppTheme
+
++ is-on = false
+
+• This
+    when #is-on
+        • ink-of:bright
+```
+
+```output
+initial
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=20
+```
+
+### A tracked value of a class's rule "• This" may read "$name" and give "this" to a function; both follow the theme.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+    <Badge badge
+
+demo.markup-batch-queue.checkpoint()
+-- "${style-computed-snapshot(label)} / ${style-computed-snapshot(badge)}"
+label.is-on = true
+badge.is-on = true
+demo.markup-batch-queue.checkpoint()
+-- "${style-computed-snapshot(label)} / ${style-computed-snapshot(badge)}"
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- "${style-computed-snapshot(label)} / ${style-computed-snapshot(badge)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using AppTheme
+
++ is-on = false
+
+• This
+    ink = if #is-on then $bright else 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Badge is Box
+    using TextStyle
+    using AppTheme
+
++ is-on = false
+
+• This
+    ink = shade(#is-on, this)
+
+━━━━━━━━━━━━━━━━━━━━
+_ shade I64
+    - on Bool
+    - node Badge
+
+if on then node.$bright + 1 else 3
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=3 / node TextStyle seg=owned gen=1 mask=1 ink=3
+node TextStyle seg=owned gen=2 mask=1 ink=10 / node TextStyle seg=owned gen=2 mask=1 ink=11
+node TextStyle seg=owned gen=3 mask=1 ink=20 / node TextStyle seg=owned gen=3 mask=1 ink=21
+```
+
+### A StyleSheet whose slot only the value a root "<This" gives a property reads is registered, and the value follows the theme.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- panel.tint
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- panel.tint
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using AppTheme
+
++ tint I64?
+
+────────────────────
+
+<This
+    tint = $bright
+```
+
+```output
+10
+20
+```
+
+### "$name" alone follows the theme in an attribute of markup, the value of a property, and a line of a class's rule "• This" that sets a property.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- "${panel.leaf.tint} ${panel.glow} ${panel.shade}"
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- "${panel.leaf.tint} ${panel.glow} ${panel.shade}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+
++ tint I64?
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Box
+    using AppTheme
+
++ glow = $bright + 1
++ shade I64?
+
+• This
+    shade = $bright + 2
+
+────────────────────
+
+<This
+    <Leaf leaf
+        tint = $bright
+```
+
+```output
+10 11 12
+20 21 22
+```
+
+### Writing a slot of a theme's own record changes it for every subtree whose active member the theme is, once "style-restyle-themes" marks the subtree; other members keep their values.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+style-set-theme-slot(AppTheme, "bright", 30, false)
+style-restyle-themes(demo)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using AppTheme
+
+• This
+    ink = bright
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=30
+node TextStyle seg=owned gen=3 mask=1 ink=20
+```
+
+### A rule a class gets by name from a style sheet its chain uses is one of its defaults wherever the object is made: one its constructor makes outside markup has it too, and follows the theme.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label written
+
+. called = Label()
+markup-append(demo, called)
+demo.markup-batch-queue.checkpoint()
+-- "${style-computed-snapshot(written)} / ${style-computed-snapshot(called)}"
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- "${style-computed-snapshot(written)} / ${style-computed-snapshot(called)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+• Label
+    ink = bright
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using AppTheme
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10 / node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=20 / node TextStyle seg=owned gen=2 mask=1 ink=20
+```
+
+### A value a theme computes keeps every bit, whatever its two highest are: a float of 2 or more and a large negative integer read back as written.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+style-use-theme(demo, BigTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using SizeStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ SizeStyle is Style
+
++ size F64 = 0
++ depth I64 = 0
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using SizeStyle
+
++ base F64 = 3
++ low I64 = -5
+
+• Label
+    size = base * 2
+    depth = low * 4
+
+━━━━━━━━━━━━━━━━━━━━
+• BigTheme is AppTheme
+
++ base = 1000
++ low = -2000000000000000000
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using SizeStyle
+    using AppTheme
+```
+
+```output
+node SizeStyle seg=owned gen=1 mask=3 size=4618441417868443648 depth=-20
+node SizeStyle seg=owned gen=2 mask=3 size=4656510908468559872 depth=-8000000000000000000
+```
+
+### A rule written in a class's rule "• This" that matches an element its base class's markup makes takes a StyleSheet slot the class uses, though the element's class does not use the sheet.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Panel panel
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.label)
+style-use-theme(demo, DarkTheme)
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(panel.label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ @inherited ink I64 = 7
+
+. ink -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• InkRules
+    using TextStyle
+
+• ink-of:value I64
+    ink = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextStyle
+
++ bright I64 = 10
+
+━━━━━━━━━━━━━━━━━━━━
+• DarkTheme is AppTheme for dark
+
++ bright = 20
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using InkRules
+
+━━━━━━━━━━━━━━━━━━━━
++ Frame is Box
+
+────────────────────
+
+<This
+    <Label label • caption
+
+━━━━━━━━━━━━━━━━━━━━
++ Panel is Frame
+    using AppTheme
+
+• This
+    • caption • ink-of:bright
+```
+
+```output
+node TextStyle seg=owned gen=1 mask=1 ink=10
+node TextStyle seg=owned gen=2 mask=1 ink=20
+```
+
+### A style rule that gives what it takes straight to a property of a union the runtime holds a handle to cannot take a StyleSheet slot of a case's type: the slot's bits hold no case number.
+
+```yumi crash
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label • span:wide
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using TextStyle
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
++ Extent is Union
+
+| auto
+| exact F64
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ extent Extent = Extent.auto
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ wide F64 = 24
+
+━━━━━━━━━━━━━━━━━━━━
+• SpanRules
+    using TextStyle
+
+• span:size F64
+    extent = size
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+    using TextStyle
+    using SpanRules
+```
+
+```output
+Exception: StyleSheet slot "wide" can convert to Extent, but not as a zero-allocation style-sheet projection; declare the slot as Extent or assign a concrete value.
+<no file:42>
+        extent = size
+                 ^^^^
+```
+
+### A style rule's head takes a slot of the style sheet that declares the rule.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Label label
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(label)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using Shorthands
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• Shorthands
+    using TextPaint
+
+• ink:value AnsiColor
+    color = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextPaint
+
++ accent AnsiColor = AnsiColor(11)
+
+• Label • ink:accent
+
+━━━━━━━━━━━━━━━━━━━━
++ Label is Box
+```
+
+```output
+node TextPaint seg=owned gen=1 mask=1 color=11
+```
+
+### A rule of a style sheet reads the slots of a style sheet it uses, in its head and in its body.
+
+```yumi
+/core/style
+/core/style-debug
+/core/markup
+/core/tests/support/markup-fixtures
+
+<BatchDemo demo
+    <Caption caption
+    <Footer footer
+
+demo.markup-batch-queue.checkpoint()
+-- style-computed-snapshot(caption)
+-- style-computed-snapshot(footer)
+
+━━━━━━━━━━━━━━━━━━━━
++ BatchDemo is Box
+    is MarkupRootElement
+    using Shorthands
+    using AppTheme
+
++ markup-batch-queue := MarkupBatchQueue(this)
+
+────────────────────
++ do markup-batch-did-flush
+    - flush MarkupBatchFlush
+
+━━━━━━━━━━━━━━━━━━━━
+• Shorthands
+    using TextPaint
+
+• ink:value AnsiColor
+    color = value
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TextPaint
+    using Metrics
+
+• Caption • ink:dim
+
+• Footer
+    color = dim
+
+━━━━━━━━━━━━━━━━━━━━
+• Metrics
+
++ dim AnsiColor = AnsiColor(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Caption is Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Footer is Box
+```
+
+```output
+node TextPaint seg=owned gen=1 mask=1 color=3
+node TextPaint seg=owned gen=1 mask=1 color=3
+```
+
+### A rule of a style sheet ignores a rule it applies with a value that no class or sheet answers.
+
+```yumi
+<Thing thing
+-- "ok"
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
+• Thing • missing:1
+```
+
+```output
+ok
+```
+
+### A keyframe animation a StyleSheet declares is a slot that the builder its head names makes from its tracks. Each track names a property of a style the sheet uses, in a variant too, and a parameter makes a shape that makes its value once for each argument.
+
+```yumi
+/core/style
+/time/duration
+/units
+
+. theme = AppTheme()
+for line in theme.fade.lines
+    -- line
+. push = theme.push
+. pushed = push:4
+for line in pushed.lines
+    -- line
+-- pushed as Pointer == push:4 as Pointer
+. calm = CalmTheme()
+for line in calm.fade.lines
+    -- line
+
+━━━━━━━━━━━━━━━━━━━━
++ TintStyle is Style
+
++ tone F64 = 0
++ spot = Spot(0, 0)
+
+. tone -> paint
+. spot -> paint
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+    using TintStyle
+
+• fade animation 200ms
+    repeat = 3
+    tone = 0 .. 1 • after 10ms
+    spot.y
+        at 0% = 0
+        at 50% = 2.5
+        at 100% = 0
+
+• push:by F64 animation 100ms
+    tone = .. by
+
+━━━━━━━━━━━━━━━━━━━━
+• CalmTheme is AppTheme for calm
+
+• fade animation 50ms
+    spot.x
+        at 0% = 1
+        at 100% = 0
+
+━━━━━━━━━━━━━━━━━━━━
++ Spot is (x F64, y F64)
+
+━━━━━━━━━━━━━━━━━━━━
++ animation Built
+    - duration Duration
+    - repeat Int = 1
+
+Built("$duration x$repeat")
+
+━━━━━━━━━━━━━━━━━━━━
++ Built
+
++ lines [String]
+
+────────────────────
++ This
+    - head String
+
+lines = [head]
+
+────────────────────
++ do range'Value This
+    - property StyleProperty'Value
+    - from Value?
+    - to Value?
+    - after Duration = 0ns
+
+lines += "range ${property.info?.name} ${property.offset} $from .. $to after $after"
+= this
+
+────────────────────
++ do track'Value This
+    - property StyleProperty'Value
+
+lines += "track ${property.info?.name} ${property.offset} ${property.component}"
+= this
+
+────────────────────
++ do at'Value This
+    - property StyleProperty'Value
+    - at Ratio
+    - value Value
+
+lines += "at $at = $value"
+= this
+```
+
+```output
+200000000 x3
+range TintStyle 0 0 .. 1 after 10000000
+track TintStyle 1 1
+at 0 = 0
+at 0.5 = 2.5
+at 1 = 0
+100000000 x1
+range TintStyle 0 unknown .. 4 after 0
+true
+50000000 x1
+track TintStyle 1 0
+at 0 = 1
+at 1 = 0
+```
+
+### A property default of a class the program never constructs makes an element whose class rule, written in a style sheet, computes with the sheet's slot and declares more than one style. Nothing the program runs evaluates the default, and the program runs.
+
+```yumi
+/core/style
+/core/markup
+/core/tests/support/markup-fixtures
+
+. holders [Holder]
+-- holders.length
+
+━━━━━━━━━━━━━━━━━━━━
++ TextStyle is Style
+
++ ink I64 = 7
++ weight I64 = 1
+
+━━━━━━━━━━━━━━━━━━━━
+• AppTheme
+
++ bright I64 = 10
+
+• Leaf
+    ink = bright + 1
+    weight = 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Leaf is Box
+    using TextStyle
+    using AppTheme
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ leaf = Leaf()
+```
+
+```output
+0
+```

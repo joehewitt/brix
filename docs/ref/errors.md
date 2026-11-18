@@ -199,7 +199,7 @@ error. So a call does not show that it can end its function early: the function'
 show it, and `brix app.bx --explain name` lists each error a function can raise and the call it
 comes from.
 
-```brix crash-stderr
+```brix crash
 (main
   (call read)
   (print "never printed")
@@ -210,7 +210,7 @@ comes from.
 )
 ```
 
-```output
+```stderr
 Unhandled error: bad disk
 <no file:8>
 

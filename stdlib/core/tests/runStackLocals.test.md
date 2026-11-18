@@ -1,0 +1,580 @@
+# Stack locals
+
+```yumi
++ @stack current = 10
+
+-- current
+```
+
+```output
+10
+```
+
+```yumi
++ @stack current Int
+
+do with current = 10
+    -- current
+    do with current = 20
+        -- current
+    -- current
+```
+
+```output
+10
+20
+10
+```
+
+```yumi
++ @stack current Int
+
+do with current = 42
+    -- read-current()
+
+━━━━━━━━━━━━━━━━━━━━
++ read-current Int
+
+current
+```
+
+```output
+42
+```
+
+```yumi
++ @stack current Int
+
+. read Getter'Int?
+do with current = 31
+    . captured = => current
+    read = captured as Getter'Int
+
+-- (read)()
+```
+
+```output
+31
+```
+
+```yumi
++ @stack current Int
+
+. results SyncChannel'Int
+do with current = 77
+    do new
+        results <- current
+
+-- <- results
+```
+
+```output
+77
+```
+
+```yumi
++ @stack current Int
+
+. results SyncChannel'Int
+do with current = 88
+    do new
+        results <- read-current()
+
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ read-current Int
+
+current
+```
+
+```output
+88
+```
+
+### A stack-local struct is bound and read inside and outside the binding, and by a function.
+
+```yumi
++ @stack where = Spot(1, "home")
+
+-- where.x, where.label
+do with where = Spot(2, "away")
+    -- where.x, where.label
+    show()
+show()
+
+━━━━━━━━━━━━━━━━━━━━
++ Spot is Struct
+
++ x Int
++ label String
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+
+-- "show", where.x, where.label
+```
+
+```output
+(1, home)
+(2, away)
+(show, 2, away)
+(show, 1, home)
+```
+
+### A binding in a loop is put back at each turn, and where the turn continues.
+
+```yumi
++ @stack depth = 0
+
+for i in 0 .. < 3
+    do with depth = i * 10
+        if i == 1
+            continue
+        -- "in", depth, peek()
+    -- "out", depth, peek()
+
+━━━━━━━━━━━━━━━━━━━━
++ do peek Int
+
+= depth
+```
+
+```output
+(in, 0, 0)
+(out, 0, 0)
+(in, 20, 20)
+(out, 0, 0)
+```
+
+### A recursive function binds the stack-local from its own read of it, and returns from inside the binding.
+
+```yumi
++ @stack depth = 1
+
+-- find(3)
+-- depth
+
+━━━━━━━━━━━━━━━━━━━━
++ do find Int
+    - n Int
+
+do with depth = depth + n
+    if n == 0
+        = depth
+    = find(n - 1)
+```
+
+```output
+7
+1
+```
+
+### A spawned task reads the stack-local it captured, binds its own, and calls a reader inside and outside that binding.
+
+```yumi
++ @stack depth = 1
+
+. done = Semaphore()
+do new
+    -- "task", depth
+    do with depth = 7
+        -- "inner", depth, peek()
+    -- "after", depth, peek()
+    done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ do peek Int
+
+= depth
+```
+
+```output
+(task, 1)
+(inner, 7, 7)
+(after, 1, 1)
+```
+
+### Lambdas made under different bindings hold the state each was made under, read directly and through a function, inside and outside a later binding.
+
+```yumi
++ @stack current = 5
+
+. a Getter'Int?
+. b Getter'Int?
+do with current = 1
+    a = => current
+do with current = 2
+    b = => read()
+-- (a)()
+-- (b)()
+do with current = 3
+    -- (a)()
+    -- (b)()
+-- current
+
+━━━━━━━━━━━━━━━━━━━━
++ read Int
+
+current + 100
+```
+
+```output
+1
+102
+1
+102
+5
+```
+
+### A lambda made under a binding in a function holds that binding after the function returns.
+
+```yumi
++ @stack current Int
+
+. f = make(7)
+-- f()
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Getter'Int
+    - n Int
+
+. made Getter'Int?
+do with current = n
+    made = => current + 1
+= made
+```
+
+```output
+8
+```
+
+### A spawned task's body makes a lambda that reads the stack-local the task captured.
+
+```yumi
++ @stack current = 5
+
+. done = Semaphore()
+do with current = 70
+    do new
+        . f = => current + 1
+        -- f()
+        done.post()
+done.wait()
+```
+
+```output
+71
+```
+
+### A task spawned from a spawned task's body reads the stack-local the outer body never reads.
+
+```yumi
++ @stack current = 5
+
+. done = Semaphore()
+do with current = 71
+    do new
+        do new
+            -- "inner", current
+            done.post()
+done.wait()
+```
+
+```output
+(inner, 71)
+```
+
+### A task spawned from a spawned task's body calls a reader of the stack-local.
+
+```yumi
++ @stack current = 5
+
+. done = Semaphore()
+do with current = 72
+    do new
+        do new
+            -- "inner", read()
+            done.post()
+done.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ read Int
+
+current
+```
+
+```output
+(inner, 72)
+```
+
+### A lambda calls a function that reads the stack-local through another, outside any binding.
+
+```yumi
++ @stack current = 5
+
+. made Getter'Int?
+do with current = 90
+    made = => outer()
+-- (made)()
+do with current = 91
+    -- (made)()
+
+━━━━━━━━━━━━━━━━━━━━
++ outer Int
+
+inner() * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ inner Int
+
+current
+```
+
+```output
+180
+180
+```
+
+### A lambda spawns a task that reads the stack-local the lambda holds.
+
+```yumi
++ @stack current = 5
+
+. done = Semaphore()
+. made Getter'Int?
+do with current = 30
+    made = => do
+        do new
+            -- "task", current
+            done.post()
+        = current
+-- (made)()
+done.wait()
+```
+
+```output
+30
+(task, 30)
+```
+
+### A spawned task's slot set for a call that panics is put back as it was before the call.
+
+```yumi
++ @stack depth = 1
+
+. results SyncChannel'String
+. o Base = Derived()
+do with depth = 7
+    do new
+        do finally
+            . p = Task().failure
+            results <- "after ${p != null} ${o.read()}"
+        boom()
+    catch
+        --
+-- <- results
+
+━━━━━━━━━━━━━━━━━━━━
++ do boom
+
+-- "boom sees ${depth}"
+?! Panic("x")
+
+━━━━━━━━━━━━━━━━━━━━
++ Base
+
+────────────────────
++ do read String
+
+= "base ${depth}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Derived is Base
+
+────────────────────
++ do read String
+
+= "derived ${depth}"
+```
+
+```output
+boom sees 7
+after true derived 1
+```
+
+### A lambda that yields reads the state it holds, not the binding open where it is iterated.
+
+```yumi
++ @stack cur = 5
+
+. gen = => do
+    <= cur
+    <= cur + 1
+for v in gen()
+    -- v
+do with cur = 6
+    for v in gen()
+        -- v
+```
+
+```output
+5
+6
+5
+6
+```
+
+### A lambda called from a lambda made inside a do with is given nothing: it reads what it holds.
+
+```yumi
++ @stack depth = 1
+
+. inner = => do
+    for v in gen()
+        -- "gen $v"
+inner()
+. outer Doer?
+do with depth = 3
+    outer = => do
+        -- "outer $depth"
+        inner()
+(outer)()
+
+━━━━━━━━━━━━━━━━━━━━
++ do gen <Int>
+
+<= depth
+```
+
+```output
+gen 1
+outer 3
+gen 1
+```
+
+### Lambdas that hold stack state made in a while loop whose turn has no environment of its own.
+
+```yumi
++ @stack cur = 5
+
+. fs [Getter'Int] = List'(Getter'Int)()
+. i = 0
+while i < 2
+    fs += => cur
+    i += 1
+for f in fs
+    -- f()
+```
+
+```output
+5
+5
+```
+
+### A comprehension holds stack state as it was where it was made, which a function it calls reads, wherever it runs.
+
+```yumi
++ @stack current Int
+
+. made = make()
+do with current = 5
+    for text in made
+        -- text
+    -- ", ".join(label(each) in [1, 2])
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Iterable'String
+
+do with current = 3
+    = (label(each) in [1, 2])
+
+━━━━━━━━━━━━━━━━━━━━
++ label String
+    - n Int
+
+"${n * current}"
+```
+
+```output
+3
+6
+5, 10
+```
+
+### A with section binds stack values in turn, the first outermost, on a do block or on the header of a do function, where it binds for the whole body.
+
+```yumi
++ @stack scope = "none"
++ @stack depth Int = 0
+
+do with scope = "one", depth = 1
+    report()
+do without gc with depth = 2
+    . doubled = 2 * 2
+scoped()
+report()
+
+━━━━━━━━━━━━━━━━━━━━
++ do report
+-- "$scope $depth"
+
+━━━━━━━━━━━━━━━━━━━━
++ do scoped with scope = "header", depth = depth + 5
+report()
+```
+
+```output
+one 1
+header 5
+none 0
+```
+
+```yumi compile-error
++ @stack depth Int = 0
+
+-- deeper()
+
+━━━━━━━━━━━━━━━━━━━━
++ deeper Int with depth = 1
+depth
+```
+
+```output
+Exception: A 'with' section needs a do function
+<no file:7>
+    + deeper Int with depth = 1
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A global nothing binds with do with holds its first value everywhere. Where that value is a literal it is a constant, read where the task's memory is not: in a block without gc.
+
+```yumi
++ @stack level = 7
++ @stack label = "plain"
+
+. done SyncChannel'Int
+do new
+    done <- level * 2
+-- <- done
+. reader = => level + 1
+-- reader()
+do without gc
+    . doubled = level * 2
+-- add(3)
+-- ", ".join("${each + level} $label" in [1, 2])
+
+━━━━━━━━━━━━━━━━━━━━
++ do add Int without heap
+    - n Int
+
+= n + level
+```
+
+```output
+14
+8
+10
+8 plain, 9 plain
+```

@@ -1,0 +1,103 @@
+# Scratch
+
+Scratch stacks
+
+A Scratch is an arena-backed stack of plain values with marks, rewinds, and read-only spans
+over finished runs.
+
+### Scratch pushes, indexes, marks, and rewinds.
+
+```yumi
+/core/arena
+/core/scratch
+
+. arena = use Arena()
+. scratch = Scratch'U32(arena, 2)
+scratch.push(1)
+scratch.push(2)
+. mark = scratch.mark
+scratch.push(3)
+scratch.push(4)
+-- scratch.length
+-- scratch[3]
+scratch[1] = 20
+-- ", ".join(scratch.since(mark))
+-- ", ".join(scratch.span(1, 2))
+scratch.rewind(mark)
+-- scratch.length
+-- ", ".join(scratch.since(0))
+```
+
+```output
+4
+4
+3, 4
+20, 3
+2
+1, 20
+```
+
+### A span taken before growth keeps reading the run it was taken from; later writes land in the current storage.
+
+```yumi
+/core/arena
+/core/scratch
+
+. arena = use Arena()
+. scratch = Scratch'U32(arena, 2)
+scratch.push(10)
+scratch.push(20)
+. early = scratch.since(0)
+scratch.push(30)
+scratch.push(40)
+scratch[0] = 99
+-- ", ".join(early)
+-- ", ".join(scratch.since(0))
+-- early.length
+```
+
+```output
+10, 20
+99, 20, 30, 40
+2
+```
+
+### Rewinding below a span's mark and pushing again is a caller error; the span then reads whatever the current storage holds.
+
+```yumi
+/core/arena
+/core/scratch
+
+. arena = use Arena()
+. scratch = Scratch'U32(arena, 8)
+scratch.push(1)
+scratch.push(2)
+. run = scratch.since(0)
+scratch.rewind(0)
+scratch.push(7)
+scratch.push(8)
+-- ", ".join(run)
+```
+
+```output
+7, 8
+```
+
+### Scratch grows from its default capacity and reports its mark.
+
+```yumi
+/core/arena
+/core/scratch
+
+. arena = use Arena()
+. scratch = Scratch'Int(arena)
+for value in 0 .. < 5
+    scratch.push(value * value)
+-- ", ".join(scratch.since(0))
+-- scratch.mark
+```
+
+```output
+0, 1, 4, 9, 16
+5
+```

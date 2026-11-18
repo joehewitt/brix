@@ -1,0 +1,1990 @@
+# Expressions
+
+```yumi
+-- 1
+```
+
+```output
+1
+```
+
+```yumi
+. x
+    1
+-- 1
+```
+
+```output
+1
+```
+
+### where in call expression
+
+```yumi crash
+. a = 5
+. a = 6
+a
+```
+
+```output
+Exception: "a" is already declared on line 2 in this scope; to change its value, assign it without the ".", as in "a = value", or choose another name
+<no file:3>
+    . a = 6
+      ^
+```
+
+```yumi
+-- foo(a)
+    .. a = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * 2
+```
+
+```output
+10
+```
+
+```yumi
+-- foo()
+    .. a = 5
+    a * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * 2
+```
+
+```output
+20
+```
+
+```yumi
+-- foo()
+    .. a = 5
+    a * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * 2
+```
+
+```output
+20
+```
+
+```yumi
+-- foo()
+    a * 2
+    .. a = 5
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * 2
+```
+
+```output
+20
+```
+
+```yumi
+-- a + b
+    .. a = foo(5)
+    .. b = foo(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+
+if false
+    ?! Panic("bad")
+else
+    = a * 2
+```
+
+```output
+14
+```
+
+### where in property
+
+```yumi
+. thing = Thing()
+-- thing.a
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = b
+    .. b = 10
+```
+
+```output
+10
+```
+
+### where in function
+
+```yumi
+-- foo(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * b
+
+.. b = 5
+```
+
+```output
+25
+```
+
+### where variable referring to argument
+
+```yumi
+-- foo(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a * b
+
+.. b = a
+```
+
+```output
+25
+```
+
+### where variables referring to each other
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+b
+
+.. c = 10
+.. b = c
+```
+
+```output
+10
+```
+
+### where variables referring to each other out of order
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+b
+
+.. b = c
+.. c = 10
+```
+
+```output
+10
+```
+
+### lazy variable not used is not called
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do get
+    - n
+
+-- "get $n"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+a
+
+.. a = get(1)
+.. b = get(2)
+```
+
+```output
+get 1
+1
+```
+
+```yumi crash
+x
+    --
+```
+
+```output
+Exception: Illegal statement
+<no file:2>
+    x
+```
+
+```yumi
+. a = 2
+--
+    |? true
+        1
+    ?? a
+```
+
+```output
+1
+```
+
+```yumi
+do new
+    -- foo(5)
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a
+
+a
+    ?! Panic("Too big")
+        if b > 5
+
+.. b = a * 2
+```
+
+```output
+Too big
+```
+
+```yumi crash
+-- bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+━━━━━━━━━━━━━━━━━━━━
++ bar
+
+foo()
+```
+
+```output
+Exception: Non-do function must return a non-void value
+<no file:8>
+    + bar
+    ^^^^
+```
+
+```yumi crash
+-- bar()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+-- "hi"
+
+━━━━━━━━━━━━━━━━━━━━
++ bar
+
+a
+    .. a = foo()
+```
+
+```output
+Exception: Non-do function must return a non-void value
+<no file:10>
+    + bar
+    ^^^^
+```
+
+```yumi
+. a = foo()
+-- a
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+-- "hi"
+```
+
+```output
+hi
+core:Void
+```
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+
+-- "hi"
+```
+
+```output
+hi
+core:Void
+```
+
+```yumi
+. thing = Thing()
+. x = thing.a = 1
+-- x
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 0
+```
+
+```output
+1
+```
+
+```yumi
+. thing = Thing()
+. x =
+    thing.a += 1
+-- x
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 10
+
+────────────────────
++ do this += n
+
+a += n
+```
+
+```output
+11
+```
+
+```yumi
+. thing = Thing()
+. x = thing += 1
+-- x
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 10
+
+────────────────────
++ do this Void += n
+
+a += n
+```
+
+```output
+core:Void
+```
+
+```yumi
+. thing = Thing()
+. x =
+    thing[2] = 5
+-- x
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 10
+
+────────────────────
++ do this[index] = value
+
+. a = index + value
+= a
+```
+
+```output
+7
+```
+
+```yumi crash
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+a
+    .. a = b
+    .. b = a
+```
+
+```output
+Exception: "a" depends on its own value, directly or through the values it reads; break the cycle
+<no file:8>
+        .. a = b
+           ^
+```
+
+### Lazy variable with default value
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+a
+    .. a Int
+```
+
+```output
+0
+```
+
+### Lazy tuple deconstruction
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+a
+    .. a, b = 1, 2
+```
+
+```output
+1
+```
+
+### Lazy variables first evaluated in different branches should be available to all
+
+```yumi
+-- foo(11)
+-- foo(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - n
+
+if n > 10 then "$b 1" else "$b 2"
+    .. b = "foobar"
+```
+
+```output
+foobar 1
+foobar 2
+```
+
+### Nested lazy variable references with branching between them
+
+```yumi
+-- foo()
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+
+b
+    .. a = evil(2)
+    .. b = a + evil(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do evil
+    - a
+
+if a > 10
+    ?! Panic("DIE")
+else
+    = 1
+```
+
+```output
+2
+```
+
+```yumi
+-- foo(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - n
+
+b
+
+.. a = if n < 5 then 100 else 200
+.. b = if a == 200 then c else c + 1
+.. c = 10
+```
+
+```output
+10
+```
+
+```yumi
+--
+    b
+    .. b = if true then 1 else 2
+```
+
+```output
+1
+```
+
+```yumi
+-- foo(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - n
+
+b
+
+.. a = if n < 5 then 100 else 200
+.. b = if a == 200 then c else c + 1
+.. c = 10
+```
+
+```output
+10
+```
+
+### Nested "where"
+
+```yumi
+-- expr
+
++ expr =
+    Thing(d1, d3)
+        .. d1 = blah()
+    .. d3 = blah()
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing is (a Int, b Int)
+
+────────────────────
++ with
+    - n
+
+this
+
+━━━━━━━━━━━━━━━━━━━━
++ blah
+
+4
+```
+
+```output
+(4, 4)
+```
+
+## Wildcards
+
+```yumi
+-- 10 > 5 > 0
+-- 10 < 11 > 0
+-- 10 > 11 > 0
+```
+
+```output
+true
+true
+false
+```
+
+```yumi
+foo(noisy(1), noisy(2))
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - a
+    - b
+
+-- "got $a and $b"
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+1
+2
+got 1 and 2
+```
+
+```yumi
+do new
+    foo(1)
+    foo(10)
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n
+
+-- n * 2
+    ?! Panic("-1")
+        if n == 10
+```
+
+```output
+2
+-1
+```
+
+```yumi
+catch? foo(1)
+catch? foo(10)
+
+━━━━━━━━━━━━━━━━━━━━
++ do foo
+    - n
+
+-- n * 2
+    ?! Error()
+        if n == 10
+```
+
+```output
+2
+```
+
+## Testing order of evaluating lazy variables
+
+```yumi
+-- "hi"
+
+.. a = noisy(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+hi
+```
+
+```yumi
+-- "hi"
+-- a + 1
+
+.. a = noisy(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+hi
+5
+6
+```
+
+```yumi
+-- "hi"
+-- a + 1
+-- a + 2
+
+.. a = noisy(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+hi
+5
+6
+7
+```
+
+```yumi
+-- "hi"
+-- if false then a + 1 else 0
+-- if true then a + 2 else 0
+
+.. a = noisy(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+hi
+0
+5
+7
+```
+
+```yumi
+foo = 10
+-- foo
+
+.. foo = noisy(42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+10
+```
+
+```yumi
+-- foo
+foo = 10
+-- foo
+
+.. foo = noisy(42)
+
+━━━━━━━━━━━━━━━━━━━━
++ do noisy Int
+    - n Int
+
+-- n
+= n
+```
+
+```output
+42
+42
+10
+```
+
+```yumi
+foo = Foo()
+-- foo
+
+.. foo Int = 42
+
+━━━━━━━━━━━━━━━━━━━━
++ Foo
+
+────────────────────
++ to Int
+
+99
+```
+
+```output
+99
+```
+
+### Two numbers compare in the type both are brought to, and a chain holds when each part does.
+
+```yumi
+-- 1 < 2
+-- 2 < 1
+-- 2 <= 2
+-- 3 <= 2
+-- 2 > 1
+-- 1 > 2
+-- 2 >= 2
+-- 1 >= 2
+-- 1 == 1
+-- 1 != 1
+-- 1.5 < 2.5
+-- 1.5 <= 1.5
+-- 1.5 > 2.5
+-- 1.5 >= 1.5
+-- 1.5 == 1.5
+-- 1.5 != 1.5
+-- 1 < 2.5
+-- 1.5 < 2
+-- 2 == 2.0
+-- 1.5f32 < 2.5
+-- 0.1f32 == 0.1
+-- 0.1 == 0.1f32
+-- 250u8 > 5u8
+-- -6i8 > 5i8
+-- 200u8 < 100
+-- 10000000000 > 5
+-- -10000000000i64 < 5
+-- 3000000000u32 > 2000000000u32
+-- 'a' < 'b'
+-- 3 > 2 > 1
+-- 3 > 2 > 2
+-- 1 < 2 <= 2
+-- 0.0 / 0.0 == 0.0 / 0.0
+-- 0.0 / 0.0 != 0.0 / 0.0
+-- 0.0 / 0.0 < 1.0
+```
+
+```output
+true
+false
+true
+false
+true
+false
+true
+false
+true
+false
+true
+true
+false
+true
+true
+false
+true
+true
+true
+true
+true
+true
+true
+false
+false
+true
+true
+true
+true
+true
+false
+true
+false
+true
+false
+```
+
+### `!`, `&&` and `||` take a number as true when it is not zero, and the answer is a Bool.
+
+```yumi
+-- true
+-- false
+-- !true
+-- !false
+-- !0
+-- !5
+-- !!5
+-- !1.5
+-- !0.0
+-- true && true
+-- true && false
+-- false && true
+-- false || false
+-- false || true
+-- 1 && 2
+-- 0 && 2
+-- 1 && 0
+-- 0 || 0
+-- 0 || 3
+-- 1.5 && 0.0
+-- 0.0 || 0.5
+-- 1 < 2 && 2 < 3
+-- 1 < 2 && 3 < 2
+-- 1 > 2 || 2 < 3
+-- !(1 < 2)
+-- (1 < 2) == (2 < 3)
+-- true == true
+-- true != false
+```
+
+```output
+true
+false
+false
+true
+true
+false
+true
+false
+true
+true
+false
+false
+false
+true
+true
+false
+false
+false
+true
+false
+true
+true
+false
+true
+false
+true
+true
+true
+```
+
+### The value of one operator as the operand of another that converts it.
+
+```yumi
+-- 1 + 2 < 2.5
+-- 2.5 > 1 + 2
+-- (1 + 2) == 3i64
+-- 3i64 == (1 + 2)
+-- 3i64 /and/ (1 + 2)
+-- (1 + 2) /or/ 4i64
+-- 1.5 + (1 + 2)
+-- (1 + 2) * 2.5
+-- ((200u8 + 100u8) as F64) / 8
+-- -(1 + 2) < 0.5
+-- (1 < 2) == (2.5 > 1)
+-- (1 + 2) /lshift/ (1 + 1)
+-- 1u8 + 2u8 < 3i64
+-- (1 + 2 < 2.5) || (1.5 + 2 > 3)
+-- (-1 < 4000000000u32) && (1 + 2 == 3.0)
+-- !(1 + 2 < 2.5)
+-- 7 % (1 + 2) == 1.0
+```
+
+```output
+false
+false
+true
+true
+3
+7
+4.5
+7.5
+5.5
+true
+true
+12
+false
+true
+true
+true
+true
+```
+
+### Arms of different types each take the type they join in.
+
+```yumi
+--
+    |? 1 < 2
+        1
+    |? 2 < 1
+        3i64
+    ??
+        2.5
+--
+    |? 2 < 1
+        1
+    |? 1 < 2
+        3i64
+    ??
+        2.5
+--
+    |? 2 < 1
+        1
+    ??
+        2.5
+```
+
+```output
+1
+3
+2.5
+```
+
+### A chain of orderings compares each value with the one after it, however long it is.
+
+```yumi
+-- 3 > 2 > 1
+-- 4 > 3 > 2 > 1
+-- 5 > 4 > 3 > 2 > 1
+-- 6 > 5 > 4 > 3 > 2 > 1
+-- 1 < 2 < 3
+-- 1 < 2 < 3 < 4
+-- 1 < 2 < 3 < 4 < 5
+-- 1 < 2 < 3 < 4 < 5 < 6
+-- 9 > 8 > 7 > 6
+-- 9 > 8 > 7 > 0
+-- 1 < 5 < 3 < 4
+-- 3 > 2 > 2
+-- 1 < 3 > 2
+```
+
+```output
+true
+true
+true
+true
+true
+true
+true
+true
+true
+true
+false
+false
+true
+```
+
+### The middle of a chain of orderings is converted for each ordering it is in.
+
+```yumi
+-- 1 < 2 < 3.5
+-- 1.5 < 2 < 3u8
+-- 1 <= 1 <= 1.0
+-- 1 < 2 < 3.5 < 4i64 < 5u8
+-- 1 < 1 + 1 < 2.5
+-- 3.5 > 3 > 2.5
+```
+
+```output
+true
+true
+true
+true
+true
+true
+```
+
+### The middle of a chain of orderings is evaluated once.
+
+```yumi
+-- 1 < two() < 3
+-- 0 < two() < 3 < five() < 9
+-- 5 < two() < 3
+-- 1 < two() < 2 < five()
+
+━━━━━━━━━━━━━━━━━━━━
++ do two Int
+
+-- "two"
+= 2
+
+━━━━━━━━━━━━━━━━━━━━
++ do five Int
+
+-- "five"
+= 5
+```
+
+```output
+two
+true
+two
+five
+true
+two
+false
+two
+false
+```
+
+### The middle of a chain of comparisons is a local, read once and converted for each comparison.
+
+```yumi
+. x = 3
+-- 1 < x < 5.5
+if 1 < x < 3
+    -- "in"
+else
+    -- "out"
+. y = 2.5
+-- x > y > 1
+```
+
+```output
+true
+out
+true
+```
+
+### A chain of four or more comparisons evaluates each middle once, and stops at the first comparison that fails.
+
+```yumi
+. x = 5
+. y = 7
+. s = "b"
+. t = "c"
+-- 1 < 2 < 3 < 4 < 5
+-- 1 < x < y < 9 < 10
+-- 1 < x < y + 1 < 8 < 10
+-- 9 < x < y + 1 < 8
+-- "a" < s < t ++ "x" < "z" < "zz"
+-- "c" < s < t ++ "x" < "z"
+-- 5 > 4 > 3 >= 3 > 1
+if 0 < x < y < 100 && s
+    -- "yes"
+```
+
+```output
+true
+true
+false
+false
+true
+false
+true
+yes
+```
+
+### A print is a step and gives no value.
+
+```yumi crash
+. a = -- 5
+-- a + 1
+```
+
+```output
+Exception: A print is a step and gives no value; print on a line of its own, or after ":" as a one-step body
+<no file:2>
+    . a = -- 5
+            ^
+```
+
+### An assignment gives a value: what a local was assigned, what a property or a struct's field then holds, or what an assigning operator answers.
+
+```yumi
++ g = 1
+
+. thing = Thing()
+. x = thing.a = 1
+-- x
+. y =
+    thing.a += 1
+-- y
+. p = Point(1, 2)
+. rx = p.x = 8
+. ry = p[1] = 9
+-- rx
+-- ry
+-- p
+. n = 5
+-- n += Ten()
+-- n
+. t = Triple(20)
+-- t += 3
+-- t
+-- thing.foo
+-- thing.foo
+. m = 0
+. k = m = 4
+-- k + m
+-- g = 7
+-- g
+. q = Point(3, 4)
+. r = q = Point(5, 6)
+q.x = 0
+-- r
+-- take(m = 9, m)
+. f Float = m = 2i32
+-- f
+
+━━━━━━━━━━━━━━━━━━━━
++ take Int
+    - a Int
+    - b Int
+
+a * 10 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 0
++ foo => a += 1
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Ten
+
+────────────────────
++ this + that
+
+10 + that
+
+━━━━━━━━━━━━━━━━━━━━
++ extend Number
+
+────────────────────
++ this + that Ten
+
+that + this
+
+━━━━━━━━━━━━━━━━━━━━
++ Triple is Tuple
+
++ foo Int
+
+────────────────────
++ this + other ''T
+
+This(foo * other)
+```
+
+```output
+1
+2
+8
+9
+(8, 9)
+15
+15
+(60)
+(60)
+3
+4
+8
+7
+7
+(5, 6)
+99
+2
+```
+
+### An assignment to a property through an object gives what the property then holds.
+
+```yumi
+. thing = Thing()
+. w = thing.f = 3.5
+-- w
+-- thing.f
+. p = Point(1, 2)
+. s = p.x = 30
+-- s
+-- thing.both(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = 0
++ f = 0.5
+
+────────────────────
++ do both Int
+    - v Int
+
+. got = a = v
+= got
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x U8
++ y U8
+```
+
+```output
+3.5
+3.5
+30
+2
+```
+
+### An assignment to a property or a struct's field of another type gives the converted value.
+
+```yumi
+. p = Point(1, 2)
+. big = 300
+. s = p.x = big as U8
+-- s
+-- p.x
+. thing = Thing()
+. w = thing.f = 3
+-- w / 2
+. t = p[1] = big as U8
+-- t
+-- p
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ f = 0.5
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x U8
++ y U8
+```
+
+```output
+44
+44
+1.5
+44
+(44, 44)
+```
+
+### An assignment to a property named alone gives the value as it was before it was stored.
+
+```yumi
+. thing = Thing()
+thing.both(3, 300)
+-- thing.f
+-- thing.s
+. cell = Cell(1, 2)
+cell.put(300)
+-- cell
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ f = 0.5
++ s U8 = 0
+
+────────────────────
++ do both
+    - v I32
+    - big Int
+
+. got = f = v
+-- got / 2
+. small = s = big as U8
+-- small
+-- take(s = big + 1 as U8, s)
+
+────────────────────
+_ take Int
+    - a Int
+    - b Int
+
+a * 1000 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell is Struct
+
++ x U8
++ y U8
+
+────────────────────
++ do put
+    - big Int
+
+. got = x = big as U8
+-- got
+```
+
+```output
+1
+44
+45045
+3
+45
+44
+(1, 2)
+```
+
+### An assignment to a local gives the value as it was before it was stored.
+
+```yumi
+. f = 0.5
+. got = f = 3
+-- got / 2
+-- f
+. small U8 = 0
+. big = 300
+. kept = small = big as U8
+-- kept
+-- small
+. maybe Int? = null
+. held = maybe = 7
+-- held + 1
+. p = Point(1, 2)
+. q = Point(3, 4)
+. r = q = p
+p.x = 9
+-- r
+-- q
+-- pick(small = big + 2 as U8, small)
+. h = Holder()
+h.run(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Int
+    - a Int
+    - b Int
+
+a * 1000 + b
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ maybe Int? = null
++ spot = Point(0, 0)
++ text = ""
+
+────────────────────
++ do run
+    - v Int
+
+. held = maybe = v
+-- held + 1
+. p = Point(v, v)
+. took = spot = p
+p.x = 0
+-- took
+-- spot
+. said = text = "$v"
+-- said
+-- text
+```
+
+```output
+1
+3
+44
+44
+8
+(1, 2)
+(1, 2)
+46046
+6
+(5, 5)
+(5, 5)
+5
+5
+```
+
+### Assignment gives the value written to a name and the value stored to a property
+
+```yumi
+. total F64 = 0
+. count = 0
+. kept = total = 5
+-- kept
+-- type-of kept
+. next = count = 7
+-- next
+. box = Box()
+. stored = box.size = 4
+-- stored
+-- type-of stored
+. maybe Int? = null
+. given = maybe = 9
+-- given
+-- type-of given
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ size F64 = 0
+```
+
+```output
+5
+[TypeInfo I64]
+7
+4
+[TypeInfo F64]
+9
+[TypeInfo I64]
+```
+
+### Assertions under an expression run in their order before the expression is evaluated.
+
+```yumi
+do new
+    -- foo(1)
+    -- foo(7)
+    -- foo(20)
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a Int
+
+tick("value", a)
+    ?! Panic("over ten")
+        if b > 10
+    ?! Panic("over five")
+        if tick("second", a) > 5
+
+.. b = tick("b", a)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+```
+
+```output
+tick b
+tick second
+tick value
+1
+tick b
+tick second
+over five
+```
+
+### An assertion under the value of a declaration.
+
+```yumi
+do new
+    run(3)
+    run(-3)
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ do run
+    - n Int
+
+. v = tick("compute", n) * 2
+    ?! Panic("negative")
+        if n < 0
+-- v
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+```
+
+```output
+tick compute
+6
+negative
+```
+
+### An error raised under an expression, with a lazy local beside it.
+
+```yumi
+-- catch foo(2)
+-- catch foo(9)
+
+━━━━━━━━━━━━━━━━━━━━
++ foo
+    - a Int
+
+a + b
+    ?! Error("too big")
+        if a > 3
+    .. b = tick("b", a * 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+```
+
+```output
+tick b
+6
+too big
+```
+
+### An error raised under what a function returns.
+
+```yumi
+-- catch run(2)
+-- catch run(9)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - n Int
+
+= tick("answer", n) * 2
+    ?! Error("too big")
+        if n > 5
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick
+    - label String
+    - value Int
+
+-- "tick $label"
+= value
+```
+
+```output
+tick answer
+4
+too big
+```
+
+### An assertion under the value an assignment adds.
+
+```yumi
+do new
+    show(1)
+    show(8)
+catch failure
+    -- failure
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - n Int
+
+. list = [1, 2, 3]
+list += n
+    ?! Panic("eight")
+        if n == 8
+-- list.length
+```
+
+```output
+4
+eight
+```
+
+### Lazy locals under the values of globals and of properties are evaluated by their reads.
+
+```yumi
+. thing = Thing()
+-- thing.a
+-- thing.c
+-- total
+-- label
+
++ total = low + high
+    .. low = step("low", 1)
+    .. high = step("high", 2)
+
++ label String = "$word!"
+    .. word = "hi"
+
+━━━━━━━━━━━━━━━━━━━━
++ do step
+    - name String
+    - n Int
+
+-- "step $name"
+= n
+
+━━━━━━━━━━━━━━━━━━━━
++ Thing
+
++ a = b * 2
+    .. b = step("b", 10)
+
++ c = if a > 5 then d else 0
+    .. d = step("d", 7)
+```
+
+```output
+step low
+step high
+step b
+step d
+20
+7
+3
+hi!
+```
+
+### A branch on a comparison of integers that are only known when the program runs, and a branch on each negated comparison, takes the path the comparison's value names, signed or unsigned.
+
+```yumi
+. values = [3, 5, 7]
+for x in values
+    signed-paths(x, values[1])
+. large = [3u64, 18446744073709551615u64]
+unsigned-paths(large[0], large[1])
+unsigned-paths(large[1], large[0])
+unsigned-paths(large[1], large[1])
+
+━━━━━━━━━━━━━━━━━━━━
++ do signed-paths
+    - x I64
+    - y I64
+
+. taken = ""
+if x < y
+    taken = "$taken <"
+if !(x < y)
+    taken = "$taken !<"
+if !(x <= y)
+    taken = "$taken !<="
+if !(x > y)
+    taken = "$taken !>"
+if !(x >= y)
+    taken = "$taken !>="
+if x == y
+    taken = "$taken =="
+if !(x == y)
+    taken = "$taken !=="
+if !(x != y)
+    taken = "$taken !!="
+-- "$x ? $y:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do unsigned-paths
+    - x U64
+    - y U64
+
+. taken = ""
+if x < y
+    taken = "$taken <"
+if !(x < y)
+    taken = "$taken !<"
+if !(x <= y)
+    taken = "$taken !<="
+if !(x > y)
+    taken = "$taken !>"
+if !(x >= y)
+    taken = "$taken !>="
+-- "$x ? $y:$taken"
+```
+
+```output
+3 ? 5: < !> !>= !==
+5 ? 5: !< !> == !!=
+7 ? 5: !< !<= !==
+3 ? 18446744073709551615: < !> !>=
+18446744073709551615 ? 3: !< !<=
+18446744073709551615 ? 18446744073709551615: !< !>
+```
+
+### A negated ordering of floats holds when either is not a number, where the opposite ordering would not. A negated equality is the opposite equality.
+
+```yumi
+. zero = 0.0f64
+. values = [1.0f64, 2.0f64, zero / zero]
+for x in values
+    float-paths(x, values[1])
+float-paths(values[1], values[2])
+
+━━━━━━━━━━━━━━━━━━━━
++ do float-paths
+    - x F64
+    - y F64
+
+. taken = ""
+if x < y
+    taken = "$taken <"
+if !(x < y)
+    taken = "$taken !<"
+if !(x <= y)
+    taken = "$taken !<="
+if !(x > y)
+    taken = "$taken !>"
+if !(x >= y)
+    taken = "$taken !>="
+if x == y
+    taken = "$taken =="
+if !(x == y)
+    taken = "$taken !=="
+if !(x != y)
+    taken = "$taken !!="
+-- "paths:$taken"
+```
+
+```output
+paths: < !> !>= !==
+paths: !< !> == !!=
+paths: !< !<= !> !>= !==
+paths: !< !<= !> !>= !==
+```
+
+### A branch on a comparison with a literal takes the same path at the edges of each integer width, and a branch on a Bool or its negation follows the Bool.
+
+```yumi
+for x in [0u8, 3u8, 255u8]
+    byte-edges(x)
+for x in [-128i8, -1i8, 0i8, 127i8]
+    signed-byte-edges(x)
+for x in [4095u16, 4096u16, 65535u16]
+    short-edges(x)
+for x in [-32768i16, -1i16, 4095i16]
+    signed-short-edges(x)
+for x in [-1i32, 0i32, 4096i32]
+    word-edges(x)
+for x in [-1i64, 4095i64, 4096i64, 4097i64, 16773120i64]
+    wide-edges(x)
+for flag in [true, false]
+    flag-paths(flag, !flag)
+
+━━━━━━━━━━━━━━━━━━━━
++ do byte-edges
+    - x U8
+
+. taken = ""
+if x == 0u8
+    taken = "$taken ==0"
+if x == 255u8
+    taken = "$taken ==255"
+if x < 3u8
+    taken = "$taken <3"
+if !(x >= 255u8)
+    taken = "$taken !>=255"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do signed-byte-edges
+    - x I8
+
+. taken = ""
+if x == -128i8
+    taken = "$taken ==-128"
+if x == -1i8
+    taken = "$taken ==-1"
+if x == 127i8
+    taken = "$taken ==127"
+if x < 0i8
+    taken = "$taken <0"
+if !(x > -1i8)
+    taken = "$taken !>-1"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do short-edges
+    - x U16
+
+. taken = ""
+if x == 4095u16
+    taken = "$taken ==4095"
+if x == 4096u16
+    taken = "$taken ==4096"
+if x == 65535u16
+    taken = "$taken ==65535"
+if x > 4096u16
+    taken = "$taken >4096"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do signed-short-edges
+    - x I16
+
+. taken = ""
+if x == -32768i16
+    taken = "$taken ==-32768"
+if x == -1i16
+    taken = "$taken ==-1"
+if x == 4095i16
+    taken = "$taken ==4095"
+if x < 0i16
+    taken = "$taken <0"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do word-edges
+    - x I32
+
+. taken = ""
+if x == -1i32
+    taken = "$taken ==-1"
+if x == 0i32
+    taken = "$taken ==0"
+if x == 4096i32
+    taken = "$taken ==4096"
+if x < 0i32
+    taken = "$taken <0"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do wide-edges
+    - x I64
+
+. taken = ""
+if x == -1i64
+    taken = "$taken ==-1"
+if x == 4095i64
+    taken = "$taken ==4095"
+if x == 4096i64
+    taken = "$taken ==4096"
+if x == 4097i64
+    taken = "$taken ==4097"
+if x == 16773120i64
+    taken = "$taken ==16773120"
+if x > 4096i64
+    taken = "$taken >4096"
+if !(x >= 4097i64)
+    taken = "$taken !>=4097"
+-- "$x:$taken"
+
+━━━━━━━━━━━━━━━━━━━━
++ do flag-paths
+    - flag Bool
+    - other Bool
+
+. taken = ""
+if flag
+    taken = "$taken flag"
+if !flag
+    taken = "$taken !flag"
+if flag == other
+    taken = "$taken ==other"
+if flag != other
+    taken = "$taken !=other"
+if !(flag == other)
+    taken = "$taken !==other"
+-- "$flag:$taken"
+```
+
+```output
+0: ==0 <3 !>=255
+3: !>=255
+255: ==255
+-128: ==-128 <0 !>-1
+-1: ==-1 <0 !>-1
+0:
+127: ==127
+4095: ==4095
+4096: ==4096
+65535: ==65535 >4096
+-32768: ==-32768 <0
+-1: ==-1 <0
+4095: ==4095
+-1: ==-1 <0
+0: ==0
+4096: ==4096
+-1: ==-1 !>=4097
+4095: ==4095 !>=4097
+4096: ==4096 !>=4097
+4097: ==4097 >4096
+16773120: ==16773120 >4096
+true: flag !=other !==other
+false: !flag !=other !==other
+```

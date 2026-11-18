@@ -1,0 +1,163 @@
+# Cursor streams
+
+```yumi
+. values = 1 .. 3
+for item in values
+    -- item
+```
+
+```output
+1
+2
+3
+```
+
+```yumi
+-- List(Steps(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ Steps is Tuple
+    is CursorIterable'Int'Int
+
++ limit Int
+
+────────────────────
++ get initial-iterator-state Int @inline
+
+0
+
+────────────────────
++ do next-iterator (Int, Int?) @inline
+    - state Int
+
+. none Int?
+if state >= limit
+    = (state, none)
+= (state + 1, 2 + state * 3)
+```
+
+```output
+2, 5, 8
+```
+
+```yumi
+-- (0 .. < 0).length
+-- (0 .. 0).length
+-- (0 .. < 6 by 3).length
+-- (0 .. 6 by 3).length
+-- (0 .. < 7 by 3).length
+-- (0 .. 7 by 3).length
+-- (7 .. < 0 by 3).length
+-- (7 .. 0 by 3).length
+-- (-5 .. < 5 by 3).length
+-- (-5 .. 5 by 3).length
+-- (-120i8 .. 120i8 by 3i8).length
+-- (250u8 .. < 0u8 by 3u8).length
+-- (-2147483648 .. < 2147483647).length
+-- (-2147483648 .. 2147483647).length
+-- (0.0 .. < 1.0 by 0.25).length
+-- (0.0 .. 1.0 by 0.25).length
+-- (0.0 .. < 1.0 by 0.3).length
+-- (0.0 .. 1.0 by 0.3).length
+```
+
+```output
+0
+1
+2
+3
+3
+3
+3
+3
+4
+4
+81
+84
+4294967295
+4294967296
+4
+5
+4
+4
+```
+
+### A loop over a struct that steps a cursor.
+
+```yumi
+. values = CursorRange(3)
+for value in values
+    -- value
+
+━━━━━━━━━━━━━━━━━━━━
++ CursorRange is Struct
+    is CursorIterable'I32'I32
+
++ limit I32
+
+────────────────────
++ get initial-iterator-state I32
+
+0
+
+────────────────────
++ do next-iterator (I32, I32?)
+    - state I32
+
+. none I32?
+if state >= limit
+    = (state, none)
+= (state + 1, state + 1)
+```
+
+```output
+1
+2
+3
+```
+
+### An error a cursor raises as it steps leaves the function looping over it, as a call's does.
+
+```yumi crash
+show(CursorRange(3))
+
+━━━━━━━━━━━━━━━━━━━━
++ do show
+    - values CursorRange
+
+for value in values
+    -- value
+
+━━━━━━━━━━━━━━━━━━━━
++ CursorRange is Struct
+    is CursorIterable'I32'I32
+
++ limit I32
+
+────────────────────
++ get initial-iterator-state I32
+
+0
+
+────────────────────
++ do next-iterator (I32, I32?) ?! Error
+    - state I32
+
+if state >= 2
+    ?! Error("stop")
+= (state + 1, state + 1)
+```
+
+```stderr
+Unhandled error: stop
+<no file:27>
+
+Task 1
+
+Stack trace:
+  0  __source__:CursorRange:next-iterator no file:27:5
+  1  __source__:show no file:8:4
+  2  __source__:main no file:2:1
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```

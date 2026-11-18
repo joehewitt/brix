@@ -1,0 +1,4481 @@
+# Stored function values
+
+```yumi
+. holder = NarrowedHookHolder()
+-- holder.invoke(7)
+holder.hook = accepts-seven
+-- holder.invoke(7)
+-- holder.invoke(9)
+holder.hook = null
+-- holder.invoke(7)
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowedHook is () Bool
+    - value I64
+
+━━━━━━━━━━━━━━━━━━━━
++ accepts-seven
+    - value I64
+
+value == 7
+
+━━━━━━━━━━━━━━━━━━━━
++ NarrowedHookHolder
+
++ hook NarrowedHook?
+
+────────────────────
++ do invoke Bool
+    - value I64
+
+=? false if !hook
+= hook(value)
+```
+
+```output
+false
+true
+false
+false
+```
+
+### A Bool-returning function stored in another module's hook slot returns its real value when called through the stored function value.
+
+```yumi
+./lib/hooklib
+
+set-stored-hook(my-hook)
+-- "stored-call-7=${call-stored-hook(7)}"
+-- "stored-call-9=${call-stored-hook(9)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ my-hook Bool
+    - value I64
+
+value == 7
+```
+
+```yumi file=lib/hooklib.yumi
+
+_ stored-hook StoredHook? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ StoredHook is () Bool
+    - value I64
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-stored-hook
+    - hook StoredHook
+
+stored-hook = hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-stored-hook Bool
+    - value I64
+
+if !stored-hook
+    = false
+. hook = stored-hook!
+= hook(value)
+
+```
+
+```output
+stored-call-7=true
+stored-call-9=false
+```
+
+### Calls through a function-typed parameter resolve reordered named arguments like direct calls.
+
+```yumi
+-- "direct=${combine(1000) • c 3 • b 7}"
+-- "indirect=${apply(combine)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+    - c I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+    - c I32
+
+a - b * 100 - c
+
+━━━━━━━━━━━━━━━━━━━━
++ apply I32
+    - f Op
+
+f(1000) • c 3 • b 7
+```
+
+```output
+direct=297
+indirect=297
+```
+
+### An unknown argument name is rejected through a function-typed parameter.
+
+```yumi crash
+-- apply(combine)
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+
+a - b
+
+━━━━━━━━━━━━━━━━━━━━
++ apply I32
+    - f Op
+
+f(10) • by 3
+```
+
+```output
+Exception: "f" has no "by" argument
+<no file:20>
+    f(10) • by 3
+         ^^^^^^^
+```
+
+### An unknown argument name is rejected through a function-typed field.
+
+```yumi crash
+. holder = Holder(combine)
+. op = holder.op
+-- op(10) • by 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+
+a - b
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ op Op
+
+────────────────────
++ This
+    - op Op
+
+this.op = op
+```
+
+```output
+Exception: "op" has no "by" argument
+<no file:4>
+    -- op(10) • by 3
+             ^^^^^^^
+```
+
+### An unknown argument name is rejected while partially applying a function value.
+
+```yumi crash
+-- partial(combine)
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+    - c I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+    - c I32
+
+a - b * 100 - c
+
+━━━━━━━━━━━━━━━━━━━━
++ partial
+    - f Op
+
+f(1000, ...) • over 3
+```
+
+```output
+Exception: "f" has no "over" argument
+<no file:22>
+    f(1000, ...) • over 3
+                ^^^^^^^^^
+```
+
+### Partial application through a function value preserves each named argument's declared slot.
+
+```yumi
+-- apply-partial(combine)
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+    - c I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+    - c I32
+
+a - b * 100 - c
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply-partial I32
+    - f Op
+
+. partial = f(1000, ...) • c 3
+= partial() • b 7
+```
+
+```output
+297
+```
+
+### A generic optional String-returning function value still returns through a multi-arm match when a fallback arm is a single-interpolation string literal.
+
+```yumi
+. key-builder KeyBuilder'Int? = build-int-key
+-- key-for-item(7, 0, key-builder, "p")
+-- key-for-item(8, 1, null, "p")
+-- key-for-item(9, 2, null, null)
+
+━━━━━━━━━━━━━━━━━━━━
++ KeyBuilder'Item is () String
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ build-int-key String
+    - item Int
+
+"built-$item"
+
+━━━━━━━━━━━━━━━━━━━━
++ key-for-item'Item String
+    - item Item
+    - index Int
+    - key-builder KeyBuilder'Item?
+    - key-prefix String?
+
+match true
+    |? has-builder
+        built-key
+    |? key-prefix
+        "$key-prefix/$index"
+    ??
+        "$index"
+
+.. has-builder = key-builder != null
+.. built-key = if has-builder then key-builder!(item) else ""
+```
+
+```output
+built-7
+p/1
+2
+```
+
+### Same with the markup mount-hook parameter shape: Pointer, optional Pointer, optional interface.
+
+```yumi
+./lib/ptrhooklib
+
+. node = Probe()
+set-ptr-hook(my-ptr-hook)
+-- "with-root=${call-ptr-hook(node as Pointer, null, node as Rootish)}"
+-- "no-root=${call-ptr-hook(node as Pointer, null, null)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do my-ptr-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if root
+    = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ Probe
+    is Rootish
+```
+
+```yumi file=lib/ptrhooklib.yumi
+
+_ ptr-hook PtrHook? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ Rootish is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ PtrHook is () Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-ptr-hook
+    - hook PtrHook
+
+ptr-hook = hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-ptr-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if !ptr-hook
+    = false
+. hook = ptr-hook!
+= hook(node-pointer, parent-pointer, root)
+
+```
+
+```output
+with-root=true
+no-root=false
+```
+
+### Same, but the hook is a private function registered at an imported module's init, like /core/style registering style-apply-mount with /core/markup.
+
+```yumi
+./lib/ptrhooklib
+./lib/registrar
+
+. node = Probe()
+-- "with-root=${call-ptr-hook(node as Pointer, null, node as Rootish)}"
+-- "no-root=${call-ptr-hook(node as Pointer, null, null)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Probe
+    is Rootish
+```
+
+```yumi file=lib/registrar.yumi
+
+./ptrhooklib
+
+set-ptr-hook(registrar-hook)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do registrar-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if root
+    = true
+= false
+
+```
+
+```yumi file=lib/ptrhooklib.yumi
+
+_ ptr-hook PtrHook? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ Rootish is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ PtrHook is () Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-ptr-hook
+    - hook PtrHook
+
+ptr-hook = hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-ptr-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if !ptr-hook
+    = false
+. hook = ptr-hook!
+= hook(node-pointer, parent-pointer, root)
+
+```
+
+```output
+with-root=true
+no-root=false
+```
+
+### Same again, but the hook callee can panic and is recursive, like style-apply-mount. The recursion forces the callee's ABI to be fixed before its body finishes compiling, which is the case that once silently dropped Bool returns through stored function values.
+
+```yumi
+./lib/ptrhooklib
+
+. node = Probe()
+set-ptr-hook(my-panicky-hook)
+-- "with-root=${call-ptr-hook(node as Pointer, null, node as Rootish)}"
+-- "no-root=${call-ptr-hook(node as Pointer, null, null)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ HookPanic is Panic
+
+━━━━━━━━━━━━━━━━━━━━
++ do my-panicky-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if parent-pointer
+    ?! HookPanic("unexpected parent")
+if root
+    if parent-pointer
+        = my-panicky-hook(node-pointer, null, root)
+    = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
++ Probe
+    is Rootish
+```
+
+```yumi file=lib/ptrhooklib.yumi
+
+_ ptr-hook PtrHook? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ Rootish is Interface
+
+━━━━━━━━━━━━━━━━━━━━
++ PtrHook is () Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-ptr-hook
+    - hook PtrHook
+
+ptr-hook = hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-ptr-hook Bool
+    - node-pointer Pointer
+    - parent-pointer Pointer?
+    - root Rootish?
+
+if !ptr-hook
+    = false
+. hook = ptr-hook!
+= hook(node-pointer, parent-pointer, root)
+
+```
+
+```output
+with-root=true
+no-root=false
+```
+
+### A function that raises is not stored in a hook slot whose function type carries no errors.
+
+```yumi crash
+./lib/hooklib
+
+set-stored-hook(my-hook)
+-- "stored-call-7=${call-stored-hook(7)}"
+-- "stored-call-9=${call-stored-hook(9)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ my-hook Bool ?! IOError
+    - value I64
+
+?! IOError("zero")
+    if value == 0
+
+value == 7
+```
+
+```yumi file=lib/hooklib.yumi
+
+_ stored-hook StoredHook? = null
+
+━━━━━━━━━━━━━━━━━━━━
++ StoredHook is () Bool
+    - value I64
+
+━━━━━━━━━━━━━━━━━━━━
++ do set-stored-hook
+    - hook StoredHook
+
+stored-hook = hook
+
+━━━━━━━━━━━━━━━━━━━━
++ do call-stored-hook Bool
+    - value I64
+
+if !stored-hook
+    = false
+. hook = stored-hook!
+= hook(value)
+
+```
+
+```output
+Exception: IOError can leave this function, and StoredHook does not carry it; add ?! IOError to StoredHook, or catch it here
+<no file:4>
+    set-stored-hook(my-hook)
+                    ^^^^^^^
+```
+
+### A fallible closure stored in a generic tuple's field returns its value and raises its error through the adapter that casts it to the field's function type.
+
+```yumi
+. holder = Holder'Scale("scaled", :: value, scale => scaled(value, scale))
+. run = holder.run
+-- run(2, Scale())
+. failed = catch run(20, Scale())
+. message = match failed
+    | error Error
+        error.message
+    ??
+        "no error"
+-- message
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64 ?! Error
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64 ?! Error
+    - value F64
+    - scale Scale
+
+?! Error("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```output
+6
+too big
+```
+
+### A closure stored in an optional property of a function type reads the local it captures.
+
+```yumi
+. holder = Holder()
+. base = 10
+holder.action = :: amount => amount + base
+churn()
+-- holder.run(5)
+base = 100
+churn()
+-- holder.run(5)
+
+━━━━━━━━━━━━━━━━━━━━
++ Step is () Int
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ action Step?
+
+────────────────────
++ do run Int
+    - amount Int
+
+. step = action
+if step
+    = step(amount)
+= -1
+
+━━━━━━━━━━━━━━━━━━━━
++ do churn
+
+. kept = ""
+. turn = 0
+while turn < 20000
+    kept = "text $turn"
+    turn += 1
+```
+
+```output
+15
+105
+```
+
+### A method read from an object and kept as a function value calls on that object.
+
+```yumi
+. counter = Counter()
+. bump Bump = counter.bump
+bump(2)
+bump(3)
+-- counter.total
+counter.total = 100
+bump(1)
+-- counter.total
+-- apply(bump, 5)
+-- counter.total
+
+━━━━━━━━━━━━━━━━━━━━
++ Bump is () Int
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ total = 0
+
+────────────────────
++ do bump Int
+    - amount Int
+
+total += amount
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply Int
+    - action Bump
+    - amount Int
+
+= action(amount) + action(amount)
+```
+
+```output
+5
+101
+217
+111
+```
+
+### A function returns a closure as a function value, each with its own environment.
+
+```yumi
+. first = make(3)
+. second = make(10)
+-- first(1)
+-- second(1)
+-- first(2)
+-- twice(first, 5)
+
+━━━━━━━━━━━━━━━━━━━━
++ Step is () Int
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Step
+    - base Int
+
+. scale = base * 2
+= :: amount => amount + base + scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do twice Int
+    - step Step
+    - amount Int
+
+= step(step(amount))
+```
+
+```output
+10
+31
+11
+23
+```
+
+### Function values take and return structs, small and large.
+
+```yumi
+. origin = Point(1, 2)
+. shift Shift = :: point => Point(point.x + origin.x, point.y + origin.y)
+. moved = shift(Point(10, 20))
+-- moved.x
+-- moved.y
+. wide Widen = :: box => Box(box.a + 1, box.b + 2, box.c + 3, box.d + 4)
+. grown = wide(Box(1, 2, 3, 4))
+-- grown.a + grown.b + grown.c + grown.d
+
+━━━━━━━━━━━━━━━━━━━━
++ Shift is () Point
+    - point Point
+
+━━━━━━━━━━━━━━━━━━━━
++ Widen is () Box
+    - box Box
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Int
++ y Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Box is Struct
+
++ a I64
++ b I64
++ c I64
++ d I64
+```
+
+```output
+11
+22
+20
+```
+
+### A function type that returns nothing takes a closure that assigns, and one that answers.
+
+```yumi
+. log = ""
+. note Note = :: text => do
+    log = "$log[$text]"
+note("a")
+note("b")
+each(note)
+-- log
+. quiet Note = :: text => text.length
+quiet("x")
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Note is () Void
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ do each
+    - note Note
+
+note("c")
+note("d")
+```
+
+```output
+[a][b][c][d]
+done
+```
+
+### A function and a method of a new object passed where a function type is declared.
+
+```yumi
+-- run(show)
+-- run(Maker().make)
+
+━━━━━━━━━━━━━━━━━━━━
++ Text is () String
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ run String
+    - text Text
+
+text(4)
+
+━━━━━━━━━━━━━━━━━━━━
++ show String
+    - amount Int
+
+"show $amount"
+
+━━━━━━━━━━━━━━━━━━━━
++ double String
+    - amount Int
+    - by Int
+
+"double ${amount * by}"
+
+━━━━━━━━━━━━━━━━━━━━
++ Maker
+
++ prefix = "made"
+
+────────────────────
++ make String
+    - amount Int
+
+"$prefix $amount"
+```
+
+```output
+show 4
+made 4
+```
+
+### Two function values are equal when they run one code with one data.
+
+```yumi
+. n = 4
+. a Step = :: x => x + n
+. b Step = :: x => x - n
+. c = a
+. plain Step = :: x => x
+. flat Step = :: x => x * 2
+. bound Step = add(1, ...)
+. other Step = add(2, ...)
+. free Step = same
+. again Step = same
+-- a == c
+-- a == b
+-- a != b
+-- plain == flat
+-- a == plain
+-- bound == other
+-- bound == bound
+-- free == again
+-- free == plain
+
+━━━━━━━━━━━━━━━━━━━━
++ Step is () Int
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ add Int
+    - left Int
+    - right Int
+
+left + right
+
+━━━━━━━━━━━━━━━━━━━━
++ same Int
+    - amount Int
+
+amount
+```
+
+```output
+true
+false
+true
+false
+false
+false
+true
+true
+false
+```
+
+### Function values that capture nothing are equal where they run one code, and those of two environments are not.
+
+```yumi
+. plain Step = :: x => x
+. flat Step = :: x => x * 2
+. free Step = same
+. first = make()
+. second = make()
+. third = capture(1)
+. fourth = capture(1)
+-- plain == flat
+-- plain == free
+-- first == second
+-- first == plain
+-- third == fourth
+-- third == third
+-- inside()
+
+━━━━━━━━━━━━━━━━━━━━
++ Step is () Int
+    - amount Int
+
+━━━━━━━━━━━━━━━━━━━━
++ same Int
+    - amount Int
+
+amount
+
+━━━━━━━━━━━━━━━━━━━━
++ do make Step
+
+. step Step = :: x => x + 1
+= step
+
+━━━━━━━━━━━━━━━━━━━━
++ do capture Step
+    - base Int
+
+. step Step = :: x => x + base
+= step
+
+━━━━━━━━━━━━━━━━━━━━
++ do inside Bool
+
+. one Step = :: x => x + 1
+. two Step = :: x => x + 2
+= one == two
+```
+
+```output
+false
+false
+true
+false
+false
+true
+false
+```
+
+### Function values made by two runs of a closure that declares nothing are not equal.
+
+```yumi
+. n = 2
+. mk = =>
+    => n
+. g1 Get = mk()
+. g2 Get = mk()
+-- g1 == g2
+
+━━━━━━━━━━━━━━━━━━━━
++ Get is () Int
+```
+
+```output
+false
+```
+
+### A function value made in a run of a closure is not equal to one made around it.
+
+```yumi
+. n = 2
+. g1 Get = => n
+. g2 Get = => n + 1
+-- g1 == g2
+. keep = => do
+    . h Get = => n
+    = h == g1
+-- keep()
+
+━━━━━━━━━━━━━━━━━━━━
++ Get is () Int
+```
+
+```output
+false
+false
+```
+
+### Function values made in one run of a closure are not equal where they run other code.
+
+```yumi
+. n = 1
+. a Get = => n
+. inner = => do
+    . b Get = => n
+    = a == b
+-- inner()
+. deep = => do
+    . k = 2
+    . c Get = => n
+    . d Get = => k
+    = c == d
+-- deep()
+
+━━━━━━━━━━━━━━━━━━━━
++ Get is () Int
+```
+
+```output
+false
+false
+```
+
+### An optional property of a function type given a function, a closure and nothing, and called where it holds one.
+
+```yumi
+. holder = Holder()
+-- holder.run(3)
+holder.hook = double
+-- holder.run(3)
+holder.hook = :: n => n + 100
+-- holder.run(3)
+holder.hook = null
+-- holder.run(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ Hook is () Int
+    - n Int
+
+━━━━━━━━━━━━━━━━━━━━
++ double
+    - n Int
+
+n * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ hook Hook?
+
+────────────────────
++ do run Int
+    - n Int
+
+if hook
+    = hook(n)
+= -1
+```
+
+```output
+-1
+6
+103
+-1
+```
+
+### A closure given as an argument that is an optional of a function type.
+
+```yumi
+-- show(:: item => "closure-$item")
+-- show(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Key is () String
+    - item Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String
+    - key Key?
+
+if key
+    = key(7)
+= "none"
+```
+
+```output
+closure-7
+none
+```
+
+### A function given as an argument that is an optional of a function type.
+
+```yumi
+-- show(build)
+-- show(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Key is () String
+    - item Int
+
+━━━━━━━━━━━━━━━━━━━━
++ build String
+    - item Int
+
+"built-$item"
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String
+    - key Key?
+
+if key
+    = key(7)
+= "none"
+```
+
+```output
+built-7
+none
+```
+
+### A closure declared as an optional of a function type and passed on.
+
+```yumi
+. key Key? = :: item => "built-$item"
+-- show(key)
+-- show(null)
+
+━━━━━━━━━━━━━━━━━━━━
++ Key is () String
+    - item Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String
+    - key Key?
+
+if key
+    = key(7)
+= "none"
+```
+
+```output
+built-7
+none
+```
+
+### A value of a function type called with arguments by name: evaluated as written, given in their places.
+
+```yumi
+-- apply(combine)
+
+━━━━━━━━━━━━━━━━━━━━
++ Op is () I32
+    - a I32
+    - b I32
+    - c I32
+
+━━━━━━━━━━━━━━━━━━━━
++ combine I32
+    - a I32
+    - b I32
+    - c I32
+
+a - b * 100 - c
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply I32
+    - f Op
+
+. first = f(tick("a", 1000)) • c tick("c", 3) • b tick("b", 7)
+. second = f(tick("a", 2000)) • b tick("b", 1) • c tick("c", 9)
+. partial = f(...) • b tick("held b", 2)
+. third = partial(tick("a", 500)) • c tick("c", 5)
+= first + second + third
+
+━━━━━━━━━━━━━━━━━━━━
++ do tick I32
+    - label String
+    - value I32
+
+-- "tick $label"
+= value
+```
+
+```output
+tick a
+tick c
+tick b
+tick a
+tick b
+tick c
+tick held b
+tick a
+tick c
+2483
+```
+
+### A value of a function type bound in steps, the arguments held converted where it is called.
+
+```yumi
+-- apply(scale)
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale is () Float
+    - amount Float
+    - factor Float
+    - offset I64
+
+━━━━━━━━━━━━━━━━━━━━
++ scale Float
+    - amount Float
+    - factor Float
+    - offset I64
+
+amount * factor + offset
+
+━━━━━━━━━━━━━━━━━━━━
++ do apply Float
+    - f Scale
+
+. half = f(3, ...)
+. more = half(2, ...)
+= more(1) + half(4, 10)
+```
+
+```output
+29
+```
+
+### A value of a function type bound in a loop and called.
+
+```yumi
+-- total(add)
+
+━━━━━━━━━━━━━━━━━━━━
++ Add is () Int
+    - a Int
+    - b Int
+
+━━━━━━━━━━━━━━━━━━━━
++ add
+    - a Int
+    - b Int
+
+a + b
+
+━━━━━━━━━━━━━━━━━━━━
++ do total Int
+    - f Add
+
+. sum = 0
+. i = 0
+while i < 3
+    . plus = f(i, ...)
+    sum += plus(10)
+    i += 1
+= sum
+```
+
+```output
+33
+```
+
+### Function type that raises holds a closure and a function that raise nothing
+
+```yumi
+. none CheckedCallback = :: v => v + 1
+-- "none=${catch none(1)}"
+. named CheckedCallback = plain
+-- "named=${catch named(1)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+none=2
+named=2
+```
+
+### Function type that raises a base error holds a function that raises a derived one
+
+```yumi
+. sub BaseCallback = risky
+. r1 = catch sub(1)
+-- "sub1=$r1"
+. r2 = catch sub(2)
+-- "sub2 is CallbackFailure: ${r2 is CallbackFailure} is Error: ${r2 is Error}"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+sub1=11
+sub2 is CallbackFailure: true is Error: true
+```
+
+### Function type that raises a base error holds a closure that raises a derived one
+
+```yumi
+. subc BaseCallback = :: v => do
+    ?! CallbackFailure("closure failed")
+        if v == 2
+    = v + 100
+. r3 = catch subc(2)
+-- "subc2 is CallbackFailure: ${r3 is CallbackFailure}"
+-- catch subc(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+subc2 is CallbackFailure: true
+101
+```
+
+### Optional catch of a call of a function value that raises
+
+```yumi
+. sub BaseCallback = risky
+. opt = catch? sub(2)
+-- "opt=$opt"
+. opt1 = catch? sub(1)
+-- "opt1=$opt1"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+opt=unknown
+opt1=11
+```
+
+### Errors of a function value leave the function that calls it
+
+```yumi
+. sub BaseCallback = risky
+. first = catch inferred(sub, 2)
+-- "inferred=${first is CallbackFailure}"
+-- "inferred-ok=${catch inferred(sub, 1)}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do inferred Int
+    - callback BaseCallback
+    - value Int
+
+= callback(value) + 1000
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+inferred=true
+inferred-ok=1011
+```
+
+### Function type that raises two errors answers with either
+
+```yumi
+. two TwoCallback = other
+. a = catch two(3)
+-- a is OtherFailure
+-- a is CallbackFailure
+. b = catch two(1)
+-- b
+. c TwoCallback = risky
+. d = catch c(2)
+-- d is CallbackFailure
+-- d is OtherFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+true
+false
+21
+true
+false
+```
+
+### Function type that raises and returns nothing
+
+```yumi
+. v VoidCallback = quiet
+. a = catch v(2)
+-- a is CallbackFailure
+. b = catch v(1)
+-- b is CallbackFailure
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+true
+quiet 1
+false
+done
+```
+
+### Error of a function value that returns nothing leaves its caller unhandled
+
+```yumi crash
+. v VoidCallback = quiet
+run(v, 1)
+-- "between"
+run(v, 2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run ?! CallbackFailure
+    - callback VoidCallback
+    - value Int
+
+callback(value)
+-- "ran $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+quiet 1
+ran 1
+between
+```
+
+### Error of a function value runs the cleanup of its caller
+
+```yumi crash
+. c CheckedCallback = risky
+-- run(c, 1)
+-- run(c, 2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - callback CheckedCallback
+    - value Int
+
+do finally
+    -- "run cleanup $value"
+. got = callback(value)
+-- "got $got"
+= got * 2
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+got 11
+run cleanup 1
+22
+run cleanup 2
+```
+
+### Error of a closure held as a function value runs the cleanup of the closure
+
+```yumi crash
+. c CheckedCallback = :: value => do
+    do finally
+        -- "closure cleanup"
+    ?! CallbackFailure("closure failed")
+        if value == 2
+    = value + 5
+-- run(c, 1)
+-- run(c, 2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run Int
+    - callback CheckedCallback
+    - value Int
+
+= callback(value) + callback(value + 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+closure cleanup
+closure cleanup
+```
+
+### Function value that raises held by a property
+
+```yumi
+. holder = Holder(risky)
+. held = holder.callback
+-- catch held(1)
+. failed = catch held(2)
+-- failed is CallbackFailure
+-- holder.run(1)
+. second = catch holder.run(2)
+-- second is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ callback CheckedCallback
+
+────────────────────
++ This
+    - given CheckedCallback
+
+.. callback = given
+
+────────────────────
++ do run Int ?! CallbackFailure
+    - value Int
+
+= callback(value) + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+11
+true
+12
+true
+```
+
+### Function values that raise held by a list
+
+```yumi
+. a CheckedCallback = risky
+. b CheckedCallback = plain
+. c CheckedCallback = :: v => v * 3
+. list = [a, b, c]
+for item in list
+    -- catch item(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+risky failed
+3
+6
+```
+
+### Method bound as a function value that raises
+
+```yumi
+. object = Counter(5)
+. c CheckedCallback = object.add
+-- catch c(1)
+. failed = catch c(2)
+-- failed is CallbackFailure
+. p CheckedCallback = object.add-plain
+-- catch p(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Counter
+
++ base Int
+
+────────────────────
++ This
+    - start Int
+
+.. base = start
+
+────────────────────
++ do add Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("add failed")
+    if value == 2
+= base + value
+
+────────────────────
++ do add-plain Int
+    - value Int
+
+= base + value
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+6
+true
+7
+```
+
+### Parameter of a function type bound to what a function that raises answers
+
+```yumi
+-- catch get-it(five)
+. failed = catch get-it(fails)
+-- failed is CallbackFailure
+-- catch get-it(text)
+
+━━━━━━━━━━━━━━━━━━━━
++ Getter'Result is () Result
+
+━━━━━━━━━━━━━━━━━━━━
++ do get-it'Result Result
+    - getter Getter'Result
+
+= getter()
+
+━━━━━━━━━━━━━━━━━━━━
++ do five Int
+
+= 5
+
+━━━━━━━━━━━━━━━━━━━━
++ do text String
+
+= "text"
+
+━━━━━━━━━━━━━━━━━━━━
++ do fails Int ?! CallbackFailure
+
+?! CallbackFailure("fails")
+= 1
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```output
+5
+true
+text
+```
+
+### Closure held as a function value that raises may also panic
+
+```yumi crash
+. c CheckedCallback = :: value => do
+    do finally
+        -- "closure cleanup"
+    ?! Panic("closure panicked")
+        if value == 3
+    ?! CallbackFailure("closure failed")
+        if value == 2
+    = value + 5
+-- catch c(1)
+. failed = catch c(2)
+-- failed is CallbackFailure
+-- c(3)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+closure cleanup
+6
+closure cleanup
+true
+closure cleanup
+```
+
+### Match on what a function value that raises answers
+
+```yumi
+. c CheckedCallback = risky
+. first = catch c(2)
+. message = match first
+    | error CallbackFailure
+        "callback: ${error.message}"
+    | value Int
+        "value $value"
+-- message
+. second = catch c(1)
+. other = match second
+    | error CallbackFailure
+        "callback: ${error.message}"
+    | value Int
+        "value $value"
+-- other
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+callback: risky failed
+value 11
+```
+
+### Function value that raises an error derived twice
+
+```yumi
+. c BaseCallback = deep
+. failed = catch c(2)
+-- failed is DeepFailure
+-- failed is CallbackFailure
+-- failed is Error
+. d CheckedCallback = deep
+. again = catch d(2)
+-- again is DeepFailure
+-- again is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+true
+true
+true
+true
+true
+```
+
+### Optional catch of a function value in a loop
+
+```yumi
+. total = 0
+. c CheckedCallback = risky
+for value in [1, 2, 3]
+    . got = catch? c(value)
+    if got
+        total += got
+    else
+        -- "skipped $value"
+-- total
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+skipped 2
+24
+```
+
+### Function value that raises called in a loop
+
+```yumi
+-- sum-all(risky)
+-- sum-all(plain)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sum-all Int
+    - callback CheckedCallback
+
+. total = 0
+for value in [1, 3, 5]
+    total += callback(value)
+= total
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+39
+12
+```
+
+### Function types that raise and return a text or an optional
+
+```yumi
+. c TextCallback = describe
+-- catch c(1)
+. failed = catch c(2)
+-- failed is CallbackFailure
+. o OptionalCallback = maybe
+-- catch o(1)
+-- catch o(3)
+. bad = catch o(2)
+-- bad is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ TextCallback is () String ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ OptionalCallback is () Int? ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("describe failed")
+    if value == 2
+= "described $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do maybe Int? ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("maybe failed")
+    if value == 2
+if value == 3
+    = null
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+described 1
+true
+1
+unknown
+true
+```
+
+### Function type that raises converts what its function returns
+
+```yumi
+. c FloatCallback = risky
+-- catch c(1)
+. failed = catch c(2)
+-- failed is CallbackFailure
+. d FloatCallback = :: value => (value + 1) as I32
+-- catch d(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ FloatCallback is () Float ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky I32 ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= (value + 10) as I32
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+11
+true
+2
+```
+
+### Function type that raises and returns a tuple
+
+```yumi crash
+. c PairCallback = make-pair
+. got = catch c(1)
+-- got is CallbackFailure
+. failed = catch c(2)
+-- failed is CallbackFailure
+-- show(c, 1)
+-- show(c, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair is Tuple
+
++ left Int
++ right Int
++ label String
+
+━━━━━━━━━━━━━━━━━━━━
++ PairCallback is () Pair ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do make-pair Pair ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("pair failed")
+    if value == 2
+= Pair(value, value + 1, "pair")
+
+━━━━━━━━━━━━━━━━━━━━
++ do show String ?! CallbackFailure
+    - callback PairCallback
+    - value Int
+
+. pair = callback(value)
+= "${pair.left} ${pair.right} ${pair.label}"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+false
+true
+1 2 pair
+```
+
+### Function type that raises and returns nothing holds functions that return a value
+
+```yumi
+. c VoidCallback = risky
+-- "start"
+. first = catch c(1)
+-- first is CallbackFailure
+. second = catch c(2)
+-- second is CallbackFailure
+. d VoidCallback = plain
+d(1)
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+start
+false
+true
+done
+```
+
+### Parameter of a function type bound to the answer of each function given
+
+```yumi
+-- catch invoke(deep, 1)
+. failed = catch invoke(risky, 2)
+-- failed is CallbackFailure
+-- catch invoke(plain, 2)
+-- catch invoke(describe, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Mapper2'From'To is () To
+    - value From
+
+━━━━━━━━━━━━━━━━━━━━
++ do invoke'Output Output
+    - callback Mapper2'Int'Output
+    - value Int
+
+= callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do describe String
+    - value Int
+
+= "described $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+31
+true
+3
+described 2
+```
+
+### Parameter of a function type bound through two generic functions
+
+```yumi
+-- catch twice(deep, 1)
+. failed = catch twice(risky, 2)
+-- failed is CallbackFailure
+-- catch twice(plain, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ Mapper2'From'To is () To
+    - value From
+
+━━━━━━━━━━━━━━━━━━━━
++ do twice'Output Output
+    - callback Mapper2'Int'Output
+    - value Int
+
+= invoke(callback, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do invoke'Output Output
+    - callback Mapper2'Int'Output
+    - value Int
+
+= callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+31
+true
+3
+```
+
+### Function values that raise held by a map
+
+```yumi
+. map = Map'String'CheckedCallback()
+map["risky"] = risky
+map["plain"] = plain
+. first = map["risky"]
+if first
+    -- catch first(1)
+    . failed = catch first(2)
+    -- failed is CallbackFailure
+. second = map["plain"]
+if second
+    -- catch second(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+11
+true
+3
+```
+
+### Error of a function value leaves a method through its cleanup
+
+```yumi crash
+. object = Worker()
+-- object.run(deep, 1)
+-- object.run(risky, 2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ Worker
+
++ runs Int = 0
+
+────────────────────
++ do run Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+do finally
+    -- "run cleanup"
+runs += 1
+= callback(value) + runs
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```output
+run cleanup
+32
+run cleanup
+```
+
+### Stack trace of a panic under a function value that raises
+
+```yumi crash
+. c CheckedCallback = thrower
+-- catch c(1)
+. failed = catch c(2)
+-- failed is CallbackFailure
+-- c(3)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ do thrower Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("thrower failed")
+    if value == 2
+?! Panic("thrower panicked")
+    if value == 3
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```stderr
+Unhandled panic: thrower panicked
+<no file:15>
+
+Task 1
+
+Stack trace:
+  0  __source__:thrower no file:15:1
+  1  __source__:throwerCasting no file:2:5
+  2  __source__:main no file:6:4
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+### Stack trace of an error raised under a bound function value
+
+```yumi crash
+. c CheckedCallback = risky
+-- c(1)
+-- c(2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```stderr
+Unhandled error: risky failed
+<no file:33>
+
+Task 1
+
+Stack trace:
+  0  __source__:risky no file:33:1
+  1  __source__:riskyCasting no file:2:5
+  2  __source__:main no file:4:4
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+### Stack trace of an error raised under two function values
+
+```yumi crash
+. inner CheckedCallback = risky
+. outer CheckedCallback = :: value => inner(value) + 100
+-- catch outer(1)
+. failed = catch outer(2)
+-- failed is CallbackFailure
+-- outer(2)
+-- "never"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```stderr
+Unhandled error: risky failed
+<no file:31>
+
+Task 1
+
+Stack trace:
+  0  __source__:risky no file:31:1
+  1  __source__:riskyCasting no file:2:9
+  2  __source__:outer no file:3:39
+  3  __source__:outerCasting no file:3:9
+  4  __source__:main no file:7:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace of an error through a function value given to two functions
+
+```yumi crash
+-- "start"
+-- run-it(false)
+-- run-it(true)
+-- "not reached"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked-apply Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+= callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-it Int ?! CallbackFailure
+    - fails Bool
+
+. failing-callback CheckedCallback = :: value => do
+    do finally
+        -- "callback cleanup"
+    ?! CallbackFailure("callback failed")
+        if fails
+    = value + 1
+= checked-apply(failing-callback, 4)
+```
+
+```stderr
+Unhandled error: callback failed
+<no file:28>
+
+Task 1
+
+Stack trace:
+  0  __source__:failing-callback no file:28:5
+  1  __source__:failing-callbackCasting no file:25:20
+  2  __source__:checked-apply no file:19:3
+  3  __source__:run-it no file:31:3
+  4  __source__:main no file:4:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace of an error through a function value made a value of a wider type
+
+```yumi crash
+-- "start"
+. stored CheckedCallback = risky
+-- stored(1)
+. wide WideCallback = stored
+-- wide(1)
+-- wide(2)
+-- "not reached"
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ WideCallback is () Int ?! CallbackFailure ?! OtherFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked-apply Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+= callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+```
+
+```stderr
+Unhandled error: risky failed
+<no file:35>
+
+Task 1
+
+Stack trace:
+  0  __source__:risky no file:35:1
+  1  __source__:riskyCasting no file:3:10
+  2  __source__:Casting no file:5:8
+  3  __source__:main no file:7:4
+  4  __source__:init.__source__ no file
+  5  __source__:brix.main no file
+```
+
+### Stack trace names the function made for a generic tuple's field given a function
+
+```yumi crash
+. holder = Holder'Scale("scaled", scaled)
+. run = holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:28>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:28:1
+  1  __source__:scaledCasting no file:2:35
+  2  __source__:Casting no file:16:1
+  3  __source__:main no file:5:4
+  4  __source__:init.__source__ no file
+  5  __source__:brix.main no file
+```
+
+### Stack trace places the function made for two fields of a generic tuple at the first
+
+```yumi crash
+. pair = Pair'Scale(:: value, scale => scaled(value, scale), :: value, scale => scaled(value + 1, scale))
+. first = pair.first
+. second = pair.second
+-- first(2, Scale())
+-- second(2, Scale())
+-- second(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Pair'Context is Tuple
+
++ first Scaler'Context
++ second Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:30>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:30:1
+  1  __source__:pair2 no file:2:81
+  2  __source__:pair2Casting no file:2:62
+  3  __source__:Casting no file
+  4  __source__:main no file:7:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace names no place for the function made for a function made a value of a function type at two places.
+
+```yumi crash
+. first CheckedCallback = thrower
+. second CheckedCallback = thrower
+-- first(1)
+-- second(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ do thrower Int ?! CallbackFailure
+    - value Int
+
+?! Panic("thrower panicked")
+    if value == 3
+= value
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+```
+
+```stderr
+Unhandled panic: thrower panicked
+<no file:11>
+
+Task 1
+
+Stack trace:
+  0  __source__:thrower no file:11:1
+  1  __source__:throwerCasting no file
+  2  __source__:main no file:5:4
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+### Stack trace names both functions made for a function value given to a generic tuple
+
+```yumi crash
+. f Scaler'Scale = :: value, scale => scaled(value, scale)
+. holder = Holder'Scale("x", f)
+. run = holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is () F64
+    - value F64
+    - context Scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:34>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:34:1
+  1  __source__:f no file:2:39
+  2  __source__:fCasting no file:2:5
+  3  __source__:Casting no file:3:30
+  4  __source__:Casting no file:12:1
+  5  __source__:main no file:6:4
+  6  __source__:init.__source__ no file
+  7  __source__:brix.main no file
+```
+
+### Stack trace of an error raised under a closure held as a function value
+
+```yumi crash
+. checked-closure CheckedCallback = :: value => do
+    ?! CallbackFailure("callback failed")
+        if value == 2
+    = value
+-- run-it(checked-closure, 1)
+-- run-it(checked-closure, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-it Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+= checked-apply(callback, value)
+
+━━━━━━━━━━━━━━━━━━━━
++ do checked-apply Int ?! CallbackFailure
+    - callback CheckedCallback
+    - value Int
+
+= callback(value)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ TwoCallback is () Int ?! OtherFailure ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ VoidCallback is () Void ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+
+━━━━━━━━━━━━━━━━━━━━
++ do other Int ?! OtherFailure
+    - value Int
+
+?! OtherFailure("other failed")
+    if value == 3
+= value + 20
+
+━━━━━━━━━━━━━━━━━━━━
++ do quiet ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("quiet failed")
+    if value == 2
+-- "quiet $value"
+```
+
+```stderr
+Unhandled error: callback failed
+<no file:3>
+
+Task 1
+
+Stack trace:
+  0  __source__:checked-closure no file:3:5
+  1  __source__:checked-closureCasting no file:2:19
+  2  __source__:checked-apply no file:21:3
+  3  __source__:run-it no file:14:3
+  4  __source__:main no file:7:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace of a panic in a closure held as a function type that raises
+
+```yumi crash
+. panicking-closure CheckedCallback = :: value => do
+    ?! Panic("panicked in closure")
+        if value == 2
+    = value
+-- panicking-closure(1)
+-- panicking-closure(2)
+
+━━━━━━━━━━━━━━━━━━━━
++ CallbackFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ OtherFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ DeepFailure is CallbackFailure
+
+━━━━━━━━━━━━━━━━━━━━
++ CheckedCallback is () Int ?! CallbackFailure
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ BaseCallback is () Int ?! Error
+    - value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ do risky Int ?! CallbackFailure
+    - value Int
+
+?! CallbackFailure("risky failed")
+    if value == 2
+= value + 10
+
+━━━━━━━━━━━━━━━━━━━━
++ do deep Int ?! DeepFailure
+    - value Int
+
+?! DeepFailure("deep failed")
+    if value == 2
+= value + 30
+
+━━━━━━━━━━━━━━━━━━━━
++ do plain Int
+    - value Int
+
+= value + 1
+```
+
+```stderr
+Unhandled panic: panicked in closure
+<no file:3>
+
+Task 1
+
+Stack trace:
+  0  __source__:panicking-closure no file:3:5
+  1  __source__:panicking-closureCasting no file:2:21
+  2  __source__:main no file:7:4
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+### Stack trace of an error under a function value held by a generic tuple
+
+```yumi crash
+. scaled-holder = Holder'Scale("scaled", :: value, scale => scaled(value, scale))
+. run = scaled-holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+-- "not reached"
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64 ?! Error
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64 ?! Error
+    - value F64
+    - scale Scale
+
+?! Error("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled error: too big
+<no file:29>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:29:1
+  1  __source__:scaled-holder no file:2:61
+  2  __source__:scaled-holderCasting no file:2:42
+  3  __source__:Casting no file:17:1
+  4  __source__:main no file:5:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace names the function made for a generic tuple's function field
+
+```yumi crash
+. tuple-holder = Holder'Scale("scaled", :: value, scale => scaled(value, scale))
+. run = tuple-holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:28>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:28:1
+  1  __source__:tuple-holder no file:2:60
+  2  __source__:tuple-holderCasting no file:2:41
+  3  __source__:Casting no file:16:1
+  4  __source__:main no file:5:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace names the function made for a generic struct's function field
+
+```yumi crash
+. struct-holder = Holder'Scale("x", :: value, scale => scaled(value, scale))
+. run = struct-holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Struct
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is () F64
+    - value F64
+    - context Scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:33>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:33:1
+  1  __source__:struct-holder no file:2:56
+  2  __source__:struct-holderCasting no file:2:37
+  3  __source__:Casting no file:11:1
+  4  __source__:main no file:5:4
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace names the function made for a generic tuple's optional function field
+
+```yumi crash
+. optional-holder = Holder'Scale("x", :: value, scale => scaled(value, scale))
+. run = optional-holder.run
+if run
+    -- run(2, Scale())
+    -- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context?
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is () F64
+    - value F64
+    - context Scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:34>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:34:1
+  1  __source__:optional-holder no file:2:58
+  2  __source__:optional-holderCasting no file:2:39
+  3  __source__:Casting no file:12:1
+  4  __source__:main no file:6:8
+  5  __source__:init.__source__ no file
+  6  __source__:brix.main no file
+```
+
+### Stack trace names each function made as a function value passes between generic tuples
+
+```yumi crash
+. first-holder = Holder'Scale("x", :: value, scale => scaled(value, scale))
+. second-holder = Holder'Scale("y", first-holder.run)
+. run = second-holder.run
+-- run(2, Scale())
+-- run(20, Scale())
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder'Context is Tuple
+
++ name String
++ run Scaler'Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Scale
+
++ factor F64 = 3
+
+━━━━━━━━━━━━━━━━━━━━
++ Scaler'Context is () F64
+    - value F64
+    - context Context
+
+━━━━━━━━━━━━━━━━━━━━
++ Plain is () F64
+    - value F64
+    - context Scale
+
+━━━━━━━━━━━━━━━━━━━━
++ do scaled F64
+    - value F64
+    - scale Scale
+
+?! Panic("too big")
+    if value > 10
+= value * scale.factor
+```
+
+```stderr
+Unhandled panic: too big
+<no file:34>
+
+Task 1
+
+Stack trace:
+  0  __source__:scaled no file:34:1
+  1  __source__:first-holder no file:2:55
+  2  __source__:first-holderCasting no file:2:36
+  3  __source__:Casting no file:12:1
+  4  __source__:Casting no file:3:37
+  5  __source__:Casting no file:12:1
+  6  __source__:main no file:6:4
+  7  __source__:init.__source__ no file
+  8  __source__:brix.main no file
+```
+
+### A closure that raises is not made a value of a function type that carries no errors.
+
+```yumi crash
+. hook PlainHook = :: value => do
+    if value == 0
+        ?! IOError("zero")
+    = value * 2
+-- hook(3)
+
+━━━━━━━━━━━━━━━━━━━━
++ PlainHook is () I64
+    - value I64
+```
+
+```output
+Exception: IOError can leave this function, and PlainHook does not carry it; add ?! IOError to PlainHook, or catch it here
+<no file:2>
+    . hook PlainHook = :: value => do
+           ^^^^^^^^^
+```
+
+### A function that raises an error its function type does not carry is not given as that type.
+
+```yumi crash
+-- apply(parse, "4")
+
+━━━━━━━━━━━━━━━━━━━━
++ Parser is () I64 ?! TypeError
+    - text String
+
+━━━━━━━━━━━━━━━━━━━━
++ apply I64 ?! TypeError
+    - parser Parser
+    - text String
+
+parser(text)
+
+━━━━━━━━━━━━━━━━━━━━
++ do parse I64 ?! IOError
+    - text String
+
+if text == ""
+    ?! IOError("empty")
+= 4
+```
+
+```output
+Exception: IOError can leave this function, and Parser does not carry it; add ?! IOError to Parser, or catch it here
+<no file:2>
+    -- apply(parse, "4")
+             ^^^^^
+```
+
+### A catch attached to a call of a function value takes the error the value raises: a property, an argument, an item of a list, an optional forced, and a call that answers nothing.
+
+```yumi
+. box = Box()
+box.run()
+run-given(fail-given)
+run-listed()
+run-maybe(fail-maybe)
+run-maybe(null)
+notify-each()
+
+━━━━━━━━━━━━━━━━━━━━
++ Risky is () I64 ?! IOError
+    - value I64
+
+━━━━━━━━━━━━━━━━━━━━
++ Notice is () Void ?! IOError
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ action Risky := fail-property
+
+────────────────────
++ do run
+
+. value = action(1)
+    catch IOError
+        -1
+-- "property $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-given
+    - action Risky
+
+. value = action(2)
+    catch IOError
+        -2
+-- "argument $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-listed
+
+. actions = [fail-listed as Risky]
+. value = actions[0](3)
+    catch IOError
+        -3
+-- "listed $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do run-maybe
+    - action Risky?
+
+if !action
+    -- "nothing"
+    =
+. value = action(4)
+    catch IOError
+        -4
+-- "optional $value"
+
+━━━━━━━━━━━━━━━━━━━━
++ do notify-each
+
+. notices = [notice as Notice]
+notices[0]()
+    catch error IOError
+        heard(error)
+
+━━━━━━━━━━━━━━━━━━━━
++ do heard
+    - error IOError
+
+-- "heard ${error.message}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail-property I64 ?! IOError
+    - value I64
+
+?! IOError("property")
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail-given I64 ?! IOError
+    - value I64
+
+?! IOError("argument")
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail-listed I64 ?! IOError
+    - value I64
+
+?! IOError("listed")
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail-maybe I64 ?! IOError
+    - value I64
+
+?! IOError("optional")
+
+━━━━━━━━━━━━━━━━━━━━
++ do notice ?! IOError
+
+?! IOError("notice")
+```
+
+```output
+property -1
+argument -2
+listed -3
+optional -4
+nothing
+heard notice
+```
+
+### A function-typed field is called directly through its owner, here holding a bound method.
+
+```yumi
+. notes = Notes()
+. route = Route(notes.label)
+-- route.fetch("a")
+notes.prefix = "changed"
+-- route.fetch("b")
+
+━━━━━━━━━━━━━━━━━━━━
++ Fetcher is () String
+    - path String
+
+━━━━━━━━━━━━━━━━━━━━
++ Notes
+
++ prefix = "notes"
+
+────────────────────
++ label
+    - path String
+
+"$prefix:$path"
+
+━━━━━━━━━━━━━━━━━━━━
++ Route
+
++ fetch Fetcher
+
+────────────────────
++ This
+    - fetch Fetcher
+```
+
+```output
+notes:a
+changed:b
+```
+
+### A lambda chosen by a condition where an optional function is expected is that function.
+
+```yumi
+-- run(true, 4)
+-- run(false, 4)
+
+━━━━━━━━━━━━━━━━━━━━
++ Predicate'Item is () Bool
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do run String
+    - on Bool
+    - limit U64
+
+. check Predicate'U64? = (:: node => node < limit) if on
+. plain Predicate'U64? = (:: node => node < limit) if on
+=? "none" if !check || !plain
+= "${check(3)} ${check(9)} ${plain(9)}"
+```
+
+```output
+true false false
+none
+```
+
+### Two function values are equal when they run one code with one captured data, so removing one subscriber leaves another that captures nothing.
+
+```yumi
+. a Hook = => 1
+. b Hook = => 2
+. h Hook = three
+. i Hook = four
+. j Hook = three
+. e = make(1)
+. f = make(1)
+-- "${a == b} ${h == i} ${h == j} ${h != i} ${e == e} ${e == f} ${a() + b() + e() + f()}"
+. source = Source()
+. endpoint Broadcastable'Int = source.changed
+endpoint.subscribe(log-first)
+endpoint.subscribe(log-second)
+catch endpoint.unsubscribe(log-second)
+source.emit(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Hook is () Int
+
+━━━━━━━━━━━━━━━━━━━━
++ make
+    - x Int
+
+=> x
+
+━━━━━━━━━━━━━━━━━━━━
++ three Int
+
+3
+
+━━━━━━━━━━━━━━━━━━━━
++ four Int
+
+4
+
+━━━━━━━━━━━━━━━━━━━━
++ do log-first
+    - item Int
+    - broadcaster Broadcastable'Int
+
+-- "first $item"
+
+━━━━━━━━━━━━━━━━━━━━
++ do log-second
+    - item Int
+    - broadcaster Broadcastable'Int
+
+-- "second $item"
+
+━━━━━━━━━━━━━━━━━━━━
++ Source
+
++ event changed Int
+
+────────────────────
++ do emit
+    - value Int
+
+changed <- value
+```
+
+```output
+false false true true true false 5
+first 1
+```
+
+### A raising function stored in a field, called through the field with an attached handler.
+
+```yumi
+. holder = Holder(fail)
+holder.finish()
+    catch error Error
+        -- "caught ${error.message}"
+-- "done"
+
+━━━━━━━━━━━━━━━━━━━━
++ Holder
+
++ finish () Void ?! Error
+
+────────────────────
++ This
+    - finish
+
+━━━━━━━━━━━━━━━━━━━━
++ do fail ?! Error
+
+?! Error("bad")
+```
+
+```output
+caught bad
+done
+```

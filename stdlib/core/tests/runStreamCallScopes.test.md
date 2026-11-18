@@ -1,0 +1,153 @@
+# Stream call scopes
+
+```yumi
+-- collect(((1 .. 3) *> (each * 2)))
+-- collect(((1 .. 4) ?> (each > 2)))
+
+━━━━━━━━━━━━━━━━━━━━
++ collect
+    - source <Int>
+
+",".join(source)
+```
+
+```output
+2,4,6
+3,4
+```
+
+```yumi
+-- greatest(((1 .. 3) *> each))
+-- greatest(4, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ greatest'T
+    - source <T>
+
+"stream"
+
+━━━━━━━━━━━━━━━━━━━━
++ greatest'T
+    - a T
+    - b T
+
+"scalar"
+```
+
+```output
+stream
+scalar
+```
+
+```yumi
+-- greatest(((1 .. 3) *> each))
+-- greatest(4, 2)
+
+━━━━━━━━━━━━━━━━━━━━
++ greatest'T
+    - a T
+    - b T
+
+"scalar"
+
+━━━━━━━━━━━━━━━━━━━━
++ greatest'T
+    - source <T>
+
+"stream"
+```
+
+```output
+stream
+scalar
+```
+
+```yumi
+-- catch fold-values()
+-- fold(0, [1, 2, 3], :: left, right => left + right)
+-- fold(0, List'Int(), :: left, right => left + right)
+
+━━━━━━━━━━━━━━━━━━━━
++ FoldFailure is Error
+
+━━━━━━━━━━━━━━━━━━━━
++ FoldAccumulator'Accum'Item'Result is () Result
+    - accum Accum
+    - item Item
+
+━━━━━━━━━━━━━━━━━━━━
++ do fold'Item'Result @inline
+    - seed Result
+    - source <Item>
+    - accumulator FoldAccumulator'Result'Item
+
+. accum = seed
+for item in source
+    accum = accumulator(accum, item)
+= accum
+
+━━━━━━━━━━━━━━━━━━━━
++ fold-values Int
+
+fold(0, [1, 2, 3]) • accumulator :: left, right => do
+    ?! FoldFailure("remainder")
+        if right == 2
+    = left + right
+```
+
+```output
+remainder
+6
+0
+```
+
+```yumi
+-- combined().value
+
+━━━━━━━━━━━━━━━━━━━━
++ combined
+
+[ScanValue(1), ScanValue(2)]
+|> combine • accumulator :: a, b => ScanValue(a.value + b.value)
+
+━━━━━━━━━━━━━━━━━━━━
++ ScanValue is Tuple
++ value Int
+
+━━━━━━━━━━━━━━━━━━━━
++ Combine'Item'Result is () Result
+    - a Item
+    - b Item
+
+━━━━━━━━━━━━━━━━━━━━
++ combine'Item
+    - source [Item]
+    - accumulator Combine'Item
+
+accumulator(source[0], source[1])
+
+━━━━━━━━━━━━━━━━━━━━
++ combine'Item
+    - seed Item
+    - source [Item]
+    - accumulator Combine'Item
+
+accumulator(seed, source[0])
+```
+
+```output
+3
+```
+
+### Inline stages bind looser than comparisons and arithmetic, like stages on their own lines.
+
+```yumi
+. values = [1, -2, 3]
+-- List(values ?> each > 0)
+-- List(values *> each * 10)
+```
+
+```output
+1, 3
+10, -20, 30
+```
