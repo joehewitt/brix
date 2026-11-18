@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <BxEvents/BxLock.h>
+#include <BxEvents/BxMutex.h>
 #include <pthread.h>
 #include <vector>
 
@@ -49,7 +50,10 @@ public:
     BxTaskQueue(BxTaskQueue* parentQueue, int threadCount);
     ~BxTaskQueue();
 
-    bool isStopped() { return isFinished.load(std::memory_order_acquire); }
+    bool isStopped() {
+        return stopRequested.load(std::memory_order_acquire) ||
+            isFinished.load(std::memory_order_acquire);
+    }
     bool isPool() const { return workers != NULL; }
     int remaining();
     int getThreadCount() const { return threadCount; }
@@ -59,6 +63,7 @@ public:
 
     void start();
     void stop();
+    void stopAfterLiveTasks(BxThread* thread, BxTask* caller);
     void join();
 
     BxTaskQueue* createQueue(int threadCount);
@@ -116,6 +121,8 @@ private:
     void requeueTaskLocked(BxTask* task);
     void addLiveTask(BxTask* task);
     void removeLiveTask(BxTask* task);
+    bool hasLiveTasks();
+    void finishStopIfDrained();
     void signalWaiters();
     bool runPendingHost();
     bool startTaskImpl(
@@ -151,6 +158,10 @@ private:
     int threadCount;
     int sleepingThreads;
     std::atomic<bool> isFinished;
+    std::atomic<bool> stopRequested;
+    BxMutex stopLock;
+    bool stopDrained;
+    std::vector<BxTask*> stopWaiters;
     BxTask* hostedTask;
     BxTaskQueueHostRunFunc pendingHostRun;
     BxTaskQueueHostWakeFunc activeHostWake;

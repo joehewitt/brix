@@ -64,6 +64,8 @@ BxTaskQueue::BxTaskQueue(BxTaskQueue* aParentQueue, int count):
     threadCount(count),
     sleepingThreads(0),
     isFinished(false),
+    stopRequested(false),
+    stopDrained(false),
     hostedTask(NULL),
     pendingHostRun(NULL),
     activeHostWake(NULL),
@@ -140,6 +142,46 @@ BxTaskQueue::stop() {
 }
 
 void
+BxTaskQueue::stopAfterLiveTasks(BxThread* thread, BxTask* caller) {
+    stopRequested.store(true, std::memory_order_seq_cst);
+    finishStopIfDrained();
+
+    stopLock.lock();
+    while (!stopDrained) {
+        stopWaiters.push_back(caller);
+        thread->suspendTask(caller, &stopLock, BxTaskGCStateBlocked);
+        stopLock.lock();
+        for (size_t i = 0; i < stopWaiters.size(); ++i) {
+            if (stopWaiters[i] == caller) {
+                stopWaiters.erase(stopWaiters.begin() + i);
+                break;
+            }
+        }
+    }
+    stopLock.unlock();
+}
+
+void
+BxTaskQueue::finishStopIfDrained() {
+    std::vector<BxTask*> waiters;
+    stopLock.lock();
+    bool finishes = !stopDrained && !hasLiveTasks();
+    if (finishes) {
+        stopDrained = true;
+        waiters.swap(stopWaiters);
+    }
+    stopLock.unlock();
+    if (!finishes) {
+        return;
+    }
+
+    stop();
+    for (BxTask* waiter : waiters) {
+        waiter->getTaskQueue()->scheduleTask(waiter, true);
+    }
+}
+
+void
 BxTaskQueue::join() {
     int started = startedCount.load(std::memory_order_acquire);
     for (int i = 0; i < started; ++i) {
@@ -199,7 +241,7 @@ BxTaskQueue::startTaskImpl(
     bool requireRunning,
     BxTaskEnding** ending,
     uint64_t* handle) {
-    if (requireRunning && isFinished.load(std::memory_order_acquire)) {
+    if (requireRunning && isStopped()) {
         return false;
     }
 
@@ -339,6 +381,9 @@ BxTaskQueue::taskTerminated(BxTask* task) {
     brixGCSetTaskStateAndContext(task, BxTaskGCStateDead, false);
     removeLiveTask(task);
     removeActivity();
+    if (stopRequested.load(std::memory_order_acquire)) {
+        finishStopIfDrained();
+    }
 }
 
 void
@@ -638,6 +683,20 @@ BxTaskQueue::removeLiveTask(BxTask* task) {
         shard.tasks.pop_back();
     }
     shard.lock.unlock();
+}
+
+bool
+BxTaskQueue::hasLiveTasks() {
+    for (int i = 0; i < liveShardCount; ++i) {
+        BxTaskLiveShard& shard = liveShards[i];
+        shard.lock.lock();
+        bool live = !shard.tasks.empty();
+        shard.lock.unlock();
+        if (live) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // -------------------------------------------------------------------------------------------------

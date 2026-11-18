@@ -607,6 +607,50 @@ cleanup
 stopped true
 ```
 
+### Stopping a worker waits for a cleanup that waits on a reply from the stopping task's queue.
+
+```yumi
+/unistd.h
+/stdlib.h
+
+. worker = Worker(1)
+. started Int<>
+. waiting Int<>
+. reply String<>
+. box = Box()
+. task = do (worker) new
+    do finally
+        do without cancel
+            waiting <- 1
+            box.reply = (<- reply) ?? "closed"
+    started <- 1
+    Semaphore().wait()
+<- started
+do new
+    <- waiting
+    reply <- "reply"
+do (Worker(1)) new
+    . tries = 0
+    while box.reply == "" && tries < 300
+        C:usleep(10000)
+        tries += 1
+    if box.reply == ""
+        reply <- "timeout"
+worker.stop()
+-- "${box.reply} finished ${task.is-finished}"
+if !task.is-finished
+    C:exit(1)
+
+━━━━━━━━━━━━━━━━━━━━
++ Box
+
++ reply = ""
+```
+
+```output
+reply finished true
+```
+
 ## Priority Tasks
 
 ```yumi

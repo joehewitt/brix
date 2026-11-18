@@ -1782,7 +1782,13 @@ brixWorkerGetStatus(BxTaskQueue* queue) {
 extern "C" void
 brixWorkerStop(BxTaskQueue* queue) {
     queue->cancelTasks();
-    queue->stop();
+    BxThread* thread = brixGetActiveThread();
+    BxTask* caller = thread ? thread->getActiveTask() : NULL;
+    if (caller && thread->getTaskQueue() != queue) {
+        queue->stopAfterLiveTasks(thread, caller);
+    } else {
+        queue->stop();
+    }
     // Joining worker pthreads can overlap a collection initiated by a task already running on
     // that worker. Publish the caller as blocked so the handshake never waits on this join.
     brixGCEnterRuntimeBlock();

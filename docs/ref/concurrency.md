@@ -329,8 +329,11 @@ main thread calls 0
 
 - **Threads.** `(call Worker 4)`{.brix} makes a worker with four threads, whose tasks run in
   parallel. `usable-core-count` gives the number of cores the program can use.
-- **Stopping.** `stop` waits for the worker's threads to finish and stops it. Tasks started on it
-  afterwards never run.
+- **Stopping.** `stop` cancels the worker's tasks, waits for them to end, cleanups included, and
+  stops its threads. Tasks started on it from then on never run. While it waits, the task that
+  called it is suspended, so other tasks on its own thread keep running and can answer a cleanup
+  that waits on them. Called from a task on the worker itself, `stop` cancels without waiting for
+  its tasks to end.
 - **Tasks within tasks.** A `do-new` form in a task on a worker starts the new task on the same
   worker.
 - **Idle workers** do not keep a program from exiting.
