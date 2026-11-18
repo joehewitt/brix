@@ -21,13 +21,9 @@ static_assert(sizeof(size_t) >= 8, "Arena marks require a 64-bit size_t");
 static const size_t kArenaMarkOffsetBits = 48;
 static const size_t kArenaMarkOffsetMask = (size_t(1) << kArenaMarkOffsetBits) - 1;
 
-struct ArenaSlot;
-
 struct ArenaBlock {
     ArenaBlock* next;
-    ArenaSlot* owner;
-    ArenaBlock* registryPrevious;
-    ArenaBlock* registryNext;
+    ArenaBlock* allocatedNext;
     void* storage;
     char* payload;
     size_t capacity;
@@ -51,6 +47,7 @@ struct ArenaSlot {
     ArenaBlock* activeFirst;
     ArenaBlock* activeLast;
     ArenaBlock* retainedFirst;
+    std::atomic<ArenaBlock*> allocatedFirst;
     std::mutex tracedMutex;
     ArenaTracedReservation* traced;
     size_t tracedCount;
@@ -92,8 +89,6 @@ static std::atomic<size_t> gArenaLiveSlotCount {0};
 static std::mutex gArenaSlotMutex;
 static ArenaSlotPage* gArenaSlotPages = nullptr;
 static ArenaSlot* gArenaFreeSlots = nullptr;
-static ArenaBlock* gArenaRegisteredBlocks = nullptr;
-static std::atomic<size_t> gArenaRegisteredBlockCount {0};
 
 static bool
 isPowerOfTwo(size_t value) {
@@ -170,9 +165,7 @@ newArenaBlock(size_t capacity, size_t alignment, bool dedicated) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(storage);
     const size_t adjustment = alignOffset(base, alignment);
     block->next = nullptr;
-    block->owner = nullptr;
-    block->registryPrevious = nullptr;
-    block->registryNext = nullptr;
+    block->allocatedNext = nullptr;
     block->storage = storage;
     block->payload = static_cast<char*>(storage) + adjustment;
     block->capacity = capacity;
@@ -194,32 +187,8 @@ freeArenaBlock(ArenaBlock* block) {
 
 static void
 registerBlock(ArenaSlot* arena, ArenaBlock* block) {
-    std::lock_guard<std::mutex> lock(gArenaSlotMutex);
-    block->owner = arena;
-    block->registryPrevious = nullptr;
-    block->registryNext = gArenaRegisteredBlocks;
-    if (gArenaRegisteredBlocks) {
-        gArenaRegisteredBlocks->registryPrevious = block;
-    }
-    gArenaRegisteredBlocks = block;
-    gArenaRegisteredBlockCount.fetch_add(1, std::memory_order_release);
-}
-
-static void
-unregisterBlocksLocked(ArenaBlock* block) {
-    for (; block; block = block->next) {
-        if (block->registryPrevious) {
-            block->registryPrevious->registryNext = block->registryNext;
-        } else {
-            gArenaRegisteredBlocks = block->registryNext;
-        }
-        if (block->registryNext) {
-            block->registryNext->registryPrevious = block->registryPrevious;
-        }
-        block->registryPrevious = nullptr;
-        block->registryNext = nullptr;
-        gArenaRegisteredBlockCount.fetch_sub(1, std::memory_order_relaxed);
-    }
+    block->allocatedNext = arena->allocatedFirst.load(std::memory_order_relaxed);
+    arena->allocatedFirst.store(block, std::memory_order_release);
 }
 
 static void
@@ -390,6 +359,7 @@ takeArenaSlot() {
             fresh.incarnation.store(1, std::memory_order_relaxed);
             fresh.generation = 0;
             fresh.live.store(false, std::memory_order_relaxed);
+            fresh.allocatedFirst.store(nullptr, std::memory_order_relaxed);
             fresh.traced = nullptr;
             fresh.tracedCount = 0;
             fresh.tracedCapacity = 0;
@@ -800,8 +770,7 @@ brixArenaRelease(void* opaque, size_t incarnation) {
     ArenaBlock* retained = arena->retainedFirst;
     {
         std::lock_guard<std::mutex> lock(gArenaSlotMutex);
-        unregisterBlocksLocked(active);
-        unregisterBlocksLocked(retained);
+        arena->allocatedFirst.store(nullptr, std::memory_order_relaxed);
         arena->activeFirst = nullptr;
         arena->activeLast = nullptr;
         arena->retainedFirst = nullptr;
@@ -917,21 +886,25 @@ extern "C" BRIX_WITHOUT_GC void*
 brixArenaFindOwner(const void* data, size_t* incarnation, size_t* generation) {
     *incarnation = 0;
     *generation = 0;
-    if (!gArenaRegisteredBlockCount.load(std::memory_order_acquire)) {
+    if (!gArenaLiveSlotCount.load(std::memory_order_relaxed)) {
         return nullptr;
     }
     const uintptr_t address = reinterpret_cast<uintptr_t>(data);
     std::lock_guard<std::mutex> lock(gArenaSlotMutex);
-    for (ArenaBlock* block = gArenaRegisteredBlocks; block; block = block->registryNext) {
-        const uintptr_t start = reinterpret_cast<uintptr_t>(block->payload);
-        if (address >= start && address - start < block->capacity) {
-            ArenaSlot* arena = block->owner;
-            if (!arena->live.load(std::memory_order_acquire)) {
-                return nullptr;
+    for (ArenaSlotPage* page = gArenaSlotPages; page; page = page->next) {
+        for (ArenaSlot& arena : page->slots) {
+            if (!arena.live.load(std::memory_order_acquire)) {
+                continue;
             }
-            *incarnation = arena->incarnation.load(std::memory_order_relaxed);
-            *generation = arena->generation;
-            return arena;
+            for (ArenaBlock* block = arena.allocatedFirst.load(std::memory_order_acquire); block;
+                 block = block->allocatedNext) {
+                const uintptr_t start = reinterpret_cast<uintptr_t>(block->payload);
+                if (address >= start && address - start < block->capacity) {
+                    *incarnation = arena.incarnation.load(std::memory_order_relaxed);
+                    *generation = arena.generation;
+                    return &arena;
+                }
+            }
         }
     }
     return nullptr;
