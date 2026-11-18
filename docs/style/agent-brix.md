@@ -362,7 +362,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - `(=> params:Params body:Expr/Body)` is Expr. A function value: its parameter list, then the value it produces.
 - `(=> params:Params :do body:Step?)` is Expr. A function value that runs one step.
 - `(=> params:Params :do (block row:Step*))` is Expr. A function value that runs steps in order.
-- `(match subject:Expr case:Case+)` is Expr, Step, Value. The rows of the first arm the value fits.
+- `(match subject:Expr case:Case+)` is Expr, Step, Value. The rows of the first arm the value fits. On a row of its own in a body of steps, it runs that arm's rows as steps.
 - `(match? subject:Expr case:Case+)` is Expr, Step, Value. The same, or null when no arm fits.
 - `(case pattern:Pattern row:Step/Row* result:Result? stage:Stage* bind:Lazy*)` is Case, Row. An arm taken when the value has this shape.
 - `(case pattern:Pattern body:Inline)` is Case, Row. The same, with a one-step body.

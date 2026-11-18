@@ -65,8 +65,8 @@ final expression it does not return is a compile error; otherwise a final call's
 discarded.
 
 A print is a step, never a value: it stands on a line of its own or after `:` as a one-step body,
-so `. a = -- 5` and `foo(-- 1)` are errors. A match whose arms print is written `do match`, and a
-block that gives a value, such as a `catch` arm or a pattern's action, runs a print before its value
+so `. a = -- 5` and `foo(-- 1)` are errors. A match on a row of its own in a body of steps runs
+its arms as steps, so they may print, and a block that gives a value, such as a `catch` arm or a pattern's action, runs a print before its value
 as `do -- text`. A value alone is not a step either: a row such as
 `count` or `x + 1` in a `do` body, in a loop or in a module's statements is an error, unless the
 lines below it are pipe stages that work on it.

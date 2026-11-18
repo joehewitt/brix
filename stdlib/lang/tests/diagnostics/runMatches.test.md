@@ -70,3 +70,25 @@ Exception: This match on Level does not handle Level.mid and Level.high; add "|=
         |= Level.low
         ^^^^^^^^^^^
 ```
+
+### an arm that only prints, in a match whose value is kept
+
+```brix crash
+(type + Shade (is Union)
+  (variant red)
+  (variant blue)
+)
+
+(main
+  (let s Shade .blue)
+  (let said (match s (case .red (print "red")) (case .blue "blue")))
+  (print said)
+)
+```
+
+```output
+Exception: This arm gives no value, and here a match gives the value of the arm it takes; to run its arms as steps, write the match on a row of its own in a body of steps
+<no file:9>
+      (let said (match s (case .red (print "red")) (case .blue "blue")))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+```

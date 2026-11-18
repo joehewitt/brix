@@ -1164,10 +1164,11 @@ do match item
 20
 ```
 
-### A match written as a step gives the value of its arm, so an arm that only prints is refused, with the hint to write `do match`.
+### A match written as a step, whose value nothing uses, runs its arms as steps, as `do match` does, so an arm may only print.
 
-```yumi crash
+```yumi
 step(3)
+step(4)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do step
@@ -1181,9 +1182,93 @@ match n
 ```
 
 ```output
-Exception: This arm gives no value, and a match gives the value of the arm it takes; to run its arms as steps, write "do match"
-<no file:9>
-        |= 3
+three
+other
+```
+
+### In Brix, a match on a row of its own in a body of steps runs its arms as steps: in a function's body, in an `if`, an `else` or a loop, in an arm of a match run as steps, in a closure that runs steps and in `main`. A `match?` run as steps goes on where no arm is taken, and a function may end on a match whose arms all return.
+
+```brix
+(type + Shade (is Union)
+  (variant red)
+  (variant blue)
+)
+
+(fn-do + show _
+  (param s Shade)
+  (param t Shade)
+  (match s
+    (case .red (print "red"))
+    (case .blue
+      (match t
+        (case .red (print "blue, red"))
+        (case .blue (print "blue, blue"))
+      )
+    )
+  )
+)
+
+(fn-do + tally _
+  (param shades (list Shade))
+  (param loud Bool)
+  (let reds 0)
+  (for (in s shades)
+    (match s
+      (case .red (+= reds 1))
+      (case .blue (print "blue"))
+    )
+  )
+  (if loud
+    (match reds
+      (case= 0 (print "no red"))
+      (default (print "some red"))
+    )
+    (else
+      (inline
+        (match? ([] shades 0)
+          (case .red (print "quiet red"))
+        )
+      )
+    )
+  )
+  (print (str "reds " reds))
+)
+
+(fn-do + code I64
+  (param s Shade)
+  (match s
+    (case .red (return 1))
+    (case .blue (return 2))
+  )
+)
+
+(main
+  (call show .red .blue)
+  (call show .blue .red)
+  (call tally (list (. Shade red) (. Shade blue)) true)
+  (call tally (list (. Shade blue)) false)
+  (print (str (call code .red) " " (call code .blue)))
+  (let s Shade .blue)
+  (let run (=> () :do (match s (case .red (print "closure red")) (case .blue (print "closure blue")))))
+  (call run)
+  (match s
+    (case .red (print "main red"))
+    (case .blue (print "main blue"))
+  )
+)
+```
+
+```output
+red
+blue, red
+blue
+some red
+reds 1
+blue
+reds 0
+1 2
+closure blue
+main blue
 ```
 
 ### A loop on the constant true can be left by a break in an arm of a match, so what follows it is in reach.

@@ -353,7 +353,7 @@ result type:
 The end is out of reach, and needs no return, after a return, a raise that always happens, a loop
 on the constant `true` with no `break` that leaves it, an `if` and `else` that both return or
 raise, and a match run as steps that must match and returns in every arm, as in
-`(do (inline (match subject (case pattern (return value)))))`{.brix}. A condition that is the
+`(match subject (case pattern (return value)))`{.brix}. A condition that is the
 constant `false` stands for its `else`.
 
 A value standing alone as the last row is an error, not a return. In a function that gives a

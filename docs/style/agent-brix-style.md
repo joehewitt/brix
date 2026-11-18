@@ -76,10 +76,10 @@ run of `=?` lines to return each case of the function's value; that is one decis
 across returns. When a single exit sits directly before the result, the two may be combined as
 `if condition then value else fallback`.
 
-Choose `match` or `match?` according to whether no arm matching is intentional, including under
-`do`. `do` makes the arms imperative; it does not make the match optional. Use `do match?` only
-when execution should continue without an effect if no arm matches. Use `do match` when the arms
-are exhaustive.
+Choose `match` or `match?` according to whether no arm matching is intentional, including for a
+match written as a step. Running its arms as steps does not make the match optional. Use `match?`
+as a step only when execution should continue without an effect if no arm matches. Use `match`
+when the arms are exhaustive.
 
 Incorrect:
 

@@ -99,6 +99,7 @@ _ called-object CalledObject = CalledObject()
 _ settled-store SyntaxId = 0
 _ quasi-free-block SyntaxId = 0
 _ discarding-block SyntaxId = 0
+_ steps-block SyntaxId = 0
 _ materialized [SlotId]
 _ unsure-stores [U32]
 _ unsure-reads [U32]
@@ -1497,7 +1498,7 @@ else
             .. imperative-body = declaration.is-imperative || declaration.kind == .constructor-decl
         if !declaration.is-imperative
             expect-feeds(declaration.body, declared)
-        value = check-statement(declaration.body)
+        value = if discarding-block == declaration.body then check-steps(declaration.body) else check-statement(declaration.body)
         if discarding-block == declaration.body && !(tree.nodes[declaration.body] is .node-block)
             check-called(declaration.body, value)
         . valueless = tree.is-quasi-syntax(declaration.body) && !tree.assigns(declaration.body)
@@ -4612,7 +4613,7 @@ do match tree.nodes[id]
             frame.surround = frame.surround.zone-site = id
         .. enters-gc-free = (row.compilation-effects /and/ CompilationEffect.gc-free) != 0
         do-depth += 1
-        check-statement(row.body, if tree.is-match-syntax(row.body) then Want().adding(.want-match-statement) else Want())
+        check-steps(row.body)
         do-depth -= 1
         frame.surround = saved
         = no-type
@@ -4678,7 +4679,7 @@ do match tree.nodes[id]
         check-use(id, row.subject)
         frame.doubt-members()
         discarding-block = row.body
-        check-statement(row.body)
+        check-steps(row.body)
         frame.doubt-members()
         = no-type
     | .node-do-task-block(row)
@@ -4744,7 +4745,7 @@ if resolution.kind == .resolve-global
     . first = tree.subtree-start(body)
     facts.stack-scopes.append(StackScope(instance, first, body, resolution.module, resolution.decl, 0))
 discarding-block = body
-check-statement(body)
+check-steps(body)
 
 ────────────────────
 _ do check-effect-binding
@@ -4769,7 +4770,7 @@ else if value != invalid-type && effect
     entry = instances.swap-entry-of(frame.surround.effects, effect)
 facts.stack-scopes.append(StackScope(instance, tree.subtree-start(body), body, module, decl, entry))
 discarding-block = body
-check-statement(body)
+check-steps(body)
 frame.surround = saved
 
 ────────────────────
@@ -4852,9 +4853,11 @@ _ do check-block TypeId
 ` them; in markup content a statement that leaves is an error instead. A statement that
 ` names what it does not call is checked (`check-called`) unless it gives the block its value:
 ` the last of a block the reference keeps the value of, which a `discarding-block` is not. The
-` arms of a block a match written as a statement runs (`matched`) are that match's.
+` arms of a block a match written as a statement runs (`matched`) are that match's. A match whose
+` value nothing uses, in a body of steps, runs its arms as steps (`runs-steps`).
 . mark = scratch.narrowings.mark
 . discards = block == discarding-block
+. steps-body = block == steps-block && block != matching.arms
 . last = if body.count != 0 then tree.children[body.start + body.count - 1] else 0
 . kept = tree.kept-row(body)
 . value = no-type
@@ -4914,7 +4917,8 @@ for statement in tree.children[body]
     . steps = parent != no-type && runs-content(statement)
     if parent != no-type
         want = want.adding(.want-content-line)
-    if steps || (matched && tree.is-arms-syntax(statement))
+    . stepped = parent == no-type && block != matching.arms && (discards || steps-body || statement != kept) && runs-steps(statement)
+    if steps || (matched && tree.is-arms-syntax(statement)) || stepped
         want = want.adding(.want-match-statement)
     if skips-quasi
         want = want.adding(.want-quasi)
@@ -4924,6 +4928,8 @@ for statement in tree.children[body]
     if discards || statement != last
         want = want.adding(.want-unused)
     . produced = if named then infer-with-expected(statement, declared, want) else check-line(statement, parent, want)
+    if stepped
+        produced = no-type
     if watches
         watching-leaves -= 1
     if parent != no-type
@@ -7141,9 +7147,12 @@ _ do check-body
 ` The body of a loop or of an arm of an `if`, a match or a markup branch region. One written as
 ` one line that is content of a markup element runs as a block of that line would: the elements
 ` it names are made first, and the element takes the line's value, but for a match that runs its
-` arms as content (`runs-content`).
+` arms as content (`runs-content`). Outside markup the body is one of steps (`check-steps`).
 . parent = content-parent(body)
-if parent == no-type || tree.nodes[body] is .node-block
+if parent == no-type
+    check-steps(body)
+    =
+if tree.nodes[body] is .node-block
     check-statement(body)
     =
 raise-line(body)
@@ -7160,6 +7169,19 @@ if !leaves-line(body)
         link-content(body, produced, parent)
 else
     frame.diagnose(body, .stated, program.store-atom("Illegal return"))
+
+────────────────────
+_ do check-steps TypeId
+    - body SyntaxId
+
+steps-block = body
+= check-statement(body, if runs-steps(body) then Want().adding(.want-match-statement) else Want())
+
+────────────────────
+_ runs-steps Bool
+    - statement SyntaxId
+
+tree.is-match-syntax(statement) && (do-depth != 0 || frame.declaration.is-imperative || frame.declaration.is-main)
 
 ────────────────────
 _ do check-if

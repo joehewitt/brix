@@ -316,9 +316,9 @@ yes
 - **Rows that raise.** A row `(throw error (if condition))`{.brix} raises where no row before it
   held, and a last row `(throw error)`{.brix} can stand in for the default row; see Errors.
 - **As steps.** In a step body, a table can stand as a step, with steps in its rows. When no row
-  holds and there is no default row, the steps after the table run. A `match` run as steps is
-  written `(do (inline (match …)))`, and the error for a bare one says so; see Patterns. In markup
-  content a table or a `match` runs its rows as content; see Markup.
+  holds and there is no default row, the steps after the table run. A `match` written as a step
+  runs its arms as steps too; see Patterns. In markup content a table or a `match` runs its rows
+  as content; see Markup.
 - A table is a `match` with no subject: its rows are arms, and the arms of Patterns can mix with
   them.
 
