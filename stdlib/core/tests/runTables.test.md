@@ -1298,6 +1298,54 @@ for i in 0 .. < target.length
 (0, 0)
 ```
 
+### A table range must step by one and lie within the table, span or column it indexes.
+
+```yumi
+/core/table
+
+. table = Table'Point(5) • with Point(each as I32, (each + 10) as I32)
+. target = Table'Point(3)
+-- (table[3 .. 1][0] as Point)
+-- table[5 .. < 5].length
+attempt(=> table[0 .. < 4 by 2].length)
+attempt(=> table[1 .. < 3][0 .. < 3].length)
+attempt(=> table.x[1 .. < 3][2 .. < 4].length)
+attempt(=> table[-1 .. < 2].length)
+. stored = do new
+    target[2 .. < 4] = table[0 .. < 2]
+catch failure
+    -- failure
+stored.wait()
+-- target[2] as Point
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ do attempt
+    - count () Size
+
+. task = do new
+    -- count()
+catch failure
+    -- failure
+task.wait()
+```
+
+```output
+(1, 11)
+0
+Table requires a contiguous range
+TableSpan range is out of bounds
+TableField range is out of bounds
+Table range is out of bounds
+Table range is out of bounds
+(0, 0)
+```
+
 ### Iterating a table yields live row cursors without forcing row struct materialization.
 
 ```yumi

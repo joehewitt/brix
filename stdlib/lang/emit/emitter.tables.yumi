@@ -776,7 +776,7 @@ if fact == no-fact || facts.calls[fact].callee == no-instance || uncallable
 . mark = pending.length
 pending += range
 . forward = call-method(facts.calls[fact].callee, site, mark)
-= checked-bounds(site, forward.operand, forward.type, length)
+= checked-bounds(site, forward.operand, forward.type, length, "IndexSpan")
 
 ────────────────────
 _ do checked-bounds TableBounds
@@ -784,20 +784,21 @@ _ do checked-bounds TableBounds
     - forward Operand
     - forward-type TypeId
     - length Operand
+    - name String
 
-` The indices a range made forward spans of an index span's, as TypeScript checks them: the
-` range steps by one, and starts and ends inside the length, its end not before its start.
+` The indices a range made forward spans of a view `name` names, of `length` items, as
+` TypeScript checks them: the range steps by one, and starts and ends inside the length, its
+` end not before its start.
 . none = make-operand(.operand-void, 0)
 . layout = layout-of(forward-type, site)
 . start = range-index(site, forward, forward-type, layout, "start")
 . end = range-index(site, forward, forward-type, layout, "end")
 . increment = range-index(site, forward, forward-type, layout, "increment")
-. outside = "IndexSpan range is out of bounds"
+. outside = "$name range is out of bounds"
 fail-if
     - site
     - compare(site, .compare-not-equal, increment.operand, integer(.machine-u64, 1))
-    - "IndexSpan requires a contiguous range"
-fail-if(site, compare(site, .compare-greater, start.operand, length), outside)
+    - "$name requires a contiguous range"
 fail-if(site, compare(site, .compare-greater, end.operand, length), outside)
 fail-if(site, compare(site, .compare-less, end.operand, start.operand), outside)
 = TableBounds(start.operand, arithmetic(site, .arithmetic-subtract, end.operand, start.operand, u64-layout))
@@ -2101,7 +2102,12 @@ _ do emit-span-range Typed
 . span-layout = layout-of(span-type, id)
 . span = if spans then held else part(held.operand, layout, 1, id)
 . forward = forward-range(id, range.operand, range-type, held.operand, type, object)
-. bounds = checked-bounds(id, forward.operand, forward.type, word-at(id, span.operand, span-layout, 3))
+. bounds = checked-bounds
+    - id
+    - forward.operand
+    - forward.type
+    - word-at(id, span.operand, span-layout, 3)
+    - if spans then "IndexSpan" else "TableSelection"
 . made = frame(layout)
 copy(made, held.operand, layout, false, id)
 . made-span = if spans then made else address(made, span-offset, span-layout, id)
@@ -2163,8 +2169,8 @@ _ do emit-table-span Typed
 ` The rows a range spans of a table made a span at `t[a .. < b]`, as TypeScript makes it: the
 ` columns, left out where the table grows, the start of the range made forward, its length,
 ` and the table's metadata; and the items a range spans of a view of a field's column, a view
-` of them. The range is not checked against the table's length. A finished table's span holds
-` no metadata.
+` of them. The range must step by one and lie within the table or view it indexes. A finished
+` table's span holds no metadata.
 . none = make-operand(.operand-void, 0)
 . held = emit-expression(object)
 . type = held.type
@@ -2195,15 +2201,14 @@ if kind == .table-column || kind == .immutable-table-column
     = column-span(id, held, type, layout, range, range-type, object, span-layout)
 if is-immutable-view(kind)
     = immutable-span(id, held, type, layout, range, range-type, object, span, span-layout)
-. meta = if kind == .table then table-meta(id, held, layout) else span-meta(id, held, layout)
-. columns = if kind == .table then table-columns(id, held, layout, meta) else span-columns(id, held, layout, meta)
-. bounds = range-bounds(id, range, range-type, held, type, object)
-. start = if kind == .table then bounds.start else arithmetic(id, .arithmetic-add, part(held, layout, 1, id).operand, bounds.start, u64-layout)
+. source = table-source(id, held, type, layout)
+. bounds = range-bounds(id, range, range-type, held, type, object, source.length, source-name(kind))
+. start = if kind == .table then bounds.start else arithmetic(id, .arithmetic-add, source.offset, bounds.start, u64-layout)
 . made = frame(span-layout)
-put(made, tables.layouts.field(span-layout, 0), view-columns(id, meta, columns), id)
+put(made, tables.layouts.field(span-layout, 0), view-columns(id, source.meta, source.columns), id)
 put(made, tables.layouts.field(span-layout, 1), start, id)
 put(made, tables.layouts.field(span-layout, 2), bounds.length, id)
-put-meta(id, made, span-layout, 3, meta)
+put-meta(id, made, span-layout, 3, source.meta)
 = Typed(made, span)
 
 ────────────────────
@@ -2221,7 +2226,7 @@ _ do immutable-span Typed
 ` The rows a range spans of a finished table or of a span of one, as TypeScript makes their
 ` span: the columns, the range's start moved on by the span's offset, and its length.
 . source = table-source(id, held, type, layout)
-. bounds = range-bounds(id, range, range-type, held, type, object)
+. bounds = range-bounds(id, range, range-type, held, type, object, source.length, source-name(intrinsic(type)))
 . made = frame(span-layout)
 put
     - made
@@ -2255,7 +2260,15 @@ _ do column-span Typed
 . item-layout = layout-of(viewed-item(type), id)
 if intrinsic(type) == .immutable-table-column
     . held = part-address(id, column, layout, 0)
-    . spanned = range-bounds(id, range, range-type, column, type, object)
+    . spanned = range-bounds
+        - id
+        - range
+        - range-type
+        - column
+        - type
+        - object
+        - part(column, layout, 1, id).operand
+        - "ImmutableTableField"
     . viewed = frame(span-layout)
     put
         - viewed
@@ -2270,7 +2283,7 @@ if intrinsic(type) == .immutable-table-column
     = Typed(viewed, type)
 . meta = column-meta(id, column, layout)
 . data = column-data(id, column, layout, meta, item-layout)
-. bounds = range-bounds(id, range, range-type, column, type, object)
+. bounds = range-bounds(id, range, range-type, column, type, object, part(column, layout, 1, id).operand, "TableField")
 . offset = arithmetic(id, .arithmetic-add, part(column, layout, 5, id).operand, bounds.start, u64-layout)
 . made = frame(span-layout)
 put
@@ -2297,16 +2310,13 @@ _ do range-bounds TableBounds
     - view Operand
     - held TypeId
     - object SyntaxId
+    - length Operand
+    - name String
 
 ` Where a range indexing a table or a view of one starts and how many rows or items it spans,
-` from the range made forward.
-. none = make-operand(.operand-void, 0)
+` from the range made forward, once checked to step by one and lie within the view's `length`.
 . forward = forward-range(id, range, range-type, view, held, object)
-. forward-type = forward.type
-. forward-layout = layout-of(forward-type, id)
-. start = range-index(id, forward.operand, forward-type, forward-layout, "start")
-. end = range-index(id, forward.operand, forward-type, forward-layout, "end")
-= TableBounds(start.operand, arithmetic(id, .arithmetic-subtract, end.operand, start.operand, u64-layout))
+= checked-bounds(id, forward.operand, forward.type, length, name)
 
 ────────────────────
 _ do emit-table-item Typed
@@ -2486,9 +2496,10 @@ put-meta(site, made, span-layout, 3, TableMeta(zero, zero, zero, zero, zero))
 
 ` `t[a .. < b] = s` of a table, of a span of one or of a view of a field's column, as
 ` TypeScript copies it: the source is read, then the target and the range; the rows of the
-` target are found, then those of the source, and the range is made forward; each column of
-` the source is copied from its first row into the target's from the range's start, as many
-` rows as the range spans, with no check of either's length; where the target's table grows
+` target are found, then those of the source, and the range is made forward and checked
+` against the target's length; each column of the source is copied from its first row into
+` the target's from the range's start, as many rows as the range spans, with no check of the
+` source's length; where the target's table grows
 ` its mutation generation is then counted on. Rows of unions are copied one at a time, from
 ` the last where the source shares the target's columns and starts below it.
 . emitted = emit-expression(rhs)
@@ -2518,7 +2529,7 @@ if not-table || not-given || (types.intrinsic-of(row) != .struct && unions == U3
 .. other-row = table-row-type(source-type) != row
 . target = table-source(id, held.operand, type, layout)
 . copied = table-source(id, source.operand, source-type, source-layout)
-. bounds = range-bounds(id, range.operand, range-type, held.operand, type, object)
+. bounds = range-bounds(id, range.operand, range-type, held.operand, type, object, target.length, source-name(kind))
 . start = arithmetic(id, .arithmetic-add, target.offset, bounds.start, u64-layout)
 if unions != U32.max
     copy-union-rows
@@ -2665,13 +2676,13 @@ _ do copy-column-range
     - source-layout LayoutId
 
 ` The items of a view of a field's column copied into those a range spans of another, as
-` TypeScript copies them: the target's data is found, the range made forward, and the
-` source's data found; as many items as the range spans are copied, with no check of either's
-` length.
+` TypeScript copies them: the target's data is found, the range made forward and checked
+` against the target's length, and the source's data found; as many items as the range spans
+` are copied, with no check of the source's length.
 . item-layout = layout-of(viewed-item(type), id)
 . meta = column-meta(id, column, layout)
 . data = column-data(id, column, layout, meta, item-layout)
-. bounds = range-bounds(id, range, range-type, column, type, object)
+. bounds = range-bounds(id, range, range-type, column, type, object, part(column, layout, 1, id).operand, "TableField")
 . into = item-cell(id, data.operand, bounds.start, item-layout)
 . out = column-data(id, source, source-layout, column-meta(id, source, source-layout), item-layout)
 copy-items(id, into, out.operand, bounds.length, item-layout)
