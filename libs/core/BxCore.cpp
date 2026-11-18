@@ -666,9 +666,7 @@ brixArrayViewCreate(char* data, size_t byteSize) {
     ArrayViewOwner* owner = reinterpret_cast<ArrayViewOwner*>(allocation);
     owner->data = data;
     owner->byteSize = byteSize;
-    owner->arena = brixArenaFindOwner(data);
-    owner->incarnation = owner->arena ? brixArenaIncarnation(owner->arena) : 0;
-    owner->generation = owner->arena ? brixArenaGeneration(owner->arena, owner->incarnation) : 0;
+    owner->arena = brixArenaFindOwner(data, &owner->incarnation, &owner->generation);
     owner->valid = true;
     size_t handle = brixGCRegisterOwnerWeak(allocation, allocation);
     {

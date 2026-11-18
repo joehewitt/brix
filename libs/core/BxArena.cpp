@@ -21,8 +21,13 @@ static_assert(sizeof(size_t) >= 8, "Arena marks require a 64-bit size_t");
 static const size_t kArenaMarkOffsetBits = 48;
 static const size_t kArenaMarkOffsetMask = (size_t(1) << kArenaMarkOffsetBits) - 1;
 
+struct ArenaSlot;
+
 struct ArenaBlock {
     ArenaBlock* next;
+    ArenaSlot* owner;
+    ArenaBlock* registryPrevious;
+    ArenaBlock* registryNext;
     void* storage;
     char* payload;
     size_t capacity;
@@ -87,6 +92,8 @@ static std::atomic<size_t> gArenaLiveSlotCount {0};
 static std::mutex gArenaSlotMutex;
 static ArenaSlotPage* gArenaSlotPages = nullptr;
 static ArenaSlot* gArenaFreeSlots = nullptr;
+static ArenaBlock* gArenaRegisteredBlocks = nullptr;
+static std::atomic<size_t> gArenaRegisteredBlockCount {0};
 
 static bool
 isPowerOfTwo(size_t value) {
@@ -163,6 +170,9 @@ newArenaBlock(size_t capacity, size_t alignment, bool dedicated) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(storage);
     const size_t adjustment = alignOffset(base, alignment);
     block->next = nullptr;
+    block->owner = nullptr;
+    block->registryPrevious = nullptr;
+    block->registryNext = nullptr;
     block->storage = storage;
     block->payload = static_cast<char*>(storage) + adjustment;
     block->capacity = capacity;
@@ -180,6 +190,36 @@ freeArenaBlock(ArenaBlock* block) {
     std::free(block->storage);
     delete block;
     gArenaSystemBlockFreeCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+static void
+registerBlock(ArenaSlot* arena, ArenaBlock* block) {
+    std::lock_guard<std::mutex> lock(gArenaSlotMutex);
+    block->owner = arena;
+    block->registryPrevious = nullptr;
+    block->registryNext = gArenaRegisteredBlocks;
+    if (gArenaRegisteredBlocks) {
+        gArenaRegisteredBlocks->registryPrevious = block;
+    }
+    gArenaRegisteredBlocks = block;
+    gArenaRegisteredBlockCount.fetch_add(1, std::memory_order_release);
+}
+
+static void
+unregisterBlocksLocked(ArenaBlock* block) {
+    for (; block; block = block->next) {
+        if (block->registryPrevious) {
+            block->registryPrevious->registryNext = block->registryNext;
+        } else {
+            gArenaRegisteredBlocks = block->registryNext;
+        }
+        if (block->registryNext) {
+            block->registryNext->registryPrevious = block->registryPrevious;
+        }
+        block->registryPrevious = nullptr;
+        block->registryNext = nullptr;
+        gArenaRegisteredBlockCount.fetch_sub(1, std::memory_order_relaxed);
+    }
 }
 
 static void
@@ -235,6 +275,7 @@ acquireBlock(ArenaSlot* arena, size_t byteCount, size_t alignment) {
         if (!block) {
             return nullptr;
         }
+        registerBlock(arena, block);
         ++arena->systemBlockAllocationCount;
         arena->reservedBytes += block->capacity;
         gArenaSystemBlockAllocationCount.fetch_add(1, std::memory_order_relaxed);
@@ -382,8 +423,7 @@ initializeArenaSlot(ArenaSlot* arena) {
 }
 
 static void
-recycleArenaSlot(ArenaSlot* arena) {
-    std::lock_guard<std::mutex> lock(gArenaSlotMutex);
+recycleArenaSlotLocked(ArenaSlot* arena) {
     arena->live.store(false, std::memory_order_release);
     ++arena->generation;
     gArenaLiveSlotCount.fetch_sub(1, std::memory_order_relaxed);
@@ -415,6 +455,7 @@ brixArenaCreate(size_t initialCapacity) {
             gArenaFreeSlots = arena;
             return nullptr;
         }
+        registerBlock(arena, block);
         ++arena->systemBlockAllocationCount;
         arena->reservedBytes = block->capacity;
         gArenaSystemBlockAllocationCount.fetch_add(1, std::memory_order_relaxed);
@@ -755,17 +796,24 @@ brixArenaRelease(void* opaque, size_t incarnation) {
     measureRemoved(activeBytesOf(arena));
     gArenaRetainedBytes.fetch_sub(arena->retainedBytes, std::memory_order_relaxed);
     gArenaReservedBytes.fetch_sub(arena->reservedBytes, std::memory_order_relaxed);
-    freeBlockList(arena->activeFirst);
-    freeBlockList(arena->retainedFirst);
-    arena->activeFirst = nullptr;
-    arena->activeLast = nullptr;
-    arena->retainedFirst = nullptr;
-    arena->activeBlockCount = 0;
-    arena->retainedBlockCount = 0;
-    setActiveBytes(arena, 0);
-    arena->reservedBytes = 0;
-    arena->retainedBytes = 0;
-    recycleArenaSlot(arena);
+    ArenaBlock* active = arena->activeFirst;
+    ArenaBlock* retained = arena->retainedFirst;
+    {
+        std::lock_guard<std::mutex> lock(gArenaSlotMutex);
+        unregisterBlocksLocked(active);
+        unregisterBlocksLocked(retained);
+        arena->activeFirst = nullptr;
+        arena->activeLast = nullptr;
+        arena->retainedFirst = nullptr;
+        arena->activeBlockCount = 0;
+        arena->retainedBlockCount = 0;
+        setActiveBytes(arena, 0);
+        arena->reservedBytes = 0;
+        arena->retainedBytes = 0;
+        recycleArenaSlotLocked(arena);
+    }
+    freeBlockList(active);
+    freeBlockList(retained);
 }
 
 extern "C" BRIX_WITHOUT_GC size_t brixArenaGeneration(void* opaque, size_t incarnation) {
@@ -866,20 +914,24 @@ extern "C" BRIX_WITHOUT_GC size_t brixArenaZoneTransitionCount(void) {
 }
 
 extern "C" BRIX_WITHOUT_GC void*
-brixArenaFindOwner(const void* data) {
+brixArenaFindOwner(const void* data, size_t* incarnation, size_t* generation) {
+    *incarnation = 0;
+    *generation = 0;
+    if (!gArenaRegisteredBlockCount.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
     const uintptr_t address = reinterpret_cast<uintptr_t>(data);
     std::lock_guard<std::mutex> lock(gArenaSlotMutex);
-    for (ArenaSlotPage* page = gArenaSlotPages; page; page = page->next) {
-        for (ArenaSlot& arena : page->slots) {
-            if (!arena.live.load(std::memory_order_acquire)) {
-                continue;
+    for (ArenaBlock* block = gArenaRegisteredBlocks; block; block = block->registryNext) {
+        const uintptr_t start = reinterpret_cast<uintptr_t>(block->payload);
+        if (address >= start && address - start < block->capacity) {
+            ArenaSlot* arena = block->owner;
+            if (!arena->live.load(std::memory_order_acquire)) {
+                return nullptr;
             }
-            for (ArenaBlock* block = arena.activeFirst; block; block = block->next) {
-                const uintptr_t start = reinterpret_cast<uintptr_t>(block->payload);
-                if (address >= start && address - start < block->used) {
-                    return &arena;
-                }
-            }
+            *incarnation = arena->incarnation.load(std::memory_order_relaxed);
+            *generation = arena->generation;
+            return arena;
         }
     }
     return nullptr;

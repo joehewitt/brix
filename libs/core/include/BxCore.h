@@ -335,6 +335,7 @@ extern "C" void dumpbuf(char* buf, size_t size);
 extern "C" BRIX_WITHOUT_BLOCKING char* brixArrayViewCreate(char* data, size_t byteSize);
 extern "C" BRIX_WITHOUT_GC bool brixArrayViewValid(char* owner);
 extern "C" BRIX_WITHOUT_BLOCKING void brixArrayViewsInvalidate(char* data, size_t byteSize);
-extern "C" BRIX_WITHOUT_GC void* brixArenaFindOwner(const void* data);
+extern "C" BRIX_WITHOUT_GC void* brixArenaFindOwner(
+    const void* data, size_t* incarnation, size_t* generation);
 extern "C" BRIX_WITHOUT_BLOCKING void brixArrayViewsReplace(
     char* previous, size_t previousSize, char* next, size_t nextSize);
