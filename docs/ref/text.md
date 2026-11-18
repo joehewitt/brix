@@ -390,23 +390,24 @@ requires, as `json-quote` does for JSON.
 
 ### In rows
 
-In rows, a text body is a function marked `¶`, as in `+ ¶ receipt`{.rows}. After its parameters
-and a blank row, every row up to the next divider is text, written without quotes: quotes need no
-escapes, and `$name` and `${…}` insert values. The escapes of a quoted text still apply, so `\$`
-writes a dollar sign and `\\` a backslash. A `════` divider ends the text and begins the lazy
-bindings.
+In rows, a text body is a function whose access mark is followed by a quote, as in
+`+ " receipt`{.rows}. After its parameters and a blank row, every row up to the next divider is
+text, written without quotes: quotes need no escapes, and `$name` and `${…}` insert values. The
+escapes of a quoted text still apply, so `\$` writes a dollar sign and `\\` a backslash. A `════`
+divider ends the text and begins the lazy bindings.
 
-A text block is a row that ends in `¶`, as in `. letter = ¶`{.rows}, and the rows indented below
-it are its lines, written as a text body's are:
+A text block is a row that ends in a quote that opens a text, as in `. letter = "`{.rows}, and the
+rows indented below it are its lines, written as a text body's are:
 
-- **Lines.** Each row below the `¶` row is a line, up to the first row that is not indented
-  deeper. Spaces past the block's margin, one level deeper than the `¶` row, stay in the line.
+- **Lines.** Each row below the opening row is a line, up to the first row that is not indented
+  deeper. Spaces past the block's margin, one level deeper than the opening row, stay in the line.
 - **Blank rows.** A blank row between lines is an empty line. Blank rows after the last line
   belong to the code below.
 - **Only text.** A row of the block that looks like a comment, a divider or code is text.
-- **At the end of a row.** The `¶` ends its row: `A ¶ text block ends its row, and its text is on
-  the rows indented below it`. To give a block as an argument, write the arguments one to a row,
-  as in `- ¶`{.rows}.
+- **The opening quote.** A quote at the end of a row opens a block when the start of the row or a
+  space comes before it and it does not close a text, so `. label = mark ++ " "`{.rows} ends in a
+  text, not a block. To give a block as an argument, write the arguments one to a row, as in
+  `- "`{.rows}.
 - **Long lines.** A line stays one row however long it is, as its line breaks are part of the
   text. The line-length lint does not measure the rows of a block, and the editor wraps them.
 

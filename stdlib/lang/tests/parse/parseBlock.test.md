@@ -317,7 +317,7 @@ do with request = 42
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 foo
@@ -367,7 +367,7 @@ baz"/>
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
 
 s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>
 ```
@@ -390,7 +390,7 @@ s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
 
 a ≥ b ≤ c \≥ d
 ends ≥
@@ -422,7 +422,7 @@ ends ≥"/>
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 $arg
@@ -461,7 +461,7 @@ $arg
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 $arg ≥ ${"≥"}
@@ -497,7 +497,7 @@ $arg ≥ ${"≥"}
 
 ````yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
 
 first
 `kept`
@@ -526,7 +526,7 @@ first
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 Foo $bar baz
@@ -564,7 +564,7 @@ Foo $bar baz
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 Foo ${1} bar ${"x".length} baz
@@ -608,7 +608,7 @@ Foo ${1} bar ${"x".length} baz
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text String
++ " text String
     - content String
 
 $prefix $content
@@ -673,7 +673,7 @@ $prefix $content
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-_ ¶ tree-box-row-text String
+_ " tree-box-row-text String
     - content String
     - suffix String
 
@@ -737,7 +737,7 @@ $prefix $content $suffix
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text String
++ " text String
 
 Hello $name
 ```
@@ -766,7 +766,7 @@ Hello $name
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
     - arg
 
 foo
@@ -1072,10 +1072,10 @@ do without cancel
 </Do>
 ```
 
-### A row that ends in `¶` takes the rows indented below it as the lines of a text. The text keeps blank rows between lines and the spaces past the block's margin, and lines that look like comments or dividers are text.
+### A text block keeps blank rows between lines and the spaces past the block's margin, and lines that look like comments or dividers are text.
 
 ```yumi
-. greeting = ¶
+. greeting = "
     Hello $name,
 
       indented ` text
@@ -1127,15 +1127,15 @@ do without cancel
 
 ```yumi
 show
-    - ¶
+    - "
         one
     - 2
 . items = List'String
-    * ¶
+    * "
         x
-. joined = "a: " ++ ¶
+. joined = "a: " ++ "
     b
-. empty = ¶
+. empty = "
 ```
 
 ```brix
@@ -1215,19 +1215,6 @@ show
     </TypeCapture>
     <String text=""/>
 </Declaration>
-```
-
-### A `¶` inside a row is refused: a text block ends its row.
-
-```yumi crash
-. label = show(¶, 1)
-```
-
-```output
-Exception: A ¶ text block ends its row, and its text is on the rows indented below it. To give one as an argument, write the arguments one to a row, as in "- ¶"
-<no file:2>
-    . label = show(¶, 1)
-                   ^
 ```
 
 ### A row that ends in a quote that opens a text takes the rows indented below it as the lines of a text. A line may hold quotes, unescaped, and end in one.

@@ -152,7 +152,7 @@ def render_tags(prefix, files):
     names = [name[:-len('.yumi')] for name in files if name.endswith('.yumi')]
     lines = [
         MAJOR_DIVIDER,
-        '+ ¶ lucide-tag-lines',
+        '+ " lucide-tag-lines',
         '',
     ]
     for name in names:

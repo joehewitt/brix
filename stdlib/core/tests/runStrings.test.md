@@ -614,7 +614,7 @@ foofoofoofoofoo
 + bar = "BAR"
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
 
 Foo $bar baz
 ```
@@ -629,7 +629,7 @@ Foo BAR baz
 -- fenced()
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ fenced
++ " fenced
 
 ```yumi
 `quoted`
@@ -642,25 +642,25 @@ Foo BAR baz
 ```
 ````
 
-### A text block is a text written on the rows below a row that ends in `¶`, one line for each row, joined with line feeds. A blank row between lines is an empty line, and blank rows after the last line belong to the code below. Spaces past the block's margin are kept, and inserts and escapes work as in a text body.
+### A text block is a text written on the rows below a row that ends in a quote that opens it, one line for each row, joined with line feeds. A blank row between lines is an empty line, and blank rows after the last line belong to the code below. Spaces past the block's margin are kept, and inserts and escapes work as in a text body.
 
 ```yumi
 . name = "Ann"
-. letter = ¶
+. letter = "
     Dear $name,
 
       Your total is \$${2 + 3}.
     ` not a comment
     ━━━━━━━━━━━━━━━━━━━━
 
-. empty = ¶
+. empty = "
 -- letter
 -- "[$empty]"
 -- shout
-    - ¶
+    - "
 
         two
--- "joined: " ++ ¶
+-- "joined: " ++ "
     a
     b
 
@@ -695,7 +695,7 @@ b
 + Base
 
 ────────────────────
-+ ¶ text
++ " text
 
 ────────────────────
 + other Int
@@ -706,7 +706,7 @@ b
 + Sub is Base
 
 ────────────────────
-+ ¶ text
++ " text
 
 sub text
 ```
@@ -1365,7 +1365,7 @@ pq4r
 -- text().size
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ text
++ " text
 
 Foo \
 \

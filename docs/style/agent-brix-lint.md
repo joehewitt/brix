@@ -88,8 +88,8 @@ exception.
 ### `layout/depth`
 
 Brix only. A row nested more than five levels deep is reported once where the nesting starts. Move
-the inner rows into a function of their own. The rows of a `¶` text block are text: they do not
-count, and they do not end the nesting around them.
+the inner rows into a function of their own. The rows of a text block are text: they do not count,
+and they do not end the nesting around them.
 
 ### `layout/divider-length`
 
@@ -99,9 +99,9 @@ containing malformed dividers.
 
 ### `layout/line-length`
 
-Break long calls into block-call form or name a complex input with a lazy. The text body of a `¶`
-template and the rows of a `¶` text block are exempt: lay them out as the text they produce, and
-never wrap them with line continuations to fit the limit. Write a long quoted text as a text block
+Break long calls into block-call form or name a complex input with a lazy. A text body and the rows
+of a text block are exempt: lay them out as the text they produce, and never wrap them with line
+continuations to fit the limit. Write a long quoted text as a text block
 instead. Ignore an unbreakable literal or protocol token when splitting it would change the
 value, and intentional golden input where physical line length is what the test covers.
 
@@ -495,7 +495,7 @@ Fix after verifying the visible shorthand and precedence:
 The rule reports a function that builds its text by appending to a string, by appending lines to a
 `[String]` and joining them, or by returning an interpolated string of 80 or more characters, or
 one holding `\n`, from a body of only locals. Under YS-04 in `agent-brix-style.md`, write it as a
-`¶` template: the text is the body, and its values sit below the `════════════════════` boundary as
+text body: the text is the body, and its values sit below the `════════════════════` boundary as
 `..` lazies. Write optional text as a lazy that falls back to `""`, and repeated lines as
 `"\n".join(item-line(each) in items)` with a smaller template for each line. Keep the
 accumulator for character-level work such as escaping, encoding, and parsing, and keep `do` where
@@ -515,7 +515,7 @@ _ do inherited-style-css String
 Fix:
 
 ```text
-_ ¶ inherited-style-css
+_ " inherited-style-css
 
 :root {
     --brix-font-size: ${size}px;

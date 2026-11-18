@@ -175,7 +175,7 @@ Correct:
 * "done"
 ```
 
-Text follows the same rule. Write a function whose job is to produce text as a `¶` template: the
+Text follows the same rule. Write a function whose job is to produce text as a text body: the
 literal text is the body, and its values sit below the `════════════════════` boundary as `..`
 lazies. Write optional text as a lazy such as `if draft then " (draft)" else ""`, and repeated lines as
 `"\n".join(item-line(each) in items)`, calling a smaller template for each line. Keep a string or
@@ -202,7 +202,7 @@ Correct:
 
 ```yumi
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ summary
++ " summary
     - title String
     - items [Item]
     - draft Bool
@@ -215,7 +215,7 @@ $lines
 .. lines = "\n".join(summary-line(each) in items)
 
 ━━━━━━━━━━━━━━━━━━━━
-+ ¶ summary-line
++ " summary-line
     - item Item
 
 ${item.name}: ${item.count}

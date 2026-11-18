@@ -407,12 +407,10 @@ while cursor < end && is-whitespace(input[cursor])
     cursor += 1
 
 =? if spaces == 0
-=? if cursor >= end
-. is-quote = input[cursor] == 34
-=? if !is-quote && source-scalar(input, cursor).char != '¶'
+=? if cursor >= end || input[cursor] != 34
 
-cursor += if is-quote then 1 else 2
-=? if is-quote && (cursor >= end || !is-whitespace(input[cursor]))
+cursor += 1
+=? if cursor >= end || !is-whitespace(input[cursor])
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
 
@@ -432,10 +430,8 @@ while last > start && is-whitespace(input[last - 1])
 =? if last == start || input[start] == 96
 =? if last - start >= 2 && input[start] == 47 && input[start + 1] == 47
 . quote = last - 1
-=? last if input[quote] == 34 && (quote == start || is-whitespace(input[quote - 1])) && !continues-text(input, start) && quote-opens(input, start, quote)
-=? if last - start < 4
-=? if input[last - 2] != 0xC2 || input[last - 1] != 0xB6
-=? if !is-whitespace(input[last - 3])
+=? if input[quote] != 34 || (quote > start && !is-whitespace(input[quote - 1]))
+=? if continues-text(input, start) || !quote-opens(input, start, quote)
 = last
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -531,7 +527,7 @@ output.append(' ')
 . cursor = access-index + 1
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
-cursor += if input[cursor] == 34 then 1 else 2
+cursor += 1
 while cursor < end && is-whitespace(input[cursor])
     cursor += 1
 
