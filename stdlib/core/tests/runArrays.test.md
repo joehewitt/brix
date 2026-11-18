@@ -1570,6 +1570,32 @@ attempt.wait()
 foo, bar, baz
 ```
 
+### Each chunk a chunked stream yields keeps its tokens after the next chunk is read.
+
+```yumi
+/core/tests/support/byte-source
+/core/tokenstream
+
+. text = ("a" * 2048) ++ "b"
+. stream = ChunkedTokenStream'Char(TestByteSource'Char(text.codepoints))
+. chunks Iterable'(Char[]) = stream
+. kept = List'(Char[])()
+for chunk in chunks
+    kept += chunk
+. joined = ""
+for chunk in kept
+    -- chunk.size
+    joined = joined ++ chunk.slice-string()
+-- joined == text
+```
+
+```output
+1024
+1024
+1
+true
+```
+
 ### Arena allocation returns raw pointers and honors raw alignment.
 
 ```yumi
