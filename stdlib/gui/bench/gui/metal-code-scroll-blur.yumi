@@ -5,12 +5,15 @@
 /code/code-session
 /core/markup
 /graphics/color
+/graphics/point
 /graphics/primitives
 /graphics/shader
 /gui
 /gui/code-editor
 /gui/metal
 /gui/scene
+/gui/scroll-blur
+/math
 /stream/sort
 /time/timer
 
@@ -19,6 +22,8 @@ _ code-scroll-start-line Size = 200
 _ code-scroll-warmup Size = 12
 _ code-scroll-frames Size = 60
 _ code-scroll-long-step Size = 3
+_ code-scroll-shutter = 0.5
+_ code-scroll-most Length = 40
 
 . root = CodeScrollBenchRoot()
 markup-mount-root(root, root)
@@ -102,7 +107,8 @@ for index in 0 .. < code-scroll-warmup + code-scroll-frames
     root.update-layout()
     . moved = code.text-scroll.y - before
     if blurs
-        code.filters = code-scroll-blurs(moved, 0, 0)
+        . blur ShaderFilter = ScrollBlur(Point(0, min(moved * code-scroll-shutter, code-scroll-most)), List'Rect())
+        code.filters = [blur]
         root.markup-batch-queue.checkpoint()
     scene.update(root)
     scene.commit()

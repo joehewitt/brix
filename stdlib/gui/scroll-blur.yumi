@@ -1,0 +1,77 @@
+/graphics/point
+/graphics/primitives
+/graphics/shader-declarations
+/math
+
++ gui-scroll-blur-stills Size = 4
+
+━━━━━━━━━━━━━━━━━━━━
++ ScrollBlur is LayerShader
+
++ motion Point
++ still-count F64
++ still-0 Rect
++ still-1 Rect
++ still-2 Rect
++ still-3 Rect
+
+────────────────────
++ This
+    - motion Point
+    - stills [Rect]
+
+this.motion = motion
+still-count = min(stills.length, gui-scroll-blur-stills) as F64
+still-0 = scroll-blur-still(stills, 0)
+still-1 = scroll-blur-still(stills, 1)
+still-2 = scroll-blur-still(stills, 2)
+still-3 = scroll-blur-still(stills, 3)
+
+────────────────────
++ ¶ metal
+
+static bool scrollBlurHeld(float2 p, ScrollBlurArgs args) {
+    float4 stills[4] = {args.still_0, args.still_1, args.still_2, args.still_3};
+    int count = int(args.still_count);
+    for (int i = 0; i < count; ++i) {
+        float4 r = stills[i];
+        if (p.x >= r.x && p.y >= r.y && p.x < r.x + r.z && p.y < r.y + r.w) {
+            return true;
+        }
+    }
+    return false;
+}
+
+float4 filter(float2 position, ShaderLayer layer, ScrollBlurArgs args) {
+    float span = length(args.motion);
+    if (span <= 0.0 || scrollBlurHeld(position, args)) {
+        return layer.sample(position);
+    }
+    float2 edge = float2(0.5 / layer.scale);
+    int taps = clamp(int(ceil(span * layer.scale * 0.5)), 2, 24);
+    float4 sum = float4(0.0);
+    float weight = 0.0;
+    for (int i = 0; i < taps; ++i) {
+        float t = (float(i) + 0.5) / float(taps) - 0.5;
+        float2 p = clamp(position + t * args.motion, edge, layer.size - edge);
+        if (scrollBlurHeld(p, args)) {
+            continue;
+        }
+        float4 color = layer.sample(p);
+        sum += float4(color.rgb * color.a, color.a);
+        weight += 1.0;
+    }
+    if (weight <= 0.0) {
+        return layer.sample(position);
+    }
+    sum /= weight;
+    float3 color = sum.a > 0.0 ? sum.rgb / sum.a : float3(0.0);
+    return float4(color, sum.a);
+}
+
+━━━━━━━━━━━━━━━━━━━━
+_ scroll-blur-still Rect
+    - stills [Rect]
+    - index Size
+
+if index < stills.length then stills[index] else Rect(0, 0, 0, 0)

@@ -14,6 +14,7 @@
 ./painter
 ./position
 ./primitives
+./scroll-blur
 ./shape
 ./shorthands
 ./style-motion
@@ -65,6 +66,10 @@ _ gui-composite-relevant-bit U8 = 8
 _ gui-composite-scope-bit U8 = 16
 _ gui-composite-visible-bit U8 = 32
 _ gui-composite-shape-bits U8 = 48
+_ gui-composite-pinned-bit U8 = 64
+_ gui-scroll-pinned-boxes = List'Box()
+_ gui-scroll-blur-least Length = 1.5
+_ gui-scroll-blur-most Length = 40
 _ gui-tree-structure-generation U64
 _ gui-lift-count U64
 _ gui-carry-trail = spring(150ms)
@@ -820,21 +825,103 @@ Rect
 ────────────────────
 + get has-layer-filters
 
-$filters.length > 0 || $mask != null || is-swapping
+$filters.length > 0 || $mask != null || is-swapping || motion-state?.scroll-blur != null
 
 ────────────────────
 + do get layer-filters [ShaderFilter]
 
+. blur = scroll-blur-filter
 . swap = swap-filter
 . mask = $mask
-=? $filters if !swap && !mask
+=? $filters if !blur && !swap && !mask
 . passes = List'ShaderFilter()
+if blur
+    passes += blur
 if swap
     passes += swap
 passes ++= $filters
 if mask
     passes += mask.filter
 = passes
+
+────────────────────
++ do set-scroll-pinned
+    - pinned Bool
+
+=? if pinned == ((composite-bits /and/ gui-composite-pinned-bit) != 0)
+set-composite-bit(gui-composite-pinned-bit, pinned)
+if pinned
+    gui-scroll-pinned-boxes += this
+    =
+for index in 0 .. < gui-scroll-pinned-boxes.length
+    if gui-scroll-pinned-boxes[index] as Pointer == this as Pointer
+        gui-scroll-pinned-boxes.remove(index)
+        =
+
+────────────────────
+^ do note-scroll-blur
+    - delta Point
+
+. clock = frame-clock
+=? if !clock
+. state = motion-state-for-write
+. running = state.scroll-blur
+if running
+    running.travel = Point(running.travel.x + delta.x, running.travel.y + delta.y)
+    =
+. run = BoxScrollBlur(this)
+run.travel = delta
+state.scroll-blur = run
+clock.start(this, run)
+composite-invalidate()
+invalidate-paint()
+
+────────────────────
+_ do scroll-blur-ended
+    - run BoxScrollBlur
+
+. state = motion-state
+=? if !state
+. current = state.scroll-blur
+=? if !current || current as Pointer != run as Pointer
+state.scroll-blur = null
+composite-invalidate()
+invalidate-paint()
+
+────────────────────
+_ do get scroll-blur-filter ShaderFilter?
+
+. run = motion-state?.scroll-blur
+=? null if !run
+. shutter = $scroll-blur
+=? null if shutter == null
+. span = sqrt(run.shown.x * run.shown.x + run.shown.y * run.shown.y) * (shutter as F64)
+=? null if span < gui-scroll-blur-least
+. reach = min(span, gui-scroll-blur-most) / span * (shutter as F64)
+. made ShaderFilter = ScrollBlur(Point(run.shown.x * reach, run.shown.y * reach), scroll-blur-stills())
+= made
+
+────────────────────
+_ do scroll-blur-stills [Rect]
+
+. stills = List'Rect()
+. frame = presentation-rect(bounds)
+for pinned in gui-scroll-pinned-boxes
+    if stills.length < gui-scroll-blur-stills && pinned.is-display-visible && holds(pinned)
+        . shown = pinned.presentation-rect(pinned.bounds)
+        stills += Rect(shown.x - frame.x, shown.y - frame.y, shown.width, shown.height)
+= stills
+
+────────────────────
+_ do holds Bool
+    - box Box
+
+. cursor = box.material-parent
+while cursor
+    . ancestor = cursor
+    =? true if ancestor as Pointer == this as Pointer
+    cursor = ancestor.material-parent
+= false
 
 ────────────────────
 + get is-swapping
@@ -1777,6 +1864,7 @@ if motion
     motion.layout-motion?.release-cover()
     motion.carry?.is-over = true
     motion.timeline-drive?.stop()
+    motion.scroll-blur?.is-over = true
     if motion.registered-match
         gui-box-matches.delist(this)
     motion-state = null
@@ -1788,6 +1876,7 @@ is-arranged = false
 gui-style-motion.forget(this)
 clear-native-artifact-registration()
 release-focus-home()
+set-scroll-pinned(false)
 composite-bits = composite-bits /and/ not(gui-composite-mounted-bit)
 sync-composite-registration()
 
@@ -5560,6 +5649,7 @@ _ BoxMotionState
 + lift-order U64
 + frame-ticks FrameTicks?
 + swap BoxSwap?
++ scroll-blur BoxScrollBlur?
 
 ━━━━━━━━━━━━━━━━━━━━
 _ BoxSwap
@@ -5599,6 +5689,47 @@ box.swap-ended(this)
 + get progress F64
 
 min(1.0, max(0.0, channel.value[0]))
+
+━━━━━━━━━━━━━━━━━━━━
+_ BoxScrollBlur
+    is FrameAnimation
+
++ box Box
++ travel Point
++ shown Point
++ rests Size
++ is-over = false
+
+────────────────────
++ This
+    - box
+
+────────────────────
++ do advance Bool
+    - tick FrameTick
+
+=? false if is-over
+. moved = travel
+travel = Point(0, 0)
+if moved.x == 0 && moved.y == 0
+    rests += 1
+    if rests > 1
+        is-over = true
+        box.scroll-blur-ended(this)
+        = false
+else
+    rests = 0
+if moved != shown
+    shown = moved
+    box.invalidate-presentation()
+= true
+
+────────────────────
++ do finish
+
+=? if is-over
+is-over = true
+box.scroll-blur-ended(this)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ BoxDeparture

@@ -1,5 +1,4 @@
 ./code-link-card
-./code-scroll-blur
 ./code-syntax-style
 /code
 /code/code-find
@@ -9,7 +8,6 @@
 /graphics/color
 /graphics/point
 /graphics/primitives
-/graphics/shader
 /graphics/text
 /gui
 /gui/clipboard
@@ -48,9 +46,6 @@ _ code-overview-mark-width Length = 4
 _ code-overview-slop Length = 2
 _ code-blink-interval = 530ms
 _ code-blink-timeout = 10s
-_ code-blur-shutter = 0.5
-_ code-blur-least Length = 1.5
-_ code-blur-most Length = 40
 _ code-edit-roles :=
     [MenuRole.select-all]
 _ code-redo-key := KeyCombo("Cmd+Y")
@@ -120,7 +115,6 @@ _ code-outdent-key := KeyCombo("Cmd+[")
 + text-revision U64
 + definition-key KeyCombo?
 + top-inset Length = 0
-+ blurs-scrolling = false
 + event save-requested CodeSession
 + event definition-requested Size
 + event link-probed Size
@@ -137,18 +131,13 @@ _ probed Size?
 _ context-offset Size?
 _ context-link CodeLink?
 _ sticky-rows CodeStickyRows?
-_ scroll-filters [ShaderFilter]
-_ scroll-blur-from Length
 _ event refreshed Bool
-_ event scroll-moved Length
-_ event scroll-blur-settled Bool
 _ event closing Bool
 
 . inset-changed < top-inset
 
 • This • code-editor-text flex-row
     focus-mode = FocusMode.input
-    filters = #scroll-filters
     when #has-link
         cursor = CursorStyle.pointing-hand
 
@@ -659,36 +648,6 @@ _ caret-blink ~>
     then steady on closing
 
 ────────────────────
-_ scroll-blur ~>
-
-~> scroll-resting
-    then scroll-blurring(from) for from on scroll-moved
-
-~> scroll-blurring(from)
-    do scroll-blur-from = from
-
-    do finally
-        scroll-filters = List'ShaderFilter()
-
-    for tick on frames
-        step-scroll-blur()
-
-    then scroll-resting on scroll-blur-settled
-
-────────────────────
-_ do step-scroll-blur
-
-. top = region.scroll-y
-. moved = top - scroll-blur-from
-scroll-blur-from = top
-if moved == 0 || !blurs-scrolling
-    scroll-blur-settled <- true
-    =
-. stuck = stuck-rows()
-. still-top = if stuck.length > 0 then top-inset else 0
-scroll-filters = code-scroll-blurs(moved, still-top, code-stuck-height(stuck, row-length))
-
-────────────────────
 for change on overview.chose
 
 request-focus()
@@ -700,8 +659,6 @@ for event on region.scroll-changed when arrival
 clear-link()
 scroll-top = event.position.y
 invalidate-paint()
-if blurs-scrolling && event.cause.is-direct
-    scroll-moved <- event.old-position.y
 
 ────────────────────
 _ get row-length Length
@@ -1497,6 +1454,12 @@ _ do rows-changed
 invalidate-layout()
 
 ────────────────────
++ do mounted
+
+super.mounted()
+set-scroll-pinned(true)
+
+────────────────────
 + hit-contains
     - point Point
 
@@ -1804,20 +1767,6 @@ all(0 .. < found.length) • where (headers[each] as Size) == found[each].row
 for row in stuck
     =? row.row if y >= row.y && y < row.y + row-length
 = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ code-scroll-blurs [ShaderFilter]
-    - moved Length
-    - still-top Length
-    - still-bottom Length
-
-|? span < code-blur-least
-    List'ShaderFilter()
-??
-    [blur]
-
-.. span = min(abs(moved) * code-blur-shutter, code-blur-most)
-.. blur ShaderFilter = CodeScrollBlur(span, still-top, still-bottom, code-overview-width)
 
 ━━━━━━━━━━━━━━━━━━━━
 + code-stuck-height Length

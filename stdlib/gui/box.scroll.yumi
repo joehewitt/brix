@@ -455,8 +455,23 @@ invalidate-visited-native-geometry()
 . host = window-host
 host?.invalidate-popup-placement()
 host?.notify-clip-watchers(this)
+if cause.is-direct
+    scroll-blur-host()?.note-scroll-blur(Point(next.x - previous.x, next.y - previous.y))
 scroll-changed <- ScrollChangedEvent(previous, next, cause, phase, momentum-phase)
 = true
+
+────────────────────
+_ do scroll-blur-host Box?
+
+. cursor Box? = this
+while cursor
+    . box = cursor
+    . scrolls = box.is-scroll-axis-enabled(Orientation.horizontal) || box.is-scroll-axis-enabled(Orientation.vertical)
+    =? null if box as Pointer != this as Pointer && scrolls
+    =? box if box.$scroll-blur != null
+    =? null if box.is-presentation-layer
+    cursor = box.material-parent
+= null
 
 ────────────────────
 ^ do clamp-scroll-after-layout
