@@ -606,7 +606,12 @@ choice of layout, not a way to make every operation faster.
 - **Columns.** `(. t x)`{.brix} is the column of field `x`, which reads and writes the table.
   A tuple pattern takes a table apart into its columns, one for each field in order:
   `(let (tuple xs ys) points)`{.brix} gives two columns that read and write the table.
-- **Spans.** `([] t range)`{.brix} is a span of rows, indexed from the start of the range.
+- **Spans.** `([] t range)`{.brix} is a span of rows, indexed from the start of the range. The
+  range must step by one and lie within the table, span or column it indexes: `Table range is
+  out of bounds`. Assigning a span or column to a range copies into it, and the source must hold
+  at least as many rows or items as the range spans: `Table range source is too short`.
+- **Zips.** Columns added where a `TableSpan` is wanted, as `(+ (. t x) (. t y))`{.brix}, make
+  a span whose rows read and write them. The columns must be as long as one another, and of tables that do not grow.
 - **Finishing.** `finish` gives an `ImmutableTable` with the rows, and leaves the table sealed:
   using it afterwards panics with `Table is sealed`. `view` reads the rows so far without
   sealing.
