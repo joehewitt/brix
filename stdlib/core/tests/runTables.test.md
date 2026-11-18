@@ -1168,6 +1168,36 @@ typed-y[1] = 900
 + y I32
 ```
 
+### TableField zip rejects columns of a table that grows, whose storage a span could not follow.
+
+```yumi
+/core/table
+
+/core/arena
+
+. arena = Arena(8192)
+do finally arena.release()
+
+. table = Table'Point(arena, 1)
+table.append(Point(1, 10))
+. zipped = do new
+    . points TableSpan'Point = table.x + table.y
+    -- points.length
+catch failure
+    -- failure
+zipped.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+```
+
+```output
+Table column zip requires columns of tables that do not grow
+```
+
 ### table[range] returns a span; span rows and span columns are relative to the range.
 
 ```yumi

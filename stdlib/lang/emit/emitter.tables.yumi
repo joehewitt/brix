@@ -2449,17 +2449,23 @@ for position in 0 .. < count
     - to TypeId
 
 ` The tuple of views of fields' columns cast to a span of the rows they make, as TypeScript
-` casts it: the views' lengths must agree, and a directory is made of where each view's items
-` start; the span starts at its first row, is as long as the first view, and is of a table
-` that does not grow.
+` casts it: no view may be of a table that grows, whose storage the span could not follow, the
+` views' lengths must agree, and a directory is made of where each view's items start; the span
+` starts at its first row, is as long as the first view, and is of a table that does not grow.
 . layout = layout-of(from, site)
 . span-layout = layout-of(to, site)
 . count = tables.layouts.rows[layout].fields.count
+for position in 0 .. < count
+    . field = tables.layouts.field(layout, position)
+    fail-if
+        - site
+        - view-grows(site, column-meta(site, take(value, field, site), field.layout))
+        - "Table column zip requires columns of tables that do not grow"
 . first = tables.layouts.field(layout, 0)
-. length = column-length(site, take(value, first, site), first.layout)
+. length = part(take(value, first, site), first.layout, 1, site)
 for position in 1 .. < count
     . field = tables.layouts.field(layout, position)
-    . other = column-length(site, take(value, field, site), field.layout)
+    . other = part(take(value, field, site), field.layout, 1, site)
     fail-if
         - site
         - compare(site, .compare-not-equal, length.operand, other.operand)
@@ -2467,15 +2473,7 @@ for position in 1 .. < count
 . starts [Operand]
 for position in 0 .. < count
     . field = tables.layouts.field(layout, position)
-    . column = take(value, field, site)
-    . item-layout = layout-of(viewed-item(field.type), site)
-    . data = column-data
-        - site
-        - column
-        - field.layout
-        - column-meta(site, column, field.layout)
-        - item-layout
-    starts += data.operand
+    starts += part-address(site, take(value, field, site), field.layout, 0).operand
 . directory = table-buffer(site, managed-layout, integer(.machine-u64, count))
 for position in 0 .. < count
     store(directory, position * 8, starts[position], false, site)
