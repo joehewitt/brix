@@ -13,10 +13,13 @@ _ audio-pause Duration = 2ms
     is Closable
 
 + mixer Mixer
-+ ring MediaRing
 + latency I64
 + is-running = true
-_ native Pointer
+_ ring MediaRing
+_ native Pointer?
+_ closed-frames-played I64 = 0
+_ closed-underrun-frames I64 = 0
+_ closed-frames-heard I64 = 0
 _ worker Worker
 _ stopped SyncBufferedChannel'Bool
 
@@ -29,12 +32,14 @@ this.mixer = mixer
 this.latency = latency
 ring = MediaRing(latency * 2, 2)
 fill()
-native = C:brixAudioOutputOpen(ring.native-pointer, mixer.rate)
-. problem String = C:brixAudioOutputGetError(native)
+. output = C:brixAudioOutputOpen(ring.native-pointer, mixer.rate)
+. problem String = C:brixAudioOutputGetError(output)
 if problem.length > 0
-    C:brixAudioOutputRelease(native)
+    is-running = false
+    C:brixAudioOutputRelease(output)
     ring.close()
     ?! AudioOutputError(problem)
+native = output
 worker = Worker()
 do (worker) new
     pump()
@@ -42,22 +47,28 @@ do (worker) new
 ────────────────────
 + get frames-played I64
 
-C:brixAudioOutputGetFramesPlayed(native)
+if output then C:brixAudioOutputGetFramesPlayed(output) else closed-frames-played
+
+.. output = native
 
 ────────────────────
 + get underrun-frames I64
 
-C:brixAudioOutputGetUnderrunFrames(native)
+if output then C:brixAudioOutputGetUnderrunFrames(output) else closed-underrun-frames
+
+.. output = native
 
 ────────────────────
 + get slice-frames I64
 
-C:brixAudioOutputGetSliceFrames(native)
+if output then C:brixAudioOutputGetSliceFrames(output) else 0
+
+.. output = native
 
 ────────────────────
 + get frames-heard I64
 
-ring.consumed
+if native then ring.consumed else closed-frames-heard
 
 ────────────────────
 + do listen
@@ -66,9 +77,10 @@ ring.consumed
 . count = samples.length as I64
 . reach = if count < latency then count else latency
 . last = frames-heard
+. open = native != null
 for index in 0 .. < samples.length
     . at = last - count + (index as I64)
-    samples[index] = if at >= 0 && at >= last - reach then heard(at) else 0.0
+    samples[index] = if open && at >= 0 && at >= last - reach then heard(at) else 0.0
 
 ────────────────────
 _ heard F64
@@ -99,9 +111,14 @@ while ring.filled < latency
 ────────────────────
 + do close
 
-=? if !is-running
+. output = native
+=? if !output
 is-running = false
 <- stopped
 worker.stop()
-C:brixAudioOutputRelease(native)
+closed-frames-played = C:brixAudioOutputGetFramesPlayed(output)
+closed-underrun-frames = C:brixAudioOutputGetUnderrunFrames(output)
+native = null
+C:brixAudioOutputRelease(output)
+closed-frames-heard = ring.consumed
 ring.close()
