@@ -1894,6 +1894,49 @@ canceled reader
 read 7
 ```
 
+### A cancelled one-shot read of an AsyncChannel ends its subscription, so the next write does not wait
+
+```yumi
+. numbers AsyncChannel'Int
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    box.task = Task()
+    do finally
+        if Task().failure
+            -- "canceled reader"
+        done.post()
+    ready.post()
+    . number = <- numbers
+    -- "unexpected read $number"
+ready.wait()
+box.task!.cancel()
+done.wait()
+numbers <- 1
+-- "wrote 1"
+do new
+    ready.post()
+    -- "read ${<- numbers}"
+    done.post()
+ready.wait()
+numbers <- 2
+done.wait()
+-- "open ${!numbers.is-closed}"
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+```
+
+```output
+canceled reader
+wrote 1
+read 2
+open true
+```
+
 ### A cancelled writer's message is withdrawn from an unbuffered channel
 
 ```yumi
