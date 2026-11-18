@@ -737,3 +737,39 @@ unknown
 unknown
 unknown
 ```
+
+### BitmapBuffer rejects a negative capacity and counts the bits of a partial final word.
+
+```yumi
+/core/arena
+/core/bitmap
+
+. arena = Arena()
+for capacity in [-1, -64]
+    . gc = do new
+        . bits = BitmapBuffer(capacity)
+    catch failure
+        -- "gc $capacity: $failure"
+    gc.wait()
+    . arena-attempt = do new
+        . bits = BitmapBuffer(arena, capacity)
+    catch failure
+        -- "arena $capacity: $failure"
+    arena-attempt.wait()
+arena.release()
+for capacity in [63, 64, 65]
+    . bits = BitmapBuffer(capacity)
+    bits.fill(true)
+    -- "${bits.capacity} ${bits[capacity - 1]} ${bits.count(true)} ${bits.count(false)}"
+```
+
+```output
+gc -1: BitmapBuffer capacity is negative
+arena -1: BitmapBuffer capacity is negative
+gc -64: BitmapBuffer capacity is negative
+arena -64: BitmapBuffer capacity is negative
+63 true 63 0
+64 true 64 0
+65 true 65 0
+```
+

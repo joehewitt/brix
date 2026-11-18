@@ -95,16 +95,15 @@ else
 + do with'Expecting'Actual
     - pair TestPair'Expecting'Actual
 
-. actual = catch? (pair.actual as Expecting)
-if actual
-    if actual == pair.expecting
-        passed += 1
-    else
-        -- "Expecting $pair.expecting"
-        -- "Got ${actual}"
-        failed += 1
+. actual = catch (pair.actual as Expecting)
+if actual is Error
+    report-caught("caught", actual as Error)
+else if actual == pair.expecting
+    passed += 1
 else
-    caught += 1
+    -- "Expecting $pair.expecting"
+    -- "Got ${actual}"
+    failed += 1
 
 = this
 
@@ -121,18 +120,16 @@ with((expected, actual))
     - expected Expecting
     - actual Actual
 
-. actual-result = catch? (actual as Expecting)
-if actual-result
-    if actual-result == expected
-        passed += 1
-    else
-        -- "Assertion $label"
-        -- "Expecting $expected"
-        -- "Got ${actual-result}"
-        failed += 1
+. actual-result = catch (actual as Expecting)
+if actual-result is Error
+    report-caught("Assertion $label caught", actual-result as Error)
+else if actual-result == expected
+    passed += 1
 else
-    -- "Assertion $label caught"
-    caught += 1
+    -- "Assertion $label"
+    -- "Expecting $expected"
+    -- "Got ${actual-result}"
+    failed += 1
 
 = this
 
@@ -141,19 +138,11 @@ else
     - pair TestFuncPair'Expecting'Actual
 
 . fn = pair.actual
-. actual = catch? (fn() as Expecting)
-if actual
-    . pass = actual == pair.expecting
-    if pass
-        passed += 1
-    else
-        -- "Expecting $pair.expecting"
-        -- "Got ${actual}"
-        failed += 1
-else
-    caught += 1
-
-= this
+. actual = catch fn()
+if actual is Error
+    report-caught("caught", actual as Error)
+    = this
+= with((pair.expecting, actual))
 
 ────────────────────
 + expect'Expecting'Actual
@@ -169,20 +158,23 @@ with((expected, actual))
     - actual Getter'Actual
 
 . fn = actual
-. actual-result = catch? (fn() as Expecting)
-if actual-result
-    if actual-result == expected
-        passed += 1
-    else
-        -- "Assertion $label"
-        -- "Expecting $expected"
-        -- "Got ${actual-result}"
-        failed += 1
-else
-    -- "Assertion $label caught"
-    caught += 1
+. actual-result = catch fn()
+if actual-result is Error
+    report-caught("Assertion $label caught", actual-result as Error)
+    = this
+= expect(label, expected, actual-result)
 
-= this
+────────────────────
+_ do report-caught
+    - prefix String
+    - error Error
+
+. source = error.source
+if source
+    -- "$prefix: $error at $source"
+else
+    -- "$prefix: $error"
+caught += 1
 
 ────────────────────
 + do show-results

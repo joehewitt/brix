@@ -382,6 +382,56 @@ numbers <- 3
 drained
 ```
 
+### An AsyncBufferedChannel releases a message once it is read, past a wrap, and keeps one still buffered
+
+```yumi
+/core/gc
+
+/BxGC/BxGC.h
+
+. channel = AsyncBufferedChannel'Node()
+. watched = read-past-wrap(channel)
+C:brixCollect()
+-- watched[0].get == null
+-- watched[1].get?.value
+channel.close()
+-- (<- channel)?.value
+-- if !(<- channel) then "drained" else "left"
+
+━━━━━━━━━━━━━━━━━━━━
++ do read-past-wrap
+    - channel AsyncBufferedChannel'Node
+
+for i in 0 .. < 16
+    channel <- Node(i)
+for i in 0 .. < 15
+    <- channel
+. waiting = Node(17)
+channel <- Node(16)
+channel <- waiting
+<- channel
+. delivered = <- channel
+= (Weak(delivered!), Weak(waiting))
+
+━━━━━━━━━━━━━━━━━━━━
++ Node
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+```
+
+```output
+true
+17
+17
+drained
+```
+
 ### An event reached through an optional chain takes a write when the chain holds a value, and skips it when it is null
 
 ```yumi

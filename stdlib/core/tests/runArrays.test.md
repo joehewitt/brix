@@ -3507,6 +3507,29 @@ for item in buffer
 7
 ```
 
+### A stepped range ending at the last item assigns one value in either direction, and one past the end changes nothing.
+
+```yumi
+. ahead = Array'Int(5)
+ahead[0 .. 4 by 2] = 1
+-- ", ".join(ahead)
+. back = Array'Int(5)
+back[4 .. 0 by 2] = 1
+-- ", ".join(back)
+do new
+    back[0 .. 6 by 2] = 7
+catch failure
+    -- failure
+    -- ", ".join(back)
+```
+
+```output
+1, 0, 1, 0, 1
+1, 0, 1, 0, 1
+Set out of bounds (6 / 5)
+1, 0, 1, 0, 1
+```
+
 ```yumi
 . large = Array'U8(4098)
 large[4097] = 7u8

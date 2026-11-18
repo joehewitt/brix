@@ -199,6 +199,7 @@ the project root.
 
 To run one module by hand, build and run it with `brix tests/path.yumi -o .tmp/build/tests/path`.
 When it has fixtures, build it with `--compile` and run the executable from `tests/fixtures/path/`.
-A failed assertion prints its label with the expected and actual values. At the end, each case
-prints a line such as `Path GREEN (5 passed)`, or `RED` with its passed, failed and caught counts,
-and a module with a failed case exits nonzero.
+A failed assertion prints its label with the expected and actual values, and one whose actual side
+raises prints `caught:` with the error's message and, where the error has one, its source. At the
+end, each case prints a line such as `Path GREEN (5 passed)`, or `RED` with its passed, failed and
+caught counts, and a module with a failed case exits nonzero.

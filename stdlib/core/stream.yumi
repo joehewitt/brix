@@ -74,8 +74,8 @@ this[range.normalize(this)]
 ────────────────────
 + do reversed
 
-for index in length - 1 .. 0
-    <= this[index]
+for offset in 0 .. < length
+    <= this[length - 1 - offset]
 
 ━━━━━━━━━━━━━━━━━━━━
 + Iterable'Message is Interface
@@ -241,8 +241,8 @@ this()
 + Subscription'Message
     is Subscribable'Message
 
-_ queue [Message]
-_ broadcaster-queue [Broadcastable'Message]
+_ queue = IOBuffer'Message()
+_ broadcaster-queue = IOBuffer'(Broadcastable'Message)()
 _ sub Subscriber'Message
 _ is-dispatching = false
 _ finishing Broadcastable'Message?
@@ -259,8 +259,8 @@ _ mutex = Mutex()
     - broadcaster Broadcastable'Message
 
 mutex.lock()
-queue += message
-broadcaster-queue += broadcaster
+queue.push(message)
+broadcaster-queue.push(broadcaster)
 . starts = !is-dispatching
 is-dispatching = true
 mutex.unlock()
@@ -302,7 +302,7 @@ sub == other
 
 mutex.lock()
 . count = queue.length
-while count && queue
+while count && queue.length
     . message = queue.pop-first()
     . broadcaster = broadcaster-queue.pop-first()
     mutex.unlock()
@@ -312,7 +312,7 @@ while count && queue
     count -= 1
     mutex.lock()
 
-if queue
+if queue.length
     mutex.unlock()
     do (home) new
         dispatch()

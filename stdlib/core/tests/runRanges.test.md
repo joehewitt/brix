@@ -889,6 +889,26 @@ world
 0, 0.25, 0.5, 0.75, 1
 ```
 
+### A range made forward keeps its items when its highest is the item type's maximum.
+
+```yumi
+-- List((253u8 .. 255u8).forward())
+-- List((255u8 .. 253u8).forward())
+-- List((255u8 .. 255u8).forward())
+-- List((250u8 .. 255u8 by 3).forward())
+-- List((127i8 .. 123i8 by 2).forward())
+-- List(((Int.max - 2) .. Int.max).forward())
+```
+
+```output
+253, 254, 255
+253, 254, 255
+255
+250, 253
+123, 125, 127
+9223372036854775805, 9223372036854775806, 9223372036854775807
+```
+
 ### An index into a range is one of its items or out of range, and a slice by index holds the items at those places.
 
 ```yumi
@@ -968,3 +988,20 @@ attempt.wait()
 list: A range cannot step by 0
 loop: A range cannot step by 0
 ```
+
+### reversed yields a range's items last to first and nothing for an empty range.
+
+```yumi
+-- List'Int((0 .. < 0).reversed()).length
+-- ", ".join((5 .. 5).reversed())
+-- ", ".join((1 .. 4).reversed())
+-- ", ".join((4 .. 1).reversed())
+```
+
+```output
+0
+5
+4, 3, 2, 1
+1, 2, 3, 4
+```
+

@@ -131,7 +131,7 @@ e, f
 | `(call (. xs insert) item index)`{.brix} | Inserts one item before `index`; the item comes first. |
 | `(= ([] xs index) item)`{.brix} | Replaces the item at `index`. |
 | `(-= ([] xs index))`{.brix} | Removes the item at `index`. |
-| `(-= ([] xs range))`{.brix} | Removes the items in a range. |
+| `(-= ([] xs range))`{.brix} | Removes the items the slice `([] xs range)`{.brix} gives. A range the slice rejects panics and leaves the list as it was. |
 | `(-= xs item)`{.brix} | Removes the first equal item, and gives the index it had, or `null`. |
 | `(call (. xs remove) index count)`{.brix} | Removes `count` items from `index`; `count` defaults to 1. |
 | `(call (. xs pop))`{.brix}, `(call (. xs pop-first))`{.brix} | Removes and gives the last or the first item. |
@@ -193,6 +193,10 @@ other than 1 panics: `Only increments of 1 are currently supported`.
 
 A slice starts out sharing the list's storage, so assigning an item of the slice changes the
 list. Adding to the slice gives it storage of its own.
+
+A list that clears, pops or removes items lets go of them, so the collector can reclaim them while
+the list lives on. A list whose storage a slice shares, whether it is the slice or the list it was
+taken from, keeps removed items in that storage, since the other may still hold them.
 
 ### Sorting and other stream functions
 
@@ -278,7 +282,7 @@ false
 | `(+ m other)`{.brix} | A new map with the entries of both; `other` wins where both have a key. |
 | `(- m other)`{.brix} | A new map without the keys of `other`. |
 | `(+= m other)`{.brix}, `(-= m other)`{.brix} | The same, changing `m`. `(+= m (tuple key value))`{.brix} adds one entry. |
-| `(call (. m clear))`{.brix} | Removes every entry. |
+| `(call (. m clear))`{.brix} | Removes every entry, keeping the storage. |
 | `(not m)`{.brix} | `true` when the map is empty. |
 
 ### Looping over a map

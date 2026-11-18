@@ -14,8 +14,9 @@ unchanged. Write `bitmap = bitmap.fill(false)` to replace your variable. Indexed
 produce independent values; neither requires release.
 
 `BitmapBuffer(capacity)` packs bits into U64 words with a partial final word. Its capacity is
-fixed at construction, and it defaults to GCBacking. Assignment shares storage: indexed writes
-and `fill(truth)` mutate the shared buffer in place. `copy()` allocates independent GC storage.
+fixed at construction, and a negative capacity panics. It defaults to GCBacking. Assignment
+shares storage: indexed writes and `fill(truth)` mutate the shared buffer in place. `copy()`
+allocates independent GC storage.
 `BitmapBuffer(arena, capacity)` selects ArenaBacking; `copy(arena)` copies using the supplied
 Arena context. Arena handles and iterators must not outlive their backing Arena storage.
 

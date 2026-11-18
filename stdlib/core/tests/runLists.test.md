@@ -601,6 +601,68 @@ range: List range at index 2 with count 3 out of range
 1, 2, 3
 ```
 
+### Removing a range removes the items reading it selects, and reports where they started.
+
+```yumi
+/core/collection
+
+. recorder = Recorder()
+. list = [0, 1, 2, 3, 4]
+observe-collection(list, recorder.record)
+-= list[2 .. 1]
+-- list
+-- recorder.last
+. attempt = do new
+    -= list[0 .. 2 by 2]
+catch failure
+    -- failure
+attempt.wait()
+-- list
+-- recorder.count
+unobserve-collection(list, recorder.record)
+. named = [0, 1, 2, 3, 4]
+named.remove(2 .. 1)
+-- named
+. ascending = [0, 1, 2, 3, 4]
+-= ascending[1 .. < 3]
+-- ascending
+. exclusive = [0, 1, 2, 3, 4]
+-= exclusive[3 .. < 1]
+-- exclusive
+. positions = [0, 1, 2, 3, 4]
+-= positions[Position.last .. Position.middle]
+-- positions
+. empty = [0, 1, 2]
+-= empty[3 .. < 3]
+-- empty
+
+━━━━━━━━━━━━━━━━━━━━
++ Recorder
+
++ count Size = 0
++ last String = ""
+
+────────────────────
++ do record Void
+    - mutation CollectionMutation
+
+count += 1
+last = "${mutation.kind}:${mutation.index}:${mutation.count}"
+```
+
+```output
+0, 3, 4
+remove:1:2
+Only increments of 1 are currently supported
+0, 3, 4
+1
+0, 3, 4
+0, 3, 4
+0, 1, 4
+0, 1
+0, 1, 2
+```
+
 ```yumi
 . list = [1,2,3]
 
@@ -2111,3 +2173,58 @@ attempt.wait()
 head: List index 0 out of range
 tail: List index -1 out of range
 ```
+
+### A list releases the items it removes unless a slice sharing its storage still holds them.
+
+```yumi
+/core/gc
+
+/BxGC/BxGC.h
+
+. emptied = emptied-list()
+. sliced = sliced-list()
+C:brixCollect()
+-- emptied[0].length, emptied[1].get == null, emptied[2].get == null, emptied[3].get == null
+-- sliced[0].length, sliced[1][0].value
+
+━━━━━━━━━━━━━━━━━━━━
++ do emptied-list
+
+. list = List'Cell()
+for i in 0 .. < 4
+    list += Cell(i)
+. popped = Weak(list[3])
+. ranged = Weak(list[2])
+. cleared = Weak(list[0])
+list.pop()
+list.remove(1 .. < 3)
+list.clear()
+= (list, popped, ranged, cleared)
+
+━━━━━━━━━━━━━━━━━━━━
++ do sliced-list
+
+. list = List'Cell()
+list += Cell(1)
+list += Cell(2)
+. slice = list[1 .. < 2]
+list.clear()
+= (list, slice)
+
+━━━━━━━━━━━━━━━━━━━━
++ Cell
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+```
+
+```output
+(0, true, true, true)
+(0, 2)
+```
+

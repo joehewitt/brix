@@ -104,7 +104,7 @@ _ bit-capacity Size
     - context Backing.Context
     - capacity Size
 
-. words = capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+. words = bitmap-word-count(capacity)
 storage = Backing.allocate'U64(context, words)
 bit-capacity = capacity
 for index in 0 .. < words
@@ -118,7 +118,7 @@ for index in 0 .. < words
     - Backing = Provider.Backing'U64
 
 . context = provider as Backing.Context
-. words = capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+. words = bitmap-word-count(capacity)
 storage = Backing.allocate'U64(context, words)
 bit-capacity = capacity
 for index in 0 .. < words
@@ -169,7 +169,7 @@ if capacity % 64 != 0
     - context Backing.Context = Void()
 
 . result = This(context, capacity)
-for index in 0 .. < capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
+for index in 0 .. < bitmap-word-count(capacity)
     . word = Backing.load'U64(storage, index)
     Backing.store'U64(result.storage, word, index)
 = result
@@ -205,6 +205,14 @@ for index in 0 .. < capacity
 
 for index in 0 .. < capacity
     <=? index if this[index] == truth
+
+━━━━━━━━━━━━━━━━━━━━
+_ bitmap-word-count Size
+    - capacity Size
+
+?! Panic("BitmapBuffer capacity is negative")
+    if capacity < 0
+capacity / 64 + (if capacity % 64 != 0 then 1 else 0)
 
 ━━━━━━━━━━━━━━━━━━━━
 _ bitmap-mask'Integer

@@ -185,6 +185,28 @@ false
 false
 ```
 
+### In-place merge and subtraction with the map itself keep or empty it.
+
+```yumi
+. map = Map'String'Int()
+map["a"] = 1
+map["b"] = 2
+. alias = map
+map += alias
+-- map.length
+-- alias["b"]
+map -= alias
+-- map.length
+-- alias.length
+```
+
+```output
+2
+2
+0
+0
+```
+
 ```yumi
 . map = Map'String'Int()
 map["a"] = 1
@@ -575,6 +597,85 @@ true
 128
 0
 128
+```
+
+### Reinserting a removed key reuses its tombstone instead of rebuilding a map at its occupancy limit.
+
+```yumi
+/core/arena
+
+. arena = Arena()
+do finally
+    arena.release()
+
+. map = Map'U32'U32(arena)
+for key in 0u32 .. < 6u32
+    map[key] = key * 10u32
+. active-bytes = arena.active-bytes
+for round in 0 .. < 4
+    -= map[3u32]
+    map[3u32] = 30u32
+-- arena.active-bytes == active-bytes
+-- map.length, map.capacity
+-- map[0u32], map[3u32], map[5u32]
+```
+
+```output
+true
+(6, 8)
+(0, 30, 50)
+```
+
+### Clearing a map with live entries and tombstones releases its values and keeps it usable.
+
+```yumi
+/core/gc
+
+/BxGC/BxGC.h
+
+. map = Map'U32'MapClearBox()
+. weaks = fill-cleared(map)
+map.clear()
+C:brixCollect()
+-- map.length
+. live = 0
+for weak in weaks
+    if weak.get
+        live += 1
+-- live
+map[2u32] = MapClearBox(20)
+-- map[2u32]!.value
+-- map[1u32] == null
+
+━━━━━━━━━━━━━━━━━━━━
++ do fill-cleared List'(Weak'MapClearBox)
+    - map Map'U32'MapClearBox
+
+. weaks = List'(Weak'MapClearBox)()
+for index in 0u32 .. < 4u32
+    . box = MapClearBox(index as Int)
+    map[index] = box
+    weaks.append(Weak(box))
+-= map[1u32]
+= weaks
+
+━━━━━━━━━━━━━━━━━━━━
++ MapClearBox
+
++ value = 0
+
+────────────────────
++ This
+    - v Int
+
+value = v
+```
+
+```output
+0
+0
+20
+true
 ```
 
 ### Fully colliding keys survive deletion, tombstone reuse, and repeated churn.
@@ -1117,3 +1218,26 @@ Exception: Setter not found
     map.length = 5
     ^^^^^^^^^^
 ```
+
+### Fractional float keys hash by their bits, and signed zeros share one key.
+
+```yumi
+. map = Map'F64'String()
+map[0.25] = "quarter"
+map[0.5] = "half"
+map[0.0] = "positive"
+map[-0.0] = "negative"
+-= map[0.25]
+-- map.length
+-- map[0.0]!
+-- map[0.5]!
+-- hash-for(0.0f32) == hash-for(-0.0f32)
+```
+
+```output
+2
+negative
+half
+true
+```
+

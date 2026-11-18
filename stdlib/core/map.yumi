@@ -8,6 +8,7 @@
 ./stream
 ./string
 /BxCore/BxCore.h
+/string.h
 
 + bucket-allocation-size = 8 as Size
 + map-maximum-capacity = 2147483648 as Size
@@ -230,12 +231,13 @@ if fitted-capacity(capacity) > buckets-allocated
 ────────────────────
 + do clear
 
-. new-hashes = Array'Hash'Backing(context, buckets-allocated)
-. new-keys = Array'Key'Backing(context, buckets-allocated)
-. new-values = Array'Value'Backing(context, buckets-allocated)
-hashes = new-hashes
-key-slots = new-keys
-value-slots = new-values
+if pair-count != 0
+    if !Key.is-number
+        C:memset(key-slots.data, 0, buckets-allocated * Key.size)
+    if !Value.is-number
+        C:memset(value-slots.data, 0, buckets-allocated * Value.size)
+if pair-count != 0 || tombstones != 0
+    C:memset(hashes.data, 0, buckets-allocated * Hash.size)
 pair-count = 0
 tombstones = 0
 mutation-version += 1
@@ -260,6 +262,7 @@ clone += that
 + do this += that Map''K2''V2''OtherBacking
     - OtherBacking is StorageBacking
 
+=? this if that as Pointer == this as Pointer
 reserve((pair-count as Size) + (that.length as Size))
 for key, value in that
     this[key as Key] = value as Value
@@ -281,6 +284,9 @@ clone += this
 ────────────────────
 + do this -= that This
 
+if that as Pointer == this as Pointer
+    clear()
+    = this
 for key in that.keys
     -= this[key]
 = this
@@ -302,7 +308,7 @@ if probe.found
     value-slots[probe.found] = value
     mutation-version += 1
 else
-    if occupied-and-deleted-count() + 1 > buckets-allocated * 3 / 4
+    if occupied-and-deleted-count() + 1 > buckets-allocated * 3 / 4 && hashes[probe.vacant] != map-tombstone-hash
         if (pair-count as Size) + 1 <= buckets-allocated * 3 / 4
             rehash(buckets-allocated)
         else
@@ -546,6 +552,19 @@ hash-for(value.address)
     - value CPointer'Void
 
 hash-for(value as U64)
+
+━━━━━━━━━━━━━━━━━━━━
++ do hash-for Hash
+    - value F64
+
+. normalized = if value == 0.0 then 0.0 else value
+= hash-for((&normalized as CPointer'U64)[0])
+
+━━━━━━━━━━━━━━━━━━━━
++ do hash-for Hash
+    - value F32
+
+= hash-for(value as F64)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do hash-for'Num Hash

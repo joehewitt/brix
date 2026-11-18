@@ -3833,6 +3833,59 @@ rewound 1/8
 (60, 13, 14, 15, 16)
 ```
 
+### Arena-backed union rows keep their latest case and fields when replaced repeatedly.
+
+```yumi
+/core/table
+
+/core/arena
+
+. arena = Arena(16384)
+do finally arena.release()
+. nodes = Table'Node(arena, 4)
+nodes.append(Node.call(1, 2, 3, 4, 5))
+nodes.append(Node.literal(6, 7))
+nodes.append(Node.call(8, 9, 10, 11, 12))
+for pass in 0 .. < 3
+    nodes[0] = Node.call(pass as U32, 20, 21, 22, 23)
+    nodes[2] = Node.literal(pass as U32, 30)
+    nodes[2] = Node.call(pass as U32, 40, 41, 42, 43)
+nodes[1] = nodes[0] as Node
+nodes[0] = Node.literal(50, 51)
+for position in 0 .. < nodes.length
+    -- nodes[position] as Node
+
+━━━━━━━━━━━━━━━━━━━━
++ Syntax is Tuple
+
++ source U32
+
+━━━━━━━━━━━━━━━━━━━━
++ Literal is Syntax
+
++ value I64
+
+━━━━━━━━━━━━━━━━━━━━
++ Call is Syntax
+
++ callee U32
++ arg0 U64
++ arg1 U64
++ arg2 U64
+
+━━━━━━━━━━━━━━━━━━━━
++ Node is Union
+
+| literal Literal
+| call Call
+```
+
+```output
+(50, 51)
+(2, 20, 21, 22, 23)
+(2, 40, 41, 42, 43)
+```
+
 ### Fixed-size constructors keep their source-compatible shape and reject grow-only operations.
 
 ```yumi

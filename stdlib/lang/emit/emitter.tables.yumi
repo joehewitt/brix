@@ -260,7 +260,7 @@ if tables.writes-constructor(first)
 . counting = open-pass(site, size)
 . index = counting.index
 . empty = make-fields(first, first-layout, RowRange'ArgumentFill(), given.length, 0, site)
-scatter-union-case(site, place, 0, columns, index, empty, no-meta(), false)
+scatter-union-case(site, place, 0, columns, index, empty, no-meta(), false, false)
 close-pass(site, counting)
 
 ────────────────────
@@ -323,20 +323,25 @@ _ do scatter-union-case
     - payload Operand
     - meta TableMeta
     - checked Bool
+    - replacing Bool
 
 ` Stores a row of one case in a table of unions, as TypeScript scatters it: the row's handle
 ` first, where the table keeps one, then each field of the case in the order it declares them,
 ` and the tag last. `checked` says the table's metadata is given: where the table grows, the
-` handle is to the case's outside bytes reserved in its spill, the columns are read again from
-` its header, and the fields are stored plainly.
+` handle is to the row's outside bytes in its spill, the columns are read again from its header,
+` and the fields are stored plainly. `replacing` says the row is one the table holds already,
+` which keeps its handle when the case has no outside bytes, and keeps the bytes its handle
+` leads to when it has.
 . union = tables.unions.layouts[place]
 . held = tables.unions.cases[union.cases.start + case-index]
 . case-layout = layout-of(held.type, site)
 . handle = integer(.machine-u32, 0)
 if union.handle-column != U32.max
+    . cell = table-cell(site, columns, index, union.handle-column, u32-layout)
     if held.external-size != 0
-        handle = case-handle(site, place, case-index, index, meta, checked)
-    store(table-cell(site, columns, index, union.handle-column, u32-layout), 0, handle, false, site)
+        handle = case-handle(site, place, index, cell, meta, checked, replacing)
+    if held.external-size != 0 || !replacing
+        store(cell, 0, handle, false, site)
 . into = if checked then growing-columns(site, columns, meta) else columns
 for position in 0 .. < held.fields.count
     . field = tables.unions.fields[held.fields.start + position]
@@ -352,13 +357,14 @@ store(table-cell(site, into, index, 0, u8-layout), 0, integer(.machine-u8, case-
 _ do case-handle Operand
     - site SyntaxId
     - place U32
-    - case-index U32
     - index Operand
+    - cell Operand
     - meta TableMeta
     - checked Bool
+    - replacing Bool
 
 ` The handle of the outside bytes of a row of a case: one past the row's place among them where
-` the table does not grow, and one past the bytes reserved in its spill where it grows.
+` the table does not grow, and its handle in the spill where it grows.
 . union = tables.unions.layouts[place]
 if !checked
     = fixed-handle(site, union, index)
@@ -367,13 +373,7 @@ if !checked
 . joined = ir.reserve-block()
 branch(view-grows(site, meta), spilling, fixed)
 ir.start-block(spilling)
-. reserved = reserve-spill(site, place, case-index, meta)
-. spilled = arithmetic
-    - site
-    - .arithmetic-add
-    - num-cast(site, reserved, u64-layout, u32-layout)
-    - integer(.machine-u32, 1)
-    - u32-layout
+. spilled = spill-handle(site, place, cell, meta, replacing)
 . from-spilling = ir.current
 jump(joined)
 ir.start-block(fixed)
@@ -382,6 +382,45 @@ ir.start-block(fixed)
 jump(joined)
 ir.start-block(joined)
 = phi(u32-layout, spilled, from-spilling, placed, from-fixed)
+
+────────────────────
+_ do spill-handle Operand
+    - site SyntaxId
+    - place U32
+    - cell Operand
+    - meta TableMeta
+    - replacing Bool
+
+` The handle of a row's outside bytes in the spill of a table that grows. Every block of the
+` spill suits every case, so a row the table holds already keeps the block its handle leads to,
+` where it has one; any other row is given a block reserved in the spill.
+if !replacing
+    = reserved-handle(site, place, meta)
+. kept = load(cell, 0, u32-layout, site)
+. from-kept = ir.current
+. reserving = ir.reserve-block()
+. joined = ir.reserve-block()
+branch(compare(site, .compare-not-equal, kept, integer(.machine-u32, 0)), joined, reserving)
+ir.start-block(reserving)
+. reserved = reserved-handle(site, place, meta)
+. from-reserving = ir.current
+jump(joined)
+ir.start-block(joined)
+= phi(u32-layout, kept, from-kept, reserved, from-reserving)
+
+────────────────────
+_ do reserved-handle Operand
+    - site SyntaxId
+    - place U32
+    - meta TableMeta
+
+` The handle of a block newly reserved in the spill of a table of unions that grows: one past it.
+= arithmetic
+    - site
+    - .arithmetic-add
+    - num-cast(site, reserve-spill(site, place, meta), u64-layout, u32-layout)
+    - integer(.machine-u32, 1)
+    - u32-layout
 
 ────────────────────
 _ do fixed-handle Operand
@@ -407,52 +446,23 @@ _ do fixed-handle Operand
 _ do reserve-spill Operand
     - site SyntaxId
     - place U32
-    - case-index U32
     - meta TableMeta
 
-` Reserves a case's outside bytes in the spill of a table of unions that grows, as TypeScript
-` does: the table is checked as a view, the spill's use aligned to the case and checked to stay
-` within what a U32 handle reaches, the spill grown where it is full, and its use counted on.
-` The spill is grown by the function the tables declared to, as `grow-outside` says, and where
-` they declared none, here. The answer is where the bytes start.
+` Reserves a block of outside bytes in the spill of a table of unions that grows: the table is
+` checked as a view, and the spill's use checked to stay within what a U32 handle reaches, the
+` spill grown where it is full, and its use counted on. Each block is as wide and as aligned as
+` the union's widest outside bytes need, as the rows of a table that does not grow keep them,
+` so a block suits whichever case its row holds next. The spill is grown by the function the
+` tables declared to, as `grow-outside` says, and where they declared none, here. The answer is
+` where the bytes start.
 . union = tables.unions.layouts[place]
-. held = tables.unions.cases[union.cases.start + case-index]
 . limit = 4294967295u64
-. alignment = held.external-alignment as U64
-. padding = alignment - 1
 . text = "Table union spill exceeds the U32 handle limit"
 validate-table(site, meta, "Table union spill", false)
 . used = header-word(site, meta.header, 6)
-fail-if(site, compare(site, .compare-greater, used, integer(.machine-u64, limit - padding)), text)
-. aligned = used
-if alignment > 1
-    . raised = arithmetic(site, .arithmetic-add, used, integer(.machine-u64, padding), u64-layout)
-    . counted = arithmetic
-        - site
-        - .arithmetic-divide
-        - raised
-        - integer(.machine-u64, alignment)
-        - u64-layout
-    aligned = arithmetic
-        - site
-        - .arithmetic-multiply
-        - counted
-        - integer(.machine-u64, alignment)
-        - u64-layout
-fail-if
-    - site
-    - compare
-        - site
-        - .compare-greater
-        - aligned
-        - integer(.machine-u64, limit - (held.external-size as U64))
-    - text
-. needed = arithmetic
-    - site
-    - .arithmetic-add
-    - aligned
-    - integer(.machine-u64, held.external-size)
-    - u64-layout
+. stride = union.external-stride as U64
+fail-if(site, compare(site, .compare-greater, used, integer(.machine-u64, limit - stride)), text)
+. needed = arithmetic(site, .arithmetic-add, used, integer(.machine-u64, stride), u64-layout)
 . capacity = header-word(site, meta.header, 7)
 . growing = ir.reserve-block()
 . joined = ir.reserve-block()
@@ -466,7 +476,7 @@ else
 jump(joined)
 ir.start-block(joined)
 put-header(site, meta.header, 6, needed)
-= aligned
+= used
 
 ────────────────────
 + do grow-spill
@@ -561,6 +571,7 @@ _ do scatter-union
     - value Operand
     - meta TableMeta
     - checked Bool
+    - replacing Bool
 
 ` Stores a union in a row of a table of unions: the case it holds, each case tested in turn.
 . union = tables.unions.layouts[place]
@@ -581,6 +592,7 @@ for position in 0 .. < union.cases.count
         - take(value, tables.layouts.case-field(union-layout, position), site)
         - meta
         - checked
+        - replacing
     jump(done)
     ir.start-block(next)
 jump(done)
@@ -1415,7 +1427,7 @@ pending += data
 pending += index
 . made = call(code, site, mark, .callee-value, layout-of(row, site), !in-landing)
 if types.intrinsic-of(row) == .union
-    scatter-union(site, tables.unions.of(row), columns, index, made, no-meta(), false)
+    scatter-union(site, tables.unions.of(row), columns, index, made, no-meta(), false, false)
 else
     scatter-row(site, row-layout, columns, index, made)
 close-pass(site, counting)
@@ -2518,6 +2530,7 @@ if unions != U32.max
         - copied.offset
         - bounds.length
         - target.meta
+        - true
     invalidate-marks(id, target.meta)
     =
 for position in 0 .. < tables.layouts.rows[row-layout].fields.count
@@ -2537,10 +2550,12 @@ _ do copy-union-rows
     - from Operand
     - count Operand
     - meta TableMeta
+    - replacing Bool
 
 ` Copies rows of a table of unions into another, one at a time, as TypeScript copies them:
 ` from the last where both are kept in the same columns and the target starts after the
-` source, and from the first otherwise. `meta` is the target's.
+` source, and from the first otherwise. `meta` is the target's, and `replacing` says the
+` target's rows are ones it holds already, as `scatter-union-case` takes it.
 . same = compare
     - site
     - .compare-equal
@@ -2554,10 +2569,10 @@ branch(same, testing, forward)
 ir.start-block(testing)
 branch(compare(site, .compare-greater, start, from), backward, forward)
 ir.start-block(backward)
-copy-union-pass(site, place, into, start, out, from, count, meta, true)
+copy-union-pass(site, place, into, start, out, from, count, meta, true, replacing)
 jump(done)
 ir.start-block(forward)
-copy-union-pass(site, place, into, start, out, from, count, meta, false)
+copy-union-pass(site, place, into, start, out, from, count, meta, false, replacing)
 jump(done)
 ir.start-block(done)
 
@@ -2572,6 +2587,7 @@ _ do copy-union-pass
     - count Operand
     - meta TableMeta
     - backward Bool
+    - replacing Bool
 
 ` One pass of a copy of rows of a table of unions, from the first row or from the last.
 . counter = ir.add-local(u64-layout)
@@ -2590,7 +2606,7 @@ if backward
     row = arithmetic(site, .arithmetic-subtract, row, integer(.machine-u64, 1), u64-layout)
 . target = arithmetic(site, .arithmetic-add, start, row, u64-layout)
 . source = arithmetic(site, .arithmetic-add, from, row, u64-layout)
-copy-union-row(site, place, into, target, out, source, meta)
+copy-union-row(site, place, into, target, out, source, meta, replacing)
 store-local(counter, if backward then row else arithmetic(site, .arithmetic-add, row, integer(.machine-u64, 1), u64-layout), site)
 jump(testing)
 ir.start-block(copied)
@@ -2604,6 +2620,7 @@ _ do copy-union-row
     - out Operand
     - source Operand
     - meta TableMeta
+    - replacing Bool
 
 ` Copies a row of a table of unions into another, as TypeScript copies it: a row copied onto
 ` itself is left; otherwise the case the source's tag names is read field by field and
@@ -2629,7 +2646,7 @@ for position in 0 .. < union.cases.count
     branch(compare(site, .compare-equal, tag, integer(.machine-u8, position)), reading, next)
     ir.start-block(reading)
     . read = gather-union-case(site, place, position, out, source)
-    scatter-union-case(site, place, position, into, target, read.operand, meta, true)
+    scatter-union-case(site, place, position, into, target, read.operand, meta, true, replacing)
     jump(done)
     ir.start-block(next)
 jump(done)
@@ -3379,8 +3396,9 @@ if types.intrinsic-of(row) == .union && known != U32.max && known-case
         - take(value, tables.layouts.case-field(row-layout, known), site)
         - meta
         - true
+        - false
 else if types.intrinsic-of(row) == .union
-    scatter-union(site, tables.unions.of(row), columns, length, value, meta, true)
+    scatter-union(site, tables.unions.of(row), columns, length, value, meta, true, false)
 else
     for position in 0 .. < tables.layouts.rows[row-layout].fields.count
         . field = tables.layouts.field(row-layout, position)
@@ -3504,7 +3522,7 @@ reserve-rows(site, row, row-layout, meta, length)
 . into = num-cast(site, header-word(site, meta.header, 0), u64-layout, pointer-layout)
 if types.intrinsic-of(row) == .union
     . zero = integer(.machine-u64, 0)
-    copy-union-rows(site, tables.unions.of(row), into, zero, columns, zero, length, meta)
+    copy-union-rows(site, tables.unions.of(row), into, zero, columns, zero, length, meta, false)
 else
     for position in 0 .. < tables.layouts.rows[row-layout].fields.count
         . field = tables.layouts.field(row-layout, position)
@@ -4123,8 +4141,9 @@ if known != U32.max && known < tables.layouts.rows[layout].cases.count
         - take(value, tables.layouts.case-field(layout, known), id)
         - place.meta
         - true
+        - true
     =
-scatter-union(id, union, place.columns, place.index, value, place.meta, true)
+scatter-union(id, union, place.columns, place.index, value, place.meta, true, true)
 
 ────────────────────
 _ do copy-row-into
@@ -4142,7 +4161,7 @@ if union == U32.max
     refuse(.refused-statement, id)
     =
 . source = value-cursor(rhs, given, given-type)
-copy-union-row(id, union, place.columns, place.index, source.columns, source.index, place.meta)
+copy-union-row(id, union, place.columns, place.index, source.columns, source.index, place.meta, true)
 invalidate-marks(id, place.meta)
 
 ────────────────────
