@@ -846,7 +846,7 @@ attach-action(unit.self, action.operand, site)
 ` is of a class. Where that class is a markup host or batch, the action is made as the type
 ` pass chose for it (`LiveStatement`), given the object as its host or its batch.
 . code = if row.rerun != no-instance then tables.instance-functions[row.rerun] else no-function
-if code == no-function || is-chained(rhs) || is-link(lhs)
+if code == no-function || tree.is-chained(rhs) || is-link(lhs)
     refuse(.refused-statement, id)
     =
 . trackers = open-trackers(id)
@@ -1723,26 +1723,6 @@ call
 return-value(make-operand(.operand-void, 0), site)
 
 ────────────────────
-_ do retest-site SyntaxId
-    - tree AST
-    - clause SyntaxId
-
-` Where the reference places the loop whose `whenever` clause a function tests again: the
-` section of a class the loop is, or else the loop's header.
-. loop = tree.clause-loop(clause)
-for node in loop + 1 .. < (tree.nodes.length as SyntaxId)
-    if tree.subtree-start(node) <= loop
-        do match tree.nodes[node]
-            | .node-for-block(block)
-                if block.loop != loop
-                    = loop
-            | .node-subscriber-syntax
-                = node
-            ??
-                = loop
-= loop
-
-────────────────────
 _ do live-site SyntaxId
     - target EmittedFunction
 
@@ -1782,7 +1762,7 @@ if target.kind == .instance-body
     do match? program.modules[row.module].decls[row.decl]
         | .decl-function(fn)
             if fn.kind == .whenever-decl
-                = retest-site(program.modules[row.module].tree, fn.syntax)
+                = program.modules[row.module].tree.retest-site(fn.syntax)
             . live = tables.live-statement-of(row.enclosing, fn.syntax)
             = if live && live.read != 0 then live.read else fn.syntax
     = 0

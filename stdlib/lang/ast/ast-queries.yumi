@@ -2182,3 +2182,436 @@ match nodes[value]
         true
     ??
         false
+
+────────────────────
++ member-name Atom?
+    - lhs SyntaxId
+
+` The name an assignment gives a property by: after an object, or alone.
+match? nodes[lhs]
+    | .node-get-expression(row)
+        row.name
+    | .node-identifier(row)
+        row.name
+
+────────────────────
++ is-named Bool
+    - argument SyntaxId
+
+` Whether an argument is written with the name of the parameter it is for.
+match nodes[argument]
+    | .node-argument(named)
+        named.name != null
+    ??
+        false
+
+────────────────────
++ next-bullet SyntaxId
+    - bullet SyntaxId
+
+match nodes[bullet]
+    | .node-bullet-expression(row)
+        row.next
+    ??
+        0
+
+────────────────────
++ do retest-site SyntaxId
+    - clause SyntaxId
+
+` Where the reference places the loop whose `whenever` clause a function tests again: the
+` section of a class the loop is, or else the loop's header.
+. loop = clause-loop(clause)
+for node in loop + 1 .. < (nodes.length as SyntaxId)
+    if subtree-start(node) <= loop
+        do match nodes[node]
+            | .node-for-block(block)
+                if block.loop != loop
+                    = loop
+            | .node-subscriber-syntax
+                = node
+            ??
+                = loop
+= loop
+
+────────────────────
++ gives-items Bool
+    - loop SyntaxId
+    - body SyntaxId
+
+body == 0 && !(nodes[loop] is .node-loop-syntax)
+
+────────────────────
++ step-pattern SyntaxId
+    - loop SyntaxId
+
+` The stream pattern a loop's header is written as, out of the match that holds it where one
+` does.
+match nodes[loop]
+    | .node-loop-syntax(row)
+        match nodes[row.pattern]
+            | .node-stream-match(written)
+                written.pattern
+            ??
+                row.pattern
+    ??
+        0
+
+────────────────────
++ region-container SyntaxId
+    - id SyntaxId
+
+` The container of the one header of a markup loop region's `for`.
+match nodes[id]
+    | .node-for-block(row)
+        match nodes[row.loop]
+            | .node-loop-syntax(loop)
+                loop.container
+            ??
+                0
+    ??
+        0
+
+────────────────────
++ region-site SyntaxId
+    - id SyntaxId
+
+` Where the markup branch region a line may be is written: a slot outlet's parameter, or the line.
+match nodes[id]
+    | .node-slot-outlet(row)
+        if row.slot-parameter != 0 then row.slot-parameter else id
+    ??
+        id
+
+────────────────────
++ arm-test SyntaxId
+    - arm SyntaxId
+
+match nodes[arm]
+    | .node-type-transform(row)
+        if row.pattern == 0 || nodes[row.pattern] is .node-type-wildcard then 0 else row.pattern
+    ??
+        0
+
+────────────────────
++ case-inner SyntaxId
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-case(row)
+        row.value
+    ??
+        0
+
+────────────────────
++ equality-expr SyntaxId
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-equality(row)
+        row.expr
+    ??
+        0
+
+────────────────────
++ do first-item SyntaxId
+    - pattern SyntaxId
+
+do match? nodes[pattern]
+    | .node-type-list(row)
+        if row.patterns.count != 0
+            . item = children[row.patterns.start]
+            if !(nodes[item] is .node-type-remainder)
+                = item
+= 0
+
+────────────────────
++ has-name Bool
+    - remainder SyntaxId
+
+` Whether the rest of a pattern of a list has a name.
+match nodes[remainder]
+    | .node-type-remainder(row)
+        row.name != 0
+    ??
+        false
+
+────────────────────
++ is-block Bool
+    - body SyntaxId
+
+match nodes[body]
+    | .node-block
+        true
+    ??
+        false
+
+────────────────────
++ key-of SyntaxId
+    - key SyntaxId
+
+` The expression a key of a map pattern is compared to: what is written, or the name read.
+match nodes[key]
+    | .node-type-equality(row)
+        row.expr
+    ??
+        key
+
+────────────────────
++ names-type Bool
+    - pattern SyntaxId
+
+` Whether a pattern is a type named and no more.
+match nodes[pattern]
+    | .node-type-identifier
+        true
+    | .node-type-arguments
+        true
+    | .node-type-optional
+        true
+    ??
+        false
+
+────────────────────
++ pattern-case-name Atom?
+    - pattern SyntaxId
+
+` The name of the case a pattern names.
+match? nodes[pattern]
+    | .node-type-case(row)
+        row.name
+    | .node-symbol(row)
+        row.name
+
+────────────────────
++ transform-body SyntaxId
+    - arm SyntaxId
+
+match nodes[arm]
+    | .node-type-transform(row)
+        row.expr
+    ??
+        0
+
+────────────────────
++ do trigger-match SyntaxId
+    - trigger SyntaxId
+
+` The pattern a trigger matches what it tests with, inside its structure match, or none.
+. pattern = trigger-pattern(trigger)
+do match? nodes[pattern]
+    | .node-structure-match(row)
+        = row.pattern
+= pattern
+
+────────────────────
++ literal-bound Bool
+    - id SyntaxId
+
+` Whether a bound of a count is a number written.
+match nodes[id]
+    | .node-integer-syntax(row)
+        !row.unit
+    ??
+        false
+
+────────────────────
++ do optional-part Bool
+    - id SyntaxId
+
+` Whether a part of a stream pattern is an optional part.
+do match? nodes[id]
+    | .node-stream-unary(row)
+        = row.op == .zero-or-one-op
+= false
+
+────────────────────
++ argument-value SyntaxId
+    - argument SyntaxId
+
+` The expression of an argument written: what follows its name, when it has one.
+match nodes[argument]
+    | .node-argument(named)
+        named.expr
+    ??
+        argument
+
+────────────────────
++ do catchers-bind Bool
+    - catchers RowRange'SyntaxId
+
+` Whether a catcher declares a name for the error it names, or for one in its chain.
+for catcher in children[catchers]
+    do match? nodes[catcher]
+        | .node-catcher(row)
+            if is-capture(row.type)
+                = true
+            for pattern in children[row.previous]
+                if is-capture(pattern)
+                    = true
+= false
+
+────────────────────
++ chained-subject SyntaxId
+    - expr SyntaxId
+
+` What `use?` uses: the expression its optional chain holds, or none where it is written
+` without one.
+match nodes[expr]
+    | .node-optional-chain(row)
+        row.expr
+    ??
+        0u32
+
+────────────────────
++ field-names RowRange'SyntaxId
+    - pattern SyntaxId
+
+` The names a pattern writes for the fields of a tuple, where it is one that takes the tuple
+` apart: the pattern of a loop, or a tuple of names within another. None for any other.
+|? pattern == 0
+    RowRange'SyntaxId()
+??
+    match nodes[pattern]
+        | .node-type-tuple(row)
+            row.field-types
+        | .node-tuple-syntax(row)
+            row.items
+        ??
+            RowRange'SyntaxId()
+
+────────────────────
++ do has-pattern-arm Bool
+    - id SyntaxId
+
+` Whether a markup branch region has an arm written with a pattern, `if | x = v`.
+. arm = id
+while arm != 0
+    if pattern-arm(arm) != 0
+        = true
+    . next SyntaxId = 0
+    do match? nodes[arm]
+        | .node-if-block(row)
+            next = row.next
+    arm = next
+= false
+
+────────────────────
++ is-assertion Bool
+    - statement SyntaxId
+
+match nodes[statement]
+    | .node-assertion-syntax
+        true
+    ??
+        false
+
+────────────────────
++ is-capture Bool
+    - pattern SyntaxId
+
+match nodes[pattern]
+    | .node-type-capture
+        true
+    ??
+        false
+
+────────────────────
++ do is-chained Bool
+    - expr SyntaxId
+
+` Whether an expression is written after the `?` of a statement that runs only where an
+` optional holds a value.
+if expr == 0
+    = false
+do match? nodes[expr]
+    | .node-optional-chain
+        = true
+= false
+
+────────────────────
++ do is-logic Bool
+    - id SyntaxId
+
+` Whether an expression is `&&` or `||`.
+do match? nodes[id]
+    | .node-binary-expression(row)
+        = row.op == .and-op || row.op == .or-op
+= false
+
+────────────────────
++ is-probe Bool
+    - id SyntaxId
+
+match nodes[id]
+    | .node-probe
+        true
+    | .node-probe-scope
+        true
+    | .node-probe-statement
+        true
+    | .node-probe-counter
+        true
+    | .node-probe-group
+        true
+    | .node-probe-assign
+        true
+    ??
+        false
+
+────────────────────
++ do item-site SyntaxId
+    - written RowRange'SyntaxId
+    - chain SyntaxId
+    - position U32
+
+=? children[written.start + position] if chain == 0
+. bullet = chain
+for _ in 0 .. < position
+    bullet = next-bullet(bullet)
+= match nodes[bullet]
+    | .node-bullet-expression(row)
+        row.item
+    ??
+        bullet
+
+────────────────────
++ matched-name SyntaxId
+    - pattern SyntaxId
+
+` The pattern of a comprehension's loop as the binder declares it: the one a match written
+` there holds, which names the item where it is a name alone.
+|? pattern == 0
+    0
+??
+    match nodes[pattern]
+        | .node-structure-match(row)
+            row.pattern
+        ??
+            pattern
+
+────────────────────
++ do observes Bool
+    - id SyntaxId
+
+` Whether the reference takes a part of a pattern as one of its own: not a part that only
+` declares lazy locals around another, nor an arm that raises.
+do match? nodes[id]
+    | .node-stream-transform(row)
+        = row.pattern == 0 || !lazies-only(row.right)
+    | .node-stream-panic
+        = false
+= true
+
+────────────────────
++ probe-value SyntaxId
+    - item SyntaxId
+
+` The value a probe writes for an item written in it: the one a snapshot or a preview is of.
+match nodes[item]
+    | .node-probe-snapshot(row)
+        row.content
+    | .node-probe-preview(row)
+        row.content
+    ??
+        item

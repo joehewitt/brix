@@ -17,6 +17,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -236,11 +237,11 @@ do match? tree.nodes[name]
 ` local some read tracks runs the actions that read it where its bits change, as `watches` says,
 ` those of a struct against a copy taken before the store: a lazy one only where it had its value,
 ` since no action can read it before.
-. chains = (is-chained(rhs) && !is-pinned(rhs)) || (is-link(lhs) && !is-pinned(receiver-of(lhs)))
+. chains = (tree.is-chained(rhs) && !is-pinned(rhs)) || (is-link(lhs) && !is-pinned(receiver-of(lhs)))
 if chains && facts.is-replacing(unit.reading, id)
     refuse(.refused-statement, id)
     = Assignment()
-if is-chained(rhs) && !is-pinned(rhs)
+if tree.is-chained(rhs) && !is-pinned(rhs)
     emit-withheld(id, op, lhs, rhs, false)
     = Assignment()
 if is-link(lhs) && !is-pinned(receiver-of(lhs))
@@ -487,7 +488,7 @@ _ do emit-field-assign Assignment
 ` cell, and so is one named alone in a member that runs on the case.
 . cursor = if object != 0 then case-cursor-of(object) else this-cursor
 if cursor != U32.max
-    . named = member-name(lhs)
+    . named = tree.member-name(lhs)
     . field = case-field(cursor, named) if named
     if !field
         refuse(.refused-statement, id)
@@ -592,7 +593,7 @@ _ do emit-property-assign Assignment
 ` having its value, which is then never evaluated. The value is evaluated before the object,
 ` as TypeScript does. An assigning operator reads the property first and then stores it, so
 ` its object is read twice. A tracked property runs the actions that read it where the store changed it.
-. name = member-name(lhs)
+. name = tree.member-name(lhs)
 . setter = own-call(lhs)
 if setter != no-fact && facts.calls[setter].form == .call-setter && op == .eq-op
     emit-setter(lhs, object, rhs, facts.calls[setter])
@@ -678,7 +679,7 @@ _ do emit-own-update Assignment?
 ` assignment gives the tuple as it then lies. Nothing is emitted where the assignment is other
 ` than that, or where the field stores more than its bits: one some read tracks, a memo, or
 ` storage the assignment replaces.
-. named = member-name(lhs)
+. named = tree.member-name(lhs)
 if !named || !tables.layouts.is-struct(field.layout) || tracks(property)
     = null
 if memo-flag-of(owner, property) != U32.max || facts.is-replacing(unit.reading, id)
@@ -691,7 +692,7 @@ if facts.node-type(unit.reading, rhs) != property.type
 . value SyntaxId = 0
 do match? tree.nodes[rhs]
     | .node-assign(row)
-        if row.op == .eq-op && !is-chained(row.rhs)
+        if row.op == .eq-op && !tree.is-chained(row.rhs)
             target = row.lhs
             value = row.rhs
 =? null if target == 0
@@ -724,17 +725,6 @@ if converted.type != field-type(property.type, position)
 put-lent(base, tables.layouts.field(field.layout, position), converted.operand, id)
 . stored = Typed(base, property.type)
 = Assignment(stored, stored)
-
-────────────────────
-_ member-name Atom?
-    - lhs SyntaxId
-
-` The name an assignment gives a property by: after an object, or alone.
-match? tree.nodes[lhs]
-    | .node-get-expression(row)
-        row.name
-    | .node-identifier(row)
-        row.name
 
 ────────────────────
 _ do emit-setter-update Assignment
@@ -962,10 +952,10 @@ do match? tree.nodes[lhs]
 if tables.live-statement-of(unit.reading, id)
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
-if is-chained(rhs) && !is-pinned(rhs) && facts.is-replacing(unit.reading, id)
+if tree.is-chained(rhs) && !is-pinned(rhs) && facts.is-replacing(unit.reading, id)
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
-if is-chained(rhs) && !is-pinned(rhs)
+if tree.is-chained(rhs) && !is-pinned(rhs)
     = emit-withheld(id, op, lhs, rhs, true)
 if is-link(lhs)
     refuse(.refused-expression, id)
@@ -1859,8 +1849,8 @@ if callee == no-instance || constant == no-fact || out-of-order || operands.coun
 .. out-of-order = !fills-in-order(fact, callee, 2)
 . traced = facts.constants[constant].bits != 0
 . written = tree.children[operands]
-. first = argument-value(written[0])
-. second = argument-value(written[1])
+. first = tree.argument-value(written[0])
+. second = tree.argument-value(written[1])
 . pointer = convert(object, .reason-receiver, emit-expression(object))
 . pointer-type = pointer.type
 . emitted = emit-expression(first)

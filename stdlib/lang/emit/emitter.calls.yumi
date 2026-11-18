@@ -17,6 +17,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -243,17 +244,6 @@ do match? program.modules[row.module].decls[row.decl]
 = false
 
 ────────────────────
-_ is-named Bool
-    - argument SyntaxId
-
-` Whether an argument is written with the name of the parameter it is for.
-match tree.nodes[argument]
-    | .node-argument(named)
-        named.name != null
-    ??
-        false
-
-────────────────────
 _ do emit-side-payload Typed
     - id SyntaxId
     - callee InstanceId
@@ -318,7 +308,7 @@ if callee == no-instance || operands.count != 3 || instances.signatures[callee].
 . given [Operand]
 for position in 0 .. < 3
     . argument = tree.children[operands.start + position]
-    . converted = convert(argument, .reason-argument, emit-expression(argument-value(argument)))
+    . converted = convert(argument, .reason-argument, emit-expression(tree.argument-value(argument)))
     given += converted.operand
     if converted.type != instances.argument-type(callee, position as U32)
         refuse(.refused-conversion, argument)
@@ -449,12 +439,6 @@ if !is-integer(given) || !is-integer(layout) || tables.layouts.rows[layout].size
 . start U32 = ir.operands.length
 ir.add-operand(value.operand)
 = Typed(make-operand(.operand-value, append(.op-count-leading-zeros, id, Span(start, 1), bits, layout)), type)
-
-────────────────────
-_ is-float-math Bool
-    - plan OperatorPlan
-
-plan == .plan-f64-sqrt || plan == .plan-f64-abs || plan == .plan-f64-min || plan == .plan-f64-max
 
 ────────────────────
 _ do emit-float-math Typed
@@ -1287,8 +1271,8 @@ _ do give-arguments
 ` has no shape.
 . evaluated U32
 for argument in tree.children[written]
-    . expression = argument-value(argument)
-    if refuses-named && is-named(argument)
+    . expression = tree.argument-value(argument)
+    if refuses-named && tree.is-named(argument)
         refuse(.refused-expression, argument)
         break
     evaluated += 1

@@ -14,6 +14,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -283,7 +284,7 @@ while bullet != 0
                 count += 1
             else if !row.is-multi
                 room += 1
-    bullet = next-bullet(bullet)
+    bullet = tree.next-bullet(bullet)
 . mark = open-cleanups.length
 . own-scoping = scoping
 scoping = scoping.block-base = mark
@@ -298,7 +299,7 @@ for _ in 0 .. < count
             if converted.type != built-item
                 refuse(.refused-conversion, site)
             given += Typed(apart(converted, row.item, count > 1), converted.type)
-    bullet = next-bullet(bullet)
+    bullet = tree.next-bullet(bullet)
 . list = build-list(home, RowRange'SyntaxId(0, count), listed, start, false, first, room)
 drop-given(start)
 built-list = list.operand
@@ -314,7 +315,7 @@ while bullet != 0
                 if row.is-optional && !types.is-optional(value.type) && reason == .reason-return
                     refuse(.refused-expression, bullet)
                 append-built(facts.bullet-site(unit.reading, bullet), value, row.is-optional)
-    bullet = next-bullet(bullet)
+    bullet = tree.next-bullet(bullet)
 . built = close-value(list, mark, own-scoping, home)
 built-list = outer-list
 built-item = outer-item
@@ -625,13 +626,6 @@ writes.pop()
 = Typed(written, sink-type)
 
 ────────────────────
-+ pipes-stream Bool
-    - op Operator
-
-` Whether a pipe gives each item of a stream to the function written on its right.
-op == .map-op || op == .filter-op || op == .map-filter-op || op == .pipe-repeat-op
-
-────────────────────
 _ do emit-piped Typed
     - id SyntaxId
     - left SyntaxId
@@ -691,16 +685,6 @@ do match tree.nodes[right]
         answer = emit-call-at(id, right, RowRange'SyntaxId(), left)
 piped-site = 0
 = answer
-
-────────────────────
-+ next-bullet SyntaxId
-    - bullet SyntaxId
-
-match tree.nodes[bullet]
-    | .node-bullet-expression(row)
-        row.next
-    ??
-        0
 
 ────────────────────
 _ do nested-environment Operand

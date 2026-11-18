@@ -13,6 +13,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -647,12 +648,6 @@ for piece in 0 .. < machining.piece
         ir.start-block(next)
 
 ────────────────────
-_ relayed-ops [PartOp]
-
-` What the piece above a part calls it for, for what it and the pieces below it add.
-[PartOp.part-entries, .part-subscribe, .part-immediates, .part-unsubscribe, .part-finally, .part-exit-added, .part-initial]
-
-────────────────────
 _ do relays-any Bool
     - case U32
 
@@ -833,7 +828,7 @@ if tree.is-state-handler(head)
 for transition in tree.group-transitions(items, head)
     . next = ir.reserve-block()
     . trigger = tree.state-trigger(transition)
-    . pattern = trigger-match(trigger)
+    . pattern = tree.trigger-match(trigger)
     if pattern != 0
         do emit-pattern(pattern, Typed(item, group.item), next)
     . guard = tree.trigger-guard(trigger)
@@ -1000,17 +995,6 @@ pending += activation
 pending += item
 pending += broadcaster
 do call-instance(group.enqueue, group.head, mark)
-
-────────────────────
-_ do trigger-match SyntaxId
-    - trigger SyntaxId
-
-` The pattern a trigger matches what it tests with, inside its structure match, or none.
-. pattern = tree.trigger-pattern(trigger)
-do match? tree.nodes[pattern]
-    | .node-structure-match(row)
-        = row.pattern
-= pattern
 
 ────────────────────
 _ binding-slots RowRange'Slot
@@ -1201,13 +1185,6 @@ for scope in range.start .. < range.start + range.count
     if bindings.scopes[scope].syntax == node && bindings.scopes[scope].kind == .scope-activation
         = scope
 = no-scope
-
-────────────────────
-+ opens-function Bool
-    - scope ScopeId
-
-` Whether a scope is that of a function or of a nested function.
-bindings.scopes[scope].kind == .scope-function || bindings.scopes[scope].kind == .scope-nested
 
 ────────────────────
 _ do enter-case ?! Refused
@@ -2403,7 +2380,7 @@ for transition in transitions
     . subject = tree.trigger-subject(trigger)
     if subject != 0
         . value = emit-expression(subject)
-        do emit-pattern(trigger-match(trigger), value, next)
+        do emit-pattern(tree.trigger-match(trigger), value, next)
     else
         . condition = tree.trigger-condition(trigger)
         . passed = ir.reserve-block()

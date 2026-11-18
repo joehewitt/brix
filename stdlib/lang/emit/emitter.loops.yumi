@@ -14,6 +14,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -535,7 +536,7 @@ for position in 0 .. < chain.length
     emit-clause(clauses[position], head, done)
 if first == given-loop
     emit-yield(body, body, false)
-else if gives-items(first, body)
+else if tree.gives-items(first, body)
     give-item(first, facts.bullet-site(unit.reading, first), state(last, first))
 else if body != 0
     emit-block(body)
@@ -717,7 +718,7 @@ _ do read-step Typed
 ` Where it passed without moving the stream on, it panics, as a pipe does. The names it
 ` captures stay bound for the body.
 . nothing = make-operand(.operand-void, 0)
-. pattern = step-pattern(loop)
+. pattern = tree.step-pattern(loop)
 . result = if pattern != 0 then facts.node-type(unit.reading, pattern) else no-type
 . made = stream-maker(loop)
 . viewed = if made != no-fact then next-call(made) else facts.first-call(unit.reading, loop)
@@ -748,22 +749,6 @@ ir.start-block(stuck)
 raise-text(loop, "Stream pattern loop made no input progress")
 ir.start-block(moved)
 = value
-
-────────────────────
-_ step-pattern SyntaxId
-    - loop SyntaxId
-
-` The stream pattern a loop's header is written as, out of the match that holds it where one
-` does.
-match tree.nodes[loop]
-    | .node-loop-syntax(row)
-        match tree.nodes[row.pattern]
-            | .node-stream-match(written)
-                written.pattern
-            ??
-                row.pattern
-    ??
-        0
 
 ────────────────────
 + stream-maker FactId
@@ -833,7 +818,7 @@ put
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
         written = row.pattern
-        pattern = matched-name(row.pattern)
+        pattern = tree.matched-name(row.pattern)
 if take == .take-arms
     take-matched(loop, written, pattern, last, item, type, head)
     =
@@ -845,7 +830,7 @@ if take == .take-unshaped || (pattern == written && (loop == given-loop || take 
     refuse(.refused-statement, loop)
     =
 if take == .take-fields
-    destructure(loop, field-names(pattern), state(last, loop).operand, type, true, true)
+    destructure(loop, tree.field-names(pattern), state(last, loop).operand, type, true, true)
     =
 . held = state(last, loop)
 . own-matching = matching
@@ -1101,13 +1086,6 @@ if rising
     - wide
 
 ────────────────────
-_ gives-items Bool
-    - loop SyntaxId
-    - body SyntaxId
-
-body == 0 && !(tree.nodes[loop] is .node-loop-syntax)
-
-────────────────────
 _ is-written-zero Bool
     - id SyntaxId
 
@@ -1198,7 +1176,7 @@ _ do emit-loop-body
 open-turn(loop, item, type)
 loops += EmittedLoop(loop, step, done, item, type, open-cleanups.length, kept)
 emit-clause(clause, step, done)
-if gives-items(loop, body)
+if tree.gives-items(loop, body)
     give-item(loop, facts.bullet-site(unit.reading, loop), read-item(loop, loop, type))
 else if body != 0
     emit-block(body)

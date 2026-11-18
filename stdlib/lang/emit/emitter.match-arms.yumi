@@ -16,6 +16,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -85,7 +86,7 @@ _ do place-arm
 
 ` Leaves the place the answer of an arm gives for its match, and goes to the join. A body
 ` written as a block runs its statements first, and one that opens a cleanup has no shape here.
-. opens = is-block(body)
+. opens = tree.is-block(body)
 . mark = open-cleanups.length
 . own-scoping = scoping
 if opens
@@ -536,12 +537,12 @@ gather-arms(pattern, arms)
 . owners [U32]
 . fallback-arm SyntaxId = 0
 for arm in arms
-    . tested = arm-test(arm)
+    . tested = tree.arm-test(arm)
     if tested == 0
         fallback-arm = arm
         owners += U32.max
         continue
-    . value = if cases then switch-case(tested) else switch-number(equality-expr(tested))
+    . value = if cases then switch-case(tested) else switch-number(tree.equality-expr(tested))
     . found = U32.max
     for position in 0 .. < values.length
         if values[position] == value
@@ -550,7 +551,7 @@ for arm in arms
         found = values.length as U32
         values += value
     owners += found
-. discriminant = switch-subject(arm-test(arms[0]), subject, held, cases)
+. discriminant = switch-subject(tree.arm-test(arms[0]), subject, held, cases)
 . fallback = ir.reserve-block()
 . blocks [IRBlockId]
 for _ in values
@@ -630,10 +631,10 @@ if intrinsic(held) != .union
 for position in 0 .. < arms.length
     if owners[position] != bucket
         continue
-    . tested = arm-test(arms[position])
+    . tested = tree.arm-test(arms[position])
     if tested == 0 || facts.plan-of(unit.reading, tested) != .plan-case
         = false
-    has-inner = has-inner || case-inner(tested) != 0
+    has-inner = has-inner || tree.case-inner(tested) != 0
     members += arms[position]
 if members.length < 2
     = false
@@ -647,7 +648,7 @@ if has-inner && (field.type == no-type || field.type == invalid-type)
 . sharing [SharedArm]
 for arm in members
     . start = match-steps.length as U32
-    . inner = case-inner(arm-test(arm))
+    . inner = tree.case-inner(tree.arm-test(arm))
     if inner != 0
         match-steps += MatchStep
             - .step-held
@@ -663,16 +664,6 @@ while match-steps.length > mark
 = true
 
 ────────────────────
-_ case-inner SyntaxId
-    - pattern SyntaxId
-
-match tree.nodes[pattern]
-    | .node-type-case(row)
-        row.value
-    ??
-        0
-
-────────────────────
 _ do payload-part SyntaxId
     - inner SyntaxId
     - held TypeId
@@ -682,16 +673,6 @@ do match? tree.nodes[inner]
         if row.field-types.count == 1 && intrinsic(held) != .tuple
             = tree.children[row.field-types.start]
 = inner
-
-────────────────────
-_ transform-body SyntaxId
-    - arm SyntaxId
-
-match tree.nodes[arm]
-    | .node-type-transform(row)
-        row.expr
-    ??
-        0
 
 ────────────────────
 _ do carry-steps
@@ -819,14 +800,14 @@ for bucket in 0 .. < values.length
         if owners[position] == bucket as U32 && inner-case
             payload = take(head.subject, field, head.pattern)
             break
-        .. inner-case = case-inner(match-steps[arms[position].first].pattern) != 0
+        .. inner-case = tree.case-inner(match-steps[arms[position].first].pattern) != 0
     . members [SharedArm]
     for position in 0 .. < arms.length
         if owners[position] != bucket as U32
             continue
         . arm = arms[position]
         . step = match-steps[arm.first]
-        . inner = case-inner(step.pattern)
+        . inner = tree.case-inner(step.pattern)
         . start = match-steps.length as U32
         . result = arm.result
         . result-type = arm.result-type
@@ -908,9 +889,9 @@ _ do list-run
 . nothing = make-operand(.operand-void, 0)
 . start Size = 0
 while start < arms.length
-    . has-first = first-item(match-steps[arms[start].first].pattern) != 0
+    . has-first = tree.first-item(match-steps[arms[start].first].pattern) != 0
     . end = start + 1
-    while end < arms.length && (first-item(match-steps[arms[end].first].pattern) != 0) == has-first
+    while end < arms.length && (tree.first-item(match-steps[arms[end].first].pattern) != 0) == has-first
         end += 1
     . next = ir.reserve-block()
     . first = nothing
@@ -920,7 +901,7 @@ while start < arms.length
         pass-or-fail
             - compare(head.pattern, .compare-greater-equal, length.operand, integer(.machine-u64, 1))
             - next
-        . item = first-item(match-steps[arms[start].first].pattern)
+        . item = tree.first-item(match-steps[arms[start].first].pattern)
         . read = read-part
             - item
             - call-at(item, .call-item-read)
@@ -944,18 +925,6 @@ while start < arms.length
     ir.start-block(next)
     start = end
 jump(missed)
-
-────────────────────
-_ do first-item SyntaxId
-    - pattern SyntaxId
-
-do match? tree.nodes[pattern]
-    | .node-type-list(row)
-        if row.patterns.count != 0
-            . item = tree.children[row.patterns.start]
-            if !(tree.nodes[item] is .node-type-remainder)
-                = item
-= 0
 
 ────────────────────
 _ do list-steps
@@ -1015,7 +984,7 @@ do match? tree.nodes[pattern]
                     - false
                     - position
                     - count - position
-        if rest != count && !matching.testing && has-name(tree.children[row.patterns.start + rest])
+        if rest != count && !matching.testing && tree.has-name(tree.children[row.patterns.start + rest])
             match-steps += MatchStep
                 - .step-rest
                 - tree.children[row.patterns.start + rest]
@@ -1097,7 +1066,7 @@ for position in arm.first .. < last
     if step.carries
         result = passed.operand
         result-type = passed.type
-arm-body(site, arm.arm, transform-body(arm.arm), Typed(result, result-type), 0, given, type, joined, slot)
+arm-body(site, arm.arm, tree.transform-body(arm.arm), Typed(result, result-type), 0, given, type, joined, slot)
 matching = own-matching
 drop-bound(named)
 
@@ -1114,30 +1083,10 @@ do match? tree.nodes[pattern]
 arms += pattern
 
 ────────────────────
-_ arm-test SyntaxId
-    - arm SyntaxId
-
-match tree.nodes[arm]
-    | .node-type-transform(row)
-        if row.pattern == 0 || tree.nodes[row.pattern] is .node-type-wildcard then 0 else row.pattern
-    ??
-        0
-
-────────────────────
 _ switch-case U64
     - pattern SyntaxId
 
 facts.constants[facts.constant-of(unit.reading, pattern)].bits
-
-────────────────────
-_ equality-expr SyntaxId
-    - pattern SyntaxId
-
-match tree.nodes[pattern]
-    | .node-type-equality(row)
-        row.expr
-    ??
-        0
 
 ────────────────────
 _ switch-number U64
@@ -1181,7 +1130,7 @@ if kind == .table-row || kind == .immutable-table-row
 ` cleanups opened in it run where it ends. A value a helper makes again, `remade`, is what
 ` `remake` makes of the body's. With `in-place` the value is copied where the arms join as soon
 ` as it is read, so a struct is read from where it lies.
-. opens = is-block(body)
+. opens = tree.is-block(body)
 . mark = open-cleanups.length
 . own-scoping = scoping
 if opens
@@ -1205,16 +1154,6 @@ if value.type != type
 if value.type != type && value.type != whole
     refuse(.refused-conversion, expression)
 = if opens then close-value(value, mark, own-scoping, body) else value
-
-────────────────────
-+ is-block Bool
-    - body SyntaxId
-
-match tree.nodes[body]
-    | .node-block
-        true
-    ??
-        false
 
 ────────────────────
 _ do give-arm
@@ -1490,21 +1429,6 @@ fail-jumps += 1
 ir.start-block(passed)
 
 ────────────────────
-+ names-type Bool
-    - pattern SyntaxId
-
-` Whether a pattern is a type named and no more.
-match tree.nodes[pattern]
-    | .node-type-identifier
-        true
-    | .node-type-arguments
-        true
-    | .node-type-optional
-        true
-    ??
-        false
-
-────────────────────
 + do emit-pattern Typed ?! Refused
     - pattern SyntaxId
     - value Typed
@@ -1527,12 +1451,12 @@ do match? tree.nodes[pattern]
     | .node-type-optional
         = match-type(pattern, value, failed)
     | .node-type-match(row)
-        if names-type(row.type)
+        if tree.names-type(row.type)
             = match-type(row.type, value, failed)
         = emit-pattern(row.type, value, failed)
     | .node-type-capture(row)
         . passed = value
-        if row.type != 0 && names-type(row.type)
+        if row.type != 0 && tree.names-type(row.type)
             passed = match-type(row.type, value, failed)
         else if row.type != 0
             passed = emit-pattern(row.type, value, failed)
@@ -1951,7 +1875,7 @@ _ do refined-case TypeId
 ` composite with the case is of, nor any class below it, has no shape here.
 refined-flag = no-local
 refined-payload = no-local
-. name = pattern-case-name(pattern)
+. name = tree.pattern-case-name(pattern)
 . union = if subject != 0 then facts.node-type(unit.reading, subject) else no-type
 . root = machine-of-union(union)
 . property = decl-name(root.module, root.decl) if root
@@ -2024,7 +1948,7 @@ _ do refined-owner TypeId
 
 ` The class of the object `refined-case` reads a case a refinement adds from: that of the local
 ` written before the property's name, or of the object a name alone is read from, or no type.
-. name = pattern-case-name(pattern)
+. name = tree.pattern-case-name(pattern)
 . union = if subject != 0 then facts.node-type(unit.reading, subject) else no-type
 . root = machine-of-union(union)
 . property = decl-name(root.module, root.decl) if root
@@ -2099,17 +2023,6 @@ for fact in types.cases[types.completion-of(union).cases]
         = false
     position += 1
 = false
-
-────────────────────
-_ pattern-case-name Atom?
-    - pattern SyntaxId
-
-` The name of the case a pattern names.
-match? tree.nodes[pattern]
-    | .node-type-case(row)
-        row.name
-    | .node-symbol(row)
-        row.name
 
 ────────────────────
 _ tests-tag Bool
@@ -2315,7 +2228,7 @@ if !matching.testing
                 bind-name
                     - row.id
                     - Typed(make-operand(.operand-constant, ir.add-string(tree.text-of(part)!)), types.string-type)
-if !matching.testing && has-name(rest)
+if !matching.testing && tree.has-name(rest)
     . again = read-part(pattern, measured, value.operand, type, nothing)
     . end = again.operand
     if suffix.length != 0
@@ -2488,17 +2401,6 @@ if fact == no-fact || facts.calls[fact].callee == no-instance
 = row-value(site, cursor, instances.signatures[facts.calls[fact].callee].returns)
 
 ────────────────────
-_ has-name Bool
-    - remainder SyntaxId
-
-` Whether the rest of a pattern of a list has a name.
-match tree.nodes[remainder]
-    | .node-type-remainder(row)
-        row.name != 0
-    ??
-        false
-
-────────────────────
 _ do match-rest
     - remainder SyntaxId
     - subject Operand
@@ -2559,7 +2461,7 @@ if types.is-optional(subject.type) || intrinsic(subject.type) == .union
 for item in tree.children[items]
     do match tree.nodes[item]
         | .node-type-map-item(row)
-            . key = convert(row.key, .reason-argument, emit-expression(key-of(row.key)))
+            . key = convert(row.key, .reason-argument, emit-expression(tree.key-of(row.key)))
             . keyed = key.type
             . read = read-part(item, call-at(item, .call-item-read), subject.operand, type, key.operand, keyed)
             if types.is-optional(read.type)
@@ -2579,17 +2481,6 @@ if rest != 0 && !matching.testing
     match-unmatched(rest, subject.operand, type, mark, failed)
 drop-given(mark)
 = Typed(subject.operand, type)
-
-────────────────────
-_ key-of SyntaxId
-    - key SyntaxId
-
-` The expression a key of a map pattern is compared to: what is written, or the name read.
-match tree.nodes[key]
-    | .node-type-equality(row)
-        row.expr
-    ??
-        key
 
 ────────────────────
 _ do match-unmatched

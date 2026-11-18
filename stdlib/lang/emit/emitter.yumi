@@ -97,6 +97,12 @@ _ PartOp is U32
 | part-join = 15
 
 ━━━━━━━━━━━━━━━━━━━━
+_ relayed-ops [PartOp]
+
+` What the piece above a part calls it for, for what it and the pieces below it add.
+[PartOp.part-entries, .part-subscribe, .part-immediates, .part-unsubscribe, .part-finally, .part-exit-added, .part-initial]
+
+━━━━━━━━━━━━━━━━━━━━
 _ EmittedLoop is Tuple
 
 ` A loop whose body is being emitted. `syntax` is its header, or the loop itself when it has
@@ -663,6 +669,13 @@ _ StreamPart is Tuple
 + value Typed
 
 ━━━━━━━━━━━━━━━━━━━━
++ bare-part StreamPart
+    - ending Operand
+
+` A part of a stream pattern that ends at a cursor and gives no value.
+StreamPart(ending, Typed(make-operand(.operand-void, 0), no-type))
+
+━━━━━━━━━━━━━━━━━━━━
 _ StreamCapture is Tuple
 
 ` Where a stream pattern keeps what a name it captures matched: the slot of the name, where
@@ -733,6 +746,68 @@ _ ItemRange is Tuple
 + last U64
 
 ━━━━━━━━━━━━━━━━━━━━
+_ do merged-ranges [ItemRange]
+    - left [ItemRange]
+    - right [ItemRange]
+
+` The ranges of two lists, each in order and apart, in order and apart: those that overlap or
+` touch are joined. Where one list is empty, the other is the result.
+=? right if left.length == 0
+=? left if right.length == 0
+. merged [ItemRange]
+. at-left Size = 0
+. at-right Size = 0
+while at-left < left.length || at-right < right.length
+    . from-left = at-right >= right.length || (at-left < left.length && left-before)
+        .. left-before = !range-after(left[at-left], right[at-right])
+    . range = if from-left then left[at-left] else right[at-right]
+    if from-left
+        at-left += 1
+    else
+        at-right += 1
+    if merged.length != 0 && range.first <= merged[merged.length - 1].last + 1
+        if range.last > merged[merged.length - 1].last
+            merged[merged.length - 1] = ItemRange(merged[merged.length - 1].first, range.last)
+        continue
+    merged += range
+= merged
+
+━━━━━━━━━━━━━━━━━━━━
+_ range-after Bool
+    - range ItemRange
+    - other ItemRange
+
+` Whether a range sorts after another: it starts later, or as early and ends later.
+range.first > other.first || (range.first == other.first && range.last > other.last)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do ranges-meet Bool
+    - left [ItemRange]
+    - right [ItemRange]
+
+` Whether two lists of ranges, each in order and apart, share an item.
+. at-left Size = 0
+. at-right Size = 0
+while at-left < left.length && at-right < right.length
+    if left[at-left].last < right[at-right].first
+        at-left += 1
+    else if right[at-right].last < left[at-left].first
+        at-right += 1
+    else
+        = true
+= false
+
+━━━━━━━━━━━━━━━━━━━━
+_ do single-range [ItemRange]
+    - first U64
+    - last U64
+
+` A list of one range.
+. ranges [ItemRange]
+ranges += ItemRange(first, last)
+= ranges
+
+━━━━━━━━━━━━━━━━━━━━
 _ FirstItems is Tuple
 
 ` What the reference knows of the items a part of a stream pattern may start with, as it
@@ -745,6 +820,14 @@ _ FirstItems is Tuple
 + nullable Bool
 + ranges [ItemRange]
 + probe U64
+
+━━━━━━━━━━━━━━━━━━━━
+_ guards Bool
+    - first FirstItems
+
+` Whether the reference skips an alternative that starts so where the item at the cursor is
+` not one it may start with: where it knows them, there are some, and it must read one.
+first.known && !first.nullable && first.ranges.length != 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ SharedFirst is Tuple
@@ -2383,18 +2466,6 @@ allowed && !is-free(unit.instance) && (stepping || !kept || use-head != no-block
 .. generates = kept && given-loop == 0 && bullets == 0
 
 ────────────────────
-_ chained-subject SyntaxId
-    - expr SyntaxId
-
-` What `use?` uses: the expression its optional chain holds, or none where it is written
-` without one.
-match tree.nodes[expr]
-    | .node-optional-chain(row)
-        row.expr
-    ??
-        0u32
-
-────────────────────
 _ do use-cell UseCell
     - id SyntaxId
     - type TypeId
@@ -2462,7 +2533,7 @@ _ do emit-use Typed
 if !can-use(true) || begins == no-fact
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
-. chain = chained-subject(expr)
+. chain = tree.chained-subject(expr)
 . subject = emit-expression(if chain != 0 then chain else expr)
 . joined = no-block
 . made = void-layout
@@ -2508,7 +2579,7 @@ _ do emit-use-block
 if !can-use(false) || begins == no-fact
     refuse(.refused-statement, id)
     =
-. chain = chained-subject(subject)
+. chain = tree.chained-subject(subject)
 . object = emit-expression(if chain != 0 then chain else subject)
 . done = no-block
 if chain != 0 && types.is-optional(object.type)
@@ -2873,7 +2944,7 @@ _ do emit-statement ?! Refused
 if zone-answer != 0
     refuse(.refused-statement, id)
     =
-if is-probe(id)
+if tree.is-probe(id)
     if compiles-probe(id)
         emit-probe-statement(id)
     =
@@ -2986,7 +3057,7 @@ do match tree.nodes[id]
     | .node-catch-expression(row)
         . handled = row.catchers.count != 0 && is-caught(row.body)
         if tree.transformer-exception(row.body, row.catchers) != 0
-            if row.catchers.count > 1 && catchers-bind(row.catchers)
+            if row.catchers.count > 1 && tree.catchers-bind(row.catchers)
                 refuse(.refused-statement, id)
         else if handled && !carries-error(facts.node-type(unit.reading, id))
             emit-handled(id, row.body, row.catchers, true)
@@ -3119,22 +3190,6 @@ ir.start-block(later)
 = true
 
 ────────────────────
-_ do has-pattern-arm Bool
-    - id SyntaxId
-
-` Whether a markup branch region has an arm written with a pattern, `if | x = v`.
-. arm = id
-while arm != 0
-    if tree.pattern-arm(arm) != 0
-        = true
-    . next SyntaxId = 0
-    do match? tree.nodes[arm]
-        | .node-if-block(row)
-            next = row.next
-    arm = next
-= false
-
-────────────────────
 _ do emit-pattern-index
     - id SyntaxId
     - held Operand
@@ -3190,7 +3245,7 @@ _ do emit-resource
 . live = instances.live
 . region = facts.loop-region-of(instances.rows[unit.instance].enclosing, id)
 . slot = channel-slot(id)
-. container = region-container(id)
+. container = tree.region-container(id)
 if !region || slot == no-slot || region.replace == no-instance || unanchored
     refuse(.refused-function, declared)
     =
@@ -3265,7 +3320,7 @@ live-actions += LiveTrackers(previous, next)
 . host = read-captured(slot, id, region.host)
 content-hosts += Typed(host.operand, region.host)
 content-roots += make-operand(.operand-void, 0)
-. patterned = has-pattern-arm(id)
+. patterned = tree.has-pattern-arm(id)
 . kept = if patterned then ir.add-local(u8-layout) else no-local
 . selected = emit-arm-index(id, region.selected, kept)
 content-hosts.pop()
@@ -3542,51 +3597,6 @@ if root
 = convert(line, .reason-markup-slot, emit-closure(line))
 
 ────────────────────
-_ do catchers-bind Bool
-    - catchers RowRange'SyntaxId
-
-` Whether a catcher declares a name for the error it names, or for one in its chain.
-for catcher in tree.children[catchers]
-    do match? tree.nodes[catcher]
-        | .node-catcher(row)
-            if is-capture(row.type)
-                = true
-            for pattern in tree.children[row.previous]
-                if is-capture(pattern)
-                    = true
-= false
-
-────────────────────
-_ is-capture Bool
-    - pattern SyntaxId
-
-match tree.nodes[pattern]
-    | .node-type-capture
-        true
-    ??
-        false
-
-────────────────────
-_ is-probe Bool
-    - id SyntaxId
-
-match tree.nodes[id]
-    | .node-probe
-        true
-    | .node-probe-scope
-        true
-    | .node-probe-statement
-        true
-    | .node-probe-counter
-        true
-    | .node-probe-group
-        true
-    | .node-probe-assign
-        true
-    ??
-        false
-
-────────────────────
 _ do emit-declare ?! Refused
     - id SyntaxId
     - pattern SyntaxId
@@ -3768,7 +3778,7 @@ for position in 0 .. < names.count
         if tabled
             table-source(id, source, owner, layout)
         continue
-    . inner = field-names(name)
+    . inner = tree.field-names(name)
     if tabled && inner.count != 0
         refuse(.refused-statement, name)
         =
@@ -4512,7 +4522,7 @@ branch(interested, publishing, missing)
 ir.start-block(publishing)
 count-event(.payload-builds, id)
 . given = tree.children[operands.start]
-. payload = convert(given, .reason-argument, emit-expression(argument-value(given)))
+. payload = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
 . node = if used.bubbles then convert-from(used.reference, .reason-event-node, owner.operand).operand else nothing
 . mark = pending.length
 pending += pointer
@@ -4554,7 +4564,7 @@ if number == U32.max
 . next = nothing
 if rekeys
     . given = tree.children[operands.start]
-    . converted = convert(given, .reason-argument, emit-expression(argument-value(given)))
+    . converted = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
     next = converted.operand
     if converted.type != key-type
         refuse(.refused-conversion, given)
@@ -4591,7 +4601,7 @@ if number == U32.max
     = Typed(nothing, types.void-type)
 . pointer = num-cast(id, owner.operand, managed-layout, pointer-layout)
 . given = tree.children[operands.start]
-. payload = convert(given, .reason-argument, emit-expression(argument-value(given)))
+. payload = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
 count-event(.payload-builds, id)
 . node = if used.bubbles then convert-from(used.reference, .reason-event-node, owner.operand).operand else no-node
     .. no-node = make-operand(.operand-void, 0)
@@ -5012,7 +5022,7 @@ _ do turn-link Operand
 ` nearest scope around it in its function that has turns with an environment, or else the
 ` function's own. One whose turn is not being emitted there has no shape here.
 . around = bindings.scopes[scope].parent
-while !opens-function(around)
+while !bindings.opens-function(around)
     if tables.is-turn-scope(around) && tables.scope-captures[around] != 0
         . position = open-turns.length
         while position != 0 && open-turns[position - 1].scope != around
@@ -5154,23 +5164,6 @@ _ do text-constant Operand
 
 ` A literal of text, whose address is that of its bytes, which a zero byte follows.
 = make-operand(.operand-constant, ir.add-string(text))
-
-────────────────────
-_ field-names RowRange'SyntaxId
-    - pattern SyntaxId
-
-` The names a pattern writes for the fields of a tuple, where it is one that takes the tuple
-` apart: the pattern of a loop, or a tuple of names within another. None for any other.
-|? pattern == 0
-    RowRange'SyntaxId()
-??
-    match tree.nodes[pattern]
-        | .node-type-tuple(row)
-            row.field-types
-        | .node-tuple-syntax(row)
-            row.items
-        ??
-            RowRange'SyntaxId()
 
 ────────────────────
 _ do keep-state
@@ -5755,7 +5748,7 @@ else
     held-chain = body
     . emitted = emit-expression(body)
     held-chain = 0
-    if is-chained(body) && types.is-optional(emitted.type)
+    if tree.is-chained(body) && types.is-optional(emitted.type)
         . tested = present(body, emitted)
         . printing = ir.reserve-block()
         branch(tested.operand, printing, skipped)
@@ -6145,7 +6138,7 @@ for item in tree.children[content]
     if logs && tree.nodes[item] is .node-string-syntax
         continue
     snapshots += tree.nodes[item] is .node-probe-snapshot
-    . emitted = emit-expression(probe-value(item))
+    . emitted = emit-expression(tree.probe-value(item))
     given += emitted
 
 ────────────────────
@@ -6160,7 +6153,7 @@ _ do cast-probe-values
 for item in tree.children[content]
     if logs && tree.nodes[item] is .node-string-syntax
         continue
-    . value = probe-value(item)
+    . value = tree.probe-value(item)
     . type = facts.node-type(unit.reading, value)
     if tree.nodes[item] is .node-probe-preview && probe-cast(types, type) == .probe-converted
         . preview = make-operand(.operand-constant, ir.add-string(probe-preview-text(types, type)))
@@ -6169,19 +6162,6 @@ for item in tree.children[content]
         . converted = convert(value, .reason-print, given[position])
         given[position] = converted
     position += 1
-
-────────────────────
-_ probe-value SyntaxId
-    - item SyntaxId
-
-` The value a probe writes for an item written in it: the one a snapshot or a preview is of.
-match tree.nodes[item]
-    | .node-probe-snapshot(row)
-        row.content
-    | .node-probe-preview(row)
-        row.content
-    ??
-        item
 
 ────────────────────
 _ do emit-probe-setup
@@ -8131,24 +8111,9 @@ _ do takes-item Bool
 do match? tree.nodes[loop]
     | .node-loop-syntax(row)
         . matched = take == .take-arms || fitted-match
-            .. fitted-match = take == .take-fitted && matched-name(row.pattern) != row.pattern
+            .. fitted-match = take == .take-fitted && tree.matched-name(row.pattern) != row.pattern
         = !row.is-subscriber && (take == .take-whole || matched) && row.container != 0
 = false
-
-────────────────────
-_ matched-name SyntaxId
-    - pattern SyntaxId
-
-` The pattern of a comprehension's loop as the binder declares it: the one a match written
-` there holds, which names the item where it is a name alone.
-|? pattern == 0
-    0
-??
-    match tree.nodes[pattern]
-        | .node-structure-match(row)
-            row.pattern
-        ??
-            pattern
 
 ────────────────────
 _ do check-steps
@@ -8281,7 +8246,7 @@ if whole || expr == 0
 held-chain = expr
 . value = emit-expression(expr)
 held-chain = 0
-yield-item(id, value, is-chained(expr))
+yield-item(id, value, tree.is-chained(expr))
 
 ────────────────────
 _ do give-item
@@ -8751,21 +8716,8 @@ _ do emit-return
 ` leaves only where the optional written holds a value, with what it holds, and what follows
 ` runs where it holds nothing.
 . staying = ir.reserve-block()
-return-from(id, expr, if is-chained(expr) then staying else no-block, true)
+return-from(id, expr, if tree.is-chained(expr) then staying else no-block, true)
 ir.start-block(staying)
-
-────────────────────
-_ do is-chained Bool
-    - expr SyntaxId
-
-` Whether an expression is written after the `?` of a statement that runs only where an
-` optional holds a value.
-if expr == 0
-    = false
-do match? tree.nodes[expr]
-    | .node-optional-chain
-        = true
-= false
 
 ────────────────────
 _ do emit-return-if
@@ -10666,12 +10618,6 @@ if kept.per-thread
 = task-locals(syntax)
 
 ────────────────────
-_ global-offset U32
-    - kept GlobalStorage
-
-if kept.offset == U32.max then 0 else kept.offset
-
-────────────────────
 _ do read-global Typed
     - id SyntaxId
     - module ModuleId
@@ -11654,7 +11600,7 @@ for catcher in tree.children[catchers]
                 jump(joined)
             else if !arm-raises(row.body)
                 . expression = only-expression(row.body)
-                if is-block(row.body)
+                if tree.is-block(row.body)
                     . opened = open-cleanups.length
                     . own-scoping = scoping
                     scoping = scoping.block-base = opened
@@ -13062,7 +13008,7 @@ for argument in tree.children[operands]
 held = Typed(apart(Typed(held.operand, whole), object, disturbed), whole)
 . pin-mark = pins.length
 for argument in tree.children[operands]
-    . expression = argument-value(argument)
+    . expression = tree.argument-value(argument)
     . made = emit-expression(expression)
     . value = apart(made, expression, true)
     if made.type != facts.node-type(unit.reading, expression)
@@ -13278,7 +13224,7 @@ if fields
     held = emit-case-fields(id, field, operands)
 else if operands.count == 1
     . given = tree.children[operands.start]
-    held = convert(given, .reason-argument, emit-expression(argument-value(given)))
+    held = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
 else if operands.count == 0 && types.cases-of(type)[index].is-default
     held = Typed(integer(.machine-u8, index), field.type)
 else
@@ -13312,7 +13258,7 @@ for offset in 0 .. < range.count
         refuse(.refused-expression, id)
         = Typed(nothing, no-type)
     . given = tree.children[operands.start + position]
-    . value = convert(given, .reason-argument, emit-expression(argument-value(given)))
+    . value = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
     . target = tables.layouts.field(field.layout, property.slot)
     if value.type != target.type
         refuse(.refused-conversion, given)
@@ -16405,62 +16351,6 @@ ir.add-operand(right)
 = make-operand(.operand-value, append(.op-arithmetic, id, Span(start, 2), arithmetic, layout))
 
 ────────────────────
-_ arithmetic-of U32
-    - op Operator
-
-match op
-    |= .add-op
-        ArithmeticOp.arithmetic-add
-    |= .subtract-op
-        ArithmeticOp.arithmetic-subtract
-    |= .multiply-op
-        ArithmeticOp.arithmetic-multiply
-    |= .divide-op
-        ArithmeticOp.arithmetic-divide
-    |= .mod-op
-        ArithmeticOp.arithmetic-remainder
-    ??
-        U32.max
-
-────────────────────
-_ bitwise-of U32
-    - op Operator
-
-match op
-    |= .bitwise-and-op
-        BitwiseOp.bitwise-and
-    |= .bitwise-or-op
-        BitwiseOp.bitwise-or
-    |= .bitwise-xor-op
-        BitwiseOp.bitwise-xor
-    |= .bitwise-lshift-op
-        BitwiseOp.bitwise-shift-left
-    |= .bitwise-rshift-op
-        BitwiseOp.bitwise-shift-right
-    |= .bitwise-zrshift-op
-        BitwiseOp.bitwise-shift-right-zero
-    ??
-        U32.max
-
-────────────────────
-_ predicate-of ComparePredicate
-    - op Operator
-
-match op
-    |= .not-equals-op
-        .compare-not-equal
-    |= .less-than-op
-        .compare-less
-    |= .less-than-equals-op
-        .compare-less-equal
-    |= .greater-than-op
-        .compare-greater
-    |= .greater-than-equals-op
-        .compare-greater-equal
-    ??
-        .compare-equal
-
-────────────────────
 _ do emit-sign-checked Typed
     - id SyntaxId
     - op Operator
@@ -16500,21 +16390,6 @@ jump(joined)
 ir.start-block(joined)
 . known = integer(.machine-u8, known-answer(op, is-left))
 = Typed(phi(u8-layout, known, tested, answer, compared-end), types.bool-type)
-
-────────────────────
-_ known-answer U64
-    - op Operator
-    - is-left Bool
-
-` What a comparison answers when its signed side is negative, which the other side cannot be.
-|? op == .not-equals-op
-    1
-|? op == .less-than-op || op == .less-than-equals-op
-    if is-left then 1u64 else 0u64
-|? op == .greater-than-op || op == .greater-than-equals-op
-    if is-left then 0u64 else 1u64
-??
-    0
 
 ────────────────────
 _ do emit-logic Typed
@@ -16567,7 +16442,7 @@ _ do branch-on ?! Refused
 ` through where it holds `&&` or `||` and tests it as itself.
 do match? tree.nodes[condition]
     | .node-type-predicate(row)
-        . logic = is-logic(row.expr) || logic-lazy(row.expr, 0, false) != no-slot
+        . logic = tree.is-logic(row.expr) || logic-lazy(row.expr, 0, false) != no-slot
         if site == 0 && !row.is-contextual && logic && passes-through(condition, row.expr)
             branch-on(row.expr, when-true, when-false)
             =
@@ -16595,16 +16470,6 @@ do match? tree.nodes[condition]
             =
 . tested = if site == 0 then test(condition, emit-expression(condition)) else test(site, emit-expression(condition), true, is-right)
 branch(tested.operand, when-true, when-false)
-
-────────────────────
-_ do is-logic Bool
-    - id SyntaxId
-
-` Whether an expression is `&&` or `||`.
-do match? tree.nodes[id]
-    | .node-binary-expression(row)
-        = row.op == .and-op || row.op == .or-op
-= false
 
 ────────────────────
 _ passes-through Bool
@@ -16980,19 +16845,6 @@ do match? tree.nodes[id]
         arrive(id, value.operand, joined, slot)
         = true
 = emit-bare-arm(run, id, result, from, whole, end, joined, slot, failed, entered, unread)
-
-────────────────────
-_ do observes Bool
-    - id SyntaxId
-
-` Whether the reference takes a part of a pattern as one of its own: not a part that only
-` declares lazy locals around another, nor an arm that raises.
-do match? tree.nodes[id]
-    | .node-stream-transform(row)
-        = row.pattern == 0 || !tree.lazies-only(row.right)
-    | .node-stream-panic
-        = false
-= true
 
 ────────────────────
 _ do stream-call StreamPart ?! Refused
@@ -17601,21 +17453,11 @@ do match? tree.nodes[body]
             if is-lazy-local(statement)
                 continue
             if last != 0
-                if !is-assertion(last) && !(tree.nodes[last] is .node-declare)
+                if !tree.is-assertion(last) && !(tree.nodes[last] is .node-declare)
                     = 0
                 emit-statement(last)
             last = statement
-= if last == 0 || is-assertion(last) || tree.nodes[last] is .node-declare then 0 else last
-
-────────────────────
-_ is-assertion Bool
-    - statement SyntaxId
-
-match tree.nodes[statement]
-    | .node-assertion-syntax
-        true
-    ??
-        false
+= if last == 0 || tree.is-assertion(last) || tree.nodes[last] is .node-declare then 0 else last
 
 ────────────────────
 _ do declares-getter Bool
@@ -17868,29 +17710,18 @@ if plan == .plan-relation
         = Typed(nothing, no-type)
     run-type-operand(object)
     for operand in tree.children[operands]
-        run-type-operand(argument-value(operand))
+        run-type-operand(tree.argument-value(operand))
     = Typed(make-operand(.operand-constant, ir.add-string(facts.constants[constant].text!.text)), type)
 if operands.count != 1 || facts.plan-of(unit.reading, object) != .plan-relation
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
 emit-expression(object)
 . given = tree.children[operands.start]
-. raw = convert(given, .reason-argument, emit-expression(argument-value(given)))
+. raw = convert(given, .reason-argument, emit-expression(tree.argument-value(given)))
 . value = convert(given, .reason-relation, raw, id)
 if value.type != type
     refuse(.refused-conversion, id)
 = value
-
-────────────────────
-_ argument-value SyntaxId
-    - argument SyntaxId
-
-` The expression of an argument written: what follows its name, when it has one.
-match tree.nodes[argument]
-    | .node-argument(named)
-        named.expr
-    ??
-        argument
 
 ────────────────────
 _ do emit-get Typed
@@ -18395,7 +18226,7 @@ call-method(reserves, id, mark)
 for position in 0 .. < count
     if !converts
         break
-    . item = item-site(written, chain, position)
+    . item = tree.item-site(written, chain, position)
     . converted = convert(item, .reason-element, given[start + position])
     given[start + position] = converted
 . array = held-field(id, list-type, kept)
@@ -18413,7 +18244,7 @@ if !is-pointer(pointer) || item-type == no-type
 . layout = layout-of(item-type, id)
 . size = tables.layouts.rows[layout].size
 for position in 0 .. < count
-    . item = item-site(written, chain, position)
+    . item = tree.item-site(written, chain, position)
     if given[start + position].type != item-type
         refuse(.refused-conversion, item)
         =
@@ -18422,22 +18253,6 @@ for position in 0 .. < count
         store-struct(data.operand, LayoutField(position * size, layout), value, item)
     else if layout != void-layout
         store(data.operand, position * size, value, is-managed-pointer(layout), item)
-
-────────────────────
-_ do item-site SyntaxId
-    - written RowRange'SyntaxId
-    - chain SyntaxId
-    - position U32
-
-=? tree.children[written.start + position] if chain == 0
-. bullet = chain
-for _ in 0 .. < position
-    bullet = next-bullet(bullet)
-= match tree.nodes[bullet]
-    | .node-bullet-expression(row)
-        row.item
-    ??
-        bullet
 
 ────────────────────
 _ do store-held

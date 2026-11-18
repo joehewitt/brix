@@ -13,6 +13,7 @@
 /lang/ast/ast
 /lang/ast/ast-children
 /lang/ast/ast-nodes
+/lang/ast/ast-queries
 /lang/ast/decl
 /lang/ast/module
 /lang/ast/operator
@@ -62,7 +63,7 @@ _ Markup is facet of FunctionEmitter
 ` object where that is nothing; one a local is declared for gives it what the local holds, which
 ` the environment of a function the element is written in may keep. A slot outlet that is a
 ` branch region is written at its parameter (`region-site`).
-. site = region-site(id)
+. site = tree.region-site(id)
 . region = facts.branch-region-of(unit.reading, site)
 . looped = facts.loop-region-of(unit.reading, id)
 . live = tables.live-statement-of(unit.reading, id) if !region && !looped && !rerunning && unit.reading == unit.instance
@@ -144,17 +145,6 @@ do match? tree.nodes[id]
 . named = facts.named-store-of(unit.reading, id)
 if named != U32.max
     store-named(id, named, raw)
-
-────────────────────
-_ region-site SyntaxId
-    - id SyntaxId
-
-` Where the markup branch region a line may be is written: a slot outlet's parameter, or the line.
-match tree.nodes[id]
-    | .node-slot-outlet(row)
-        if row.slot-parameter != 0 then row.slot-parameter else id
-    ??
-        id
 
 ────────────────────
 _ do emit-branch Typed
@@ -256,7 +246,7 @@ _ do emit-loop Typed
 ` region builds as it is made, and the region is put under the batch found for the host.
 . nothing = make-operand(.operand-void, 0)
 . top = content-hosts.length
-. container = region-container(id)
+. container = tree.region-container(id)
 if top == 0 || content-hosts[top - 1].type != region.host || container == 0
     refuse(.refused-statement, id)
     = Typed(nothing, no-type)
@@ -345,21 +335,6 @@ emit-block(body)
 content-hosts.pop()
 content-roots.pop()
 emit-end(declared)
-
-────────────────────
-+ region-container SyntaxId
-    - id SyntaxId
-
-` The container of the one header of a markup loop region's `for`.
-match tree.nodes[id]
-    | .node-for-block(row)
-        match tree.nodes[row.loop]
-            | .node-loop-syntax(loop)
-                loop.container
-            ??
-                0
-    ??
-        0
 
 ────────────────────
 _ do own-loop
