@@ -65,52 +65,40 @@
 (fn-do + decode-sprite SpriteDocument (?! Error)
   (param text String)
   (let parsed (call parse-json text))
-  (do
-    (inline
-      (match parsed
-        (case (list (= "format" "chromatic") (= "version" 1) (= "width" 24) (= "height" 20) (= "fps" (: fps Int)) (= "visible" (list (: lower Bool) (: upper Bool))) (= "frames" (: frames (list JSON))))
-          (throw (call Error "Projects need 1–32 frames and a frame rate of 1–24 fps.") (if (or (< (. frames length) 1) (> (. frames length) 32) (< fps 1) (> fps 24))))
-          (let result (call SpriteDocument))
-          (= (. result fps) fps)
-          (= (. result lower-visible) lower)
-          (= (. result upper-visible) upper)
-          (for (in raw frames)
-            (do
-              (inline
-                (match raw
-                  (case (: values (list JSON))
-                    (throw (call Error "A frame must contain two 24 × 20 layers.") (if (!= (. values length) (* cel-size 2))))
-                    (let frame (call SpriteFrame))
-                    (for (in index (..< 0 (. values length)))
-                      (do
-                        (inline
-                          (match ([] values index)
-                            (case (: color Int)
-                              (throw (call Error "A pixel uses a color outside the palette.") (if (or (< color 0) (> color 15))))
-                              (= ([] (. frame pixels) index) color)
-                            )
-                            (default
-                              (throw (call Error "Pixel colors must be integers."))
-                            )
-                          )
-                        )
-                      )
-                    )
-                    (+= (. result frames) frame)
-                  )
-                  (default
-                    (throw (call Error "A frame must be an array of pixels."))
-                  )
+  (match parsed
+    (case (list (= "format" "chromatic") (= "version" 1) (= "width" 24) (= "height" 20) (= "fps" (: fps Int)) (= "visible" (list (: lower Bool) (: upper Bool))) (= "frames" (: frames (list JSON))))
+      (throw (call Error "Projects need 1–32 frames and a frame rate of 1–24 fps.") (if (or (< (. frames length) 1) (> (. frames length) 32) (< fps 1) (> fps 24))))
+      (let result (call SpriteDocument))
+      (= (. result fps) fps)
+      (= (. result lower-visible) lower)
+      (= (. result upper-visible) upper)
+      (for (in raw frames)
+        (match raw
+          (case (: values (list JSON))
+            (throw (call Error "A frame must contain two 24 × 20 layers.") (if (!= (. values length) (* cel-size 2))))
+            (let frame (call SpriteFrame))
+            (for (in index (..< 0 (. values length)))
+              (match ([] values index)
+                (case (: color Int)
+                  (throw (call Error "A pixel uses a color outside the palette.") (if (or (< color 0) (> color 15))))
+                  (= ([] (. frame pixels) index) color)
+                )
+                (default
+                  (throw (call Error "Pixel colors must be integers."))
                 )
               )
             )
+            (+= (. result frames) frame)
           )
-          (return result)
-        )
-        (default
-          (throw (call Error "This is not a supported Chromatic project."))
+          (default
+            (throw (call Error "A frame must be an array of pixels."))
+          )
         )
       )
+      (return result)
+    )
+    (default
+      (throw (call Error "This is not a supported Chromatic project."))
     )
   )
 )

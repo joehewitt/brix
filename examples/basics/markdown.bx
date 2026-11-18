@@ -8,25 +8,21 @@
   (let note Markdown (call recipe))
   (let doc (as note MDDocument))
   (for (in block (. doc content))
-    (do
-      (inline
-        (match block
-          (case (: header MDHeader)
-            (print (str (* "  " (- (. header level) 1)) (call plain (. header content))))
-          )
-          (case (: list MDList)
-            (for (in item (. list children))
-              (print (str "      - " (call text-of item)))
-            )
-          )
-          (case (: code MDFencedCode)
-            (print (str "      run: " (call (. code body trim))))
-          )
-          ; Paragraphs and the rest are left out of the outline.
-          (default
-            (continue)
-          )
+    (match block
+      (case (: header MDHeader)
+        (print (str (* "  " (- (. header level) 1)) (call plain (. header content))))
+      )
+      (case (: list MDList)
+        (for (in item (. list children))
+          (print (str "      - " (call text-of item)))
         )
+      )
+      (case (: code MDFencedCode)
+        (print (str "      run: " (call (. code body trim))))
+      )
+      ; Paragraphs and the rest are left out of the outline.
+      (default
+        (continue)
       )
     )
   )
@@ -74,25 +70,21 @@
   ; A generator walks the tree: `yield` gives one address, and `yield-all`
   ; gives every address found further down.
   (for (in node nodes)
-    (do
-      (inline
-        (match node
-          (case (: link MDLink)
-            (yield (. link url))
-          )
-          (case (: paragraph MDParagraph)
-            (yield-all (call links (. paragraph content)))
-          )
-          (case (: list MDList)
-            (yield-all (call links (. list children)))
-          )
-          (case (: item MDListItem)
-            (yield-all (call links (. item content)))
-          )
-          (default
-            (continue)
-          )
-        )
+    (match node
+      (case (: link MDLink)
+        (yield (. link url))
+      )
+      (case (: paragraph MDParagraph)
+        (yield-all (call links (. paragraph content)))
+      )
+      (case (: list MDList)
+        (yield-all (call links (. list children)))
+      )
+      (case (: item MDListItem)
+        (yield-all (call links (. item content)))
+      )
+      (default
+        (continue)
       )
     )
   )

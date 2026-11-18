@@ -144,22 +144,18 @@
   )
   (fn-do _ advance Bool
     (param target Spot)
-    (do
-      (inline
-        (match (call occupant target)
-          (case (call .foe creature)
-            (call strike creature)
-            (return true)
-          )
-          (case .open
-            (= at target)
-            (call gather)
-            (return true)
-          )
-          (case .blocked
-            (return false)
-          )
-        )
+    (match (call occupant target)
+      (case (call .foe creature)
+        (call strike creature)
+        (return true)
+      )
+      (case .open
+        (= at target)
+        (call gather)
+        (return true)
+      )
+      (case .blocked
+        (return false)
       )
     )
   )
@@ -182,26 +178,22 @@
   )
   (fn-do _ take _
     (param item Item)
-    (do
-      (inline
-        (match item
-          (case .tonic
-            (= health (call min max-health (+ health 8)))
-            (call note "You drink a tonic. Warmth returns.")
-          )
-          (case (call .gold amount)
-            (+= gold amount)
-            (call note (str "You pocket " amount " gold."))
-          )
-          (case .blade
-            (+= blade 1)
-            (call note "A keener blade. Your strikes cut deeper.")
-          )
-          (case .ember
-            (= fate (. Fate escaped))
-            (call note "You lift the Ember, and the dark lets you go.")
-          )
-        )
+    (match item
+      (case .tonic
+        (= health (call min max-health (+ health 8)))
+        (call note "You drink a tonic. Warmth returns.")
+      )
+      (case (call .gold amount)
+        (+= gold amount)
+        (call note (str "You pocket " amount " gold."))
+      )
+      (case .blade
+        (+= blade 1)
+        (call note "A keener blade. Your strikes cut deeper.")
+      )
+      (case .ember
+        (= fate (. Fate escaped))
+        (call note "You lift the Ember, and the dark lets you go.")
       )
     )
   )
@@ -233,32 +225,28 @@
   (fn-do _ creature-turn _
     (param creature Creature)
     (let from (. creature at))
-    (do
-      (inline
-        (match (. creature mind)
-          (case .asleep)
-          (case (call .hunting target)
-            (if (== (call (. from steps) at) 1)
-              (call bitten-by creature)
-              (else
-                (=? (. creature at) (call first (call nearer from target)))
-              )
-            )
+    (match (. creature mind)
+      (case .asleep)
+      (case (call .hunting target)
+        (if (== (call (. from steps) at) 1)
+          (call bitten-by creature)
+          (else
+            (=? (. creature at) (call first (call nearer from target)))
           )
-          (case .wandering
-            (let choices (call openings from))
-            (if choices
-              (= (. creature at) ([] choices (call (. fortune random) 0 (. choices length))))
-            )
-          )
-          (case (call .fleeing threat)
-            (let away (call farther from threat))
-            (if away
-              (= (. creature at) ([] away 0))
-              (else-if (== (call (. from steps) at) 1)
-                (call bitten-by creature)
-              )
-            )
+        )
+      )
+      (case .wandering
+        (let choices (call openings from))
+        (if choices
+          (= (. creature at) ([] choices (call (. fortune random) 0 (. choices length))))
+        )
+      )
+      (case (call .fleeing threat)
+        (let away (call farther from threat))
+        (if away
+          (= (. creature at) ([] away 0))
+          (else-if (== (call (. from steps) at) 1)
+            (call bitten-by creature)
           )
         )
       )
