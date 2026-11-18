@@ -40,11 +40,19 @@ _ do flush
 while queued.length > 0 && !has-failed
     . next = queued[0]
     queued.remove(0)
-    . written = catch target.write(next, next.size)
-    match? written
-        | failure Error
-            has-failed = true
-            queued.clear()
+    . offset Size = 0
+    while offset < next.size && !has-failed
+        . written = catch target.write(next + offset, next.size - offset)
+        match written
+            | count Size
+                if count > 0
+                    offset += count
+                else
+                    has-failed = true
+            | Error
+                has-failed = true
+    if has-failed
+        queued.clear()
 is-flushing = false
 . drained = on-drained
 on-drained = null
