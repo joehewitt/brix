@@ -67,6 +67,24 @@ static std::atomic<int> gProcessExitCode(0);
 static std::atomic<uint64_t> gTimerEventIdCounter(1);
 static pthread_mutex_t gTimerEventIdsLock = PTHREAD_MUTEX_INITIALIZER;
 static std::unordered_map<BxSemaphore*, uint64_t> gTimerEventIds;
+
+struct BxProcessWaiter {
+    BxTask* task;
+    BxSemaphore* sem;
+    int pid;
+    bool linked;
+    bool cancelled;
+    BxProcessWaiter* prev;
+    BxProcessWaiter* next;
+};
+
+struct BxProcessWaiterList {
+    BxProcessWaiter* head = NULL;
+    BxProcessWaiter* tail = NULL;
+};
+
+static pthread_mutex_t gProcessWaitersLock = PTHREAD_MUTEX_INITIALIZER;
+static std::unordered_map<int, BxProcessWaiterList> gProcessWaiters;
 #if defined(__APPLE__)
 static pthread_once_t gMachTimebaseOnce = PTHREAD_ONCE_INIT;
 static mach_timebase_info_data_t gMachTimebaseInfo = {0, 0};
@@ -1287,6 +1305,62 @@ brixSuspendActiveTaskUntilWritable(int fd, uint64_t deadlineNs) {
     return brixSuspendActiveTaskUntilReady(fd, BxPollWrite, deadlineNs);
 }
 
+static void
+unlinkProcessWaiterLocked(BxProcessWaiter* waiter, BxProcessWaiterList& list) {
+    if (waiter->prev) {
+        waiter->prev->next = waiter->next;
+    } else {
+        list.head = waiter->next;
+    }
+    if (waiter->next) {
+        waiter->next->prev = waiter->prev;
+    } else {
+        list.tail = waiter->prev;
+    }
+    waiter->prev = NULL;
+    waiter->next = NULL;
+    waiter->linked = false;
+}
+
+static void
+removeProcessWaiterLocked(BxProcessWaiter* waiter) {
+    auto found = gProcessWaiters.find(waiter->pid);
+    unlinkProcessWaiterLocked(waiter, found->second);
+    if (!found->second.head) {
+        gProcessWaiters.erase(found);
+        gPollLoop->unwatchProcExit(waiter->pid);
+    }
+}
+
+static void
+takeProcessWaitersLocked(int pid, std::vector<BxTask*>& tasks) {
+    auto found = gProcessWaiters.find(pid);
+    if (found == gProcessWaiters.end()) {
+        return;
+    }
+    BxProcessWaiter* waiter = found->second.head;
+    gProcessWaiters.erase(found);
+    while (waiter) {
+        BxProcessWaiter* next = waiter->next;
+        waiter->prev = NULL;
+        waiter->next = NULL;
+        waiter->linked = false;
+        tasks.push_back(waiter->task);
+        waiter = next;
+    }
+}
+
+void
+brixProcessExited(int pid) {
+    std::vector<BxTask*> tasks;
+    pthread_mutex_lock(&gProcessWaitersLock);
+    takeProcessWaitersLocked(pid, tasks);
+    pthread_mutex_unlock(&gProcessWaitersLock);
+    for (BxTask* task : tasks) {
+        task->getTaskQueue()->scheduleTask(task);
+    }
+}
+
 extern "C" bool
 brixSuspendActiveTaskUntilProcExit(int pid, BxSemaphore* sem) {
     BxThread* thread = brixGetActiveThread();
@@ -1295,16 +1369,33 @@ brixSuspendActiveTaskUntilProcExit(int pid, BxSemaphore* sem) {
         return true;
     }
 
-    gPollLoop->onProcExit(pid, task);
-
-    if (sem) {
-        int cancelled = 0;
-        sem->wait(thread, task, &cancelled, sizeof(cancelled), NULL);
-        return cancelled || task->getCanceled();
+    BxProcessWaiter waiter = {task, sem, pid, true, false, NULL, NULL};
+    pthread_mutex_lock(&gProcessWaitersLock);
+    BxProcessWaiterList& list = gProcessWaiters[pid];
+    bool first = !list.head;
+    waiter.prev = list.tail;
+    if (list.tail) {
+        list.tail->next = &waiter;
     } else {
-        thread->suspendTask(task, NULL, BxTaskGCStateBlocked);
-        return task->getCanceled();
+        list.head = &waiter;
     }
+    list.tail = &waiter;
+    if (first && !gPollLoop->watchProcExit(pid)) {
+        gProcessWaiters.erase(pid);
+        pthread_mutex_unlock(&gProcessWaitersLock);
+        return false;
+    }
+    pthread_mutex_unlock(&gProcessWaitersLock);
+
+    thread->suspendTask(task, NULL, BxTaskGCStateBlocked);
+
+    pthread_mutex_lock(&gProcessWaitersLock);
+    if (waiter.linked) {
+        removeProcessWaiterLocked(&waiter);
+    }
+    bool cancelled = waiter.cancelled;
+    pthread_mutex_unlock(&gProcessWaitersLock);
+    return cancelled || task->getCanceled();
 }
 
 extern "C" bool
@@ -1433,11 +1524,23 @@ brixReleaseEventDescriptor(int fd) {
 
 extern "C" void
 brixCancelProcExitEventListener(int pid, BxSemaphore* sem) {
-    gPollLoop->cancelProcExit(pid);
+    BxTask* task = NULL;
+    pthread_mutex_lock(&gProcessWaitersLock);
+    auto waiters = gProcessWaiters.find(pid);
+    if (sem && waiters != gProcessWaiters.end()) {
+        for (BxProcessWaiter* waiter = waiters->second.head; waiter; waiter = waiter->next) {
+            if (waiter->sem == sem) {
+                waiter->cancelled = true;
+                task = waiter->task;
+                removeProcessWaiterLocked(waiter);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&gProcessWaitersLock);
 
-    if (sem) {
-        int cancelled = 1;
-        sem->post(&cancelled, sizeof(cancelled), true);
+    if (task) {
+        task->getTaskQueue()->scheduleTask(task);
     }
 }
 

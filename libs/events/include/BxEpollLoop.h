@@ -21,11 +21,6 @@ struct BxEpollDescriptor {
     BxPollWaiterList writers;
 };
 
-struct BxProcessWatch {
-    int descriptor = -1;
-    BxTask* task = NULL;
-};
-
 // *************************************************************************************************
 
 class BxEpollLoop {
@@ -37,12 +32,12 @@ public:
     void endWait(BxPollWaiter* waiter);
     void releaseDescriptor(int fd);
 
-    void onProcExit(int pid, BxTask* task);
+    bool watchProcExit(int pid);
     void onFileChange(int fd, int type, BxTask* task);
     void onSignal(int sig, BxTask* task);
     void onTimer(uint64_t deadlineNanoseconds, uint64_t id, BxTask* task);
 
-    void cancelProcExit(int pid);
+    void unwatchProcExit(int pid);
     void cancelFileChange(int fd, int type);
     void cancelTimer(uint64_t id);
     void cancelSignal(int sig);
@@ -61,7 +56,7 @@ private:
     void unlinkWaiterLocked(BxPollWaiter* waiter);
     void takeWaitersLocked(BxPollWaiterList& list, std::vector<BxTask*>& tasks);
     void descriptorReadyLocked(int fd, uint32_t events, std::vector<BxTask*>& tasks);
-    void processExitedLocked(int pid, std::vector<BxTask*>& tasks);
+    void processExitedLocked(int pid, std::vector<int>& exited);
     void signalsReadyLocked(std::vector<BxTask*>& tasks);
     void expireTimersLocked(uint64_t now, std::vector<BxTask*>& tasks);
     bool addTimerLocked(BxTimerNode* node);
@@ -80,7 +75,7 @@ private:
     std::vector<BxEpollDescriptor*> descriptors;
     BxTimerHeap timers;
     std::unordered_map<uint64_t, BxTimerNode*> sleepTimers;
-    std::unordered_map<int, BxProcessWatch> processWatches;
+    std::unordered_map<int, int> processWatches;
     std::unordered_map<int, BxTask*> signalWatches;
     uint64_t armedDeadlineNanoseconds;
     uint64_t timerDeadlineNanoseconds;

@@ -146,13 +146,11 @@ BxKQueueLoop::releaseDescriptor(int fd) {
 
 // -------------------------------------------------------------------------------------------------
 
-void
-BxKQueueLoop::onProcExit(int pid, BxTask* task) {
+bool
+BxKQueueLoop::watchProcExit(int pid) {
     struct kevent change;
-    EV_SET(&change, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT | NOTE_EXITSTATUS, 0, task);
-    if (kevent(kq, &change, 1, NULL, 0, NULL) < 0 && errno == ESRCH) {
-        task->getTaskQueue()->scheduleTask(task);
-    }
+    EV_SET(&change, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, NULL);
+    return kevent(kq, &change, 1, NULL, 0, NULL) == 0 || errno != ESRCH;
 }
 
 void
@@ -187,7 +185,7 @@ BxKQueueLoop::onTimer(uint64_t deadlineNanoseconds, uint64_t id, BxTask* task) {
 }
 
 void
-BxKQueueLoop::cancelProcExit(int pid) {
+BxKQueueLoop::unwatchProcExit(int pid) {
     struct kevent change;
     EV_SET(&change, pid, EVFILT_PROC, EV_DELETE, 0, 0, NULL);
     submit(change);
@@ -271,6 +269,7 @@ void
 BxKQueueLoop::runEventLoop() {
     struct kevent events[kBxEventBatchSize];
     std::vector<BxTask*> tasks;
+    std::vector<int> exited;
     bool stopping = false;
 
     while (!stopping) {
@@ -309,12 +308,20 @@ BxKQueueLoop::runEventLoop() {
                 }
             } else if (event.filter == EVFILT_READ || event.filter == EVFILT_WRITE) {
                 descriptorReadyLocked(static_cast<int>(event.ident), event.filter, tasks);
+            } else if (event.filter == EVFILT_PROC) {
+                exited.push_back(static_cast<int>(event.ident));
             } else if (event.udata) {
                 tasks.push_back(static_cast<BxTask*>(event.udata));
             }
         }
         pthread_mutex_unlock(&lock);
         brixScheduleTasks(tasks);
+        if (!exited.empty()) {
+            for (int pid : exited) {
+                brixProcessExited(pid);
+            }
+            exited.clear();
+        }
     }
 }
 

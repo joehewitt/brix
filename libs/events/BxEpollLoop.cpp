@@ -89,7 +89,7 @@ BxEpollLoop::~BxEpollLoop() {
         delete entry.second;
     }
     for (auto& entry : processWatches) {
-        ::close(entry.second.descriptor);
+        ::close(entry.second);
     }
     pthread_mutex_destroy(&lock);
 }
@@ -182,33 +182,22 @@ BxEpollLoop::releaseDescriptor(int fd) {
 
 // -------------------------------------------------------------------------------------------------
 
-void
-BxEpollLoop::onProcExit(int pid, BxTask* task) {
-    pthread_mutex_lock(&lock);
-    auto found = processWatches.find(pid);
-    if (found != processWatches.end()) {
-        found->second.task = task;
-        pthread_mutex_unlock(&lock);
-        return;
-    }
-
+bool
+BxEpollLoop::watchProcExit(int pid) {
     int descriptor = static_cast<int>(syscall(SYS_pidfd_open, pid, 0));
-    bool watching = descriptor >= 0;
-    if (watching) {
-        BxProcessWatch& process = processWatches[pid];
-        process.descriptor = descriptor;
-        process.task = task;
-        if (watch(descriptor, EPOLLIN, eventTag(kBxProcessEvent, pid)) != 0) {
-            processWatches.erase(pid);
-            ::close(descriptor);
-            watching = false;
-        }
+    if (descriptor < 0) {
+        return false;
+    }
+    pthread_mutex_lock(&lock);
+    processWatches[pid] = descriptor;
+    if (watch(descriptor, EPOLLIN, eventTag(kBxProcessEvent, pid)) != 0) {
+        processWatches.erase(pid);
+        pthread_mutex_unlock(&lock);
+        ::close(descriptor);
+        return false;
     }
     pthread_mutex_unlock(&lock);
-
-    if (!watching) {
-        task->getTaskQueue()->scheduleTask(task);
-    }
+    return true;
 }
 
 void
@@ -246,11 +235,11 @@ BxEpollLoop::onTimer(uint64_t deadlineNanoseconds, uint64_t id, BxTask* task) {
 }
 
 void
-BxEpollLoop::cancelProcExit(int pid) {
+BxEpollLoop::unwatchProcExit(int pid) {
     pthread_mutex_lock(&lock);
     auto found = processWatches.find(pid);
     if (found != processWatches.end()) {
-        ::close(found->second.descriptor);
+        ::close(found->second);
         processWatches.erase(found);
     }
     pthread_mutex_unlock(&lock);
@@ -348,6 +337,7 @@ void
 BxEpollLoop::runEventLoop() {
     struct epoll_event events[kBxEventBatchSize];
     std::vector<BxTask*> tasks;
+    std::vector<int> exited;
     bool stopping = false;
 
     while (!stopping) {
@@ -388,12 +378,18 @@ BxEpollLoop::runEventLoop() {
                 signalsReadyLocked(tasks);
                 break;
             case kBxProcessEvent:
-                processExitedLocked(value, tasks);
+                processExitedLocked(value, exited);
                 break;
             }
         }
         pthread_mutex_unlock(&lock);
         brixScheduleTasks(tasks);
+        if (!exited.empty()) {
+            for (int pid : exited) {
+                brixProcessExited(pid);
+            }
+            exited.clear();
+        }
     }
 }
 
@@ -507,14 +503,14 @@ BxEpollLoop::descriptorReadyLocked(int fd, uint32_t events, std::vector<BxTask*>
 }
 
 void
-BxEpollLoop::processExitedLocked(int pid, std::vector<BxTask*>& tasks) {
+BxEpollLoop::processExitedLocked(int pid, std::vector<int>& exited) {
     auto found = processWatches.find(pid);
     if (found == processWatches.end()) {
         return;
     }
-    ::close(found->second.descriptor);
-    tasks.push_back(found->second.task);
+    ::close(found->second);
     processWatches.erase(found);
+    exited.push_back(pid);
 }
 
 void

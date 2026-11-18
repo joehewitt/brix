@@ -34,12 +34,12 @@ public:
     void endWait(BxPollWaiter* waiter);
     bool releaseDescriptor(int fd);
 
-    void onProcExit(int pid, BxTask* task);
+    bool watchProcExit(int pid);
     void onFileChange(int fd, int type, BxTask* task);
     void onSignal(int sig, BxTask* task);
     void onTimer(uint64_t deadlineNanoseconds, uint64_t id, BxTask* task);
 
-    void cancelProcExit(int pid);
+    void unwatchProcExit(int pid);
     void cancelFileChange(int fd, int type);
     void cancelTimer(uint64_t id);
     void cancelSignal(int sig);

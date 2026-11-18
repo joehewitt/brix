@@ -8,7 +8,6 @@
 /fcntl.h
 /signal.h
 /string.h
-/sys/wait.h
 /unistd.h
 
 _ inherited-stream I32 = -1
@@ -66,6 +65,7 @@ _ signaled-status-base = 128
 _ stdin File?
 _ stdout File?
 _ status Int
+_ reaped-usage ProcessUsage?
 _ is-reaped Bool
 
 ────────────────────
@@ -187,48 +187,44 @@ stdin!.write(buffer, size)
     - sem Semaphore?
 
 ` Waits for the process to end and gives its exit status. It gives none where the listener `sem`
-` names is cancelled, and ends the waiting task where that task is cancelled.
+` names is cancelled, and ends the waiting task where that task is cancelled. Every task that
+` waits for the process at once receives the same status.
 =? status if is-reaped
 
 . semaphore-pointer Pointer
 if sem
     semaphore-pointer = sem.native-pointer
-. cancelled = C:brixSuspendActiveTaskUntilProcExit(pid, semaphore-pointer)
-if !cancelled
-    if !is-reaped
-        . result = I32[1]
-        C:waitpid(pid, result, 0)
-        status = exit-status(result[0])
-        is-reaped = true
+if !C:brixSuspendActiveTaskUntilProcExit(pid, semaphore-pointer)
+    collect()
     = status
-end-if-canceled()
+check-task-cancelation(Task().is-cancel-in-force)
 
 ────────────────────
 + do wait-usage ProcessUsage? ?! IOError
 
-?! IOError("Process $pid was already waited for")
-    if is-reaped
+` Waits for the process to end and gives its exit status with the resources it used. Where the
+` process was already waited for, it gives what that wait collected.
+=? reaped-usage if is-reaped
 if C:brixSuspendActiveTaskUntilProcExit(pid, null)
-    end-if-canceled()
+    check-task-cancelation(Task().is-cancel-in-force)
     = null
-. usage = ProcessUsage[1]
-. error = C:brixReapProcess(pid, usage)
+. error = collect()
 ?! IOError("Unable to wait for process $pid: ${C:strerror(error)}")
     if error != 0
-. reaped = usage[0]
-status = if reaped.signal != 0 then signaled-status-base + reaped.signal else reaped.exit-code
-is-reaped = true
-= reaped
+= reaped-usage
 
 ────────────────────
-_ do end-if-canceled
+_ do collect I32
 
-` Ends the active task where a wait for the process found it cancelled, after taking the wait off
-` the event loop, which would otherwise resume a task that has ended once the process exits.
-. canceled = Task().is-cancel-in-force
-if canceled
-    C:brixCancelProcExitEventListener(pid, null)
-check-task-cancelation(canceled)
+=? 0 if is-reaped
+. usage = ProcessUsage[1]
+. error = C:brixReapProcess(pid, usage)
+=? error if error != 0
+. reaped = usage[0]
+status = if reaped.signal != 0 then signaled-status-base + reaped.signal else reaped.exit-code
+reaped-usage = reaped
+is-reaped = true
+= 0
 
 ────────────────────
 + do terminate
@@ -425,17 +421,6 @@ _ do close-pipe
 
 C:close(ends[0])
 C:close(ends[1])
-
-━━━━━━━━━━━━━━━━━━━━
-_ exit-status
-    - raw I32
-
-|? signal-number != 0
-    signaled-status-base + signal-number
-??
-    (raw /rshift/ 8) /and/ 0xff
-
-.. signal-number = raw /and/ 0x7f
 
 ━━━━━━━━━━━━━━━━━━━━
 _ ProcessExitStream

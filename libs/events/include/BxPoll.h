@@ -57,6 +57,8 @@ enum BxPollWaitStart {
     BxPollWaitStartSelect = 2
 };
 
+void brixProcessExited(int pid);
+
 // *************************************************************************************************
 
 class BxTimerHeap {

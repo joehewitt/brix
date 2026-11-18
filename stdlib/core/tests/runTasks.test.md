@@ -3038,6 +3038,27 @@ cancelled: true
 reaped: true
 ```
 
+### Every task waiting for a process receives its status, and a later wait gives the same one.
+
+```yumi
+/os/process
+
+. process = Process("sh", ["-c", "sleep 0.1; exit 3"])
+. first = do new
+    -- "first ${process.wait(null) ?? -1}"
+. second = do new
+    -- "second ${process.wait(null) ?? -1}"
+first.wait()
+second.wait()
+-- "usage ${(process.wait-usage())?.exit-code ?? -1}"
+```
+
+```output
+first 3
+second 3
+usage 3
+```
+
 ### A TaskGroup waits for every task added to it.
 
 ```yumi
