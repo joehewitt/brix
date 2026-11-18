@@ -357,8 +357,12 @@ handle-file-error(status)
 + do copy
     - new-path Path
 
-. this-file = File'Byte(path)
-. new-file = File'Byte(new-path, FileFlags.create-mode /or/ FileFlags.write-mode, mode)
+. source = stat
+. target FileStat
+=? if C:brixStat(new-path as String, &target) == 0 && target.dev == source.dev && target.ino == source.ino
+. this-file = use File'Byte(path)
+. flags = FileFlags.create-mode /or/ FileFlags.write-mode /or/ FileFlags.truncate-mode
+. new-file = use File'Byte(new-path, flags, source.mode as FilePermissions)
 
 new-file <-* this-file as <Array>
 
