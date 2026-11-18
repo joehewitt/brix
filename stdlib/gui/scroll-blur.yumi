@@ -4,6 +4,7 @@
 /math
 
 + gui-scroll-blur-stills Size = 4
+_ scroll-blur-slack Length = 0.5
 
 ━━━━━━━━━━━━━━━━━━━━
 + ScrollBlur is LayerShader
@@ -20,12 +21,13 @@
     - motion Point
     - stills [Rect]
 
+. merged = scroll-blur-merged(stills)
 this.motion = motion
-still-count = min(stills.length, gui-scroll-blur-stills) as F64
-still-0 = scroll-blur-still(stills, 0)
-still-1 = scroll-blur-still(stills, 1)
-still-2 = scroll-blur-still(stills, 2)
-still-3 = scroll-blur-still(stills, 3)
+still-count = min(merged.length, gui-scroll-blur-stills) as F64
+still-0 = scroll-blur-still(merged, 0)
+still-1 = scroll-blur-still(merged, 1)
+still-2 = scroll-blur-still(merged, 2)
+still-3 = scroll-blur-still(merged, 3)
 
 ────────────────────
 + ¶ metal
@@ -68,6 +70,56 @@ float4 filter(float2 position, ShaderLayer layer, ScrollBlurArgs args) {
     float3 color = sum.a > 0.0 ? sum.rgb / sum.a : float3(0.0);
     return float4(color, sum.a);
 }
+
+━━━━━━━━━━━━━━━━━━━━
++ do scroll-blur-merged [Rect]
+    - stills [Rect]
+
+. merged = List'Rect()
+for still in stills
+    . current = still
+    . index = 0
+    while index < merged.length
+        . joined = scroll-blur-joined(merged[index], current)
+        if joined
+            current = joined
+            merged.remove(index)
+            index = 0
+        else
+            index += 1
+    if current.width > 0 && current.height > 0
+        merged += current
+= merged
+
+━━━━━━━━━━━━━━━━━━━━
+_ scroll-blur-joined Rect?
+    - a Rect
+    - b Rect
+
+|? scroll-blur-holds(a, b)
+    a
+|? scroll-blur-holds(b, a)
+    b
+|? same-columns && b.top <= a.bottom + scroll-blur-slack && b.bottom >= a.top - scroll-blur-slack
+    Rect(a.x, min(a.top, b.top), a.width, max(a.bottom, b.bottom) - min(a.top, b.top))
+|? same-rows && b.left <= a.right + scroll-blur-slack && b.right >= a.left - scroll-blur-slack
+    Rect(min(a.left, b.left), a.y, max(a.right, b.right) - min(a.left, b.left), a.height)
+??
+    null
+
+.. same-columns = abs(a.x - b.x) <= scroll-blur-slack && abs(a.width - b.width) <= scroll-blur-slack
+.. same-rows = abs(a.y - b.y) <= scroll-blur-slack && abs(a.height - b.height) <= scroll-blur-slack
+
+━━━━━━━━━━━━━━━━━━━━
+_ scroll-blur-holds Bool
+    - outer Rect
+    - inner Rect
+
+inner.left >= outer.left - slack && inner.right <= outer.right + slack && top && bottom
+
+.. slack = scroll-blur-slack
+.. top = inner.top >= outer.top - slack
+.. bottom = inner.bottom <= outer.bottom + slack
 
 ━━━━━━━━━━━━━━━━━━━━
 _ scroll-blur-still Rect
