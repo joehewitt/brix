@@ -1,0 +1,27 @@
+`benchmark.meta description: Slices table rows, assigns row ranges and copies column ranges, four rows at a time.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: compile-timing
+
+/core/table
+
+. row-count = 68 as Size
+. start-count = 64
+. pass-count = 4096
+. source = Table'Point(row-count) • with Point(each as Size, (each * 7 + 3) as Size)
+. target = Table'Point(row-count)
+
+. checksum = 0 as Size
+for pass in 0 .. < pass-count
+    for start in 0 .. < start-count
+        target[start .. < start + 4] = source[start + 1 .. < start + 5]
+        target.y[start .. < start + 4] = source.x[start .. < start + 4]
+        for row in target[start .. < start + 4]
+            checksum += row.x + row.y + (pass as Size)
+
+-- "bench-result table/range-copy checksum=$checksum"
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x Size
++ y Size
