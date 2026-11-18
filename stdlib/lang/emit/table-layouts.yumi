@@ -224,9 +224,10 @@ _ do lay-out-case UnionCase
     - commons Span
 
 ` Lays out a case's own fields: the shared ones in their columns, and the rest packed, the hot
-` ones first where any field is hot.
-clear-fields()
+` ones first where any field is hot. The others pack in the order the case declares them, or
+` from the widest alignment down where that leaves fewer bytes or fields outside.
 . own [TypeProperty]
+. sorted [TypeProperty]
 . hot [TypeProperty]
 for property in types.properties-of(type)
     if own-field(union, property)
@@ -234,15 +235,21 @@ for property in types.properties-of(type)
             hot += property
         else
             own += property
+            sorted.insert(property, placed(type, sorted, property))
 prefix-sizes.clear()
 prefix-alignments.clear()
 for property in hot
     . field = values.field(values.values[type], property.slot)
     prefix-sizes += values.rows[field.layout].size
     prefix-alignments += values.rows[field.layout].alignment
-for property in own
-    add-field(type, property)
-pack(stride)
+pack-fields(type, own, stride)
+. declared-size = best-size
+. declared-count = best-count
+pack-fields(type, sorted, stride)
+if best-size < declared-size || (best-size == declared-size && best-count < declared-count)
+    own = sorted
+else
+    pack-fields(type, own, stride)
 . inline-sizes [U32]
 . inline-alignments [U32]
 . external-sizes [U32]
@@ -308,6 +315,39 @@ for position in 0 .. < commons.count
         if candidate.slot == common.slot && candidate.name == property.name
             = common.column
 = 0
+
+────────────────────
+_ do pack-fields
+    - type TypeId
+    - own [TypeProperty]
+    - stride U32
+
+` Packs a case's own fields in the order given.
+clear-fields()
+for property in own
+    add-field(type, property)
+pack(stride)
+
+────────────────────
+_ do placed Index
+    - type TypeId
+    - own [TypeProperty]
+    - property TypeProperty
+
+` Where a field goes among a case's own fields sorted from the widest alignment down, after
+` those as wide.
+. aligned = alignment-of(type, property)
+for position in 0 .. < own.length
+    if alignment-of(type, own[position]) < aligned
+        = position
+= own.length
+
+────────────────────
+_ alignment-of U32
+    - type TypeId
+    - property TypeProperty
+
+values.rows[values.field(values.values[type], property.slot).layout].alignment
 
 ────────────────────
 _ hot-place U32
