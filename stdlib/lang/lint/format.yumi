@@ -719,7 +719,7 @@ for token in ["+=", "-=", "*=", "/=", "%="]
         = true
 if has-plain-assignment(trimmed)
     = has-declaration-body(index)
-= trimmed.find("=") == null
+= unbracketed-equals(trimmed).length == 0
 
 ────────────────────
 + has-declaration-body Bool
@@ -849,16 +849,31 @@ for word in continuation-words()
 + do has-plain-assignment Bool
     - line String
 
-` Whether a line has an `=` that no operator character opens and that is not `==` or `=>`.
-for index in 0 .. < line.length
-    if line[index] != '='
-        continue
+` Whether a line has an `=` outside brackets that no operator character opens and that is not
+` `==` or `=>`.
+for index in unbracketed-equals(line)
     if index > 0 && is-assignment-prefix(line[index - 1])
         continue
     if index + 1 < line.length && (line[index + 1] == '=' || line[index + 1] == '>')
         continue
     = true
 = false
+
+━━━━━━━━━━━━━━━━━━━━
++ do unbracketed-equals [Index]
+    - line String
+
+. places [Index]
+. depth Size = 0
+for index in 0 .. < line.length
+    . char = line[index]
+    if char == '[' || char == '('
+        depth += 1
+    else if (char == ']' || char == ')') && depth > 0
+        depth -= 1
+    else if char == '=' && depth == 0
+        places += index
+= places
 
 ━━━━━━━━━━━━━━━━━━━━
 + do is-assignment-prefix Bool
