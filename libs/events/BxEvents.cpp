@@ -1592,6 +1592,7 @@ static const uint8_t kBxLazyGlobalClaimed = 2;
 struct BxLazyGlobalWaiter {
     BxTask* task;
     BxLazyGlobalWaiter* next;
+    bool queued;
 };
 
 struct BxLazyGlobalClaim {
@@ -1609,6 +1610,21 @@ static std::unordered_map<uint8_t*, BxLazyGlobalClaim>&
 lazyGlobalClaims() {
     static auto* claims = new std::unordered_map<uint8_t*, BxLazyGlobalClaim>();
     return *claims;
+}
+
+static void
+brixRemoveLazyGlobalWaiterLocked(uint8_t* state, BxLazyGlobalWaiter* waiter) {
+    auto found = lazyGlobalClaims().find(state);
+    if (found == lazyGlobalClaims().end()) {
+        return;
+    }
+    for (BxLazyGlobalWaiter** link = &found->second.waiters; *link; link = &(*link)->next) {
+        if (*link == waiter) {
+            *link = waiter->next;
+            waiter->queued = false;
+            return;
+        }
+    }
 }
 
 extern "C" int
@@ -1646,11 +1662,14 @@ brixClaimLazyGlobal(uint8_t* state) {
             continue;
         }
 
-        BxLazyGlobalWaiter waiter = { task, claim.waiters };
+        BxLazyGlobalWaiter waiter = { task, claim.waiters, true };
         claim.waiters = &waiter;
         thread->suspendTask(task, &lock, BxTaskGCStateBlocked);
         thread = brixGetActiveThread();
         lock.lock();
+        if (waiter.queued) {
+            brixRemoveLazyGlobalWaiterLocked(state, &waiter);
+        }
     }
 }
 
@@ -1661,7 +1680,9 @@ brixWakeLazyGlobalWaitersLocked(
     lazyGlobalClaims().erase(found);
     while (waiter) {
         BxLazyGlobalWaiter* next = waiter->next;
-        waiter->task->getTaskQueue()->scheduleTask(waiter->task, true);
+        BxTask* task = waiter->task;
+        waiter->queued = false;
+        task->getTaskQueue()->scheduleTask(task, true);
         waiter = next;
     }
 }

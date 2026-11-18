@@ -1930,6 +1930,50 @@ canceled writer
 read 2
 ```
 
+### A task cancelled while it waits for another task to initialize a lazy global reads the global once it is ready
+
+```yumi
+. ready = Semaphore()
+. done = Semaphore()
+. box = TaskBox()
+do new
+    -- "first reader: $slow"
+    done.post()
+started.wait()
+do new
+    box.task = Task()
+    do finally
+        done.post()
+    ready.post()
+    -- "second reader: $slow"
+ready.wait()
+box.task!.cancel()
+gate.post()
+done.wait()
+done.wait()
+
++ started = Semaphore()
++ gate = Semaphore()
++ slow := initialize()
+
+━━━━━━━━━━━━━━━━━━━━
++ do initialize Int
+
+started.post()
+gate.wait()
+= 42
+
+━━━━━━━━━━━━━━━━━━━━
++ TaskBox
+
++ task Task?
+```
+
+```output
+first reader: 42
+second reader: 42
+```
+
 ### A handle kept after its task finished is inert: it reports finished, and cancelling or resuming it leaves other tasks alone
 
 ```yumi
