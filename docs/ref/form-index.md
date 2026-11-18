@@ -252,7 +252,7 @@ kept for a meaning to come.
 | `=>` | `(=> params:Params body:Expr/Body)` | A function value: its parameter list, then the value it produces. | [Functions: Function values](functions.md#function-values) |
 | `=>` | `(=> params:Params :do body:Step?)` | A function value that runs one step. | [Functions: Function values](functions.md#function-values) |
 | `=>` | `(=> params:Params :do (block row:Step*))` | A function value that runs steps in order. | [Functions: Function values](functions.md#function-values) |
-| `match` | `(match subject:Expr case:Case+)` | The rows of the first arm the value fits. | [Patterns: match](patterns.md#match) |
+| `match` | `(match subject:Expr case:Case+)` | The rows of the first arm the value fits. On a row of its own in a body of steps, it runs that arm's rows as steps. | [Patterns: match](patterns.md#match) |
 | `match?` | `(match? subject:Expr case:Case+)` | The same, or null when no arm fits. | [Patterns: match?](patterns.md#match-1) |
 | `case` | `(case pattern:Pattern row:Step/Row* result:Result? stage:Stage* bind:Lazy*)` | An arm taken when the value has this shape. | [Patterns: match](patterns.md#match) |
 | `case` | `(case pattern:Pattern body:Inline)` | The same, with a one-step body. | [Patterns: match](patterns.md#match) |
