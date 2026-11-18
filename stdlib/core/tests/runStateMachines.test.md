@@ -3926,6 +3926,61 @@ crab.ticks <- 1.0
 free, peeking
 ```
 
+### A case test reads a refined machine through an index or a cast, evaluating the object once, for cases the refinement adds and cases the base writes.
+
+```yumi
+. dogs = [Dog(), Dog()]
+dogs[0].chases <- true
+-- "${dogs[0].body is .chasing} ${dogs[1].body is .chasing} ${dogs[1].body is .idle}"
+-- pick(dogs, 0).body is .chasing
+. pet Animal = Dog()
+(pet as Dog).calls <- true
+-- "${(pet as Dog).body is .answering} ${(pet as Dog).body is .chasing}"
+
+━━━━━━━━━━━━━━━━━━━━
++ pick Dog
+    - dogs [Dog]
+    - at Index
+
+-- "pick $at"
+dogs[at]
+
+━━━━━━━━━━━━━━━━━━━━
++ Animal
+
++ event calls Bool
+
+────────────────────
++ body ~>
+
+~> free
+    then answering on calls
+
+    ~> idle
+
+    ~> answering
+
+━━━━━━━━━━━━━━━━━━━━
++ Dog is Animal
+
++ event chases Bool
+
+────────────────────
++ body ~>
+
+~> free
+    then chasing on chases
+
+    ~> chasing
+```
+
+```output
+true false true
+pick 0
+true
+true false
+```
+
 ### A case two transitions give values holds them where the other is written in a case whose payload is settled only after it.
 
 ```yumi

@@ -1755,7 +1755,7 @@ if facts.plan-of(unit.reading, pattern) == .plan-never || unreached-refined(matc
     = value
 if facts.plan-of(unit.reading, pattern) == .plan-refined-case
     . union = value.type
-    . held = refined-case(matching.case-subject, pattern, inner != 0)
+    . held = refined-case(matching.case-subject, pattern, inner != 0, false)
     pass-or-fail(load-local(refined-flag, pattern), failed)
     if inner == 0
         = Typed(value.operand, union)
@@ -1807,13 +1807,17 @@ _ do member-flag Typed
 ` the property's name, which is evaluated once, or from the object a name alone is read from
 ` (`self-owner`), where a name written tracked is tracked as it is read. Any other value of the
 ` machine's union has no shape here. A case a refinement of the machine adds is tested as
-` `refined-case` reads it, and is not active where no object reaches the test
-` (`unreached-refined`).
+` `refined-case` reads it, from any object written before the property's name, and is not
+` active where no object reaches the test (`unreached-refined`), though the object is evaluated
+` all the same.
 . nothing = make-operand(.operand-void, 0)
 if facts.plan-of(unit.reading, pattern) == .plan-refined-case
-    if unreached-refined(lhs, pattern)
+    if unreached-refined(lhs, pattern, true)
+        do match? tree.nodes[lhs]
+            | .node-get-expression(row)
+                do emit-expression(row.object)
         = Typed(integer(.machine-u8, 0), types.bool-type)
-    do refined-case(lhs, pattern, false)
+    do refined-case(lhs, pattern, false, true)
     = Typed(load-local(refined-flag, pattern), types.bool-type)
 . constant = facts.constant-of(unit.reading, pattern)
 . property = decl-name(machine.module, machine.decl)
@@ -1857,12 +1861,14 @@ _ do refined-case TypeId
     - subject SyntaxId
     - pattern SyntaxId
     - reads Bool
+    - evaluates Bool
 
 ` Reads, for a pattern that names a case a refinement of the machine of a property of a class
 ` adds, whether the case is active, into `refined-flag`, and what it holds, into
 ` `refined-payload`, and answers its type, as the reference reads them: from the object the
-` property is read from, a local or the one a name alone is read from, by the composite of the
-` object's class, the object's flag of the case and what the object keeps for the piece that
+` property is read from, a local or the one a name alone is read from, or any expression written
+` before the property's name where it is evaluated only here (`evaluates`), by the composite of
+` the object's class, the object's flag of the case and what the object keeps for the piece that
 ` writes it, where it holds anything and that `reads` it, else `Void`. An object of a class whose
 ` composite has none of it is not in the case. A class the object is written as that no
 ` composite with the case is of, nor any class below it, has no shape here.
@@ -1872,7 +1878,7 @@ refined-payload = no-local
 . union = if subject != 0 then facts.node-type(unit.reading, subject) else no-type
 . root = machine-of-union(union)
 . property = decl-name(root.module, root.decl) if root
-. owner = refined-owner(subject, pattern)
+. owner = refined-owner(subject, pattern, evaluates)
 . object = make-operand(.operand-void, 0)
 if owner != no-type
     do match? tree.nodes[subject]
@@ -1938,9 +1944,11 @@ ir.start-block(joined)
 _ do refined-owner TypeId
     - subject SyntaxId
     - pattern SyntaxId
+    - evaluates Bool
 
-` The class of the object `refined-case` reads a case a refinement adds from: that of the local
-` written before the property's name, or of the object a name alone is read from, or no type.
+` The class of the object `refined-case` reads a case a refinement adds from: that of the object
+` written before the property's name, where it is a local or is evaluated only there
+` (`evaluates`), or of the object a name alone is read from, or no type.
 . name = tree.pattern-case-name(pattern)
 . union = if subject != 0 then facts.node-type(unit.reading, subject) else no-type
 . root = machine-of-union(union)
@@ -1950,7 +1958,7 @@ if property && name
     do match? tree.nodes[subject]
         | .node-get-expression(row)
             . named = tree.nodes[row.object] is .node-identifier
-            if row.name == property && !is-link(subject) && named
+            if row.name == property && !is-link(subject) && (named || evaluates)
                 owner = held-type(row.object)
         | .node-identifier(row)
             if row.name == property && resolves-member(subject)
@@ -1961,6 +1969,7 @@ if property && name
 _ unreached-refined Bool
     - subject SyntaxId
     - pattern SyntaxId
+    - evaluates Bool = false
 
 ` Whether a pattern names a case a refinement of a machine adds that no object reaches: the
 ` program constructs no class the object `refined-case` reads it from is written as, nor any
@@ -1970,7 +1979,7 @@ _ unreached-refined Bool
 ??
     owner != no-type && owner != invalid-type && tables.is-class(owner) && !tables.constructs-from(owner)
 
-.. owner = refined-owner(subject, pattern)
+.. owner = refined-owner(subject, pattern, evaluates)
 
 ────────────────────
 _ do refinement-payload Typed
