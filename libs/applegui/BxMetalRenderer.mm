@@ -998,7 +998,9 @@ fragment float4 brixFilterFragment(
     device const float* args [[buffer(1)]],
     constant float4* frames [[buffer(2)]]
 ) {
-    ShaderLayer layer = {source, params.sourceOrigin, params.sourceScale, params.size, kBrixOutputSpace};
+    ShaderLayer layer = {
+        source, params.sourceOrigin, params.sourceScale, params.size, kBrixOutputSpace, params.resolution
+    };
     ShaderArgs shaderArgs = {args, params.argCount, images, frames, params.imageCount, kBrixOutputSpace, params.time};
     float2 position = (in.position.xy / params.resolution - params.origin) / params.scale;
     return brixShaderOutput(shade(position, layer, shaderArgs), kBrixOutputSpace, kBrixExtendedOutput ? 0u : 1u);

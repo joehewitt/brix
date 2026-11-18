@@ -193,6 +193,7 @@ struct ShaderLayer {
     float scale;
     float2 size;
     uint space;
+    float2 resolution;
 
     float4 sample(float2 position) const {
         constexpr sampler pixels(coord::pixel, address::clamp_to_zero, filter::linear);
@@ -536,7 +537,7 @@ kernel void brixShaderKernel(
     if (gid.x >= params.columns || gid.y >= params.rows) {
         return;
     }
-    ShaderLayer layer = {source, params.origin, params.scale, params.size, params.target};
+    ShaderLayer layer = {source, params.origin, params.scale, params.size, params.target, float2(1.0)};
     ShaderArgs shaderArgs = {args, params.argCount, images, frames, params.imageCount, params.target, params.time};
     float2 position = (float2(gid) + 0.5 - params.origin) / params.scale;
     float4 color = brixShaderOutput(shade(position, layer, shaderArgs), params.target, params.clamped);
