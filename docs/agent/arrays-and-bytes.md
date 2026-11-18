@@ -27,7 +27,9 @@ partial-token buffering, putback, and location behavior. A refill outside a
 pattern releases consumed input into a fresh buffer when the buffer is full, so a
 long-lived reader holds only what it has not read yet. A `mark` holds input from
 its position onward until the next `pattern-release`; rewinding to a mark whose
-input was released panics.
+input was released panics. A pipe such as `stream ~> \line` releases delivered
+input between matches, whether it made the stream or was given it, but keeps what
+a mark still holds.
 
 ## Endian
 

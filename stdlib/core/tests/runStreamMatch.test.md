@@ -5957,6 +5957,51 @@ if amount
 30000 0:90000
 ```
 
+### A pipeline over a caller's chunked stream releases delivered input that no mark holds.
+
+```yumi
+/core/tests/support/byte-source
+/core/tokenstream
+
+-- piped-lines(20000, false)
+-- piped-lines(80000, false)
+-- piped-lines(20000, true)
+
+━━━━━━━━━━━━━━━━━━━━
++ do piped-lines String
+    - count Size
+    - marked Bool
+
+. lines = List'String()
+for index in 0 .. < count
+    lines += "line-$index\n"
+. source = TestByteSource("".join(lines) as Byte[])
+source.is-encoded = true
+. stream = ChunkedTokenStream'Char(source)
+. start StreamMark? = if marked then stream.mark() else null
+. largest Size = 0
+for name in stream ~> \line
+    if stream.buffer.size > largest
+        largest = stream.buffer.size
+. location = stream.location
+if start
+    stream.rewind(start)
+    = "${largest > 65536} ${stream.read(4).slice-string()}"
+= "$largest ${location.line}:${location.column}"
+
+━━━━━━━━━━━━━━━━━━━━
++ line ~ Char String
+
+~ name (!"\n" .)+ "\n"
+    name
+```
+
+```output
+65536 20000:0
+65536 80000:0
+true line
+```
+
 ### A pipeline over tokens that are not characters releases delivered input too.
 
 ```yumi
@@ -6850,7 +6895,7 @@ value
 for name in stream ~> \field
     count += 1
 -- count
--- stream.buffer.size >= text.size
+-- stream.buffer.size < text.size
 
 ━━━━━━━━━━━━━━━━━━━━
 + field ~ Char String

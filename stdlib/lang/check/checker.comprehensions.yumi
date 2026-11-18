@@ -697,16 +697,17 @@ for decl in [types.iterable-decl, types.indexable-decl, types.stream-decl]
 ` The body of the generator closure a stream piped through a pattern compiles as, as the reference
 ` makes it: the value it is given is read through the stream a match would read it through, made
 ` once, and on each pass the pattern matches from where the last left the stream, as a rule's arms
-` match, without reading the rest. Each pass first asks the stream whether it has more, and marks
-` where it is before the match and after it, to panic where a match read nothing. Each value a
-` match gives is yielded; the closure ends where the stream has no more, or the pattern fails. A
-` stream made of a value that is none is the closure's own, and where it can be released, it is
-` released first on each pass. A feed the pipe reads alone is evaluated here, as `piped-source`
-` casts it. A helper the pipe is given with `with` is evaluated once, after the stream is made,
-` and every match runs under it, as a match given one does. One that marks the records a pipe
-` matches is asked to begin each record where the stream has more, before the stream is marked,
-` through the property it delegates that to where it does. A pattern whose value is optional is
-` an error.
+` match, without reading the rest. Each pass first releases the input the stream has delivered that
+` no mark holds, then asks the stream whether it has more, and takes its position, which holds no
+` input, before the match and after it, to panic where a match read nothing. Each value a match
+` gives is yielded; the closure ends where the stream has no more, or the pattern fails. A stream
+` made of a value that is none is the closure's own; one given as a stream is the caller's, whose
+` marks keep what they hold. A feed the pipe reads alone is evaluated here, as `piped-source` casts
+` it. A helper the pipe is given with `with` is evaluated once, after the stream is made, and every
+` match runs under it, as a match given one does. One that marks the records a pipe matches is
+` asked to begin each record where the stream has more, before the stream's position is taken,
+` through the property it delegates that to where it does. A pattern whose value is optional is an
+` error.
 . pattern = right
 . helper SyntaxId = 0
 do match? tree.nodes[right]
@@ -750,12 +751,11 @@ if typed == invalid-type
 if types.is-optional(typed)
     frame.diagnose(right, .stated, program.store-atom(optional-match-text("pipeline")))
     =
-if supported(container, types.token-stream-decl) == no-type
-    calls.protocol-call(made, program.store-atom("pattern-release"), id)
+calls.protocol-call(made, program.store-atom("pattern-release-unmarked"), id)
 if calls.protocol-getter(made, program.store-atom("has-more"), id) != types.bool-type
     decline(id)
     =
-. mark = calls.protocol-call(made, program.store-atom("mark"), id).answer
+. mark = calls.protocol-call(made, program.store-atom("pattern-position"), id).answer
 if mark == invalid-type || field-of(mark, 1) != types.index-type
     decline(id)
     =
