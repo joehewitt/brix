@@ -1,0 +1,26 @@
+`benchmark.meta description: Reads 4 MB of byte records with direct pulls, bulk reads and delimiter reads.
+`benchmark.meta timing: recommended
+`benchmark.meta profiles: allocator,compile-timing
+
+/core/tokenstream
+/data/stream
+
+. record-count = 65536
+. bytes = Byte[record-count * 64]
+for index in 0 .. < record-count
+    for offset in 0 .. < 63
+        bytes[index * 64 + offset] = (97 + (index + offset) % 26) as U8
+    bytes[index * 64 + 63] = 10
+
+. stream = ChunkedTokenStream'Byte(DataStream(bytes, bytes.size))
+. block = Byte[16]
+. checksum = 0 as Size
+for index in 0 .. < record-count
+    for pull in 0 .. < 4
+        checksum += (<- stream)! as Size
+    checksum += stream.read(block.size, block)
+    checksum += block[15] as Size
+    . line = stream.read("\n")
+    checksum += line!.size
+
+-- "bench-result stream/direct-reads checksum=$checksum"

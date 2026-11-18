@@ -309,11 +309,11 @@ reset-location-index()
     - target Index
 
 . scan-start = location-scanned
+. data = buffer
+. end = length
 for i in scan-start .. < target
-    . item = buffer[i]
-    . is-line-feed = is-code(item, 10)
-    . is-carriage-return = is-code(item, 13) && (i + 1 >= length || !is-code(buffer[i + 1], 10))
-    if is-line-feed || is-carriage-return
+    . item = data[i]
+    if is-code(item, 10) || (is-code(item, 13) && (i + 1 >= end || !is-code(data[i + 1], 10)))
         append-line-start(i + 1)
 
 //grammar.location-forward-tokens += target - scan-start
@@ -719,6 +719,7 @@ _ fraction-buffer = Byte[32]
 _ fraction-length Size
 _ raw-buffer = Byte[0]
 _ read-buffer = Token[0]
+_ pinned Bool
 
 ────────────────────
 + This
@@ -764,19 +765,32 @@ _ get pattern-refill-size Size
 ────────────────────
 + do pattern-release
 
-. pending = length - cursor
+pinned = false
+release-consumed()
+
+────────────────────
+_ do release-unpinned
+
+if !pinned
+    release-consumed()
+
+────────────────────
+_ do release-consumed
+
+. released = if cursor && is-code(buffer[cursor - 1], 13) then cursor - 1 else cursor
+. pending = length - released
 . is-full = buffer.size - length < chunk-size
-if cursor && cursor >= pending && (is-full || buffer.size > release-capacity)
-    release-locations(cursor)
+if released && released >= pending && (is-full || buffer.size > release-capacity)
+    release-locations(released)
     . capacity = token-buffer-capacity(pending + chunk-size)
     . ramp = if buffer.size < release-capacity then buffer.size * 2 else release-capacity
     . retained = Token[if capacity > ramp then capacity else ramp]
     if pending
-        retained[0 .. < pending] = buffer[cursor .. < length]
+        retained[0 .. < pending] = buffer[released .. < length]
     buffer = retained
-    cursor-extent = if cursor-extent > cursor then cursor-extent - cursor else 0
+    cursor-extent = if cursor-extent > released then cursor-extent - released else 0
     length = pending
-    cursor = 0
+    cursor -= released
     if raw-buffer.size > release-capacity
         raw-buffer = Byte[0]
 
@@ -822,6 +836,7 @@ append-buffer(data, data.length)
 + do get has-more
 
 if cursor >= length && !source-complete
+    release-unpinned()
     refill(1)
 = cursor < length
 
@@ -829,6 +844,7 @@ if cursor >= length && !source-complete
 + do <- this Token?
 
 if cursor >= length && !source-complete
+    release-unpinned()
     refill(1)
 if cursor < length
     . item = buffer[cursor]
@@ -854,6 +870,7 @@ if has-more
 
 if !(should-read-once && cursor < length)
     while cursor + size > length && !source-complete
+        release-unpinned()
         . old-length = length
         refill(cursor + size - length)
         if should-read-once || length == old-length
@@ -893,6 +910,12 @@ for i in 0 .. < literal.size
         = false
 cursor = probe-end
 = true
+
+────────────────────
++ do mark StreamMark
+
+pinned = true
+= super.mark()
 
 ────────────────────
 + do capture-span CaptureSpan'Token?
@@ -1096,6 +1119,8 @@ if count == Num.size
 . result = Token[0]
 . head = result
 . total = 0
+. was-pinned = pinned
+pinned = true
 
 while has-more
     . old-size = result.size
@@ -1108,6 +1133,8 @@ while has-more
         break
 
     total += actual
+
+pinned = was-pinned
 
 ?! failure
     if failure

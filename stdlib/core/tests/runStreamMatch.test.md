@@ -5986,6 +5986,88 @@ for word in words
 1500
 ```
 
+### Pulls, bulk reads and delimiter reads release consumed input unless a mark is held.
+
+```yumi
+/core/tokenstream
+
+-- direct-reads()
+-- marked-reads()
+-- split-line-end()
+
+━━━━━━━━━━━━━━━━━━━━
++ do direct-reads String
+
+. stream = ChunkedTokenStream'Byte(TextSource(("abcdefghij\n" * 30000) as Byte[]))
+. block = Byte[3]
+. good = true
+. largest Size = 0
+for record in 0 .. < 30000
+    . pulled = (<- stream)!
+    . read = stream.read(3, block)
+    . head = stream.read("g")
+    . tail = stream.read("\n")
+    if pulled != 97u8 || read != 3 || block.slice-string(0 .. < 3) != "bcd" || head != "ef" || tail != "hij"
+        good = false
+    if record == 20000 && stream.location.line != 20001
+        good = false
+    if stream.buffer.size > largest
+        largest = stream.buffer.size
+. location = stream.location
+= "$good $largest ${location.line}:${location.column}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do marked-reads String
+
+. stream = ChunkedTokenStream'Byte(TextSource(("abcdefghij\n" * 30000) as Byte[]))
+<- stream
+. mark = stream.mark()
+. count Size = 0
+while stream.read("\n")
+    count += 1
+stream.rewind(mark)
+. location = stream.location
+= "$count ${(<- stream)! == 98u8} ${location.line}:${location.column}"
+
+━━━━━━━━━━━━━━━━━━━━
++ do split-line-end String
+
+. stream = ChunkedTokenStream'Byte(TextSource((("a" * 1023) + "\r\nb") as Byte[]))
+for index in 0 .. < 1026
+    <- stream
+. location = stream.location
+= "${location.line}:${location.column}"
+
+━━━━━━━━━━━━━━━━━━━━
++ TextSource
+    is ByteReadable
+
++ data Byte[]
++ cursor Index
+
+────────────────────
++ This
+    - data
+
+────────────────────
++ do read Size
+    - size Size
+    - buffer Byte[]
+
+. remaining = data.size - cursor
+. amount = if remaining < size then remaining else size
+if amount
+    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
+    cursor += amount
+= amount
+```
+
+```output
+true 65536 30000:0
+30000 true 0:1
+1:1
+```
+
 ### A captured sequence is its whole matched text, whichever kinds of repetition it contains.
 
 ```yumi
