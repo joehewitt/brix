@@ -1417,6 +1417,44 @@ Range out of bounds (2 / 2)
 Range out of bounds (3 / 2)
 ```
 
+### Adding to a list whose storage a slice shares never writes over the other's items, even after either has removed items.
+
+```yumi
+. one = [1]
+. first = one[0 .. < 1]
+first += 2
+one += 9
+-- first
+. list = [1, 2, 3]
+. head = list[0 .. < 2]
+head.pop()
+head += 7
+-- list
+. middle = [1, 2, 3, 4]
+. inner = middle[1 .. < 3]
+inner.pop()
+inner += 8
+-- middle
+. parent = [1, 2]
+. kept = parent[0 .. < 2]
+parent.pop()
+parent += 9
+-- kept
+. cleared = [1, 2, 3]
+. tail = cleared[1 .. < 3]
+cleared.clear()
+cleared += 5
+-- tail
+```
+
+```output
+1, 2
+1, 2, 3
+1, 2, 3, 4
+1, 2
+2, 3
+```
+
 ### A list as a stream: looped over, joined, and given to a function that takes a stream of any item.
 
 ```yumi

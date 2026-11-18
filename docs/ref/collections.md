@@ -192,7 +192,8 @@ that counts up. A range past the end panics: `Range out of bounds (9 / 3)`. A ra
 other than 1 panics: `Only increments of 1 are currently supported`.
 
 A slice starts out sharing the list's storage, so assigning an item of the slice changes the
-list. Adding to the slice gives it storage of its own.
+list. Adding to the slice gives it storage of its own, and so does adding to the list after it has
+removed items, so neither writes over items the other holds.
 
 A list that clears, pops or removes items lets go of them, so the collector can reclaim them while
 the list lives on. A list whose storage a slice shares, whether it is the slice or the list it was
