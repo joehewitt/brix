@@ -155,8 +155,12 @@ A value takes the type a place asks for on its own only where its meaning is kep
 
 Write every other conversion:
 
-- An optional becomes its value with `value!` or `value ?? fallback`, or inside `if value`. A
-  row written `•? "key" value` is left out of what it builds when the value holds nothing.
+- An optional local or parameter that a test shows to hold a value is that value wherever the
+  test guards it, with no `!`: inside `if value`, in the rest of the body after `=? 0 if !value`,
+  later in the same `value && …` or `!value || …`, and in `if value then … else …` and
+  `… if value`. A `!` there is an error. An optional no test guards becomes its value with
+  `value!` or `value ?? fallback`. [What narrows](../ref/optionals.md#what-narrows) lists every
+  test. A row written `•? "key" value` is left out of what it builds when the value holds nothing.
 - A base class, an interface or a union becomes a narrower type in a pattern, as in `| dog Dog`,
   or with `as Dog`. A declaration with a type, as in `. dog Dog = animal`, does not narrow.
 - A float becomes an integer with `as Int`, and an integer becomes a type that may not hold it with

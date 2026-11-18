@@ -101,6 +101,10 @@ if kind != .cover-union && kind != .cover-enum
 if !name || names.find(name) == null
     = null
 . member = "${type-short-name(types, domain)}.${name.text}"
+if tree.is-brix() && kind == .cover-enum
+    = "Arm \"(case ${name.text} …)\" binds a new name, not the value $member; match the value with \"(case= .${name.text} …)\""
+if tree.is-brix()
+    = "Arm \"(case ${name.text} …)\" binds a new name, not the case $member; match the case with \"(case .${name.text} …)\""
 if kind == .cover-enum
     = "Arm '| ${name.text}' binds a new name, not the value $member; match the value with '|= $member'"
 = "Arm '| ${name.text}' binds a new name, not the case $member; match the case with '| $member'"
@@ -335,10 +339,11 @@ match? tree.nodes[pattern]
             = null
         . shown = type-short-name(types, domain)
         . member = ".${row.name.text}"
+        . written = if row.type != 0 then "(. $shown ${row.name.text})" else member
         if row.type != 0
             member = shown ++ member
         site = pattern
-        = "$shown.${row.name.text} is an enum value, not a union case; match it with '|= $member'"
+        = "$shown.${row.name.text} is an enum value, not a union case; match it with ${if tree.is-brix() then "\"(case= $written …)\"" else "'|= $member'"}"
 = null
 
 ────────────────────

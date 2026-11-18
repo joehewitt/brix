@@ -414,7 +414,7 @@ e
 - **Numbers.** A character converts to and from a number only when asked:
   `(as 'A' Int)`{.brix} is `65`, and `(as 65 Char)`{.brix} and `(call Char 65)`{.brix} are `A`.
   Without `as`, the error names the conversion: `Expected Char here, but this is I64, which
-  becomes Char only when asked; write "as Char"`.
+  becomes Char only when asked; write "(as 65 Char)"`.
 - **Arithmetic** treats characters as `U32`: `(+ 'a' 1)`{.brix} is the number `98`, and
   `(- 'b' 'a')`{.brix} is `1`. Convert the result back with `as Char`.
 - **Text.** A character becomes text inside a text, in a print, or with `(as c String)`{.brix}.

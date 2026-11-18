@@ -978,6 +978,21 @@ do for x in xs
 </Do>
 ```
 
+### A `do` takes no `match` on its row, as a match on a row of its own in a body of steps runs its arms as steps.
+
+```yumi crash
+do match n
+    |= 1
+        step()
+```
+
+```output
+Exception: Syntax error
+<no file:2>
+    do match n
+             ^
+```
+
 ### A do block's with section binds stack values in turn, the first outermost; its without section keeps the block from what it names.
 
 ```yumi

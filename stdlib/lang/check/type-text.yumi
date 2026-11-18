@@ -283,6 +283,43 @@ match? types.rows[id]
 = type-display(types, id)
 
 ━━━━━━━━━━━━━━━━━━━━
++ do type-brix String
+    - types Types
+    - id TypeId
+
+` A type as Brix writes it, for a fix-it in a `.bx` file to give: an optional as `(? T)`, a
+` list as `(list T)`, a map as `(map K V)`, an array as `([] T)`, a tuple as `(tuple A B)` and
+` any other type with arguments as `(of Name A B)`. A type written with no form is written as
+` `type-source` writes it.
+if id == no-type || id == invalid-type
+    = "?"
+. settled = types.completions[id].completion == .completion-done
+. optional = settled && types.completion-of(id).intrinsic == .optional
+match? types.rows[id]
+    | .type-class(row)
+        if optional
+            = "(? ${type-brix(types, types.child-type(row.args, 0))})"
+        . count = if row.args.count == 2 && is-default-backing(types, row) then 1 else row.args.count
+        =? type-source(types, id) if count == 0
+        . first = type-brix(types, types.child-type(row.args, 0))
+        if types.list-decl.refers-to(row.module, row.decl)
+            = "(list $first)"
+        if types.map-decl.refers-to(row.module, row.decl) && count > 1
+            = "(map $first ${type-brix(types, types.child-type(row.args, 1))})"
+        if types.array-decl.refers-to(row.module, row.decl) && count == 1
+            = "([] $first)"
+        . text = "(of ${class-name(types.program, row.module, row.decl)}"
+        for position in 0 .. < count
+            text += " " ++ type-brix(types, types.child-type(row.args, position))
+        = text ++ ")"
+    | .type-tuple(row)
+        . fields [String]
+        for position in 0 .. < row.fields.count
+            fields += type-brix(types, types.child-type(row.fields, position))
+        = "(tuple ${" ".join(fields)})"
+= type-source(types, id)
+
+━━━━━━━━━━━━━━━━━━━━
 + do string-cast-text String?
     - types Types
     - id TypeId

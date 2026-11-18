@@ -66,7 +66,7 @@ Where none of these holds, a conversion the compiler knows of is an error that s
 ```
 
 ```output
-Exception: Expected I32 here, but this is I64, which becomes I32 only when asked; write "as I32"
+Exception: Expected I32 here, but this is I64, which becomes I32 only when asked; write "(as wide I32)"
 <no file:4>
       (let small I32 wide)
                  ^^^

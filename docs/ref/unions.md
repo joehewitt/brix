@@ -380,7 +380,7 @@ the rest. A missing case is an error:
 ```
 
 ```output
-Exception: This match on Status does not handle .failed; add a case for it, or "??" for the rest
+Exception: This match on Status does not handle .failed; add a case for it, or "(default …)" for the rest
 <no file:15>
         (case .pending "pending")
         ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -391,7 +391,7 @@ List every case when a new case should send each `match` back to be reconsidered
 added later, without a word.
 
 With several missing, the message names each: `This match on Result does not handle Config,
-FileNotFound and PermissionDenied; add a case for each, or "??" for the rest`. `match?` need not
+FileNotFound and PermissionDenied; add a case for each, or "(default …)" for the rest`. `match?` need not
 cover every case, and gives `null` when no arm is taken, as `label` does in
 [Reading a union](#reading-a-union). An arm for a type covers its derived classes.
 
@@ -531,7 +531,7 @@ true
 - **Numbers.** `(as 3 Level)`{.brix} gives the value of a number enum that is that number. For a
   tuple or class enum, a number gives the case at that place, counting from 0, and a number past the
   last case gives a new value made with no arguments. A number becomes an enum only with `as`:
-  `Expected Level here, but this is I64, which becomes Level only when asked; write "as Level"`.
+  `Expected Level here, but this is I64, which becomes Level only when asked; write "(as 3 Level)"`.
 - **Comparing.** `==` and `!=` compare enum values. The cases of a class enum are single objects,
   so a case equals itself.
 
@@ -539,12 +539,12 @@ true
 
 An enum's cases are values, not union cases, so an arm matches one by equality, written
 `(case= .low value)`{.brix}. An arm `(case .low value)`{.brix} on a number enum is an error,
-`Level.low is an enum value, not a union case; match it with '|= .low'`, and an arm that is a name
-alone binds the name: `Arm '| low' binds a new name, not the value Level.low; match the value with
-'|= Level.low'`.
+`Level.low is an enum value, not a union case; match it with "(case= .low …)"`, and an arm that is
+a name alone binds the name: `Arm "(case low …)" binds a new name, not the value Level.low; match
+the value with "(case= .low …)"`.
 
 A match over a number enum must cover every case, or end with `(default value)`{.brix}: `This match
-on Level does not handle Level.high; add "|= Level.high", or "??" for the rest`. A match over a
+on Level does not handle Level.high; add "(case= (. Level high) …)", or "(default …)" for the rest`. A match over a
 class enum is not checked for coverage, and fails when the program runs if no arm is taken.
 
 ### Enums of `Union`

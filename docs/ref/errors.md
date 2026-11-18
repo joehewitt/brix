@@ -291,7 +291,7 @@ false
 ```
 
 - **Matching a result** must cover the value and every error the call can raise: `This match on
-  Result does not handle IOError; add a case for it, or "??" for the rest`. A
+  Result does not handle IOError; add a case for it, or "(default …)" for the rest`. A
   `(case (: e Error) body)`{.brix} arm covers every error.
 - **Only the call's own errors.** `catch` holds the errors of the expression it wraps. An error
   raised by working out a call's arguments still leaves.

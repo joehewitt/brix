@@ -263,7 +263,7 @@ The bitwise operations are named operators, and take integers:
 
 - **Types.** Operands of different widths are brought to one type, as for arithmetic. A shift
   keeps the type of `a`, so `(/lshift/ 1u8 8)`{.brix} is `0`. A float is an error: `Expected I64
-  here, but this is F32, which becomes I64 only when asked; write "as I64"`.
+  here, but this is F32, which becomes I64 only when asked; write "(as x I64)"`.
 - **Narrow types.** A number narrower than 32 bits is extended by its sign before a shift, so on
   those types `/zrshift/` gives what `/rshift/` does.
 - **Shift counts** are not checked.

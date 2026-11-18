@@ -1490,7 +1490,7 @@ items of a list, an optional. Its value is an object of the owner seen through t
   `(as value Box)`{.brix} for either.
 - **Widening is asked.** `(as value Box)`{.brix}, in rows `value as Box`{.rows}, gives the owner's
   value back, checked when the program is built: `Expected Box here, but this is BoxScroll, which
-  becomes Box only when asked; write "as Box"`. A cast to a class below the owner tests the
+  becomes Box only when asked; write "(as value Box)"`. A cast to a class below the owner tests the
   object, as one from the owner does, and so do `is` and an arm of a match that name such a class.
 - **No test for a facet.** Every object of the owner has every facet, so `is` and an arm don't name
   one: `BoxScroll is a facet, which every Box has, so no value is tested for it`. `(type-of value)`

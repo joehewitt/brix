@@ -110,3 +110,57 @@ Exception: "f" has no "by" argument
     f(10) • by 3
          ^^^^^^^
 ```
+
+### in Brix, an optional where its value is wanted names the unwrap in Brix
+
+```brix crash
+(fn-do + f _
+  (param count (? I64))
+  (let total I64 count)
+  (print (str total))
+)
+
+(main (call f 3))
+```
+
+```output
+Exception: Expected I64 here, but this is I64?, which may hold nothing; write "(!! count)" to unwrap it, or "(?? count fallback)" to give a value for nothing
+<no file:4>
+      (let total I64 count)
+                 ^^^
+```
+
+### in Brix, a number that converts only when asked names the conversion in Brix
+
+```brix crash
+(main
+  (for (in index (..< 0 3))
+    (let x F64 index)
+    (print (str x))
+  )
+)
+```
+
+```output
+Exception: Expected F64 here, but this is I64, which becomes F64 only when asked; write "(as index F64)"
+<no file:4>
+        (let x F64 index)
+               ^^^
+```
+
+### in Brix, an optional that converts to another only when asked names the conversion, not an unwrap
+
+```brix crash
+(main
+  (let small (? I32) 3)
+  (let wide (? U64) small)
+  (print (str wide))
+)
+```
+
+```output
+Exception: Expected U64? here, but this is I32?, which becomes U64? only when asked; write "(as small (? U64))"
+<no file:4>
+      (let wide (? U64) small)
+                   ^^^
+```

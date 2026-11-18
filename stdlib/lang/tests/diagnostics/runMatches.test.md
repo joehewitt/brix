@@ -112,3 +112,51 @@ Exception: This arm gives no value, and this body is a value, so a match gives t
       (let run (=> () (match true (case= true (call ping)) (case= false (call ping)))))
                                   ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### in Brix, a match on an enum that leaves out cases names the arms in Brix
+
+```brix crash
+(type + Level (is U8)
+  (variant low)
+  (variant mid)
+  (variant high)
+)
+
+(main
+  (let level Level (. Level low))
+  (match level
+    (case= .low (print "low"))
+  )
+)
+```
+
+```output
+Exception: This match on Level does not handle Level.mid and Level.high; add "(case= (. Level mid) …)" and "(case= (. Level high) …)", or "(default …)" for the rest
+<no file:11>
+        (case= .low (print "low"))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### in Brix, a union arm on an enum value names the equality arm in Brix
+
+```brix crash
+(type + Kind (is U8)
+  (variant a)
+  (variant b)
+)
+
+(main
+  (let kind Kind (. Kind b))
+  (match kind
+    (case= .a (print "a"))
+    (case .b (print "b"))
+  )
+)
+```
+
+```output
+Exception: Kind.b is an enum value, not a union case; match it with "(case= .b …)"
+<no file:11>
+        (case .b (print "b"))
+              ^^
+```

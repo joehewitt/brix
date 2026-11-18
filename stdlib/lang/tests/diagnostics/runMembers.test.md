@@ -363,3 +363,23 @@ Exception: Markup branch host Shelf must declare markup-make-region, or extend M
         if #open
         ^^^^^^^
 ```
+
+### in Brix, a member read from a value that may be null names the unwrap in Brix
+
+```brix crash
+(type + Box
+  (prop + n _ (= 2))
+)
+
+(main
+  (let box (? Box) (call Box))
+  (print (str (. box n)))
+)
+```
+
+```output
+Exception: Property "n" is read from Box?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:8>
+      (print (str (. box n)))
+                  ^^^^^^^^^
+```

@@ -256,7 +256,7 @@ So an empty text in an optional is present, and an empty text that is not option
   object is `null`.
 - **A further optional.** A member that is itself optional needs its own `?.`, as in
   `(?. (?. user manager) name)`{.brix}. Reading through it with `.` is an error: `Property "name" is
-  read from User?, which may be null; unwrap it first with ! or ?.`.
+  read from User?, which may be null; unwrap it first with "(!! …)" or "(?. …)"`.
 - **Values that are never null.** `(?. object name)`{.brix} and `(?[] list index)`{.brix} are an
   error when the object or the list cannot be `null`:
   `"user" is User, which is never null, so it needs no "?"; write "user.name"`.
@@ -325,8 +325,8 @@ used where the value's type is wanted, and its members read with `.`.
 
 Using an optional as its value without a test is an error. For an operator it is `Operator "+" is
 not defined for I64? and I64`, and where a value of the type is wanted, `Expected I64 here, but
-this is I64?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a
-value for nothing`.
+this is I64?, which may hold nothing; write "(!! count)" to unwrap it, or "(?? count fallback)" to
+give a value for nothing`.
 
 ```brix compile-error
 (main
@@ -391,7 +391,7 @@ Exception: Operator "+" is not defined for I64? and I64
 ```
 
 ```output
-Exception: Property "length" is read from String?, which may be null; unwrap it first with ! or ?.
+Exception: Property "length" is read from String?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
 <no file:12>
           (print (. label length))
                  ^^^^^^^^^^^^^^^^

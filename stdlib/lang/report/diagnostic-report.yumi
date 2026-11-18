@@ -599,7 +599,7 @@ _ method-message String
 |? receiver == no-type || receiver == invalid-type
     "Method \"$method\" not found"
 |? inner != no-type && class-declares(inner, name)
-    "Method \"$method\" is called on $shown, which may be null; unwrap it first with ! or ?."
+    "Method \"$method\" is called on $shown, which may be null; unwrap it first with ${unwrapping(caller)}"
 |? !is-letter(method[0 .. < 1])
     "Operator \"${operator-name(method)}\" is not defined for $shown"
 |? signatures.length != 0
@@ -611,7 +611,7 @@ _ method-message String
 |? unseen
     "$shown has no method \"$method\" here; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
 |? widening
-    "$shown has no method \"$method\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"as $widening\" to reach the rest of $widening"
+    "$shown has no method \"$method\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"${casting(caller, widening ?? "")}\" to reach the rest of $widening"
 ??
     "$shown has no method \"$method\"${suggested(method, member-names(caller, receiver))}"
 
@@ -857,11 +857,11 @@ _ member-read-message String
 |? receiver == no-type || receiver == invalid-type
     "Property \"$property\" not found"
 |? inner != no-type && class-declares(inner, name)
-    "Property \"$property\" is read from $shown, which may be null; unwrap it first with ! or ?."
+    "Property \"$property\" is read from $shown, which may be null; unwrap it first with ${unwrapping(caller)}"
 |? unseen
     "$shown has no property \"$property\" here; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
 |? widening
-    "$shown has no property \"$property\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"as $widening\" to reach the rest of $widening"
+    "$shown has no property \"$property\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"${casting(caller, widening ?? "")}\" to reach the rest of $widening"
 ??
     "$shown has no property \"$property\"${suggested(property, member-names(caller, receiver))}"
 
@@ -1214,7 +1214,7 @@ if !known(value)
 . viewed = types.facet-of-type(value)
 if viewed
     . owner = type-source(types, types.facet-owner(viewed))
-    = "\"$name\" is declared $wanted, but its value is $shown, a facet's value, which becomes only the facets it is part of unasked; write \"as $owner\" to convert its class"
+    = "\"$name\" is declared $wanted, but its value is $shown, a facet's value, which becomes only the facets it is part of unasked; write \"${casting(diagnostic.module, owner)}\" to convert its class"
 . fix = "convert the value, or declare \"$name\" without a type"
 = "\"$name\" is declared $wanted, but its value is $shown, which can never be $wanted; $fix"
 
@@ -1254,17 +1254,68 @@ _ unasked-message String
 ??
     match diagnostic.kind
         |= .unasked-unwrap
-            "$lead, which may hold nothing; write \"!\" after it to unwrap it, or \"?? fallback\" to give a value for nothing"
+            if optional-inner(diagnostic.to) != no-type then "$lead, which becomes $target only when asked; write \"$cast\"" else "$lead, which may hold nothing; $unwrap"
         |= .unasked-text
-            "$lead, which becomes text only inside a text or a print, or when asked; write \"as $target\", or write it inside a text, as in \"\$name\""
+            "$lead, which becomes text only inside a text or a print, or when asked; $texting"
         |= .unasked-narrowing
-            "$lead, which is not always $target; match it with \"| name $target\", or write \"as $target\""
+            "$lead, which is not always $target; $narrowing"
         ??
-            "$lead, which becomes $target only when asked; write \"as $target\""
+            "$lead, which becomes $target only when asked; write \"$cast\""
 
 .. target = type-source(types, diagnostic.to)
 .. lead = "Expected $target here, but this is ${type-source(types, diagnostic.from)}"
-.. binds = binding-site(program.modules[diagnostic.module].tree, diagnostic.syntax)
+.. tree = program.modules[diagnostic.module].tree
+.. binds = binding-site(tree, diagnostic.syntax)
+.. is-brix = is-brix-tree(tree)
+.. held = brix-held(tree, diagnostic.syntax)
+.. cast = if is-brix then "(as $held ${type-brix(types, diagnostic.to)})" else "as $target"
+.. unwrap = if is-brix then "write \"(!! $held)\" to unwrap it, or \"(?? $held fallback)\" to give a value for nothing" else "write \"!\" after it to unwrap it, or \"?? fallback\" to give a value for nothing"
+.. texting = if is-brix then "write \"$cast\", or put it in a \"(str …)\"" else "write \"as $target\", or write it inside a text, as in \"\$name\""
+.. narrowing = if is-brix then "match it with \"(case (: name ${type-brix(types, diagnostic.to)}) …)\", or write \"$cast\"" else "match it with \"| name $target\", or write \"as $target\""
+
+────────────────────
+_ casting String
+    - module ModuleId
+    - target String
+
+` How a value is converted to a type named by its text, in the module's own language.
+if is-brix-tree(program.modules[module].tree) then "(as … $target)" else "as $target"
+
+────────────────────
+_ unwrapping String
+    - module ModuleId
+
+` How a value that may be null is unwrapped before a member is read from it, in the module's
+` own language.
+if is-brix-tree(program.modules[module].tree) then "\"(!! …)\" or \"(?. …)\"" else "! or ?."
+
+────────────────────
+_ do brix-held String
+    - tree AST
+    - id SyntaxId
+
+` The value a fix-it in Brix holds: as it is written, where that is short and on one line, or
+` an ellipsis. Where the diagnostic points at the type a declaration is written with, the value
+` is the declaration's.
+. held = declared-value(tree, id)
+. loc = tree.nodes.loc[held]
+. text = node-text(tree, held)
+= if loc.end.line == loc.begin.line && text.length != 0 && text.length <= 40 then text else "…"
+
+────────────────────
+_ do declared-value SyntaxId
+    - tree AST
+    - id SyntaxId
+
+. at = id
+for step in 0 .. < 3
+    . holder = tree.holder-of(at)
+    =? id if holder == 0
+    match? tree.nodes[holder]
+        | .node-declare(row)
+            = if row.right != 0 && row.left == at then row.right else id
+    at = holder
+= id
 
 ────────────────────
 _ do binding-site Bool
@@ -2300,12 +2351,26 @@ _ coverage-message String
 .. on-result = base.starts-with("Non-exhaustive match for Result;")
 .. matching = "This match on ${if on-result then "Result" else type-source(types, diagnostic.from)}"
 .. inner = optional-inner(diagnostic.from)
-.. present = "| value ${type-source(types, inner)}"
+.. is-brix = is-brix-tree(program.modules[diagnostic.module].tree)
+.. present = if is-brix then "(case (: value ${type-brix(types, inner)}) …)" else "| value ${type-source(types, inner)}"
 .. labels = List(missing.split(", "))
 .. cases = List(labels *> plain-label(each))
-.. arms = List(labels ?> is-literal-label(each) *> "\"|= $each\"")
+.. arms = List(labels ?> is-literal-label(each) *> (if is-brix then "\"(case= ${brix-label(each)} …)\"" else "\"|= $each\""))
 .. each = if cases.length == 1 then "it" else "each"
-.. rest = "or \"??\" for the rest"
+.. rest = if is-brix then "or \"(default …)\" for the rest" else "or \"??\" for the rest"
+
+────────────────────
+_ brix-label String
+    - label String
+
+` A case a match leaves out as Brix writes its value: a case named with its type, as in
+` `Level.low`, is `(. Level low)`.
+|? split == null
+    label
+??
+    "(. ${label[0 .. < split]} ${label[split + 1 ...]})"
+
+.. split = label.find(".")
 
 ────────────────────
 _ is-literal-label Bool

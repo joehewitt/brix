@@ -236,7 +236,7 @@ arm is a tuple pattern, as in
   and not after it. Two arms may give the same name, but one pattern may not give a name twice:
   `"a" is bound twice in this pattern; give each place a name of its own`.
 - **Case names.** A name alone is a name even where the subject's union has a case of that name:
-  `Arm '| red' binds a new name, not the case Light.red; match the case with '| Light.red'`.
+  `Arm "(case red …)" binds a new name, not the case Light.red; match the case with "(case .red …)"`.
 
 ### Types
 
@@ -434,19 +434,15 @@ pattern did not name.
   (let settings (call (of Map String Int)))
   (= ([] settings "width") 10)
   (= ([] settings "height") 4)
-  (do
-    (inline
-      (match settings
-        (case (list (= "width" w) (= "depth" d))
-          (print (str "box " w " by " d))
-        )
-        (case (list (= "width" w) ...others)
-          (print (str "width " w ", and " (. others length) " more"))
-        )
-        (default
-          (print "no width")
-        )
-      )
+  (match settings
+    (case (list (= "width" w) (= "depth" d))
+      (print (str "box " w " by " d))
+    )
+    (case (list (= "width" w) ...others)
+      (print (str "width " w ", and " (. others length) " more"))
+    )
+    (default
+      (print "no width")
     )
   )
 )
@@ -702,7 +698,7 @@ a `(default value)`{.brix} arm, unless it is a `match?`. The fixed sets are:
 ```
 
 ```output
-Exception: This match on I64? does not handle null; add "|= null", or "??" for the rest
+Exception: This match on I64? does not handle null; add "(case= null …)", or "(default …)" for the rest
 <no file:9>
         (case (: n Int)
         ^^^^^^^^^^^^^^
@@ -719,6 +715,7 @@ Exception: This match on I64? does not handle null; add "|= null", or "??" for t
 - **Other types.** A `match` over numbers, text, lists or classes is not checked: where no arm fits
   a value, it panics at run time.
 - **Messages.** Each names what is missing and how to add it: `This match on Bool does not handle
-  false; add "|= false", or "??" for the rest`, `This match on Result does not handle .bad; add a
-  case for it, or "??" for the rest`, and `This match on I64? handles only null; add a case for a
-  present value, as in "| value I64", or "??" for the rest`.
+  false; add "(case= false …)", or "(default …)" for the rest`, `This match on Result does not
+  handle .bad; add a case for it, or "(default …)" for the rest`, and `This match on I64? handles
+  only null; add a case for a present value, as in "(case (: value I64) …)", or "(default …)" for
+  the rest`.

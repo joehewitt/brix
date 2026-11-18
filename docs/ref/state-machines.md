@@ -356,19 +356,15 @@ empty
   (fn-do + report _
     (print (call (. " > " join) (. phase path)))
     (print (str "editing " (is phase .editing) ", focused " (is phase .focused)))
-    (do
-      (inline
-        (match phase
-          (case (call .saved name)
-            (print (str "saved as " name))
-          )
-          (case .focused
-            (print "match: focused")
-          )
-          (default
-            (print (str "match: " (. phase name)))
-          )
-        )
+    (match phase
+      (case (call .saved name)
+        (print (str "saved as " name))
+      )
+      (case .focused
+        (print "match: focused")
+      )
+      (default
+        (print (str "match: " (. phase name)))
       )
     )
   )

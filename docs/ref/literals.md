@@ -146,7 +146,7 @@ A literal with no suffix takes the type of the place that holds it, or of a valu
   `Int`, as `(+ small 300)`{.brix} is.
 - **Floats.** An integer beside a float, or in a float's place, becomes a float, as the `0` and
   `4` in the list do. A float never becomes an integer this way: `Expected I64 here, but this is
-  F64, which becomes I64 only when asked; write "as I64"`.
+  F64, which becomes I64 only when asked; write "(as x I64)"`.
 - **Not other types.** An integer never becomes a `Bool` or a `Char` by its place.
 - **A hex literal** keeps the type of its digit count, and converts only to a wider type.
 

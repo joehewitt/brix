@@ -355,7 +355,7 @@ Tuesday 29 February 2000
 | Any other object to a pointer to `Void` | |
 
 A conversion that needs `as` says so: `Expected CPointer'I32 here, but this is CPointer'U8, which
-becomes CPointer'I32 only when asked; write "as CPointer'I32"`.
+becomes CPointer'I32 only when asked; write "(as p (of CPointer I32))"`.
 
 ## Memory outside the collector
 
