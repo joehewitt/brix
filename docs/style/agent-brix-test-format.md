@@ -195,7 +195,8 @@ It closes at a line of at least as many backticks and nothing else.
 ## Selecting And Running Cases
 
 Cases are numbered from 1 in each file. `stdlib/core/tests/runArrays.test.md:340` selects the
-case that holds line 340, and `test:stdlib/core/tests/runArrays.test.md:12` the twelfth case.
+case that holds line 340, and `test:core:stdlib/core/tests/runArrays.test.md:12` the twelfth case,
+naming its suite.
 
 To run a case's program by itself, copy its program into `case.yumi`, or `case.bx` for a `brix`
 fence, write each extra file to its path beside it, and run it with `brix case.yumi -o case`. Its

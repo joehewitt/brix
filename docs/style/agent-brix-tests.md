@@ -90,15 +90,15 @@ holds without running it.
 | Selector | Runs |
 | --- | --- |
 | `file:stdlib/core/tests/runArrays.test.md` | Every case in one file |
-| `test:stdlib/core/tests/runArrays.test.md:12` | The twelfth case in the file |
+| `test:core:stdlib/core/tests/runArrays.test.md:12` | The twelfth case in the file |
 | `stdlib/core/tests/runArrays.test.md:340` | The case containing line 340 |
 | `file:stdlib/graphics/tests/path.yumi` | One native test module |
 | `suite:core` | A whole suite |
 
 A path followed by a bare number is a line number, not a case number. A native module is one test
 however many cases it holds. The `stdlib` suites run every `.yumi` file directly inside a `tests`
-folder, from a copy of its `tests/fixtures/<module name>/` folder. To run one case of a `.test.md` file,
-select it by its number or a line in it.
+folder, from a copy of its `tests/fixtures/<module name>/` folder. To run one case of a `.test.md`
+file, select it by its number or a line in it.
 
 ### Scope
 
