@@ -984,6 +984,48 @@ if pattern == 0 || !gather-arms(pattern, arms)
     -= arms[start .. < arms.length]
 
 ────────────────────
++ do content-arms [SyntaxId]
+    - id SyntaxId
+
+` The bodies of the arms of a match that, written as a line of markup content, run as content
+` of the element around it, as the arms of an `if` do: those of a match on a subject with no
+` helper that fills no slot, or of a table of conditions, every arm of which has a body or
+` raises. A match on a stream pattern, or one an arm of which tests and gives no body, gives its
+` value instead.
+. bodies [SyntaxId]
+. pattern SyntaxId = 0
+do match? nodes[id]
+    | .node-match-expression(row)
+        if row.subject != 0 && row.helper == 0 && !holds-fills(id)
+            do match? nodes[row.body]
+                | .node-structure-match(structure)
+                    pattern = structure.pattern
+    | .node-structure-match(row)
+        pattern = row.pattern
+if pattern != 0 && !gather-bodies(pattern, bodies)
+    -= bodies[0 .. < bodies.length]
+= bodies
+
+────────────────────
+_ do gather-bodies Bool
+    - pattern SyntaxId
+    - bodies [SyntaxId]
+
+` Adds the bodies of the arms a chain of alternatives holds, and says whether each arm has a body
+` or raises.
+do match? nodes[pattern]
+    | .node-type-or(row)
+        = gather-bodies(row.left, bodies) && gather-bodies(row.right, bodies)
+    | .node-type-transform(row)
+        if row.expr == 0
+            = false
+        bodies += row.expr
+        = true
+    | .node-type-panic
+        = true
+= false
+
+────────────────────
 _ do gather-arms Bool
     - pattern SyntaxId
     - arms [SyntaxId]

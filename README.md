@@ -1,7 +1,8 @@
 # Brix
 Brix is an experimental programming language by Joe Hewitt.  
 
-> \[!WARNING\] *Brix is a work in progress*. You are welcome to try it and give feedback, but please expect the language to change frequently.
+> [!WARNING]
+> *Brix is a work in progress*. You are welcome to try it and give feedback, but please expect the language to change frequently.
 
 ## Install
 
@@ -15,5 +16,6 @@ The compiler runs on Apple Silicon Macs and on aarch64 Linux. x86 support is pla
 
 Documentation is sparse at this point. The [language reference](docs/ref/README.md) was written by Claude and it's kind of a placeholder. Stay tuned for far better documentation.
 
-[!INFO] Follow @joehewitt on X for updates. 
+> [!INFO]
+> Follow @joehewitt on X for updates. 
 

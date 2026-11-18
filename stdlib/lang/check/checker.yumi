@@ -217,7 +217,6 @@ _ rules [SyntaxId]
 _ spanning [U64]
 _ content-blocks [SyntaxId]
 _ content-parents [TypeId]
-_ content-names [Bool]
 _ element-bodies [SyntaxId]
 _ rule-lines SyntaxId = 0
 _ batched [Bool]
@@ -377,7 +376,6 @@ _ building SlotId = no-slot
 .. spanning = parts.spanning
 .. content-blocks = parts.content-blocks
 .. content-parents = parts.content-parents
-.. content-names = parts.content-names
 .. element-bodies = parts.element-bodies
 .. batched = parts.batched
 .. markup-styles = parts.markup-styles
@@ -1837,7 +1835,6 @@ if body != 0 || (beside != 0 && !defaulted && !given)
         . bodied = body != 0 && (rooted || lines.length != 0)
         content-blocks += body
         content-parents += receiver
-        content-names += true
         if bodied
             element-bodies += body
         rule-lines = if ruled then body else 0
@@ -1850,7 +1847,6 @@ if body != 0 || (beside != 0 && !defaulted && !given)
         rule-lines = 0
         content-blocks.pop()
         content-parents.pop()
-        content-names.pop()
         if bodied
             element-bodies.pop()
 hand-off-outgoing(site)
@@ -4870,9 +4866,10 @@ _ do check-block TypeId
 . open = 0
 . parent = content-parent(block)
 . attributes = parent != no-type && element-bodies.find(block) != null
-. awaiting = if parent == no-type then await-elements(body) else unbuilt.length
-if parent != no-type && names-elements(block)
+. awaiting = await-elements(body, block)
+if unbuilt.length != awaiting
     raise-elements(block, body)
+. placing = awaits-unmade(awaiting)
 . redeclares = redeclares-in(block)
 . materialized-mark = materialized.length
 . projected SyntaxId = 0
@@ -4898,10 +4895,10 @@ for statement in tree.children[body]
         continue
     . hosted = content-blocks.length
     . reported = facts.diagnostics.length
+    if placing
+        raise-statement(statement)
     if parent != no-type
         host-content(statement, parent)
-    else
-        raise-statement(statement)
     . calls-before U32 = facts.calls.length as U32
     . declared = declared-return
     if skips-quasi && arms-line && declared != no-type && declared != types.void-type
@@ -4914,9 +4911,10 @@ for statement in tree.children[body]
     if watches
         watching-leaves += 1
     . want = Want()
+    . steps = parent != no-type && runs-content(statement)
     if parent != no-type
         want = want.adding(.want-content-line)
-    if matched && tree.is-arms-syntax(statement)
+    if steps || (matched && tree.is-arms-syntax(statement))
         want = want.adding(.want-match-statement)
     if skips-quasi
         want = want.adding(.want-quasi)
@@ -4932,9 +4930,9 @@ for statement in tree.children[body]
         while content-blocks.length != hosted
             content-blocks.pop()
             content-parents.pop()
-            content-names.pop()
         if !leaves-line(statement)
-            link-content(statement, produced, parent)
+            if !steps
+                link-content(statement, produced, parent)
             . settles = if element-line then attributes else tree.content-line(statement)
                 .. element-line = tree.content-element(statement) != 0
             if settles && is-live-statement(statement)
@@ -7124,6 +7122,46 @@ match types.rows[type]
         false
 
 ────────────────────
+_ do content-parent TypeId
+    - block SyntaxId
+
+` The type of the markup element a block's lines are content of, or no type for a block
+` that is not such a one.
+. position = content-blocks.length
+while position != 0
+    position -= 1
+    if content-blocks[position] == block
+        = content-parents[position]
+= no-type
+
+────────────────────
+_ do check-body
+    - body SyntaxId
+
+` The body of a loop or of an arm of an `if`, a match or a markup branch region. One written as
+` one line that is content of a markup element runs as a block of that line would: the elements
+` it names are made first, and the element takes the line's value, but for a match that runs its
+` arms as content (`runs-content`).
+. parent = content-parent(body)
+if parent == no-type || tree.nodes[body] is .node-block
+    check-statement(body)
+    =
+raise-line(body)
+. hosted = content-blocks.length
+host-content(body, parent)
+. steps = runs-content(body)
+. want = if steps then Want().adding(.want-content-line).adding(.want-match-statement) else Want().adding(.want-content-line)
+. produced = check-line(body, parent, want)
+while content-blocks.length != hosted
+    content-blocks.pop()
+    content-parents.pop()
+if !leaves-line(body)
+    if !steps
+        link-content(body, produced, parent)
+else
+    frame.diagnose(body, .stated, program.store-atom("Illegal return"))
+
+────────────────────
 _ do check-if
     - id SyntaxId
     - condition SyntaxId
@@ -7131,7 +7169,7 @@ _ do check-if
     - next SyntaxId
 
 if condition == 0
-    check-statement(body)
+    check-body(body)
     check-statement(next)
     =
 tested-match = tree.tested(condition)
@@ -7145,7 +7183,7 @@ if dead
     facts.set-plan(instance, id, .plan-never)
 else
     narrowing.narrow-condition(condition, true)
-    check-statement(body)
+    check-body(body)
 . split = frame.assigned-syntax.length
 . body-settled = frame.assigned-since(body-mark)
 frame.pop-narrowing(body-mark)
@@ -7966,7 +8004,7 @@ _ do raise-line
 ` Makes the object of each markup element a body written as one line declares a name for, as
 ` `raise-elements` does for the lines of a block.
 . first = unbuilt.length
-await-element(line)
+await-element(line, line)
 if unbuilt.length == first
     =
 raise-element(line, line)
@@ -8229,13 +8267,11 @@ if made == invalid-type || made == no-type
 facts.set-node-type(instance, body, made)
 content-blocks += body
 content-parents += made
-content-names += false
 element-bodies += body
 batched += in-batch()
 check-statement(body)
 batched.pop()
 element-bodies.pop()
-content-names.pop()
 content-parents.pop()
 content-blocks.pop()
 = made
@@ -9269,11 +9305,9 @@ if subject == 0 || resolution.kind != .resolve-slot
     = false
 content-blocks += 0
 content-parents += frame.slot-type(resolution.slot)
-content-names += false
 . held = infer-unprojected(subject)
 content-blocks.pop()
 content-parents.pop()
-content-names.pop()
 if held == no-type
     decline(subject)
 if held == no-type || held == invalid-type
@@ -9337,17 +9371,15 @@ if matched != 0 && !bind-arm(matched)
     =
 content-blocks += body
 content-parents += content
-content-names += true
 batched += rooted
 if tree.nodes[body] is .node-slot-outlet
     . produced = check-statement(body, Want().adding(.want-content-line))
     link-content(body, produced, content)
 else
-    check-statement(body)
+    check-body(body)
 batched.pop()
 content-blocks.pop()
 content-parents.pop()
-content-names.pop()
 while markup-styles.length > styled
     markup-styles.pop()
 finish-errors(frame)
@@ -9510,11 +9542,9 @@ batched += rooted
 if regioned
     content-blocks += body
     content-parents += content
-    content-names += true
     check-statement(body)
     content-blocks.pop()
     content-parents.pop()
-    content-names.pop()
     batched.pop()
     while markup-styles.length > styled
         markup-styles.pop()
@@ -18109,7 +18139,6 @@ _ CheckerKit
 + spanning [U64]
 + content-blocks [SyntaxId]
 + content-parents [TypeId]
-+ content-names [Bool]
 + element-bodies [SyntaxId]
 + batched [Bool]
 + markup-styles [TypeId]
@@ -18239,7 +18268,6 @@ rules.clear()
 spanning.clear()
 content-blocks.clear()
 content-parents.clear()
-content-names.clear()
 element-bodies.clear()
 batched.clear()
 markup-styles.clear()

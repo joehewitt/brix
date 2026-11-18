@@ -1469,8 +1469,10 @@ facts.markup-reads += MarkupRead(instance, id, read, target)
 ` content of the object. A line that gives a value is taken by the element: by its `+=`, or
 ` else by its `++=`. An `if` and a `for` written as lines run their bodies as content of the
 ` same element; a `do` block runs as it would anywhere. The object of an element a block
-` declares a name for was made where that block starts, and the name holds it, but where the
-` name is placed (`is-placed`): the object is made here and the name given it, which a
+` declares a name for was made before this line, where the block starts or where the statement
+` that writes it runs, as the binder says (`raise-elements`, `raise-statement`), and the name
+` holds it; one nothing made is the compiler's fault, reported here. Where the name is placed
+` (`is-placed`), the object is made here and the name given it, which a
 ` function written in another may not do. An element written with a name no block declares,
 ` where the name is one something else declared, is that thing's value to the reference and
 ` makes no object: it is declined, but where that is the property the markup of the class
@@ -1543,14 +1545,12 @@ if row.body != 0 && !wraps-default(row.body)
     push-body-scopes(id)
     content-blocks += row.body
     content-parents += made
-    content-names += false
     element-bodies += row.body
     batched += rooted
     check-statement(row.body)
     batched.pop()
     content-blocks.pop()
     content-parents.pop()
-    content-names.pop()
     element-bodies.pop()
     while rule-scopes.length > scoped
         rule-scopes.pop()
@@ -2216,27 +2216,37 @@ do match? tree.nodes[body]
     - block SyntaxId
     - statements RowRange'SyntaxId
 
-` Makes, where a block of markup content starts, the object of each markup element the block
-` declares a name for: one written as a line of the block, or as a line of the body of such an
-` element, in the order they are written, as the reference does before it runs any line of the
-` block. What makes one object may read the name of an element the block has not made yet,
-` which makes that one first (`raise-early`); its own is the reference's error.
-. first = await-elements(statements)
-if unbuilt.length == first
-    =
+` Makes, where a block starts, the object of each markup element the block declares a name for
+` that the binder makes there (`made-at-start`): one written as a line of a body that runs as
+` content each time, or as a line of the body of such an element, in the order they are written,
+` as the reference does before it runs any line of the block. What makes one object may read the
+` name of an element the block has not made yet, which makes that one first (`raise-early`); its
+` own is the reference's error. The others are made where the statement that writes them runs
+` (`raise-statement`).
 for statement in tree.children[statements]
-    raise-element(block, statement)
-settle-elements(first)
+    raise-element(block, statement, true)
+
+────────────────────
++ awaits-unmade Bool
+    - first Int
+
+` Whether a markup element a block noted it would make, after the first `first` noted, is not
+` made yet.
+some • stream unbuilt[first .. < unbuilt.length] • where each != no-slot
 
 ────────────────────
 + do await-elements Int
     - statements RowRange'SyntaxId
+    - block SyntaxId = 0
 
 ` Notes, where a block starts, each markup element the block declares a name for and has not
 ` made, and gives how many were noted before them, for `settle-elements` where the block ends.
+` The name is the block's where the binder declared it in the scope of the block (`owns-name`):
+` the names of the elements written in a markup element's body are those of the block around
+` the element.
 . first = unbuilt.length
 for statement in tree.children[statements]
-    await-element(statement)
+    await-element(statement, block)
 = first
 
 ────────────────────
@@ -2251,31 +2261,34 @@ while unbuilt.length > first
 ────────────────────
 + do await-element
     - element SyntaxId
+    - block SyntaxId = 0
 
 do match? tree.nodes[element]
     | .node-markup(row)
         . slot = element-slot(element, row.id)
-        if slot && !bindings.is-placed(slot)
+        if slot && !bindings.is-placed(slot) && bindings.owns-name(block, slot)
             unbuilt += slot
             awaited += element
         do match? tree.nodes[row.body]
             | .node-block(body)
                 for statement in tree.children[body.body]
-                    await-element(statement)
+                    await-element(statement, block)
 
 ────────────────────
 + do raise-element
     - block SyntaxId
     - element SyntaxId
+    - starts Bool = false
 
 ` Makes the object of a markup element that declares a name, then those of the lines of its
 ` body, under the styles and style sheets the class it names sees and the rules written in rules
 ` its style rules bring into view (`gather-scopes`), as the reference installs them before it
-` evaluates the names a body declares. One a read made first is not made again.
+` evaluates the names a body declares. One a read made first is not made again. Where a block
+` `starts`, only the elements the binder makes there are made.
 do match? tree.nodes[element]
     | .node-markup(row)
         . slot = element-slot(element, row.id)
-        if slot && !bindings.is-placed(slot) && unbuilt.find(slot) != null
+        if slot && !bindings.is-placed(slot) && unbuilt.find(slot) != null && (!starts || made-here)
             . around = building
             building = slot
             . made = make-element(element, row)
@@ -2285,6 +2298,7 @@ do match? tree.nodes[element]
             if waited != null
                 unbuilt[waited] = no-slot
             facts.note-raised(instance, block, element)
+        .. made-here = bindings.made-at-start(slot)
         do match? tree.nodes[row.body]
             | .node-block(body)
                 . styled = markup-styles.length
@@ -2311,7 +2325,7 @@ do match? tree.nodes[element]
                 . scoped = rule-scopes.length
                 push-body-scopes(element)
                 for statement in tree.children[body.body]
-                    raise-element(block, statement)
+                    raise-element(block, statement, starts)
                 while rule-scopes.length > scoped
                     rule-scopes.pop()
                 while markup-styles.length > styled
@@ -2319,19 +2333,6 @@ do match? tree.nodes[element]
                 while markup-sheets.length > sheeted
                     markup-sheets.pop()
                     sheet-levels.pop()
-
-────────────────────
-+ do names-elements Bool
-    - block SyntaxId
-
-` Whether a block whose lines are content of a markup element declares the names of the
-` elements among them: the body of a `for` written as a line does, each turn.
-. position = content-blocks.length
-while position != 0
-    position -= 1
-    if content-blocks[position] == block
-        = content-names[position]
-= false
 
 ────────────────────
 + do check-content
@@ -3188,6 +3189,15 @@ for offset in 0 .. < range.count
         frame.assign(slot, types.void-type)
 
 ────────────────────
++ do runs-content Bool
+    - line SyntaxId
+
+` Whether a line of markup content is a match or a table that runs the arm it takes as content
+` of the element, as an `if` does, and gives the element nothing itself: one that is no markup
+` branch region, whose arms the binder made content of (`content-arms`).
+= !is-region(line) && tree.content-arms(line).length != 0
+
+────────────────────
 _ do store-arguments Bool
     - id SyntaxId
     - made TypeId
@@ -3237,19 +3247,6 @@ do match? owner.decls[callee.decl]
             position += 1
         = true
 = args.count == 0
-
-────────────────────
-+ do content-parent TypeId
-    - block SyntaxId
-
-` The type of the markup element a block's lines are content of, or no type for a block
-` that is not such a one.
-. position = content-blocks.length
-while position != 0
-    position -= 1
-    if content-blocks[position] == block
-        = content-parents[position]
-= no-type
 
 ────────────────────
 + do outlet-region SyntaxId
@@ -3601,11 +3598,9 @@ demand-live-runtime()
 instances.set-returns(instance, selected, selected, .return-declared)
 content-blocks += 0
 content-parents += no-type
-content-names += false
 read-arms(id)
 content-blocks.pop()
 content-parents.pop()
-content-names.pop()
 finish-errors(frame)
 close()
 
@@ -3614,11 +3609,12 @@ close()
     - statement SyntaxId
     - parent TypeId
 
-` An `if`, a `for`, and a loop written with `in` that is no function of its own, written as
-` lines of a markup element's body, run their bodies as content of the same element: each body
-` is noted as such while the statement is typed. A loop on a stream subscribes, and its body
-` is no content, the arms of a markup branch region are content of the region, which functions
-` of their own build, and the body of a markup loop region builds a row.
+` An `if`, a match or table whose arms run as content (`runs-content`), a `for`, and a loop
+` written with `in` that is no function of its own, written as lines of a markup element's body,
+` run their bodies as content of the same element: each body is noted as such while the
+` statement is typed. A loop on a stream subscribes, and its body is no content, the arms of a
+` markup branch region are content of the region, which functions of their own build, and the
+` body of a markup loop region builds a row.
 if is-region(statement) || is-loop-region(statement)
     =
 do match? tree.nodes[statement]
@@ -3630,21 +3626,26 @@ do match? tree.nodes[statement]
                 | .node-if-block(row)
                     content-blocks += tree.arm-body(branch)
                     content-parents += parent
-                    content-names += false
                     next = row.next
             branch = next
+    | .node-match-expression
+        for body in tree.content-arms(statement)
+            content-blocks += body
+            content-parents += parent
+    | .node-structure-match
+        for body in tree.content-arms(statement)
+            content-blocks += body
+            content-parents += parent
     | .node-for-block(row)
         if tree.is-subscriber-loop(row.loop)
             =
         content-blocks += row.body
         content-parents += parent
-        content-names += true
     | .node-iterator-expression(row)
         if nested-decl-of(statement) != 0
             =
         content-blocks += row.body
         content-parents += parent
-        content-names += true
 
 ────────────────────
 + do link-content

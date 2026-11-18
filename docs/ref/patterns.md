@@ -167,7 +167,8 @@ taken, as steps, and uses no value, so arms may give values of any type or none.
   `match`, it panics there.
 - A `match` written as a step, with arms that give no value, is an error that names the fix: `This
   arm gives no value, and a match gives the value of the arm it takes; to run its arms as steps,
-  write "(do (inline (match …)))"`. In rows it says `write "do match"`.
+  write "(do (inline (match …)))"`. In rows it says `write "do match"`. A `match` written as a
+  row of markup content runs its arm as content instead; see Markup.
 - A function whose last step is a match run as steps, with an arm for every value, each of which
   returns or raises, needs no return after it.
 

@@ -60,7 +60,6 @@ _ receiver-scopes [ScopeId]
 _ received-reads Map'U64'U32
 _ received-elements [SyntaxId]
 _ received-scopes [ScopeId]
-_ content-bodies [SyntaxId]
 _ class-lines SyntaxId = 0
 _ rule-lines SyntaxId = 0
 _ content-turns [SyntaxId]
@@ -337,7 +336,6 @@ receiver-scopes.clear()
 received-reads.clear()
 received-elements.clear()
 received-scopes.clear()
-content-bodies.clear()
 content-turns.clear()
 class-lines = 0
 rule-lines = 0
@@ -937,9 +935,10 @@ _ do declare-ids Void
 
 ` Declares the name a markup element is given, and those of the elements and slot outlets
 ` written as lines of its body, as locals of the block the outermost is a statement of, so every
-` statement of the block reaches the name. The reference makes each such element where the
-` statement that writes it runs, or where a statement above reads its name first; a slot
-` outlet's name holds the node it mounts once it is mounted.
+` statement of the block reaches the name. A block that runs as content each time makes each
+` such element where it starts (`raise-elements`); any other makes it where the statement that
+` writes it runs, or where a statement above reads its name first. A slot outlet's name holds the
+` node it mounts once it is mounted.
 ` An element under an `if` or a `for` written as a line is not reached: its name is the business
 ` of the body it is in.
 do match? tree.nodes[element]
@@ -963,9 +962,10 @@ _ do raise-elements Void
 ` the block declares a name for: its type, its arguments and the values of its attributes, in
 ` the order the elements are written. The reference makes these objects there, before any
 ` line of the block, so a local the block declares is not in reach of them, and neither are
-` the members of an element they are written in.
+` the members of an element they are written in. The local of each such name is marked
+` `slot-raised`, which tells the type pass to make the object there too.
 for statement in tree.children[statements]
-    raise-element(statement)
+    raise-element(statement, true, true)
 
 ────────────────────
 _ do place-elements Void
@@ -982,6 +982,7 @@ for statement in tree.children[statements]
 _ do raise-element Void
     - element SyntaxId
     - raises Bool = true
+    - starts Bool = false
 
 if is-slot-builder(element)
     place-element(element)
@@ -996,10 +997,13 @@ do match? tree.nodes[element]
             walk-made(element, row.id, row.body)
             branch-depth -= 1
             raised-elements += element
+            . resolution = bindings.resolution-of(binding, row.id)
+            if starts && resolution.kind == .resolve-slot
+                bindings.mark-slot(resolution.slot, SlotFlag.slot-raised)
         do match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
-                    raise-element(statement, raises)
+                    raise-element(statement, raises, starts)
 
 ────────────────────
 _ do walk-markup Void
@@ -1623,13 +1627,16 @@ if outer.kind != .resolve-unresolved
 _ do note-content Void
     - statements RowRange'SyntaxId
 
-` The lines of a markup element's body, or of a body that runs as one: an `if` written as a
-` line runs its bodies as content of the same element, which declare no name for an element,
-` and a `for`, or a loop written with `in` that is no function of its own, runs its body as
-` content each turn, which declares those of its own. The body of a markup loop region builds a
-` row, which is no content, but where the row is a region of its own (`row-region`), whose
-` function runs the body as content each turn. So does the function that builds an arm of a
-` markup match region.
+` The lines of a markup element's body, or of a body that runs as one. Each body such a line
+` runs as content is content each time it runs (`content-turns`): every arm of an `if`, every
+` arm of a markup match region, which a function of its own builds, every arm of any other match
+` or table whose arms run as content (`content-arms`), and the body of a `for`, or
+` of a loop written with `in` that is no function of its own. Such a body declares the names of
+` the elements written in it, and makes them where it starts (`raise-elements`), which the type
+` pass reads from the names' locals (`slot-raised`). A handler's body runs where its stream
+` gives a value, which is no content. The body of a markup loop region builds a row, which is no
+` content, but where the row is a region of its own (`row-region`), whose function runs the body
+` as content each turn.
 for statement in tree.children[statements]
     note-content-line(statement)
 
@@ -1644,15 +1651,21 @@ do match? tree.nodes[statement]
             . next SyntaxId = 0
             do match? tree.nodes[branch]
                 | .node-if-block(row)
-                    content-bodies += tree.arm-body(branch)
+                    content-turns += tree.arm-body(branch)
                     next = row.next
             branch = next
     | .node-match-expression
         if is-branch(statement)
             for arm in tree.region-arms(statement)
                 content-turns += tree.region-arm-body(arm)
+        else
+            for body in tree.content-arms(statement)
+                content-turns += body
+    | .node-structure-match
+        for body in tree.content-arms(statement)
+            content-turns += body
     | .node-for-block(row)
-        if !is-loop-region(statement) || tree.row-region(row.body)
+        if !tree.is-subscriber-loop(row.loop) && (!is-loop-region(statement) || tree.row-region(row.body))
             content-turns += row.body
     | .node-iterator-expression(row)
         if nested-decl-for(statement) == 0
@@ -2101,20 +2114,18 @@ do match tree.nodes[id]
         walk-top-level(id)
     | .node-block(row)
         push-scope(.scope-block, id)
-        . lines = content-bodies.find(id) != null
-        . content = lines || content-turns.find(id) != null
+        . content = content-turns.find(id) != null
         if content
             note-content(row.body)
         if raised-homes.find(id) == null
-            predeclare-lazies(row.body, true, !lines)
+            predeclare-lazies(row.body)
         else
             declare-scoped(row.body)
-            if !lines
-                for statement in tree.children[row.body]
-                    declare-ids(statement)
-        if content && !lines
+            for statement in tree.children[row.body]
+                declare-ids(statement)
+        if content
             raise-elements(row.body)
-        else if !lines
+        else
             place-elements(row.body)
         . builds = is-constructor-body(id) && !returns-own(tree, id)
         . lazies-end = names.length as U32
@@ -2589,11 +2600,11 @@ _ do walk-condition Void
 if pattern != 0
     push-scope(.scope-arm, id)
     declare-pattern(pattern, .slot-pattern, SlotFlag.slot-constant, 0)
-    walk(body)
+    walk-body(body)
     pop-scope()
 else
     walk(condition)
-    walk(body)
+    walk-body(body)
 
 ────────────────────
 _ match-pattern SyntaxId
@@ -3583,10 +3594,8 @@ do match? tree.nodes[id]
         quiet-name = 0
         if row.next != 0
             walk-loop(row.next, body, false, true)
-        else if content-turns.find(body) != null && !(tree.nodes[body] is .node-block)
-            walk-line(body)
         else
-            walk(body)
+            walk-body(body)
         if row.is-subscriber
             subscription-depth -= 1
         loop-depth -= 1
@@ -3606,6 +3615,17 @@ walk(row.container)
 event-source = around
 
 ────────────────────
+_ do walk-body Void
+    - body SyntaxId
+
+` The body of a loop or an arm. One written as one line that runs as content each time runs as
+` a block of that line would (`walk-line`).
+if content-turns.find(body) != null && !(tree.nodes[body] is .node-block)
+    walk-line(body)
+else
+    walk(body)
+
+────────────────────
 _ do walk-line Void
     - line SyntaxId
 
@@ -3615,7 +3635,7 @@ _ do walk-line Void
 push-scope(.scope-block, line)
 note-content-line(line)
 declare-ids(line)
-raise-element(line)
+raise-element(line, true, true)
 walk(line)
 pop-scope()
 
@@ -3730,7 +3750,7 @@ do match tree.nodes[id]
         push-scope(.scope-arm, id)
         declare(it-name, .slot-it, id, SlotFlag.slot-constant, 0)
         declare-pattern(row.pattern, .slot-pattern, SlotFlag.slot-constant, 0)
-        walk(row.expr)
+        walk-body(row.expr)
         pop-scope()
     ??
         push-scope(.scope-arm, id)
@@ -4600,7 +4620,7 @@ do match? tree.nodes[arm]
         push-scope(.scope-arm, arm)
         declare(it-name, .slot-it, arm, SlotFlag.slot-constant, 0)
         declare-pattern(row.pattern, .slot-pattern, SlotFlag.slot-constant, 0)
-        walk(body)
+        walk-body(body)
         walk-arm-lines(body)
         pop-scope()
         close-nested()
@@ -4626,7 +4646,7 @@ bindings.set-resolution
     - binding
     - body
     - Resolution(.resolve-slot, 0, given, 0, ResolutionFlag.resolution-declares)
-walk(body)
+walk-body(body)
 walk-arm-lines(body)
 close-nested()
 function-depth -= 1

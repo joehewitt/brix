@@ -132,6 +132,13 @@ that `.release.json` pins (`toolchain/compiler.py`).
   `without` name becomes the annotation it stands for, and each binding an
   `ASTStackLocalBindingBlock`.
 - Binding reads syntax and declaration rows, never types. No type id appears in a binding table.
+- Binding alone decides where a named markup element is made. A body that runs as content each
+  time (`note-content-line`) declares the names of the elements written in it, an element's own
+  body declaring none, and marks them `slot-raised`. Typing makes those where the block starts,
+  every other one where the statement that writes it runs or a read above it first, and reports
+  an element nothing made (`raise-elements`, `raise-statement`, `infer-markup`). Typing keeps no
+  rule of its own for which bodies name elements. Which arms of a match or table run as content
+  is one syntax query both passes ask (`content-arms`).
 - Resolution order is fixed: slots innermost first, then the implicit names, members of the
   owner chain, module globals, then functions and types through the name index, then
   unresolved. A local shadows a member, a member a global, a global a function.

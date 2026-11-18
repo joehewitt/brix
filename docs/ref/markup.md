@@ -119,13 +119,23 @@ one in each arm of an `if`.
 
 ### Names
 
-`(id: lunch)` names the element. The name is a local of the block the element is written in, and
-can be read after the element and by the element's own rows. A statement above the element that
-reads the name makes the element there, once. A function written above the element, or as one of
-its own attributes, reads the name when it runs, and panics if it runs before the element is made;
-the element's type arguments must then be written. A task started above the element cannot read
-it, as a task keeps what it reads when it starts. In a component's content, the name is a private
-property of the class; see [Components](#components).
+`(id: lunch)` names the element. The name is a local of the body the element is written in, read
+by the rows of that body and by the element's own rows, but not outside the body. An element's own
+rows belong to the body around the element, so the names given there do too, while each arm of an
+`if` or `match` and the body of a `for` is a body of its own.
+
+- **In content**, which is an element's body, a component's `content`, and each arm of an `if` or
+  `match` or body of a `for` written as one of their rows, every element with a name is made where
+  its body starts, each time the body runs, so any row of the body reads it, even one above it.
+  The element's value and attributes read the names the arm's pattern binds, but not a `let` of
+  the same body, which is not declared yet when it is made.
+- **Elsewhere**, the element is made where its row runs. A statement above the element that reads
+  the name makes the element there, once. A function written above the element, or as one of its
+  own attributes, reads the name when it runs, and panics if it runs before the element is made;
+  the element's type arguments must then be written. A task started above the element cannot read
+  it, as a task keeps what it reads when it starts.
+- **In a component's content**, the name is also a private property of the class; see
+  [Components](#components).
 
 ## Attributes
 
@@ -254,6 +264,13 @@ won by Ann
 the elements their rows give are children of the element. A loop or an arm may give several
 elements, and an `if` may test a pattern. There is no fragment element: control flow is how one row
 gives several children.
+
+A `match` or a table written as a row there runs the arm it takes as an `if` runs one, and gives
+the element nothing itself, so its arms need give no value and it is written with no `do`. An arm
+that raises raises there. Written with `do`, the match makes the elements of its arm without adding
+them, as `do` does any row. A `match?`, or a table with no default row, that takes no arm gives no
+children. A match on a stream pattern, or with an arm written with no body, gives its value as any
+row does.
 
 ## Markup that follows state
 
