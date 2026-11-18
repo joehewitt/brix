@@ -161,17 +161,17 @@ an optional, and it needs no arm for every value.
 
 A `match` on a row of its own in a body of steps, `(match subject (case pattern body))`{.brix},
 runs the arm that is taken, as steps, and uses no value, so arms may give values of any type or
-none. A body of steps is that of a `fn-do`, `main`, `do`, an `if` or `else`, a loop, a closure
-with `:do`, or an arm of a match run as steps.
+none. A body of steps is one whose rows run in order: that of a `fn-do`, `main`, a `do` form, an
+`if` or `else`, a loop, a `subscribe-for`, a closure with `:do`, or an arm of a match run as steps.
 
 - An arm can return from the function, raise, or `break` or `continue` an enclosing loop.
 - With `match?`, a match run as steps goes on to the next step where no arm is taken; with
   `match`, it panics there.
-- A `match` whose value is used, as a `let`'s value or a function's result, gives the value of
-  the arm it takes, so an arm that gives none is an error that names the fix: `This arm gives no
-  value, and here a match gives the value of the arm it takes; to run its arms as steps, write the
-  match on a row of its own in a body of steps`. A `match` written as a row of markup content runs
-  its arm as content instead; see Markup.
+- A `match` whose value is used, as a `let`'s value, a function's result or what a `pipe` stage
+  below it works on, gives the value of the arm it takes, so an arm that gives none is an error
+  that names the fix: `This arm gives no value, and here a match gives the value of the arm it
+  takes; to run its arms as steps, write the match on a row of its own in a body of steps`. A
+  `match` written as a row of markup content runs its arm as content instead; see Markup.
 - A function whose last step is a match run as steps, with an arm for every value, each of which
   returns or raises, needs no return after it.
 
