@@ -2013,6 +2013,102 @@ true
 false
 ```
 
+### A parked or canceled event handler does not hold back another task's transitions
+
+```yumi
+. gate = Semaphore()
+. parked = ParkingHandler(gate)
+. other = EventToggle()
+. parker = do new
+    parked.pings <- true
+do new
+    other.go <- true
+    -- other.flow is .on
+    parker.cancel()
+    other.back <- true
+    -- other.flow is .idle
+
+━━━━━━━━━━━━━━━━━━━━
++ ParkingHandler
+
++ gate Semaphore'Void
++ event pings Bool
+
+────────────────────
++ This
+    - gate
+
+────────────────────
+for event on pings
+
+gate.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ EventToggle
+
++ event go Bool
++ event back Bool
+
+────────────────────
++ flow ~>
+
+~> idle
+~> on on go
+    then idle on back
+```
+
+```output
+true
+true
+```
+
+### A transition canceled in its entry rows does not hold back later transitions
+
+```yumi
+. gate = Semaphore()
+. parked = ParkingEntry(gate)
+. other = EventToggle()
+. parker = do new
+    parked.go <- true
+do new
+    parker.cancel()
+    other.go <- true
+    -- other.flow is .on
+
+━━━━━━━━━━━━━━━━━━━━
++ ParkingEntry
+
++ gate Semaphore'Void
++ event go Bool
+
+────────────────────
++ This
+    - gate
+
+────────────────────
++ flow ~>
+
+~> idle
+~> on on go
+    do
+        gate.wait()
+
+━━━━━━━━━━━━━━━━━━━━
++ EventToggle
+
++ event go Bool
+
+────────────────────
++ flow ~>
+
+~> idle
+~> on on go
+```
+
+```output
+true
+```
+
 ### Keyed event transitions queued during a transition are rejected after the receiver generation is released
 
 ```yumi

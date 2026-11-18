@@ -8,7 +8,7 @@
 ./stream
 /BxGC/BxGC.h
 
-_ event-machine-publishing Size = 0
+_ @task event-machine-publishing Size = 0
 _ event-machine-is-draining = false
 _ event-descriptor-heads := List'(EventLoweredDescriptor?)()
 _ event-bubbling-heads := List'(EventLoweredDescriptor?)()
@@ -360,11 +360,18 @@ dispatch()
     catch error Error
         unhandled-error(error)
 is-resolving = false
-for lane in resolved
+. index Index = 0
+do finally
+    if index
+        resolved.remove(0, index)
+while index < resolved.length
+    . lane = resolved[index]
+    index += 1
     lane.run-next()
         catch error Error
             unhandled-error(error)
 resolved.clear()
+index = 0
 
 ━━━━━━━━━━━━━━━━━━━━
 _ EventSubscription'Payload
@@ -992,6 +999,10 @@ _ do event-machine-drain
 
 event-machine-is-draining = true
 . index Index = 0
+do finally
+    if event-machine-is-draining
+        event-machine-is-draining = false
+        event-machine-lanes.remove(0, index)
 while index < event-machine-lanes.length
     . lane = event-machine-lanes[index]
     index += 1

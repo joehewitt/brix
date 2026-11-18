@@ -758,7 +758,8 @@ ended
 - **Events.** A value published to an event moves the machine before the publish goes on. The
   event's other subscribers run first, then the machine's transitions.
 - **One move at a time.** A value published while a machine is moving waits until the move ends,
-  and is delivered before the outermost publish goes on.
+  and is delivered before the outermost publish goes on. Publishes nest only within a task: a
+  subscriber that waits, or is canceled, does not hold back another task's publish.
 - **Channels.** A value written to an `AsyncChannel` moves the machine in a task of its own, after
   the writer waits. A machine does not see what was written before it subscribed.
 
