@@ -1346,6 +1346,63 @@ Table range is out of bounds
 (0, 0)
 ```
 
+### A range assignment needs a source at least as long as the range, and copies a prefix of a longer one.
+
+```yumi
+/core/table
+
+. source = Table'Point(5) • with Point(each as I32, (each + 10) as I32)
+. target = Table'Point(3)
+. values = Table'Value(3)
+values[0] = Value.left(Left(1))
+values[1] = Value.right(Left(2))
+. rows = do new
+    target[0 .. < 3] = source[1 .. < 5][0 .. < 2]
+catch failure
+    -- failure
+rows.wait()
+. items = do new
+    target.x[0 .. < 3] = source.x[0 .. < 2]
+catch failure
+    -- failure
+items.wait()
+. cases = do new
+    values[0 .. < 3] = values[1 .. < 3][0 .. < 1]
+catch failure
+    -- failure
+cases.wait()
+-- target[0] as Point
+-- values[0] as Value
+target.y[1 .. < 3] = source.y
+-- target[2] as Point
+
+━━━━━━━━━━━━━━━━━━━━
++ Point is Struct
+
++ x I32
++ y I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Left is Struct
+
++ value I32
+
+━━━━━━━━━━━━━━━━━━━━
++ Value is Union
+
+| left Left
+| right Left
+```
+
+```output
+Table range source is too short
+TableField range source is too short
+Table range source is too short
+(0, 0)
+(1)
+(0, 11)
+```
+
 ### Iterating a table yields live row cursors without forcing row struct materialization.
 
 ```yumi

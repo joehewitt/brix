@@ -2497,9 +2497,9 @@ put-meta(site, made, span-layout, 3, TableMeta(zero, zero, zero, zero, zero))
 ` `t[a .. < b] = s` of a table, of a span of one or of a view of a field's column, as
 ` TypeScript copies it: the source is read, then the target and the range; the rows of the
 ` target are found, then those of the source, and the range is made forward and checked
-` against the target's length; each column of the source is copied from its first row into
-` the target's from the range's start, as many rows as the range spans, with no check of the
-` source's length; where the target's table grows
+` against the target's length, and the source must hold at least as many rows as it spans;
+` each column of the source is copied from its first row into the target's from the range's
+` start, as many rows as the range spans; where the target's table grows
 ` its mutation generation is then counted on. Rows of unions are copied one at a time, from
 ` the last where the source shares the target's columns and starts below it.
 . emitted = emit-expression(rhs)
@@ -2530,6 +2530,10 @@ if not-table || not-given || (types.intrinsic-of(row) != .struct && unions == U3
 . target = table-source(id, held.operand, type, layout)
 . copied = table-source(id, source.operand, source-type, source-layout)
 . bounds = range-bounds(id, range.operand, range-type, held.operand, type, object, target.length, source-name(kind))
+fail-if
+    - id
+    - compare(id, .compare-less, copied.length, bounds.length)
+    - "${source-name(kind)} range source is too short"
 . start = arithmetic(id, .arithmetic-add, target.offset, bounds.start, u64-layout)
 if unions != U32.max
     copy-union-rows
@@ -2677,14 +2681,18 @@ _ do copy-column-range
 
 ` The items of a view of a field's column copied into those a range spans of another, as
 ` TypeScript copies them: the target's data is found, the range made forward and checked
-` against the target's length, and the source's data found; as many items as the range spans
-` are copied, with no check of the source's length.
+` against the target's length, and the source's data found; the source must hold at least as
+` many items as the range spans, and as many are copied.
 . item-layout = layout-of(viewed-item(type), id)
 . meta = column-meta(id, column, layout)
 . data = column-data(id, column, layout, meta, item-layout)
 . bounds = range-bounds(id, range, range-type, column, type, object, part(column, layout, 1, id).operand, "TableField")
 . into = item-cell(id, data.operand, bounds.start, item-layout)
 . out = column-data(id, source, source-layout, column-meta(id, source, source-layout), item-layout)
+fail-if
+    - id
+    - compare(id, .compare-less, part(source, source-layout, 1, id).operand, bounds.length)
+    - "TableField range source is too short"
 copy-items(id, into, out.operand, bounds.length, item-layout)
 invalidate-marks(id, meta)
 
