@@ -268,7 +268,7 @@ _ do rewrite-opcode
     - id InstructionId
     - opcode Opcode
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction(row)
         row.opcode = opcode
 
@@ -278,13 +278,13 @@ _ do has-compatible-register-class Bool
     - variable FrameObjectId
 
 . type = function.frame-objects[variable].type
-do match? function.types[type]
+match? function.types[type]
     | .array-type
         = false
     | .void-type
         = false
 . expected = builder.type-reg-class(type)
-do match? function.operands[value]
+match? function.operands[value]
     | .vreg-operand(operand)
         = function.vregs[operand.vreg].reg-class == expected
     | .preg-operand
@@ -295,7 +295,7 @@ do match? function.operands[value]
 _ do frame-object-of FrameObjectId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .frame-object-operand(row)
         = row.object
 = no-frame-object
@@ -449,7 +449,7 @@ builder.set-insert-block(block)
 for index in 0 .. < predecessors.length
     exprs = exprs.appended(arena, builder.add-operand(PlaceholderOperand()))
     names = names.appended(arena, function.blocks[predecessors[index]].name)
-do match? function.instructions[phi]
+match? function.instructions[phi]
     | .phi-instruction(row)
         row.exprs = exprs
         row.blocks = names
@@ -553,7 +553,7 @@ _ do rewrite-operand-vregs
 . base = no-operand
 . offset = no-operand
 . members Span
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         is-address = true
         base = address.base
@@ -568,7 +568,7 @@ if is-address
     if offset != no-operand && is-vreg(offset)
         new-offset = resolve-alias(offset)
     if new-base != base || new-offset != offset
-        do match? function.operands[operand]
+        match? function.operands[operand]
             | .load-address-operand(address)
                 address.base = new-base
                 address.offset = new-offset
@@ -600,7 +600,7 @@ _ promoted-object FrameObjectId
 _ do phi-register OperandId
     - phi InstructionId
 
-do match? function.instructions[phi]
+match? function.instructions[phi]
     | .phi-instruction(row)
         = row.reg
 = no-operand
@@ -609,7 +609,7 @@ do match? function.instructions[phi]
 _ do phi-exprs IdList
     - phi InstructionId
 
-do match? function.instructions[phi]
+match? function.instructions[phi]
     | .phi-instruction(row)
         = row.exprs
 = IdList()
@@ -661,7 +661,7 @@ _ do set-alias
     - from OperandId
     - to OperandId
 
-do match? function.operands[from]
+match? function.operands[from]
     | .vreg-operand(row)
         ?! Panic("A promoted load targets a register view made during promotion")
             if row.vreg >= view-count
@@ -698,7 +698,7 @@ while true
 _ do direct-alias OperandId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = view-alias(row.vreg)
 = no-operand
@@ -764,7 +764,7 @@ function.vregs.append(MIRVirtualRegister(id, reg-class, hint, gc-root, gc-descri
 _ do view-of VRegId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = row.vreg
 = no-id
@@ -773,7 +773,7 @@ do match? function.operands[operand]
 _ do vreg-id U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id
 = no-id
@@ -782,7 +782,7 @@ do match? function.operands[operand]
 _ do is-vreg Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand
         = true
 = false

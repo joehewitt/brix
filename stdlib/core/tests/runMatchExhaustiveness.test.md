@@ -16,7 +16,7 @@
 ```
 
 ```yumi crash
-do match true
+match true
     |= true
         -- "true"
 ```
@@ -805,7 +805,7 @@ match body
     - id U64
 
 . result = catch copies-of(id)
-do match result
+match result
     | error Error
         = "error"
     | found [U64]
@@ -935,7 +935,7 @@ n=3
 ```
 
 ```yumi crash
-do match true
+match true
     | true
         -- "true"
 ```

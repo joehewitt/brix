@@ -524,7 +524,7 @@ bindings[id].machine-reads = RowRange'MachineRead
 for slot in row.slots.start .. < slots.length
     if slots[slot].kind != .slot-lazy
         continue
-    do match? tree.nodes[slots[slot].group]
+    match? tree.nodes[slots[slot].group]
         | .node-declare(declaration)
             if !declaration.is-pattern && names-several(tree, declaration.left)
                 slots[slot].flags = slots[slot].flags /or/ SlotFlag.slot-together
@@ -895,12 +895,12 @@ slots[slot].use != U32.max && lazy-uses[slots[slot].use].flagged
 
 ` Whether the value a declaration writes reads something tracked, which the reference
 ` evaluates once, behind a flag (`tracking-initializer`).
-do match? tree.nodes[group]
+match? tree.nodes[group]
     | .node-declare(declaration)
         if declaration.right == 0
             = false
         for node in tree.subtree-start(declaration.right) .. declaration.right
-            do match? tree.nodes[node]
+            match? tree.nodes[node]
                 | .node-identifier(read)
                     if read.is-tracked
                         = true
@@ -1096,7 +1096,7 @@ _ do inlines-of Bool
 if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
     = false
 . grouped = true
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         grouped = declaration.is-pattern || names-several(tree, declaration.left)
 if grouped
@@ -1136,7 +1136,7 @@ if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
     = true
 . use = lazy-uses[row.use]
 . grouped = true
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         grouped = declaration.is-pattern || names-several(tree, declaration.left)
 if grouped || use.refs != 0 || use.writes != 0 || use.tracked != 0
@@ -1173,7 +1173,7 @@ if row.kind != .slot-lazy || row.group == 0 || row.use == U32.max
 if (row.flags /and/ (SlotFlag.slot-tracked /or/ SlotFlag.slot-captured)) != 0
     = false
 . grouped = true
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         grouped = declaration.is-pattern || names-several(tree, declaration.left)
 . use = lazy-uses[row.use]
@@ -1206,7 +1206,7 @@ if inlines-of(tree, slot)
     = .lazy-inline
 . grouped = true
 . several = false
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         grouped = declaration.is-pattern
         several = names-several(tree, declaration.left)
@@ -1235,7 +1235,7 @@ _ do shares Bool
 ` functions of a state machine, whose reads the reference evaluates once for the function that
 ` writes the machine, whichever comes first.
 . plain = false
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         plain = !declaration.is-pattern
 = plain && use.refs == 0
@@ -1387,7 +1387,7 @@ match? tree.nodes[id]
 ` loop, or an arm of a match.
 if id == 0
     = false
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         for statement in tree.children[row.body]
             if returns-value(tree, statement)
@@ -1442,11 +1442,11 @@ _ do leaves Bool
 ` it does.
 if id == 0
     = false
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         . last = 0u32
         for statement in tree.children[row.body]
-            do match tree.nodes[statement]
+            match tree.nodes[statement]
                 | .node-declare(declared)
                     if !declared.is-lazy
                         last = statement
@@ -1474,7 +1474,7 @@ _ do arms-leave Bool
     - tree AST
     - pattern SyntaxId
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = arms-leave(tree, row.left) && arms-leave(tree, row.right)
     | .node-type-transform(row)
@@ -1486,13 +1486,13 @@ _ do has-else-arm Bool
     - tree AST
     - pattern SyntaxId
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = has-else-arm(tree, row.left) || has-else-arm(tree, row.right)
     | .node-type-transform(row)
         if row.pattern == 0
             = true
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-wildcard
                 = true
 = false

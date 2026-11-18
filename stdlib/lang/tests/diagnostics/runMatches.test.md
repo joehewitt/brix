@@ -5,7 +5,7 @@ A match that leaves cases out names the type in source form, the cases it leaves
 ### a match on Bool without false
 
 ```yumi crash
-do match true
+match true
     |= true
         -- "true"
 ```
@@ -91,4 +91,24 @@ Exception: This arm gives no value, and here a match gives the value of the arm 
 <no file:9>
       (let said (match s (case .red (print "red")) (case .blue "blue")))
                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### an arm that only calls, in a closure whose body is a value
+
+```brix crash
+(fn-do + ping _
+  (print "ping")
+)
+
+(main
+  (let run (=> () (match true (case= true (call ping)) (case= false (call ping)))))
+  (call run)
+)
+```
+
+```output
+Exception: This arm gives no value, and this body is a value, so a match gives the value of the arm it takes; to run its arms as steps, write `fn-do`, or `:do` in a closure
+<no file:7>
+      (let run (=> () (match true (case= true (call ping)) (case= false (call ping)))))
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^
 ```

@@ -1919,7 +1919,7 @@ Exception: Type "Arena" not found; it is declared in /core/arena, which this mod
 
 ```yumi crash
 . value = 3
-do match value
+match value
     | held Arena
         -- "arena"
     ??

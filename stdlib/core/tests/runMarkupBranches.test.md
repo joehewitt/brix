@@ -1656,7 +1656,7 @@ demo.shown = true
 
 . parts = List'String()
 for child in demo.%first-child!.children
-    do match child
+    match child
         | leaver Leaver
             parts += if leaver.is-leaving then "leaving" else "leaver"
         | _

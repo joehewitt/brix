@@ -73,7 +73,7 @@ for offset in 0 .. < unit.slot-count
 
 ` Clears again the flag of each lazy local a block declares in a loop that is evaluated once
 ` a turn, here where the block starts each turn, before any read of it.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         for statement in tree.children[row.body]
             if !is-lazy-local(statement)
@@ -226,7 +226,7 @@ if in-place
 . state = make-operand(.operand-symbol, kept.state)
 unit = unit.source-module = kept.module
 unit = unit.reading = tables.main-instances[kept.module]
-do match? program.modules[kept.module].decls[kept.decl]
+match? program.modules[kept.module].decls[kept.decl]
     | .decl-property(property)
         . syntax = property.syntax
         . ready = ir.reserve-block()
@@ -280,11 +280,11 @@ while position != 0 && !kept
 if !typed || held == no-type || bindings.lazy-together(slot) || (policy != .lazy-inline && !kept)
     refuse(.refused-expression, id)
     = Typed(nothing, no-type)
-do match? tree.nodes[group]
+match? tree.nodes[group]
     | .node-declare(row)
         . name = row.left
         . annotation SyntaxId = 0
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 name = capture.id
                 annotation = capture.type
@@ -439,10 +439,10 @@ if read-wavers(slot, id) || facts.address-claim-of(unit.reading, bindings.slots[
 . kept = facts.slot-type(unit.instance, slot - unit.slot-start)
 if kept != type || type == no-type || type == invalid-type
     = false
-do match? tree.nodes[bindings.slots[slot].group]
+match? tree.nodes[bindings.slots[slot].group]
     | .node-declare(row)
         . named = row.left
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 named = capture.id
         = row.right != 0 && tree.nodes[named] is .node-identifier
@@ -454,11 +454,11 @@ _ do evaluate-in-place Typed
     - type TypeId
 
 . nothing = make-operand(.operand-void, 0)
-do match? tree.nodes[bindings.slots[slot].group]
+match? tree.nodes[bindings.slots[slot].group]
     | .node-declare(row)
         . named = row.left
         . annotation SyntaxId = 0
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 named = capture.id
                 annotation = capture.type
@@ -560,11 +560,11 @@ if wavers
 sharing += 1
 lazy-open += slot
 . initial = nothing
-do match row
+match row
     | .node-declare(declaration)
         . name = declaration.left
         . annotation SyntaxId = 0
-        do match? tree.nodes[declaration.left]
+        match? tree.nodes[declaration.left]
             | .node-type-capture(capture)
                 name = capture.id
                 annotation = capture.type
@@ -672,7 +672,7 @@ _ do share-together
 ` set. A name written as `_` takes nothing. A field of another type than its local's, a name
 ` written as a tuple, and locals declared together with no value have no shape here.
 . names = RowRange'SyntaxId()
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-tuple-syntax(row)
         names = row.items
     | .node-type-tuple(row)
@@ -690,7 +690,7 @@ if !tables.layouts.is-struct(layout) || tables.layouts.rows[layout].fields.count
 for position in 0 .. < names.count
     . name = tree.children[names.start + position]
     . skipped = false
-    do match? tree.nodes[name]
+    match? tree.nodes[name]
         | .node-type-capture(row)
             name = row.id
         | .node-type-wildcard
@@ -783,7 +783,7 @@ _ do evaluate-lazy
 ` the declaration is not lazy.
 . group = bindings.slots[slot].group
 if bindings.lazy-together(slot)
-    do match? tree.nodes[group]
+    match? tree.nodes[group]
         | .node-declare(row)
             . opened = lazy-open.length
             for position in 0 .. < unit.slot-count
@@ -794,17 +794,17 @@ if bindings.lazy-together(slot)
                 lazy-open.pop()
             =
 lazy-open += slot
-do match tree.nodes[group]
+match tree.nodes[group]
     | .node-declare(row)
         . name = row.left
         . annotation SyntaxId = 0
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 name = capture.id
                 annotation = capture.type
         . type = facts.slot-type(unit.instance, offset)
         . plain = false
-        do match? tree.nodes[name]
+        match? tree.nodes[name]
             | .node-identifier
                 plain = true
         if !plain || type == no-type || type == invalid-type
@@ -848,11 +848,11 @@ for open in lazy-open
 . declared = tree.lazy-value(bindings.slots[slot].group)
 if declared == 0 || !tree.is-logic(declared)
     = no-slot
-do match? tree.nodes[bindings.slots[slot].group]
+match? tree.nodes[bindings.slots[slot].group]
     | .node-declare(row)
         . named = row.left
         . annotation SyntaxId = 0
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 named = capture.id
                 annotation = capture.type
@@ -888,7 +888,7 @@ if truth != no-fact || facts.answer-type(unit.reading, name) != kept
 
 ` Whether a statement declares a lazy local, or a local of a row of a markup loop region read
 ` as a getter, which emits nothing where it stands.
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-declare(row)
         = row.is-lazy || declares-getter(row.left)
 = false
@@ -919,7 +919,7 @@ while position != 0
 if (shared-depth == 0 && sharing == 0) || lazy-open.length == 0 || tables.holds-stacks(unit.reading)
     = no-slot
 . slot = lazy-open[lazy-open.length - 1]
-do match? tree.nodes[bindings.slots[slot].group]
+match? tree.nodes[bindings.slots[slot].group]
     | .node-declare(declaration)
         if declaration.right == id && is-captured(slot)
             = slot

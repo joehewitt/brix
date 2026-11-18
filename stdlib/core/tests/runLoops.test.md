@@ -1121,7 +1121,7 @@ for item in items
 ```yumi
 . shapes = [Shape.circle(2), Shape.square(3), Shape.none]
 for shape in shapes
-    do match shape
+    match shape
         | .circle(r)
             -- "circle $r"
         | .square(side)

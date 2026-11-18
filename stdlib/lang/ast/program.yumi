@@ -146,18 +146,18 @@ for word in 0 .. < words
 . live = Map'Atom'Bool()
 for module in modules
     for decl in module.decls
-        do match? decl
+        match? decl
             | .decl-function(fn)
                 . name = fn.name
                 if name
-                    do match? module.tree.nodes[fn.syntax]
+                    match? module.tree.nodes[fn.syntax]
                         | .node-function-syntax(row)
                             if row.is-live
                                 live[name] = true
 . found = Map'Atom'Bool()
 for module in modules
     for decl in module.decls
-        do match? decl
+        match? decl
             | .decl-property(row)
                 . name = row.name
                 if name && row.value != 0 && !row.is-lazy && reaches-live
@@ -185,7 +185,7 @@ _ do reads-live Bool
     - live Map'Atom'Bool
 
 for node in tree.subtree-start(value) .. < value + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             =? true if row.is-tracked || live has row.name
         | .node-get-expression(row)
@@ -206,7 +206,7 @@ for node in tree.subtree-start(value) .. < value + 1
 ` written in a function named `inspectable-snapshot`, which writes the snapshot of an object,
 ` compiles wherever probes do.
 . snapshots = false
-do match? modules[module].decls[decl]
+match? modules[module].decls[decl]
     | .decl-function(row)
         snapshots = row.name != null && row.name.text == "inspectable-snapshot"
 = probes.compiles-node(modules[module].name, modules[module].tree, id, snapshots)
@@ -354,13 +354,13 @@ latest-listing[caller * modules.length + module]
 for candidate in lookup(caller, name)
     . owner = modules[candidate.module]
     if owner.name.ends-with(".h")
-        do match? owner.decls[candidate.decl]
+        match? owner.decls[candidate.decl]
             | .decl-property(property)
-                do match? owner.tree.nodes[property.value]
+                match? owner.tree.nodes[property.value]
                     | .node-integer-syntax(row)
                         = row.value
                     | .node-unary-expression(row)
-                        do match? owner.tree.nodes[row.operand]
+                        match? owner.tree.nodes[row.operand]
                             | .node-integer-syntax(literal)
                                 if row.op == .negative-op
                                     = "-${literal.value}"
@@ -536,7 +536,7 @@ caller == module || (caller < facets.hosts.length && facets.hosts[caller] == mod
 
 ` The number of the effect a name names where code in a module sees it.
 for candidate in lookup(caller, name)
-    do match? modules[candidate.module].decls[candidate.decl]
+    match? modules[candidate.module].decls[candidate.decl]
         | .decl-effect(row)
             if is-public || reaches-private(caller, candidate.module)
                 = effects.index-of(candidate.module, candidate.decl)
@@ -686,10 +686,10 @@ program.extension-after(this, entry)
     - decl DeclId
 
 . tree = program.modules[module].tree
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         . imperative = true
-        do match? tree.nodes[fn.syntax]
+        match? tree.nodes[fn.syntax]
             | .node-function-syntax(syntax)
                 imperative = syntax.imperative
             | .node-getter-syntax(syntax)
@@ -709,11 +709,11 @@ do match? program.modules[module].decls[decl]
             - is-main
             - fn.is-content
     | .decl-converter(row)
-        do match? tree.nodes[row.syntax]
+        match? tree.nodes[row.syntax]
             | .node-converter-syntax(node)
                 = described-body(tree, row.syntax, node.body, node.imperative)
     | .decl-fromverter(row)
-        do match? tree.nodes[row.syntax]
+        match? tree.nodes[row.syntax]
             | .node-fromverter-syntax(node)
                 = described-body(tree, row.syntax, node.body, node.imperative)
 = null
@@ -727,10 +727,10 @@ do match? program.modules[module].decls[decl]
 ` The grammar of a rule a module declares: the body of a function declared over the
 ` items of a stream, where the body is that pattern, beside any lazy locals declared for it.
 ` None for any other declaration.
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         . tree = program.modules[module].tree
-        do match? tree.nodes[fn.syntax]
+        match? tree.nodes[fn.syntax]
             | .node-function-syntax(syntax)
                 if syntax.pattern != 0 && !fn.is-generated
                     = tree.stream-statement(fn.body)

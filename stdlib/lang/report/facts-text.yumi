@@ -154,7 +154,7 @@ line == U32.max || tree.nodes.loc[syntax].begin.line == line
 . locations [String = Bool]
 . total = tree.nodes.length as SyntaxId
 for id in 1 .. < total
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-loop-syntax
             locations[node-location-text(tree, id)] = true
         | .node-for-block
@@ -172,7 +172,7 @@ for id in 1 .. < total
 . locations [String = Bool]
 . total = tree.nodes.length as SyntaxId
 for id in 1 .. < total
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-feed-expression(row)
             if row.is-spread || row.is-optional
                 locations[node-location-text(tree, id)] = true
@@ -187,7 +187,7 @@ for id in 1 .. < total
     - row Instance
 
 . listed = !program.modules[row.module].name.ends-with(".h")
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         listed = listed && fn.kind != .main-decl && fn.kind != .task-decl
         listed = listed && !is-startup-kind(fn.kind) && fn.kind != .termination-panic-decl
@@ -214,7 +214,7 @@ _ do instance-head String
 
 . program = types.program
 . owner-module = program.modules[module]
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         if row.kind == .closure-decl || row.kind == .feed-decl
             . loc = owner-module.tree.nodes.loc[row.syntax]
@@ -301,12 +301,12 @@ $name rank=${relation.rank} match=$match unified=$unified$ratio
 
 . program = types.program
 . owner-module = program.modules[module]
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         if row.is-static
             = no-type
         if is-constructor-kind(row.kind) && row.owner != 0
-            do match? owner-module.decls[row.owner]
+            match? owner-module.decls[row.owner]
                 | .decl-class(class)
                     if class.type-args.count != 0
                         . env = types.class-env(module, row.owner)
@@ -337,7 +337,7 @@ if implicit <= param-count then param-count - implicit else 0u32
 . program = types.program
 . owner-module = program.modules[module]
 . module-name = owner-module.name
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         . kind = head-kind(row)
         . owner = owner-label(types, module, row.owner)
@@ -351,7 +351,7 @@ do match? owner-module.decls[decl]
         for other in owner-module.decls
             if index == decl
                 break
-            do match? other
+            match? other
                 | .decl-function(earlier)
                     . plain = !earlier.is-generated && !is-nested-kind(earlier.kind)
                     if plain && earlier.owner == row.owner && head-kind(earlier) == kind
@@ -382,7 +382,7 @@ _ do accessor-ordinal Size
 for other in program.modules[module].decls
     if index == decl
         break
-    do match? other
+    match? other
         | .decl-converter(row)
             if converters && row.owner == owner
                 ordinal += 1
@@ -448,7 +448,7 @@ _ do owner-label String
 . program = types.program
 if owner == 0
     = "-"
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-class(row)
         = row.name.text
     | .decl-extension
@@ -490,7 +490,7 @@ for diagnostic in bindings.diagnostics
 . narrowest = U32.max
 . index = 0u32
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(row)
             . start = row.subtree.start
             . inside = syntax >= start && syntax < start + row.subtree.count
@@ -1236,7 +1236,7 @@ for position in 0 .. < owner.undeclared.length
     . written = owner.undeclared[position]
     . holder = owner.undeclared-owners[position]
     . judged = false
-    do match? owner.decls[holder]
+    match? owner.decls[holder]
         | .decl-sheet-extension(extension)
             judged = reported-within(module, extension.syntax)
     if judged || reported-within(module, written)
@@ -1268,7 +1268,7 @@ _ do is-named Bool
 ` markup element, or a name read, its own members included.
 . owner = program.modules[module]
 . names [Atom]
-do match? owner.decls[decl]
+match? owner.decls[decl]
     | .decl-class(class)
         names += class.name
         for alias in owner.tree.atoms[class.aliases]
@@ -1278,7 +1278,7 @@ if names.length == 0
 for other in program.modules
     . tree = other.tree
     for id in 1u32 .. < tree.nodes.length
-        do match? tree.nodes[id]
+        match? tree.nodes[id]
             | .node-type-identifier(row)
                 if names.find(row.name) != null
                     = true

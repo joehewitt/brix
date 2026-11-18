@@ -399,7 +399,7 @@ _ argument-kind U8
 _ do text-line
     - node ImmutableTableRow'SourceNode
 
-do match node
+match node
     | .string(_, text)
         if brix-starts-divider(text)
             put("\\")
@@ -414,7 +414,7 @@ _ do text-form
     - node ImmutableTableRow'SourceNode
     - items ImmutableTableSpan'SourceNode
 
-do match items
+match items
     | [.atom(_, "str"), .string(_, {brix-starts-divider(it)}), ...]
         put("\\")
         interpolated(items, 1, false)
@@ -430,7 +430,7 @@ _ do statement
     - node ImmutableTableRow'SourceNode
 
 . before = column
-do match node
+match node
     | .comment(_, text)
         put(if text.length > 0 then "` $text" else "`")
     | .list(_, start, count)
@@ -445,7 +445,7 @@ _ do form
     - node ImmutableTableRow'SourceNode
     - items ImmutableTableSpan'SourceNode
 
-do match items
+match items
     | [.atom(_, {it == source-blank-head})]
         =
     | [.atom(_, {it == source-raw-head}), .string(_, raw), ...]
@@ -686,7 +686,7 @@ if is-flat && !(store.is-atom(items[2]) && store.text(items[2]) == "_")
 =? if items.length <= spot
 . value = items[spot]
 . fields = store.items(value)
-do match fields
+match fields
     | [.atom(_, "block"), ...]
         put(" =")
         hold(value, 1)
@@ -835,7 +835,7 @@ _ do alternative-part Bool
     - item ImmutableTableRow'SourceNode
 
 . fields = store.items(item)
-do match fields
+match fields
     | [.atom(_, "of:"), value, ...]
         put(" = ")
         expression(value, 0, false)
@@ -878,7 +878,7 @@ _ do trigger
     - node ImmutableTableRow'SourceNode
 
 . items = store.items(node)
-do match items
+match items
     | [_, .atom(_, "for"), subject, source, ...]
         put("for ")
         expression(subject, 0, false)
@@ -930,7 +930,7 @@ if !is-blank-slot(items[3])
     expression(items[3], brix-level-primary, false)
 =? if origin >= count
 . fields = store.items(last)
-do match fields
+match fields
     | [.atom(_, "block"), ...]
         hold(last, 1)
     | [.atom(_, "machine"), ...]
@@ -955,7 +955,7 @@ expression(items[1], brix-level-primary, false)
 for index in 2 .. < items.length
     . item = items[index]
     . is-payload = index == 2 && store.is-atom(items[1])
-    do match store.items(item)
+    match store.items(item)
         | [.atom(_, "="), value]
             put(" = ")
             expression(value, 0, true)
@@ -976,7 +976,7 @@ _ do header-line
 if raw != null
     put(raw)
     =
-do match items
+match items
     | [.atom(_, "param"), ...]
         parameter(node, true)
     | [.atom(_, "claim"), name]
@@ -1025,7 +1025,7 @@ _ do declaration
 if raw != null
     put(raw)
     =
-do match items
+match items
     | [.atom(_, word {it == "fn-do" || it == "fn-expr"}), access, key, result, ...]
         put("${store.text(access)} ")
         if has-flag(items, ":static")
@@ -1112,7 +1112,7 @@ _ do type-clause Bool
     - item ImmutableTableRow'SourceNode
 
 . fields = store.items(item)
-do match fields
+match fields
     | [.atom(_, "alias"), ...]
         put(" (")
         list(fields, 1, ", ", 0)
@@ -1138,7 +1138,7 @@ _ do extend-clause Bool
     - item ImmutableTableRow'SourceNode
 
 . fields = store.items(item)
-do match fields
+match fields
     | [.atom(_, "as"), ...]
         put(" as ")
         list(fields, 1, ", ", brix-level-primary)
@@ -1243,7 +1243,7 @@ _ do signature-part Bool
     - item ImmutableTableRow'SourceNode
     - shows-spread Bool
 
-do match item
+match item
     | .atom(_, text)
         if text.starts-with("@")
             put(" $text")
@@ -1251,7 +1251,7 @@ do match item
             put(" throws")
         = true
     | .list(_, start, count)
-        do match store.nodes[start .. < start + count]
+        match store.nodes[start .. < start + count]
             | [.atom(_, "over:"), spread, ...]
                 if shows-spread
                     put(" ~ ")
@@ -1282,7 +1282,7 @@ _ do function-key
 
 . has-result = !is-blank-slot(result)
 . items = store.items(key)
-do match items
+match items
     | [.atom(_, "infix"), left, op, right]
         expression(left, brix-level-primary, false)
         if has-result
@@ -1335,7 +1335,7 @@ origin += 1
 for index in origin .. < items.length
     . item = items[index]
     . fields = store.items(item)
-    do match fields
+    match fields
         | [.atom(_, "block"), ...]
             hold(item, 1)
         | [.atom(_, "items:"), ...]
@@ -1354,7 +1354,7 @@ _ do probe-value
     - item ImmutableTableRow'SourceNode
     - head String
 
-do match head
+match head
     |= "probe-count"
         put(" += ")
         expression(item, 0, false)
@@ -1380,7 +1380,7 @@ if holder == null
 _ do selector
     - node ImmutableTableRow'SourceNode
 
-do match store.items(node)
+match store.items(node)
     | [.atom(_, ":"), target, name]
         expression(target, brix-level-closure, false)
         put(":${store.text(name)}")
@@ -1471,7 +1471,7 @@ else
 . has-id = false
 while origin < items.length
     . fields = store.items(items[origin])
-    do match fields
+    match fields
         | [.atom(_, "id:"), name, ...]
             put(" ")
             tagged(store.text(name), .binder)
@@ -1570,7 +1570,7 @@ _ do call
 . extra Size = 0
 . positional Size = 0
 for index in origin + 1 .. < items.length
-    do match argument-kind(items[index])
+    match argument-kind(items[index])
         |= BrixArgument.named
             named += 1
         |= BrixArgument.extra
@@ -1614,7 +1614,7 @@ _ do trailing
     - is-line Bool
 
 . fields = store.items(item)
-do match fields
+match fields
     | [.atom(_, {brix-is-keyword-head(it)}), ...]
         put(" ")
         named(item, fields, is-line)
@@ -1814,7 +1814,7 @@ if is-quoted
 for index in origin .. < items.length
     . part = items[index]
     . is-joined = index + 1 < items.length && continues(items[index + 1])
-    do match part
+    match part
         | .string(_, text)
             put(if is-quoted then brix-escaped(text, true) else brix-line-escaped(text))
         | .atom(_, name)
@@ -1839,7 +1839,7 @@ _ do embedded
     - fields ImmutableTableSpan'SourceNode
     - is-joined Bool
 
-do match fields
+match fields
     | [.atom(_, word {it == "preview" || it == "snapshot"}), shown, ...]
         . mark = if word == "preview" then "\$?" else "\$!"
         . name = if store.is-atom(shown) then store.text(shown) else ""
@@ -1892,7 +1892,7 @@ if is-wrapped
 _ do open-range
     - operands [ImmutableTableRow'SourceNode]
 
-do match operands.length
+match operands.length
     |= 2
         put("... ")
         expression(operands[1], 18, false)
@@ -1911,7 +1911,7 @@ _ do expression
 if is-tail && tail == null && minimum <= brix-level-named && ends-tail(node)
     tail = node
 . before = column
-do match node
+match node
     | .comment(_, text)
         put("` $text")
     | .string(_, text)
@@ -1934,7 +1934,7 @@ _ do operation
     - minimum Int
     - is-tail Bool
 
-do match items
+match items
     | []
         put("()")
     | [.atom(_, "call"), _, ...]

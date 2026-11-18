@@ -131,7 +131,7 @@ if types.checked-classes[key] != null
     =
 types.checked-classes[key] = instance
 . decls = program.modules[module].decls
-do match? decls[decl]
+match? decls[decl]
     | .decl-class(class)
         check-base(decl, class)
         check-interfaces(decl, class)
@@ -139,7 +139,7 @@ do match? decls[decl]
         check-associated(decl, class)
         check-default-cycles(decl, class)
         for member in program.modules[module].member-pool[class.members]
-            do match? decls[member]
+            match? decls[member]
                 | .decl-function(fn)
                     if !fn.is-generated && fn.kind == .getter-decl && fn.name
                         . getter-name = fn.name
@@ -188,7 +188,7 @@ for extended in types.interfaces-of(interface)
 ` declaration (`check-root-style`).
 prepare()
 . receiver = instances.rows[instance].self-type
-do match? program.modules[module].decls[property]
+match? program.modules[module].decls[property]
     | .decl-case(row)
         if row.name
             check-case(receiver, row.name, row.value, row.syntax)
@@ -212,7 +212,7 @@ do match? program.modules[module].decls[property]
 . site = 0u32
 . eager = false
 . writer = 0u32
-do match? program.modules[module].decls[property]
+match? program.modules[module].decls[property]
     | .decl-property(row)
         annotation = row.type-syntax
         initializer = row.value
@@ -283,7 +283,7 @@ if value == 0
 for node in tree.subtree-start(value) .. < value + 1
     if !tree.tests-nothing(node)
         instances.rows[instance].branches = true
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             . resolution = bindings.resolution-of(frame.binding, node)
             if resolution.kind == .resolve-slot && this-slot
@@ -293,7 +293,7 @@ for node in tree.subtree-start(value) .. < value + 1
                 facts.value-reads.append
                     - ValueRead(instance, row.name, node, tree.evaluated-surely(value, node))
         | .node-get-expression(row)
-            do match? tree.nodes[row.object]
+            match? tree.nodes[row.object]
                 | .node-identifier
                     . resolution = bindings.resolution-of(frame.binding, row.object)
                     if resolution.kind == .resolve-slot && this-object
@@ -312,7 +312,7 @@ _ do early-union-of TypeId
 ` made only once its cases are typed, invalid.
 . owner = instances.rows[unit].module
 . owner-tree = program.modules[owner].tree
-do match? program.modules[owner].decls[instances.rows[unit].initializer]
+match? program.modules[owner].decls[instances.rows[unit].initializer]
     | .decl-property(found)
         . machine = owner-tree.declared-machine(found.value)
         if machine == 0
@@ -393,7 +393,7 @@ facts.initializer = this
 . classes = Map'ClassName'Bool()
 . suffixes = Map'Atom'Atom()
 for index in 0 .. < decls.length
-    do match? decls[index]
+    match? decls[index]
         | .decl-case(row)
             if row.value != 0 && is-enum-owner(row.owner)
                 infer(row.value)
@@ -469,7 +469,7 @@ for index in 0 .. < decls.length
                     demand-property(module, index as DeclId)
                     note-value-errors(index as DeclId, property.syntax)
                 initializing = 0
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-top-level-syntax(row)
         . finals [SyntaxId]
         . limits [SyntaxId]
@@ -552,7 +552,7 @@ _ do declare-members
 . properties [Atom]
 . members [Atom]
 for member in owner.member-pool[declared]
-    do match? owner.decls[member]
+    match? owner.decls[member]
         | .decl-property(property)
             if property.name && !property.defaults-root && property.element == 0
                 take-property-name(property.name, property.syntax, properties, members)
@@ -616,7 +616,7 @@ _ do check-event-owner
 
 ` Reports an event a struct or a tuple declares: an event belongs to an object, whose
 ` subscribers it keeps, and a value of a struct or a tuple is copied, so none would hear it.
-do match? program.modules[module].decls[event.owner]
+match? program.modules[module].decls[event.owner]
     | .decl-class(class)
         if class.base == 0
             =
@@ -648,7 +648,7 @@ _ do check-default-cycles
 . states = U8[count]
 . offset = 0u32
 for member in owner.member-pool[class.members]
-    do match? owner.decls[member]
+    match? owner.decls[member]
         | .decl-property(property)
             if property.name && property.value != 0 && !property.is-lazy && no-machine
                 values[offset] = property.value
@@ -756,7 +756,7 @@ _ do default-name Atom
     - offset U32
 
 . owner = program.modules[module]
-do match? owner.decls[owner.member-pool[class.members.start + offset]]
+match? owner.decls[owner.member-pool[class.members.start + offset]]
     | .decl-property(property)
         = property.name!
 ?! Panic("A value on a circle belongs to no property")
@@ -769,11 +769,11 @@ _ do default-read U32
 ` The place among a class's members of the stored property with a value that a node names,
 ` or none.
 . owner = program.modules[module]
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         . place = owner.first-member(class.members, row.name)
         while place != no-member
-            do match? owner.decls[owner.member-pool[place]]
+            match? owner.decls[owner.member-pool[place]]
                 | .decl-property(property)
                     if property.value != 0 && !property.is-lazy
                         = place - class.members.start
@@ -815,10 +815,10 @@ seen += interface
 types.complete(interface)
 . ref = class-ref(types, interface)
 . declaring = program.modules[ref.module]
-do match? declaring.decls[ref.decl]
+match? declaring.decls[ref.decl]
     | .decl-class(required)
         for member in declaring.member-pool[required.members]
-            do match? declaring.decls[member]
+            match? declaring.decls[member]
                 | .decl-associated(requirement)
                     if !check-binding(owner, class, requirement)
                         = false
@@ -841,10 +841,10 @@ _ do check-binding Bool
 while level
     . ref = class-ref(types, level)
     . declaring = program.modules[ref.module]
-    do match? declaring.decls[ref.decl]
+    match? declaring.decls[ref.decl]
         | .decl-class(holder)
             for member in declaring.member-pool[holder.members]
-                do match? declaring.decls[member]
+                match? declaring.decls[member]
                     | .decl-associated(binding)
                         if binding.name != name
                             continue
@@ -938,7 +938,7 @@ _ do imported-suffix Atom?
 for candidate in program.lookup(module, alias)
     if candidate.module == module || program.listed-last(module, candidate.module) == U32.max
         continue
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-class(row)
             if row.name != alias && row.access == .public-access
                 = row.name
@@ -951,7 +951,7 @@ _ do check-unit-base
 ` A class declared as a number of a unit, as `Hours` is `60minutes`, is declared in a unit the
 ` program has, as `misstates-unit` says.
 if class.base != 0
-    do match? tree.nodes[class.base]
+    match? tree.nodes[class.base]
         | .node-type-numeric(numeric)
             do misstates-unit(numeric.value)
 
@@ -961,13 +961,13 @@ _ do check-extension
 
 ` An extension adds behavior to a type it does not own: it cannot yet make the type implement
 ` an interface, and it cannot add storage.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-extension(row)
         if row.as-types.count != 0
             frame.diagnose(syntax, .stated, program.store-atom("Not yet implemented"))
             =
         for member in tree.children[row.body]
-            do match? tree.nodes[member]
+            match? tree.nodes[member]
                 | .node-property-syntax
                     . message = "Stored properties are not allowed in extensions"
                     frame.diagnose(member, .stated, program.store-atom(message))
@@ -1060,17 +1060,17 @@ _ do overrides-facet Bool
         row.members
     ??
         RowRange'DeclId()
-do match? decl
+match? decl
     | .decl-function(fn)
         =? false if fn.is-static || !fn.name || !is-overridable-kind(fn.kind)
         for member in target.members-named(members, fn.name)
-            do match? target.decls[member]
+            match? target.decls[member]
                 | .decl-function(other)
                     =? true if other.name == fn.name && other.kind == fn.kind && !other.is-static
     | .decl-property(property)
         =? false if property.value == 0 || !property.name
         for member in target.members-named(members, property.name)
-            do match? target.decls[member]
+            match? target.decls[member]
                 | .decl-property(other)
                     =? true if other.name == property.name
 = false
@@ -1101,7 +1101,7 @@ _ do check-facet-shape
     - name String
 
 ` What a facet may not hold, in what it writes and in what it declares.
-do match? tree.nodes[facet.syntax]
+match? tree.nodes[facet.syntax]
     | .node-class-block(row)
         if row.type-args.count != 0
             . message = "$name is a facet, so it takes no type parameters"
@@ -1119,7 +1119,7 @@ do match? tree.nodes[facet.syntax]
                 frame.diagnose(member, .stated, program.store-atom(shown))
 . target = program.modules[module]
 for member in target.member-pool[facet.members]
-    do match? target.decls[member]
+    match? target.decls[member]
         | .decl-function(fn)
             if is-constructor-kind(fn.kind)
                 . message = "$name is a facet, so it has no constructors; its owner's give its properties their first values"
@@ -1282,7 +1282,7 @@ if kind == .interface
     frame.diagnose(property.syntax, .stated, program.store-atom(stored-interface-text(property)))
     =
 if kind == .struct && property.value != 0
-    do match? tree.nodes[property.value]
+    match? tree.nodes[property.value]
         | .node-state-machine
             . message = "State machine properties are not supported on structs"
             frame.diagnose(property.syntax, .stated, program.store-atom(message))
@@ -1335,11 +1335,11 @@ _ do check-member Bool
 ` only stored the same way and without a type of its own. A state case that restates an inherited
 ` case is a refinement's to check (`refines-shaped`). Says whether the member stands.
 . decls = program.modules[module].decls
-do match decls[owner-decl]
+match decls[owner-decl]
     | .decl-class(class)
         if storage != .storage-getter
             for member in program.modules[module].members-named(class.members, name)
-                do match? decls[member]
+                match? decls[member]
                     | .decl-property(other)
                         if member < decl && other.name && other.name == name
                             = false
@@ -1405,7 +1405,7 @@ _ do check-inherited-event
 ` as `check-event-types` says. One whose class took its name before is checked no further, as
 ` `declare-members` reported it.
 . decls = program.modules[module].decls
-do match? decls[event.owner]
+match? decls[event.owner]
     | .decl-class(class)
         for member in program.modules[module].members-named(class.members, event.name)
             . earlier = match decls[member]
@@ -1471,7 +1471,7 @@ _ do check-getter-annotations
     - syntax SyntaxId
 
 ` A getter stores nothing, so no property annotation applies to it.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-function-syntax(row)
         if row.property-annotations.count != 0
             report-annotation(row.property-site, tree.atoms[row.property-annotations.start])
@@ -1502,7 +1502,7 @@ if statement != 0
 if stated != 0
     frame.diagnose(stated, .stated, program.store-atom(tree.requires-do-text(stated)))
     =
-do match? tree.nodes[returns]
+match? tree.nodes[returns]
     | .node-type-identifier(row)
         if row.name.text == "Void"
             frame.diagnose(described.syntax, .non-void-return)
@@ -1528,7 +1528,7 @@ _ do check-annotations
 ` `@hot` marks an eager stored field of a tuple-layout type that does not hold a delegate;
 ` no other annotation is known outside a style.
 . annotations = RowRange'Atom()
-do match? tree.nodes[property.syntax]
+match? tree.nodes[property.syntax]
     | .node-property-syntax(row)
         annotations = row.annotations
 if annotations.count == 0
@@ -1601,7 +1601,7 @@ if fn.owner == 0
         if candidate.module == module && candidate.decl < decl
             repeated = repeated || same-definition(candidate.decl, fn)
 else
-    do match? target.decls[fn.owner]
+    match? target.decls[fn.owner]
         | .decl-class(class)
             for member in target.members-named(class.members, fn-name)
                 if member < decl
@@ -1616,7 +1616,7 @@ _ do same-definition Bool
     - fn FunctionDecl
 
 . target = program.modules[module]
-do match? target.decls[other]
+match? target.decls[other]
     | .decl-function(row)
         if row.body == 0 || !row.name || row.name != fn.name! || row.kind != fn.kind
             = false
@@ -1657,7 +1657,7 @@ _ do repeats-param Bool
     - id SyntaxId
     - names [Atom]
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-identifier(row)
         if row.is-declare
             if names.find(row.name) != null
@@ -1687,7 +1687,7 @@ if declared != invalid-type && declared != value
 _ do is-object-construction Bool
     - initializer SyntaxId
 
-do match? tree.nodes[initializer]
+match? tree.nodes[initializer]
     | .node-call-expression(call)
         . resolution = bindings.resolution-of(frame.binding, call.callable)
         if resolution.kind == .resolve-type
@@ -1699,7 +1699,7 @@ _ do is-object-class Bool
     - class-module ModuleId
     - class-decl DeclId
 
-do match? program.modules[class-module].decls[class-decl]
+match? program.modules[class-module].decls[class-decl]
     | .decl-class(row)
         if row.type-args.count != 0
             . env = types.class-env(class-module, class-decl)
@@ -1821,7 +1821,7 @@ if value == 0
 . ref = class-ref(types, about)
 . env = types.env-frame()
 . tree = program.modules[ref.module].tree
-do match? tree.nodes[value]
+match? tree.nodes[value]
     | .node-integer-syntax(row)
         if !row.unit
             = magnitude-type(types, parse-integer-literal(row.value))
@@ -1846,7 +1846,7 @@ for name in assigned
 if fields.length == 0
     =
 for statement in tree.children[body-statements()]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             . name = pattern-name(types, tree, row.left) if row.is-lazy
             if name && property-named(frame.self-type, name)
@@ -1865,7 +1865,7 @@ _ do field-read SyntaxId
     - fields [Atom]
 
 ` The first read, in the order its value is evaluated, of one of the fields named.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-function-syntax
         = 0
 for child in tree.children-of(id)
@@ -1880,7 +1880,7 @@ for child in tree.children-of(id)
     - name Atom
 
 for statement in tree.children[body-statements()]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             . slot = declaring-slot(row.left) if row.is-lazy
             if slot && bindings.slots[slot].name == name

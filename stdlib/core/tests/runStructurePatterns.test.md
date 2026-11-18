@@ -1703,7 +1703,7 @@ match tree
 _ do describe String
     - tree Tree
 
-do match tree
+match tree
     | .branch(_, [.leaf(_, "import"), path])
         = "import ${text-of(path)}"
     | .branch(_, [.leaf(_, "let"), _, value])

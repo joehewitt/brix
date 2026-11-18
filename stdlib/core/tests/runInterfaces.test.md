@@ -3830,7 +3830,7 @@ node 1
 . e Node? = b
 if e is Leaf
     -- "is leaf"
-do match e
+match e
     | twig Twig
         -- twig.name
     ??
@@ -8415,7 +8415,7 @@ total += count
 ```yumi
 . maker Shows'Record = Maker()
 for part in maker.parts(Record("box"))
-    do match part
+    match part
         | .text(text)
             -- "text ${text}"
         | .count(count)
@@ -8462,7 +8462,7 @@ count 2
 
 ```yumi
 . maker Shows = Maker("box")
-do match maker.value()
+match maker.value()
     | .text(text)
         -- "text ${text}"
     | .names(names)
@@ -8504,7 +8504,7 @@ names 2 box
 ```yumi
 for name in ["box", ""]
     . maker Shows = Maker(name)
-    do match catch? maker.value() ?? Value.text("failed")
+    match catch? maker.value() ?? Value.text("failed")
         | .text(text)
             -- "text ${text}"
         | .names(names)
@@ -8966,7 +8966,7 @@ Exception: Type "NoSuchInterface" not found
 
 . items [Node] = [this]
 for item in items
-    do match? item
+    match? item
         | target Target
             = target
 ```

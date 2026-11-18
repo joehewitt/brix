@@ -1150,7 +1150,7 @@ if true
 + do pick Int
     - item Item
 
-do match item
+match item
     | .left(row)
         if row.value == 1
             = 10
@@ -1164,7 +1164,7 @@ do match item
 20
 ```
 
-### A match written as a step, whose value nothing uses, runs its arms as steps, as `do match` does, so an arm may only print.
+### A match written as a step, whose value nothing uses, runs its arms as steps, so an arm may only print.
 
 ```yumi
 step(3)
@@ -1297,7 +1297,7 @@ main blue
     - item Item
 
 while true
-    do match? item
+    match? item
         | .left(row)
             break
     = 3
@@ -1690,7 +1690,7 @@ Exception: Operator "+" is not defined for I64? and I64
 + do size
     - shape Shape
 
-do match shape
+match shape
     | .circle(r)
         = r
     | .square(s)

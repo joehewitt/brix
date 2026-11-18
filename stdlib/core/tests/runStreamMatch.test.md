@@ -5608,7 +5608,7 @@ Exception: Accumulating capture items has incompatible contribution types String
             Part.word(text)
 
 for part in parts
-    do match part
+    match part
         | Part.word(text)
             -- text
         | Part.other
@@ -10375,7 +10375,7 @@ for text in ["ab", "42", "ab42x", "?"]
 
 . shown = ""
 for piece in pieces
-    do match piece
+    match piece
         | .number(count)
             shown = "$shown#$count"
         | .word(text)

@@ -2796,7 +2796,7 @@ for x in gen([Item.num(1), Item.word("b"), Item.pair((3, "c"))])
     - items [Item]
 
 for item in items
-    do match item
+    match item
         | .num(n)
             <= "n $n"
             <= "n again $n"

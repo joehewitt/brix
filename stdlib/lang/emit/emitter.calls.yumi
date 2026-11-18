@@ -68,7 +68,7 @@ _ do run-case-owner
 
 ` What is run before a case called after its type is made: the type, when it is more than a
 ` name. A case called by its symbol alone runs nothing.
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-get-expression(get)
         run-type-operand(get.object)
 
@@ -108,7 +108,7 @@ open-cleanup(id, UseCell(no-local, no-local, no-type, true))
 ` publishes to it.
 if facts.plan-of(unit.reading, id) == .plan-built-feeds
     = emit-listed-feeds(id, tree.listed-feeds(id))
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-c-identifier
         if piped == 0 && own-call(id) == no-fact && is-binding(facts.node-type(unit.reading, id))
             = emit-bind(id, callable, operands)
@@ -124,7 +124,7 @@ if facts.event-uses.length != 0 && piped == 0
         = emit-readdress(id, used, operands)
 . plan = facts.plan-of(unit.reading, id)
 if plan == .plan-relation || plan == .plan-relation-cast
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-get-expression(get)
             if piped == 0
                 = emit-relation(id, plan, get.object, operands)
@@ -134,21 +134,21 @@ if (plan == .plan-case || plan == .plan-case-fields) && piped == 0
     run-case-owner(callable)
     = emit-case(id, operands, plan == .plan-case-fields)
 if plan == .plan-forward
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-get-expression(get)
             if piped == 0
                 = emit-forward(id, get.object, operands)
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
 if plan == .plan-table
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-get-expression(get)
             if piped == 0
                 = emit-table-method(id, get.object, operands)
     refuse(.refused-expression, id)
     = Typed(make-operand(.operand-void, 0), no-type)
 if plan == .plan-builder-append || plan == .plan-builder-reserve
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-get-expression(get)
             if piped == 0
                 = emit-builder-method(id, get.object, operands, plan == .plan-builder-append)
@@ -176,7 +176,7 @@ if fact != no-fact && piped == 0 && side == .plan-witness-pointer
 if fact != no-fact && piped == 0 && side == .plan-interface-from-pointer
     = emit-interface-from-pointer(id, facts.calls[fact].callee, operands)
 if fact != no-fact && facts.plan-of(unit.reading, id) == .plan-store-untraced
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-get-expression(get)
             if piped == 0
                 = emit-store-untraced(id, facts.calls[fact], get.object, operands)
@@ -220,7 +220,7 @@ if fact != no-fact
     if row.form == .call-method && calls-value(row.callee)
         = emit-fact-call(id, row, callable, operands, piped)
     if row.form == .call-method
-        do match? tree.nodes[callable]
+        match? tree.nodes[callable]
             | .node-get-expression(get)
                 = emit-fact-call(id, row, get.object, operands, piped)
 . array = if fact == no-fact && piped == 0 then tables.const-array-row(unit.reading, id) else U32.max
@@ -238,7 +238,7 @@ _ do calls-value Bool
 if callee == no-instance
     = false
 . row = instances.rows[callee]
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         = fn.name != null && fn.name == types.call-atom
 = false
@@ -267,7 +267,7 @@ if callee == no-instance || operands.count != count || other-arity
 for position in 0 .. < count
     . argument = tree.children[operands.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -334,7 +334,7 @@ if callee == no-instance || operands.count != instances.signatures[callee].args.
 for position in 0 .. < operands.count
     . argument = tree.children[operands.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -399,7 +399,7 @@ if callee == no-instance || operands.count != 1 || instances.signatures[callee].
     = Typed(nothing, no-type)
 . argument = tree.children[operands.start]
 . expression = argument
-do match? tree.nodes[argument]
+match? tree.nodes[argument]
     | .node-argument(named)
         expression = named.expr
 . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -423,7 +423,7 @@ _ do emit-leading-zeros Typed
 ` argument takes the conversion recorded for it, and the count has the node's type.
 . nothing = make-operand(.operand-void, 0)
 . expression = argument
-do match? tree.nodes[argument]
+match? tree.nodes[argument]
     | .node-argument(named)
         expression = named.expr
 . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -467,7 +467,7 @@ for position in 0 .. < call.fills.count
 for position in 0 .. < operands.count
     . argument = tree.children[operands.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -618,14 +618,14 @@ if first < lead || (piped != 0 && first < count)
     = Typed(nothing, no-type)
 . tail = RowRange'SyntaxId(written.start + first - lead, count - first)
 for item in tree.children[tail]
-    do match? tree.nodes[item]
+    match? tree.nodes[item]
         | .node-argument(named)
             if named.is-optional
                 = append-tail(id, tail, start + first, list-type)
 for position in 0 .. < tail.count
     . item = tree.children[tail.start + position]
     . held = start + first + position
-    do match? tree.nodes[item]
+    match? tree.nodes[item]
         | .node-argument(named)
             if named.name
                 . paired = name-pair(item, named.name, given[held].operand, given[held].type)
@@ -666,7 +666,7 @@ for position in 0 .. < tail.count
     . given-type = given[start + position].type
     . named Atom? = null
     . optional = false
-    do match? tree.nodes[item]
+    match? tree.nodes[item]
         | .node-argument(row)
             named = row.name
             optional = row.is-optional
@@ -886,7 +886,7 @@ if target == no-function && !tables.is-prototype(callee)
 . first Index = 0
 . receives = false
 . is-declared = false
-do match? owner.decls[row.decl]
+match? owner.decls[row.decl]
     | .decl-fromverter
         if written.count != 1 || piped != 0 || leading != 0 || restores
             refuse(.refused-expression, id)
@@ -980,7 +980,7 @@ if piped != 0
 . evaluated U32
 for argument in tree.children[written]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     evaluated += 1
@@ -1202,7 +1202,7 @@ if global.kind == .resolve-global
     = if row != no-storage then tables.storage[row].type else no-type
 if unit.reading != unit.instance
     = type
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-identifier(named)
         . resolution = bindings.resolution-of(binding, callable)
         if resolution.kind == .resolve-member && unit.has-self
@@ -1230,7 +1230,7 @@ do match? tree.nodes[callable]
 if type == no-type || facts.node-type(unit.reading, callable) != no-type
     = emit-expression(callable)
 . value = make-operand(.operand-void, 0)
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-identifier(row)
         value = emit-identifier(callable, row.name, type).operand
 = Typed(value, type)
@@ -1402,7 +1402,7 @@ if binding != no-type
 . c = false
 . fn = if shape == no-type || shape == invalid-type then no-type else function-row(types, shape)
 if fn != no-type
-    do match? types.rows[fn]
+    match? types.rows[fn]
         | .type-function(row)
             args = row.args
             plain = !row.is-c
@@ -1551,7 +1551,7 @@ _ do bound-object TypeId
 
 ` The type of the value a binding of a value of a function type holds and calls, or no type
 ` for any other binding.
-do match? types.rows[type]
+match? types.rows[type]
     | .type-binding(row)
         if row.form == .bound-value
             = row.object
@@ -1562,7 +1562,7 @@ _ do holds-callee Bool
     - type TypeId
 
 ` Whether a binding holds what it calls: a nested function, or a value of a function type.
-do match? types.rows[type]
+match? types.rows[type]
     | .type-binding(row)
         = row.form == .bound-closure || row.form == .bound-value
 = false
@@ -1605,7 +1605,7 @@ else if binds-object(type)
     if holds-callee(type)
         value = emit-callee(callable)
     else
-        do match tree.nodes[callable]
+        match tree.nodes[callable]
             | .node-get-expression(get)
                 value = emit-expression(get.object)
             | .node-identifier
@@ -1631,7 +1631,7 @@ if placed
 . position U32
 for argument in tree.children[written]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             if named.name && !placed
                 refuse(.refused-expression, argument)
@@ -1671,7 +1671,7 @@ _ do emit-converting Typed
 ` returned, its value or its error.
 . nothing = make-operand(.operand-void, 0)
 . expression = argument
-do match? tree.nodes[argument]
+match? tree.nodes[argument]
     | .node-argument(named)
         expression = named.expr
 . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -1888,7 +1888,7 @@ if fact == no-fact
 . polls = false
 . leaf = false
 . row = instances.rows[callee]
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         polls = (fn.effects /and/ CompilationEffect.gc-polling) != 0
         leaf = (fn.effects /and/ CompilationEffect.gc-leaf) != 0
@@ -1918,7 +1918,7 @@ if bound != 0
         position += 1
 for argument in tree.children[operands]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(given)
             expression = given.expr
     . value = convert(argument, .reason-argument, emit-expression(expression))

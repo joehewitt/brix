@@ -197,7 +197,7 @@ _ do navigable-span MatchLocation?
     - id SyntaxId
 
 . loc = tree.nodes.loc[id]
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier
         = loc
     | .node-ref-identifier
@@ -302,7 +302,7 @@ _ builtins BuiltinClasses
 + do definition DefinitionSite?
     - syntax SyntaxId
 
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-identifier(row)
         = typed-call-site(syntax) ?? name-site(syntax, row.name)
     | .node-ref-identifier(row)
@@ -396,13 +396,13 @@ _ do value-type TypeId
 . chain [SyntaxId]
 chain += syntax
 . holder = tree.holder-of(syntax)
-do match? tree.nodes[holder]
+match? tree.nodes[holder]
     | .node-type-capture(row)
         if row.id == syntax
             chain += holder
             holder = tree.holder-of(holder)
 . right SyntaxId = 0
-do match? tree.nodes[holder]
+match? tree.nodes[holder]
     | .node-declare(row)
         if row.left == chain[chain.length - 1]
             chain += holder
@@ -472,7 +472,7 @@ _ do written-field SyntaxId
 . holder = program.modules[owner.module]
 . root = holder.decls.syntax[owner.decl]
 for id in holder.tree.subtree-start(root) .. < root
-    do match? holder.tree.nodes[id]
+    match? holder.tree.nodes[id]
         | .node-identifier(row)
             =? id if row.name == name
 = 0
@@ -514,7 +514,7 @@ _ do callee-at InstanceId
 . found = called(session, instance, syntax)
 =? found if found != no-instance
 . holder = tree.holder-of(syntax)
-do match? tree.nodes[holder]
+match? tree.nodes[holder]
     | .node-call-expression(row)
         if row.callable == syntax
             = called(session, instance, holder)
@@ -630,7 +630,7 @@ _ do enum-case SyntaxId
 . holder = program.modules[receiver.module]
 . root = holder.decls.syntax[receiver.decl]
 for id in holder.tree.subtree-start(root) .. < root
-    do match? holder.tree.nodes[id]
+    match? holder.tree.nodes[id]
         | .node-enum-declaration(row)
             =? id if row.name == name
         | .node-type-case(row)
@@ -663,7 +663,7 @@ _ do class-named DeclRef?
     - name Atom
 
 for candidate in program.lookup(module, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-class
             = DeclRef(candidate.module, candidate.decl)
 = null
@@ -674,7 +674,7 @@ _ do type-parameter SyntaxId
     - name Atom
 
 for decl in 1 .. < owner.decls.length
-    do match? owner.decls[decl]
+    match? owner.decls[decl]
         | .decl-function(row)
             if encloses(row.syntax, syntax)
                 . found = parameter-named(row.type-args, name)
@@ -691,7 +691,7 @@ _ do parameter-named SyntaxId
     - name Atom
 
 for arg in tree.children[args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-type-identifier(row)
             =? arg if row.name == name
         | .node-identifier(row)

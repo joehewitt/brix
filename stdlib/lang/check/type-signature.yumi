@@ -52,7 +52,7 @@
 if owner == 0
     = types.env-frame()
 
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-class
         = types.class-env(module, owner)
     | .decl-extension
@@ -73,7 +73,7 @@ do match? program.modules[module].decls[owner]
 . program = types.program
 . env = types.env-frame()
 . tree = program.modules[module].tree
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-extension(row)
         if row.facet
             . facets = program.facets
@@ -106,7 +106,7 @@ do match? program.modules[module].decls[decl]
 ` extends that its pattern does not declare, bound from the receiver: TypeScript reads the
 ` member where the class is. They are not parameters of the member.
 . program = types.program
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-extension(row)
         = bind-extended(types, module, program.modules[module].tree, row.receiver, receiver, env)
 = env
@@ -121,7 +121,7 @@ _ do bind-extended TypeEnv
     - env TypeEnv
 
 . base = pattern
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-arguments(row)
         base = row.base
 . extended = class-ref(types, types.evaluate-type(module, tree, base, env))
@@ -129,10 +129,10 @@ if extended.decl == 0
     = env
 . program = types.program
 . bound = env
-do match? program.modules[extended.module].decls[extended.decl]
+match? program.modules[extended.module].decls[extended.decl]
     | .decl-class(row)
         . args = RowRange'TypeId()
-        do match? types.rows[owner-instance(types, extended.module, extended.decl, receiver)]
+        match? types.rows[owner-instance(types, extended.module, extended.decl, receiver)]
             | .type-class(actual)
                 args = actual.args
         . owner-tree = program.modules[extended.module].tree
@@ -158,7 +158,7 @@ do match? program.modules[extended.module].decls[extended.decl]
 . program = types.program
 . owner-module = program.modules[module]
 . tree = owner-module.tree
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         . env = if around then types.env-within(around) else owner-env(types, module, row.owner)
         . hidden-start = env.end
@@ -171,7 +171,7 @@ do match? owner-module.decls[decl]
         . constructs = is-constructor-kind(row.kind)
         if class-params && constructs
             params-start = env.start
-        do match? owner-module.decls[row.owner]
+        match? owner-module.decls[row.owner]
             | .decl-extension
                 if class-params || !constructs
                     params-start = env.start
@@ -282,7 +282,7 @@ for name in params
 . args-count = 0
 . returns = no-type
 . errors = scratch.no-types
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         if is-table-constructor-kind(row.kind)
             args-count = table-arguments(types, module, row.kind, env)
@@ -441,7 +441,7 @@ if !name
 . property = owner-property(types.program, module, constructed, name)
 if property == 0
     = 0
-do match? types.program.modules[module].decls[property]
+match? types.program.modules[module].decls[property]
     | .decl-property(row)
         if !row.is-lazy
             = row.type-syntax
@@ -462,7 +462,7 @@ if is-constructor-kind(function.kind) then function.owner else 0
 . program = types.program
 . owner-module = program.modules[module]
 . count = 0u32
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-function(row)
         for shape in owner-module.arg-pool[row.args]
             if is-implicit-argument(types, module, owner-module.tree, constructed-class(row), shape)
@@ -477,7 +477,7 @@ do match? owner-module.decls[decl]
 
 if pattern == 0
     = null
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-capture(row)
         = types.type-syntax-name(tree, row.id)
 = types.type-syntax-name(tree, pattern)
@@ -493,14 +493,14 @@ if owner == 0
     = 0
 . owner-module = program.modules[module]
 . members = RowRange'DeclId()
-do match? owner-module.decls[owner]
+match? owner-module.decls[owner]
     | .decl-class(row)
         members = row.members
     | .decl-extension(row)
         if row.facet
             members = row.members
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == name
                 = member
@@ -528,7 +528,7 @@ if first == 0
     ??
         RowRange'DeclId()
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(property)
             if property.name && property.name == name && property.value != 0
                 = member
@@ -543,7 +543,7 @@ for member in owner-module.members-named(members, name)
     - env TypeEnv
 
 . program = types.program
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-integer-syntax(row)
         if row.unit
             = types.type-named(module, row.unit, env)
@@ -567,7 +567,7 @@ do match? tree.nodes[syntax]
             = literal-type(types, module, tree, row.operand, env)
     | .node-call-expression(row)
         . name = types.type-syntax-name(tree, row.callable)
-        do match? tree.nodes[row.callable]
+        match? tree.nodes[row.callable]
             | .node-type-arguments
                 if name
                     = types.evaluate-type(module, tree, row.callable, env)
@@ -588,7 +588,7 @@ _ do global-default-type TypeId
 . program = types.program
 for candidate in program.lookup(module, name)
     . target = program.modules[candidate.module]
-    do match? target.decls[candidate.decl]
+    match? target.decls[candidate.decl]
         | .decl-property(property)
             if property.owner != 0
                 continue
@@ -675,7 +675,7 @@ types.scratch.types.push(types.intern-function(row, false, mark, errors))
 . decl = 0u32
 . object = no-type
 . held = 0u32
-do match? types.rows[given]
+match? types.rows[given]
     | .type-closure(row)
         module = row.module
         decl = row.decl
@@ -746,7 +746,7 @@ _ do owner-instance TypeId
 ` that class, or the interface of it the receiver implements.
 . current = receiver
 while true
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             if row.module == module && row.decl == owner
                 = current
@@ -774,10 +774,10 @@ while current != no-type
 ` bound from the receiver, or, for an extension, the names its pattern declares.
 . program = types.program
 . bound = env
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-class(row)
         . args = RowRange'TypeId()
-        do match? types.rows[owner-instance(types, module, owner, receiver)]
+        match? types.rows[owner-instance(types, module, owner, receiver)]
             | .type-class(actual)
                 args = actual.args
         for position in 0 .. < args.count
@@ -791,14 +791,14 @@ do match? program.modules[module].decls[owner]
     | .decl-extension(row)
         . tree = program.modules[module].tree
         . actual-args = RowRange'TypeId()
-        do match? types.rows[receiver]
+        match? types.rows[receiver]
             | .type-class(actual)
                 actual-args = actual.args
-        do match? tree.nodes[row.receiver]
+        match? tree.nodes[row.receiver]
             | .node-type-arguments(pattern)
                 . position = 0
                 for child in tree.children[pattern.args]
-                    do match? tree.nodes[child]
+                    match? tree.nodes[child]
                         | .node-type-identifier(name-row)
                             if name-row.is-declare && position < actual-args.count
                                 . actual = types.child-type(actual-args, position as U32)
@@ -871,10 +871,10 @@ _ do module-symbol-owners
 . owner Index = position
 . owner-module = types.program.modules[position]
 for decl in owner-module.decls
-    do match? decl
+    match? decl
         | .decl-case(row)
             if row.name && row.name == name && row.owner != 0
-                do match? owner-module.decls[row.owner]
+                match? owner-module.decls[row.owner]
                     | .decl-class
                         . mark = types.scratch.types.mark
                         . type = types.class-with-args(owner as ModuleId, row.owner, mark)
@@ -895,7 +895,7 @@ for decl in owner-module.decls
 if self == no-type || self == invalid-type
     = no-type
 . owner = 0u32
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         owner = fn.owner
         if fn.kind == .getter-decl || fn.kind == .setter-decl
@@ -904,7 +904,7 @@ if owner == 0 || types.intrinsic-of(self) != .class
     = no-type
 . current = self
 while current != no-type
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             if row.module == module && row.decl == owner
                 = no-type
@@ -922,7 +922,7 @@ _ do implemented-interface TypeId
     - owner DeclId
 
 for interface in types.interfaces-of(level)
-    do match? types.rows[interface]
+    match? types.rows[interface]
         | .type-class(row)
             if row.module == module && row.decl == owner
                 = interface

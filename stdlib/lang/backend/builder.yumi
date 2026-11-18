@@ -51,7 +51,7 @@ if !bundle.is-inferred-safepoint-free(function.symbol)
 for position in 0 .. < order.length
     . instructions = function.blocks[order[position]].instructions
     for index in 0 .. < instructions.length
-        do match? function.instructions[instructions[index]]
+        match? function.instructions[instructions[index]]
             | .call-instruction(call)
                 ?! Panic("Inferred safepoint-free MIR function '${bundle.text(function.display-name)}' contains unproven call '${callee-text(call.operands)}'")
                     if !call.gc-safepoint-proven-free
@@ -61,7 +61,7 @@ _ do callee-text String
     - operands IdList
 
 if operands.length != 0
-    do match? function.operands[operands[0]]
+    match? function.operands[operands[0]]
         | .symbol-operand(callee)
             = bundle.text(callee.name)
 = "<indirect>"
@@ -178,7 +178,7 @@ for position in 0 .. < kept
         predecessor-marks[predecessors[index]] = mark
     . instructions = function.blocks[block].instructions
     for index in 0 .. < instructions.length
-        do match? function.instructions[instructions[index]]
+        match? function.instructions[instructions[index]]
             | .phi-instruction(phi)
                 . exprs = phi.exprs
                 . names = phi.blocks
@@ -299,7 +299,7 @@ function.vreg-count += 1
     - value OperandId
 
 ` The low 32 bits of a 64-bit virtual register, as an operand of the same register.
-do match? function.operands[value]
+match? function.operands[value]
     | .vreg-operand(operand)
         . row = function.vregs[operand.vreg]
         if row.reg-class != .gpr64
@@ -381,7 +381,7 @@ preg-operands[register] = id + 1
 + do operand-reg-class RegClass
     - id OperandId
 
-do match? function.operands[id]
+match? function.operands[id]
     | .preg-operand(operand)
         = register-class(operand.register)
     | .vreg-operand(operand)
@@ -406,7 +406,7 @@ if class == .fpr32 || class == .fpr64 then Opcode.fmov else Opcode.mov
 + do type-reg-class RegClass
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .int-type(row)
         = row.reg-class
     | .float-type(row)
@@ -435,7 +435,7 @@ match reg-class
 _ do is-vreg Bool
     - id OperandId
 
-do match? function.operands[id]
+match? function.operands[id]
     | .vreg-operand
         = true
 = false
@@ -444,7 +444,7 @@ do match? function.operands[id]
 _ do is-register Bool
     - id OperandId
 
-do match? function.operands[id]
+match? function.operands[id]
     | .vreg-operand
         = true
     | .preg-operand
@@ -455,7 +455,7 @@ do match? function.operands[id]
 _ do is-scalar Bool
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .int-type
         = true
     | .float-type
@@ -516,7 +516,7 @@ if !function.overflow.is-present
     - type MIRTypeId
 
 . size = function.types[type].size
-do match? function.types[type]
+match? function.types[type]
     | .int-type
         if size < 4
             = 4
@@ -527,7 +527,7 @@ do match? function.types[type]
     - type MIRTypeId
 
 . alignment = function.types[type].alignment
-do match? function.types[type]
+match? function.types[type]
     | .int-type
         if alignment < 4
             = 4
@@ -817,7 +817,7 @@ for index in 0 .. < arguments.length
 _ do is-large-struct Bool
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .struct-type(row)
         = row.format == .large-format
 = false
@@ -831,7 +831,7 @@ do match? function.types[type]
 part-types = IdList(part-types.data, 0, part-types.capacity)
 part-offsets = IdList(part-offsets.data, 0, part-offsets.capacity)
 . is-floats = false
-do match? function.types[type]
+match? function.types[type]
     | .struct-type(row)
         is-floats = row.format == .hfa-format
 if is-floats
@@ -849,7 +849,7 @@ _ do add-float-parts
 
 . fields Span
 . is-struct = false
-do match? function.types[type]
+match? function.types[type]
     | .struct-type(row)
         is-struct = true
         fields = row.fields
@@ -1119,7 +1119,7 @@ for index in 0 .. < sizes.length
     words = words.appended(function.arena, sizes[index])
 function.words = words
 . is-proven-free = false
-do match? function.operands[callee]
+match? function.operands[callee]
     | .symbol-operand(operand)
         is-proven-free = bundle.is-safepoint-free(operand.name)
 . is-safepoint = bundle.gc-enabled && !is-proven-free && allows-safepoint
@@ -1151,7 +1151,7 @@ append(id)
     - symbol OperandId
 
 . name = no-string
-do match? function.operands[symbol]
+match? function.operands[symbol]
     | .symbol-operand(operand)
         name = operand.name
 if name == no-string
@@ -1166,7 +1166,7 @@ add(result, result, label(name, .pageoff-reloc))
     - operand OperandId
 
 . is-memory = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .frame-object-operand
         is-memory = true
     | .load-address-operand
@@ -1183,7 +1183,7 @@ add-pointer(pointer, operand)
     - reg-class RegClass
 
 . is-symbol = false
-do match? function.operands[value]
+match? function.operands[value]
     | .vreg-operand
         = value
     | .symbol-operand
@@ -1267,7 +1267,7 @@ if is-register(src)
     address = load-address-offset(src, 0)
 address = safe-load-store-address(address, loaded)
 . size = function.types[loaded].size
-do match function.types[loaded]
+match function.types[loaded]
     | .struct-type
         ldr(dest, address)
     | .array-type
@@ -1297,7 +1297,7 @@ if is-register(src)
 address = safe-load-store-address(address, loaded)
 . size = function.types[loaded].size
 . is-integer = false
-do match? function.types[loaded]
+match? function.types[loaded]
     | .int-type
         is-integer = true
     | .pointer-type
@@ -1316,7 +1316,7 @@ ldar(dest, address)
     - type MIRTypeId
 
 . is-byte = false
-do match? function.types[type]
+match? function.types[type]
     | .int-type
         is-byte = function.types[type].size == 1
 ?! Panic("Release store requires an 8-bit integer value")
@@ -1329,12 +1329,12 @@ _ do unindexed-address OperandId
 
 if is-register(address)
     = load-address-offset(address, 0)
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(operand)
         if !operand.is-pre-index
             if operand.offset == no-operand
                 = address
-            do match? function.operands[operand.offset]
+            match? function.operands[operand.offset]
                 | .int-operand(offset)
                     =? address if int-value(offset.value) == 0
 . pointer = vreg(.gpr64)
@@ -1352,7 +1352,7 @@ if is-vreg(dest)
     target = load-address-offset(dest, 0)
 . object = no-frame-object
 . is-symbol = false
-do match? function.operands[src]
+match? function.operands[src]
     | .frame-object-operand(operand)
         object = operand.object
     | .symbol-operand
@@ -1386,7 +1386,7 @@ else
 
 . base = no-operand
 . offset-operand = no-operand
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(operand)
         base = operand.base
         offset-operand = operand.offset
@@ -1394,7 +1394,7 @@ if base == no-operand || offset-operand == no-operand || !is-register(base)
     = address
 . has-offset = false
 . offset I64
-do match? function.operands[offset-operand]
+match? function.operands[offset-operand]
     | .int-operand(operand)
         has-offset = true
         offset = int-value(operand.value)

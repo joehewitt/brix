@@ -233,6 +233,8 @@ match base
         list-message(diagnostic, base)
     |= "Match arm gives no value"
         arm-step-message()
+    |= "Match arm gives no value in a value body"
+        arm-value-message(diagnostic)
     |= "Object is not iterable"
         iteration-message(diagnostic, base)
     |= "Redefinition of property"
@@ -288,7 +290,7 @@ _ do function-message String
 . tree = program.modules[diagnostic.module].tree
 . callable SyntaxId = 0
 . operands = RowRange'SyntaxId()
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-call-expression(row)
         callable = row.callable
         operands = call-operands(row)
@@ -297,7 +299,7 @@ if callable == 0
     = "Function \"${diagnostic.name.text}\" not found"
 . given = arguments-text(diagnostic, operands)
 . count = positional-count(tree, operands)
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-get-expression(row)
         . object = facts.node-type(diagnostic.instance, row.object)
         . inner = if row.is-optional then optional-inner(object) else no-type
@@ -328,7 +330,7 @@ _ do positional-count Size?
 
 . count Size = 0
 for offset in 0 .. < operands.count
-    do match? tree.nodes[tree.children[operands.start + offset]]
+    match? tree.nodes[tree.children[operands.start + offset]]
         | .node-argument(row)
             =? null if row.name
     count += 1
@@ -342,7 +344,7 @@ _ do free-gap String
 
 for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-function(fn)
             if fn.owner == 0 && fn.kind == .function-decl
                 . gap = left-out(owner, fn, count)
@@ -359,7 +361,7 @@ _ do member-gap String
 
 for ref in member-refs(receiver, added)
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-function(fn)
             if fn.name == name && fn.kind == .function-decl
                 . gap = left-out(owner, fn, count)
@@ -374,10 +376,10 @@ _ do constructor-gap String
 
 for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-class(class)
             for offset in 0 .. < class.members.count
-                do match? owner.decls[owner.member-pool[class.members.start + offset]]
+                match? owner.decls[owner.member-pool[class.members.start + offset]]
                     | .decl-function(fn)
                         if fn.kind == .constructor-decl
                             . gap = left-out(owner, fn, count)
@@ -453,7 +455,7 @@ _ do spelled-type String
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-identifier(row)
         = row.name.text
     | .node-type-arguments(row)
@@ -546,7 +548,7 @@ _ do every-rule Bool
 . found = false
 for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-function(fn)
             if fn.owner == 0 && fn.kind == .function-decl
                 if fn.args.count == 0 || owner.arg-pool[fn.args.start].name?.text != "(stream)"
@@ -577,7 +579,7 @@ for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
     if owner.name.ends-with(".h")
         declared = true
-        do match? owner.decls[candidate.decl]
+        match? owner.decls[candidate.decl]
             | .decl-function(fn)
                 . shown = signature(owner, fn) • labeled false
                 if signatures.length < 3 && signatures.find(shown) == null
@@ -632,7 +634,7 @@ _ do constructor-message String
 . head SyntaxId = 0
 . operands = RowRange'SyntaxId()
 . called = false
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-call-expression(row)
         head = row.callable
         operands = call-operands(row)
@@ -640,7 +642,7 @@ do match? tree.nodes[diagnostic.syntax]
     | .node-type-identifier
         head = diagnostic.syntax
         . call = enclosing-call(tree, head)
-        do match? tree.nodes[call] if call != 0
+        match? tree.nodes[call] if call != 0
             | .node-call-expression(row)
                 operands = call-operands(row)
                 called = true
@@ -664,9 +666,9 @@ _ do own-class-name String
 . instance = diagnostic.instance
 while instance < instances.rows.length
     . own = instances.rows[instance].self-type
-    do match? types.rows[own] if own != no-type
+    match? types.rows[own] if own != no-type
         | .type-class(row)
-            do match? program.modules[row.module].decls[row.decl]
+            match? program.modules[row.module].decls[row.decl]
                 | .decl-class(class)
                     = class.name.text
     instance = instances.rows[instance].enclosing
@@ -713,7 +715,7 @@ _ do enclosing-call SyntaxId
 ` give it a node of its own after the one its parentheses give.
 . found SyntaxId = 0
 for position in 0 .. < tree.nodes.length
-    do match? tree.nodes[position]
+    match? tree.nodes[position]
         | .node-call-expression(row)
             if row.callable == callable
                 found = position as SyntaxId
@@ -739,7 +741,7 @@ _ do alternative-names [String]
 . names [String]
 for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-class(class)
             for alternative in owner.tree.children[class.or-bases]
                 names += node-text(owner.tree, alternative)
@@ -752,7 +754,7 @@ _ do class-intrinsic IntrinsicKind
     - decl DeclId
 
 for position in 0 .. < types.rows.length
-    do match? types.rows[position]
+    match? types.rows[position]
         | .type-class(row)
             if row.module == module && row.decl == decl && settled(position as TypeId)
                 = types.completion-of(position as TypeId).intrinsic
@@ -768,12 +770,12 @@ _ do constructor-signatures [String]
 . found [String]
 for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-class(class)
             . intrinsic = class-intrinsic(candidate.module, candidate.decl)
             for offset in 0 .. < class.members.count
                 . member = owner.member-pool[class.members.start + offset]
-                do match? owner.decls[member]
+                match? owner.decls[member]
                     | .decl-function(fn)
                         . open = keeps(caller, candidate.module, fn.access, kept)
                         . written = constructor-signature(owner, class, fn, shown, intrinsic)
@@ -798,7 +800,7 @@ if fn.kind != .tuple-constructor-decl || (intrinsic != .tuple && intrinsic != .s
     = null
 . fields [String]
 for offset in 0 .. < class.members.count
-    do match? owner.decls[owner.member-pool[class.members.start + offset]]
+    match? owner.decls[owner.member-pool[class.members.start + offset]]
         | .decl-property(property)
             . typed = if property.type-syntax != 0 then type-text else ""
                 .. type-text = written-type(owner.tree, property.type-syntax)
@@ -818,7 +820,7 @@ _ do property-message String
 
 ` The receiver is what the diagnostic names, where it names one, or what its node was typed as.
 . tree = program.modules[diagnostic.module].tree
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-get-expression(row)
         . typed = facts.node-type(diagnostic.instance, row.object)
         . receiver = if diagnostic.from != no-type then diagnostic.from else typed
@@ -832,7 +834,7 @@ _ do stated-property-message String
     - base String
 
 . tree = program.modules[diagnostic.module].tree
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-get-expression(row)
         . receiver = facts.node-type(diagnostic.instance, row.object)
         = member-read-message(diagnostic.module, tree, row.object, receiver, row.name)
@@ -889,7 +891,7 @@ _ do interpolated-read String?
     - tree AST
     - object SyntaxId
 
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-identifier(row)
         if preceded-by-dollar(tree, object)
             = row.name.text
@@ -935,7 +937,7 @@ if diagnostic.name?.text == "!" && known(left) && !joins-conditions(tree, diagno
     . shown = type-source(types, left)
     . reason = if shown.starts-with("function ") then "; it is a function, so call it first" else ", since operator \"!\" is not defined for it"
     = "$shown cannot be tested as a condition$reason"
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-binary-expression(row)
         . op = "$row.op"
         if left == no-type
@@ -1010,12 +1012,12 @@ _ do type-not-found-message String
     - base String
 
 . tree = program.modules[diagnostic.module].tree
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-symbol
         = case-message(diagnostic, base)
 . name = type-name-at(tree, diagnostic.syntax)
 if !name
-    do match? tree.nodes[diagnostic.syntax]
+    match? tree.nodes[diagnostic.syntax]
         | .node-integer-syntax(row)
             = unit-message(diagnostic, row.unit)
         | .node-float-syntax(row)
@@ -1067,7 +1069,7 @@ _ do facet-named U32?
 ` The facet of the program with a name, if one has it.
 . facets = program.facets
 for facet in 0 .. < facets.count
-    do match? program.modules[facets.modules[facet]].decls[facets.decls[facet]]
+    match? program.modules[facets.modules[facet]].decls[facets.decls[facet]]
         | .decl-extension(row)
             if row.facet == name
                 = facet as U32
@@ -1099,7 +1101,7 @@ _ do type-name-at String?
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-identifier(row)
         = row.name.text
     | .node-type-arguments(row)
@@ -1140,7 +1142,7 @@ for facet in 0 .. < facets.count
     . owned = held == no-type || is-of-class(held, facets.owner-modules[facet], facets.owner-decls[facet])
     if owned && facets.states[facet] == .facet-bound && !program.sees-facet(module, facet as U32)
         . target = program.modules[facets.modules[facet]]
-        do match? target.decls[facets.decls[facet]]
+        match? target.decls[facets.decls[facet]]
             | .decl-extension(row)
                 for member in target.members-named(row.members, name)
                     . shared = match target.decls[member]
@@ -1193,7 +1195,7 @@ _ do declared-match-message String
 . tree = program.modules[diagnostic.module].tree
 . name = ""
 . annotation SyntaxId = 0
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-type-capture(row)
         name = written-name(tree, row.id) ?? ""
         annotation = row.type
@@ -1201,7 +1203,7 @@ if annotation == 0
     = base
 . value = no-type
 for position in 0 .. < tree.nodes.length
-    do match? tree.nodes[position]
+    match? tree.nodes[position]
         | .node-declare(row)
             if row.left == diagnostic.syntax
                 value = facts.node-type(diagnostic.instance, row.right)
@@ -1269,11 +1271,11 @@ _ do binding-site Bool
     - tree AST
     - syntax SyntaxId
 
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-assign(row)
         = row.op == .bind-op
     | .node-identifier
-        do match? tree.nodes[tree.holder-of(syntax)]
+        match? tree.nodes[tree.holder-of(syntax)]
             | .node-assign(row)
                 = row.op == .bind-op && row.lhs == syntax
 = false
@@ -1317,7 +1319,7 @@ _ do default-message String
 
 . owner = program.modules[diagnostic.module]
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             . position = argument-at(owner, fn, diagnostic.syntax)
             if position != U32.max
@@ -1387,7 +1389,7 @@ _ do divided-holder FunctionDecl?
     - diagnostic TypeDiagnostic
 
 . owner = program.modules[diagnostic.module]
-do match? diagnostic.kind
+match? diagnostic.kind
     |= .non-void-return
         = function-at(owner, diagnostic.syntax)
     |= .stated
@@ -1407,10 +1409,10 @@ _ do stray-declaration SyntaxId
 . owner = program.modules[module]
 . fn = function-at(owner, header)
 =? 0 if !fn || fn.is-content || fn.kind == .live-decl
-do match? owner.tree.nodes[fn.body]
+match? owner.tree.nodes[fn.body]
     | .node-block(row)
         for statement in owner.tree.children[row.body]
-            do match? owner.tree.nodes[statement]
+            match? owner.tree.nodes[statement]
                 | .node-property-syntax
                     = statement
 = 0
@@ -1421,7 +1423,7 @@ _ do stray-holder FunctionDecl?
     - syntax SyntaxId
 
 . owner = program.modules[module]
-do match? owner.tree.nodes[syntax]
+match? owner.tree.nodes[syntax]
     | .node-property-syntax
         . fn = enclosing-function-decl(owner, syntax)
         if fn && !fn.is-content && fn.body != 0 && stray-declaration(module, fn.syntax) == syntax
@@ -1500,7 +1502,7 @@ _ do stated-undeclared-message String
     - base String
 
 . tree = program.modules[diagnostic.module].tree
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-assign(row)
         . name = written-name(tree, row.lhs)
         if name
@@ -1562,7 +1564,7 @@ _ do declared-type TypeId
 . own = facts.node-type(diagnostic.instance, declared)
 =? own if known(own)
 for position in 0 .. < tree.nodes.length
-    do match? tree.nodes[position]
+    match? tree.nodes[position]
         | .node-declare(row)
             if row.left == declared
                 = facts.node-type(diagnostic.instance, row.right)
@@ -1588,13 +1590,21 @@ _ arm-step-message String
 "This arm gives no value, and here a match gives the value of the arm it takes; to run its arms as steps, write the match on a row of its own in a body of steps"
 
 ────────────────────
+_ arm-value-message String
+    - diagnostic TypeDiagnostic
+
+"This arm gives no value, and this body is a value, so a match gives the value of the arm it takes; to run its arms as steps, $fix"
+
+.. fix = if is-brix-tree(program.modules[diagnostic.module].tree) then "write `fn-do`, or `:do` in a closure" else "declare the function with `do`, or write `=> do` for a closure"
+
+────────────────────
 _ do list-message String
     - diagnostic TypeDiagnostic
     - base String
 
 . tree = program.modules[diagnostic.module].tree
 . shown [String]
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-list-syntax(row)
         for item in tree.children[row.items]
             . type = facts.node-type(diagnostic.instance, item)
@@ -1711,7 +1721,7 @@ _ do inherited-storage String
 . named = if cut then written[0 .. < cut] else written
 for candidate in program.lookup(caller, program.store-atom(named))
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-class(class)
             for offset in 0 .. < class.members.count
                 . member = owner.member-pool[class.members.start + offset]
@@ -1796,7 +1806,7 @@ _ do base-text String
 
 . holder = member-owner(owner, decl)
 =? "" if holder == 0
-do match? owner.decls[holder]
+match? owner.decls[holder]
     | .decl-class(class)
         if class.base != 0
             = written-type(owner.tree, class.base)
@@ -1810,7 +1820,7 @@ _ do earlier-member DeclId
 
 . holder = member-owner(owner, member)
 =? U32.max if holder == 0
-do match? owner.decls[holder]
+match? owner.decls[holder]
     | .decl-class(class)
         for offset in 0 .. < class.members.count
             . other = owner.member-pool[class.members.start + offset]
@@ -1825,7 +1835,7 @@ _ do case-message String
 
 . tree = program.modules[diagnostic.module].tree
 . name = ""
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-symbol(row)
         name = row.name.text
 =? base if name.length == 0
@@ -1833,7 +1843,7 @@ do match? tree.nodes[diagnostic.syntax]
 for position in 0 .. < program.modules.length
     . owner = program.modules[position]
     for decl in owner.decls
-        do match? decl
+        match? decl
             | .decl-case(case)
                 if case.name && case.name.text == name
                     . holder = holder-text(owner, case.owner)
@@ -1862,7 +1872,7 @@ _ do holder-text String
     - holder DeclId
 
 =? "" if holder == 0
-do match? owner.decls[holder]
+match? owner.decls[holder]
     | .decl-class(class)
         = class.name.text
 = ""
@@ -1875,10 +1885,10 @@ _ do case-names [String]
 . found [String]
 for candidate in program.lookup(caller, program.store-atom(name))
     . owner = program.modules[candidate.module]
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-class(class)
             for offset in 0 .. < class.members.count
-                do match? owner.decls[owner.member-pool[class.members.start + offset]]
+                match? owner.decls[owner.member-pool[class.members.start + offset]]
                     | .decl-case(case)
                         if case.name
                             found += case.name.text
@@ -1982,7 +1992,7 @@ _ do extension-message String
 . tree = program.modules[diagnostic.module].tree
 . member = called-member(tree, diagnostic.syntax)
 =? base if member == 0
-do match? tree.nodes[member]
+match? tree.nodes[member]
     | .node-get-expression(row)
         . receiver = facts.node-type(diagnostic.instance, row.object)
         . shown = if known(receiver) then " for ${type-source(types, receiver)}" else ""
@@ -2060,7 +2070,7 @@ _ do null-message String
 . tree = program.modules[diagnostic.module].tree
 . type = node-text(tree, diagnostic.syntax)
 for position in 0 .. < tree.nodes.length
-    do match? tree.nodes[position]
+    match? tree.nodes[position]
         | .node-type-capture(row)
             if row.type == diagnostic.syntax
                 . name = written-name(tree, row.id)
@@ -2129,7 +2139,7 @@ _ do is-class-section Bool
 
 =? false if enclosing-function-decl(owner, syntax)
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-class(class)
             if syntax >= owner.tree.subtree-start(class.syntax) && syntax < class.syntax
                 = true
@@ -2142,7 +2152,7 @@ _ do enclosing-subscriber-decl FunctionDecl?
 
 . found FunctionDecl?
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             . start = fn.subtree.start
             . inside = syntax >= start && syntax < start + fn.subtree.count
@@ -2156,9 +2166,9 @@ _ do subscribed-stream SyntaxId
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-for-block(row)
-        do match? tree.nodes[row.loop]
+        match? tree.nodes[row.loop]
             | .node-loop-syntax(loop)
                 = loop.container
 = 0
@@ -2170,12 +2180,12 @@ _ do argument-message String
 
 . tree = program.modules[diagnostic.module].tree
 . label = ""
-do match? tree.nodes[diagnostic.syntax]
+match? tree.nodes[diagnostic.syntax]
     | .node-argument(row)
         label = if row.name then row.name.text else ""
 =? base if label.length == 0
 for position in 0 .. < tree.nodes.length
-    do match? tree.nodes[position]
+    match? tree.nodes[position]
         | .node-call-expression(row)
             for operand in tree.children[row.operands]
                 if operand == diagnostic.syntax
@@ -2261,7 +2271,7 @@ _ do declaring-example String
     - names String
 
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             if fn.name && fn.name.text == name
                 . header = line-at(owner.tree, fn.syntax).trim()
@@ -2337,7 +2347,7 @@ _ do function-at FunctionDecl?
     - syntax SyntaxId
 
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             if fn.syntax == syntax
                 = fn
@@ -2350,7 +2360,7 @@ _ do enclosing-function-decl FunctionDecl?
 
 . found FunctionDecl?
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             . start = fn.subtree.start
             . inside = syntax >= start && syntax < start + fn.subtree.count
@@ -2370,7 +2380,7 @@ for offset in 0 .. < operands.count
     . operand = tree.children[operands.start + offset]
     . expr = operand
     . label Atom?
-    do match? tree.nodes[operand]
+    match? tree.nodes[operand]
         | .node-argument(row)
             expr = row.expr
             label = row.name
@@ -2455,7 +2465,7 @@ for candidate in program.lookup(caller, name)
     . owner = program.modules[candidate.module]
     if owner.name.ends-with(".h")
         continue
-    do match? owner.decls[candidate.decl]
+    match? owner.decls[candidate.decl]
         | .decl-function(fn)
             . open = keeps(caller, candidate.module, fn.access, kept)
             if fn.owner == 0 && fn.kind == kind && open && found.length < 3
@@ -2473,7 +2483,7 @@ _ do member-signatures [String]
 . found [String]
 for ref in member-refs(receiver, added)
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-function(fn)
             . open = keeps(caller, ref.module, fn.access, kept)
             . wanted = fn.name == name && fn.kind == .function-decl
@@ -2490,10 +2500,10 @@ _ do member-refs [DeclRef]
 . current = receiver
 . depth = 0
 while settled(current) && depth < 16
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             . owner = program.modules[row.module]
-            do match? owner.decls[row.decl]
+            match? owner.decls[row.decl]
                 | .decl-class(class)
                     for offset in 0 .. < class.members.count
                         refs += DeclRef(row.module, owner.member-pool[class.members.start + offset])
@@ -2512,7 +2522,7 @@ _ do is-of-class Bool
 . current = receiver
 . depth = 0
 while settled(current) && depth < 16
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             =? true if row.module == module && row.decl == decl
     current = types.completion-of(current).base
@@ -2558,7 +2568,7 @@ _ do visible-facet U32?
 ` The facet a name names where the caller sees it, and sees no class of the name.
 =? null if visible-type(caller, name)
 for candidate in program.lookup(caller, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-extension(row)
             if row.facet == name
                 = program.facets.index-of(candidate.module, candidate.decl)
@@ -2570,7 +2580,7 @@ _ do visible-type Bool
     - name Atom
 
 for candidate in program.lookup(caller, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-class
             = true
 = false
@@ -2693,7 +2703,7 @@ _ do optional-inner TypeId
 
 if !settled(type) || types.completion-of(type).intrinsic != .optional
     = no-type
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
         = types.child-type(row.args, 0)
 = no-type
@@ -2776,15 +2786,15 @@ _ do member-names [String]
 . current = receiver
 . depth = 0
 while settled(current) && depth < 16
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             . owner = program.modules[row.module]
-            do match? owner.decls[row.decl]
+            match? owner.decls[row.decl]
                 | .decl-class(class)
                     collect-members(owner, class.members, found)
             for extension in program.extensions-for(caller, row.module, row.decl)
                 . extender = program.modules[extension.module]
-                do match? extender.decls[extension.decl]
+                match? extender.decls[extension.decl]
                     | .decl-extension(extended)
                         collect-members(extender, extended.members, found)
     current = types.completion-of(current).base

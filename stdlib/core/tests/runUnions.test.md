@@ -2245,7 +2245,7 @@ x
 
 ```yumi
 . wrapped = Wrapped(label(Choice.previous(9)))
-do match wrapped
+match wrapped
     | .text(text)
         -- text
     ??
@@ -2880,7 +2880,7 @@ if kind == 1
 + do describe String
     - found Found
 
-do match? found
+match? found
     | spot Spot
         = "spot ${spot.number}"
     | code Int
@@ -2902,7 +2902,7 @@ if kind == 1
     - kind Int
 
 . held = catch look(kind)
-do match? held
+match? held
     | spot Spot
         = spot.count
 = -1
@@ -5267,7 +5267,7 @@ show(4)
 _ do show
     - value Value
 
-do match value
+match value
     | [String = Int]
         -- it["b"]!
     ??
@@ -5908,7 +5908,7 @@ holder.second = Narrow.whole(44)
     - depth Int
 
 =? wide-whole(value, depth - 1) if depth > 0
-do match? value!
+match? value!
     | .whole(whole)
         = whole
 = 0
@@ -5927,7 +5927,7 @@ do match? value!
     - depth Int
 
 =? narrow-whole(value, depth - 1) if depth > 0
-do match? value!
+match? value!
     | .whole(whole)
         = whole
 = 0

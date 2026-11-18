@@ -168,7 +168,7 @@ for position in 0 .. < order.length
         . base = no-operand
         . offset = no-operand
         . is-plain-address = false
-        do match? function.operands[load-operands[1]]
+        match? function.operands[load-operands[1]]
             | .load-address-operand(address)
                 base = address.base
                 offset = address.offset
@@ -210,7 +210,7 @@ _ do vreg-of U32
 
 if operand == no-operand
     = no-id
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id
 = no-id
@@ -219,7 +219,7 @@ do match? function.operands[operand]
 _ do is-post-index-stride Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         if row.value.is-negative
             = (row.value.bits as I64) >= -256
@@ -232,7 +232,7 @@ _ do is-zero-or-missing Bool
 
 if operand == no-operand
     = true
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         = row.value.bits == 0
 = false
@@ -272,7 +272,7 @@ for position in 0 .. < order.length
 _ do used-vreg U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id
     | .load-address-operand(row)
@@ -331,7 +331,7 @@ for position in 0 .. < order.length
             if vreg-of(operands[operand]) == from
                 operands.data[operand] = to
                 continue
-            do match? function.operands[operands[operand]]
+            match? function.operands[operands[operand]]
                 | .load-address-operand(row)
                     if vreg-of(row.base) == from
                         row.base = to
@@ -391,7 +391,7 @@ for position in 0 .. < order.length
         for entry in 0 .. < operands.length
             . operand = operands[entry]
             . role = role-at(roles, entry)
-            do match? function.operands[operand]
+            match? function.operands[operand]
                 | .vreg-operand(row)
                     . vreg = checked-id(row.vreg)
                     note-width(widths, broken, row.vreg)
@@ -461,7 +461,7 @@ if moves-wide && operands.length == 3 && is-int-operand(operands[1]) && is-int-o
 if (opcode == .adrp || opcode == .adr) && operands.length == 2 && is-symbol-operand(operands[1])
     = 1
 if opcode == .addptr && operands.length == 2
-    do match? function.operands[operands[1]]
+    match? function.operands[operands[1]]
         | .frame-object-operand
             = 1
 if is-called || !is-cheap-opcode(opcode, operands.length)
@@ -508,7 +508,7 @@ for index in 0 .. < defs.length
 _ do is-symbol-operand Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .symbol-operand
         = true
     | .label-operand
@@ -519,7 +519,7 @@ do match? function.operands[operand]
 _ do is-int-operand Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand
         = true
 = false
@@ -560,7 +560,7 @@ for index in 0 .. < calls.length
         . view = view-of(operands[1])
         if view != no-id && struct-format(return-type) == no-id
             prefer-register(view, register-of(function.vregs[view].reg-class, 0))
-        do match? function.operands[operands[1]]
+        match? function.operands[operands[1]]
             | .vreg-group-operand(row)
                 for member in row.vregs.start .. < row.vregs.end
                     . part = function.group-vregs[member]
@@ -573,7 +573,7 @@ for index in 0 .. < calls.length
     next-general-argument = 0
     next-float-argument = 0
     for position in first .. < last
-        do match? function.operands[operands[position]]
+        match? function.operands[operands[position]]
             | .vreg-operand(row)
                 prefer-register(row.vreg, take-argument(function.vregs[row.vreg].reg-class))
             | .vreg-group-operand(row)
@@ -638,7 +638,7 @@ for position in 0 .. < last-block
     if operands.length == 0
         continue
     . target = no-string
-    do match? function.operands[operands[0]]
+    match? function.operands[operands[0]]
         | .label-operand(row)
             target = row.name
     if target == no-string || target != function.blocks[order[position + 1]].name
@@ -683,7 +683,7 @@ _ do view-of VRegId
 
 if operand == no-operand
     = no-id
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = row.vreg
 = no-id
@@ -692,7 +692,7 @@ do match? function.operands[operand]
 _ do preg-of RegisterId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .preg-operand(row)
         = row.register
 = no-register
@@ -701,7 +701,7 @@ do match? function.operands[operand]
 _ do is-void Bool
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .void-type
         = true
 = false
@@ -710,7 +710,7 @@ do match? function.types[type]
 _ do struct-format U32
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .struct-type(row)
         = row.format
 = no-id
@@ -766,7 +766,7 @@ for index in 0 .. < count
 _ do call-return-type MIRTypeId
     - call InstructionId
 
-do match? function.instructions[call]
+match? function.instructions[call]
     | .call-instruction(row)
         = row.return-type
 = void-type-id
@@ -775,7 +775,7 @@ do match? function.instructions[call]
 _ do is-direct-return Bool
     - call InstructionId
 
-do match? function.instructions[call]
+match? function.instructions[call]
     | .call-instruction(row)
         = row.direct-struct-return
 = false
@@ -812,7 +812,7 @@ for position in first .. < last
     . group-class RegClass = .gpr64
     . members Span
     . is-group = false
-    do match? function.operands[operands[position]]
+    match? function.operands[operands[position]]
         | .vreg-operand(row)
             view = row.vreg
         | .vreg-group-operand(row)
@@ -889,7 +889,7 @@ _ do stack-argument-type MIRTypeId
 
 ` The type an argument a call passes on the stack takes there: its own where the call records
 ` it narrower than 4 bytes, and else that of its register class.
-do match? function.instructions[call]
+match? function.instructions[call]
     | .call-instruction(row)
         if index < row.argument-sizes.count
             . size = function.words[row.argument-sizes.start + index]
@@ -995,7 +995,7 @@ if free.length == 0
 else
     scratch = free[free.length - 1]
     return-free[pool] = IdList(free.data, free.length - 1, free.capacity)
-    do match? function.types[function.frame-objects[scratch].type]
+    match? function.types[function.frame-objects[scratch].type]
         | .array-type(row)
             if storage-size > row.size
                 row.size = storage-size
@@ -1209,7 +1209,7 @@ if function.vregs[view].gc-root && liveness.intervals[id].exists
 _ do add-relevant-operand
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         add-relevant-view(row.vreg)
     | .vreg-group-operand(row)
@@ -1315,7 +1315,7 @@ for position in 0 .. < order.length
     for index in 0 .. < instructions.length
         . operands = function.instructions[instructions[index]].operands
         for entry in 0 .. < operands.length
-            do match? function.operands[operands[entry]]
+            match? function.operands[operands[entry]]
                 | .vreg-operand(row)
                     note-wide(row.vreg)
                 | .vreg-group-operand(group)
@@ -1407,7 +1407,7 @@ if bundle.stack-trace-metadata
     function.instructions[branch].loc = function.instructions[call].loc
 
 . panic-target = no-operand
-do match? function.instructions[call]
+match? function.instructions[call]
     | .call-instruction(row)
         panic-target = row.panic-target
 if panic-target != no-operand
@@ -1431,7 +1431,7 @@ if !function.instructions[call].gc-safepoint || safepoint == no-id
     = Span(first as U32, 0)
 seen-stamp += 1
 for root in function.gc-roots.start .. < function.gc-roots.end
-    do match? function.roots[root]
+    match? function.roots[root]
         | .stack-root(row)
             mark-object-seen(row.object)
 materializations = IdList(materializations.data, 0, materializations.capacity)
@@ -1454,7 +1454,7 @@ _ do add-root-for-operand
 . view = no-id
 . base = no-operand
 . members Span
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         view = row.vreg
     | .vreg-group-operand(row)
@@ -1614,7 +1614,7 @@ for position in 0 .. < operands.length
     . offset = no-operand
     . is-pre-index = false
     . index-shift U32
-    do match? function.operands[operand]
+    match? function.operands[operand]
         | .vreg-operand(row)
             view = row.vreg
         | .vreg-group-operand
@@ -1726,7 +1726,7 @@ _ do reserve-operand
 
 . base = no-operand
 . offset = no-operand
-do match? function.operands[operand]
+match? function.operands[operand]
     | .preg-operand(row)
         reserved = reserved.with(register-parent(row.register))
     | .load-address-operand(row)
@@ -1965,7 +1965,7 @@ _ do bind-parts
 ` part that lives in the frame is stored first, before the moves can overwrite the register it
 ` arrives in.
 . members Span
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-group-operand(group)
         members = group.vregs
 for index in 0 .. < members.count
@@ -1996,7 +1996,7 @@ _ do is-group-operand Bool
 
 if operand == no-operand
     = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-group-operand
         = true
 = false
@@ -2009,7 +2009,7 @@ _ do collect-hfa-fields
 . fields Span
 . is-struct = false
 . is-float = false
-do match? function.types[type]
+match? function.types[type]
     | .struct-type(row)
         is-struct = true
         fields = row.fields

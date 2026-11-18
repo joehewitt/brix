@@ -64,10 +64,10 @@ if types.intrinsic-of(receiver) != .class || property-named(receiver, name) == n
     = false
 . ref = declaring-class(types, receiver, name)
 . owner = program.modules[ref.module]
-do match? owner.decls[ref.decl]
+match? owner.decls[ref.decl]
     | .decl-class(class)
         for member in owner.member-pool[class.members]
-            do match? owner.decls[member]
+            match? owner.decls[member]
                 | .decl-property(property)
                     if property.name && property.name == name && property.type-syntax != 0
                         = query-type(ref, property.type-syntax) != no-type
@@ -87,7 +87,7 @@ if outside-zone || narrowing.is-null-syntax(rhs) || !is-managed(value, 0)
     =
 .. outside-zone = (frame.surround.effects /and/ CompilationEffect.gc-free) == 0
 . held = false
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, lhs)
         held = resolution.kind != .resolve-slot || frame.is-captured(resolution.slot)
@@ -146,7 +146,7 @@ _ do stores-loop-constant Bool
 ` else may. An assigning operator the type answers with a function of its own stores nothing.
 ` Whether the item of any other loop is a constant depends on how the loop is lowered.
 . loop SyntaxId = 0
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, lhs)
         if resolution.kind == .resolve-slot
@@ -234,9 +234,9 @@ prepare()
 instances.set-returns(instance, types.void-type, types.void-type, .return-declared)
 . resolution = bindings.resolution-of(frame.binding, id)
 . container SyntaxId = 0
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-for-block(row)
-        do match? tree.nodes[row.loop]
+        match? tree.nodes[row.loop]
             | .node-loop-syntax(loop)
                 container = loop.container
 . expected = if outer then outer.region.source else no-type
@@ -298,9 +298,9 @@ _ do tuple-arity-at Bool
 
 ` Whether a constant index names the position just past a tuple's last field: assigning there
 ` gives a new tuple with one more field.
-do match? types.rows[object]
+match? types.rows[object]
     | .type-tuple(row)
-        do match? tree.nodes[key-syntax]
+        match? tree.nodes[key-syntax]
             | .node-integer-syntax(key)
                 . literal = parse-integer-literal(key.value)
                 = !literal.negative && !literal.overflow && literal.value == row.fields.count
@@ -313,7 +313,7 @@ _ do extended-tuple TypeId
 
 . mark = scratch.types.mark
 . names-mark = scratch.names.mark
-do match? types.rows[object]
+match? types.rows[object]
     | .type-tuple(row)
         for offset in 0 .. < row.fields.count
             scratch.names.push(types.index-atom(offset))
@@ -328,11 +328,11 @@ scratch.types.push(value)
     - assigned [Atom]
     - declared [Atom]
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-function-syntax
         =
     | .node-for-block(row)
-        do match? tree.nodes[row.loop]
+        match? tree.nodes[row.loop]
             | .node-loop-syntax(loop)
                 if loop.is-subscriber
                     =
@@ -356,7 +356,7 @@ _ do collect-target
 if name
     assigned += name
     =
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-tuple-syntax(row)
         for item in tree.children[row.items]
             collect-target(item, assigned)
@@ -370,7 +370,7 @@ do match? tree.nodes[target]
 . member = valued-property(program, ref.module, ref.decl, fact.name)
 if member == 0
     = false
-do match? program.modules[ref.module].decls[member]
+match? program.modules[ref.module].decls[member]
     | .decl-property(row)
         = row.value != 0
 = false
@@ -388,10 +388,10 @@ _ do forget-store-root Bool
 ` read from a local, the receiver or such a row, where the store ends just that.
 . root = object
 while tree.nodes[root] is .node-get-expression
-    do match? tree.nodes[root]
+    match? tree.nodes[root]
         | .node-get-expression(row)
             root = row.object
-do match? tree.nodes[root]
+match? tree.nodes[root]
     | .node-index-expression
         if facts.answers-in-place(instance, root)
             frame.forget-members()
@@ -475,7 +475,7 @@ _ do writes-machine-property Bool
 ` `refuses-machine-write` does, and says whether it did.
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-property(row)
         if program.modules[module].tree.declared-machine(row.value) != 0
             = machine-write(id, "State machine \"${name.text}\"")
@@ -505,7 +505,7 @@ if op == .bind-op
     . message = "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\""
     frame.diagnose(id, .stated, program.store-atom(message))
     = invalid-type
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-tuple-syntax(row)
         if op == .eq-op
             = infer-destructure(lhs, row.items, rhs)
@@ -647,7 +647,7 @@ _ do reads-as-declared Bool
 ` the type the path declares the property as: the read is then taken as declared, which gives
 ` what the narrowed one would where the property holds what was tested, and what it gives where
 ` a store before it ended what is known, so it relies on nothing the flow knew.
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-get-expression(row)
         if row.is-optional || row.is-tracked
             = false
@@ -959,14 +959,14 @@ _ do truncated-tuple TypeId
 ` below zero has no plan.
 . count U64 = U64.max
 . counted = true
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-integer-syntax(row)
         . literal = parse-integer-literal(row.value)
         count = literal.value
         counted = !literal.negative && !literal.overflow
 . mark = scratch.types.mark
 . names-mark = scratch.names.mark
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-tuple(row)
         if count > (row.fields.count as U64)
             frame.diagnose(id, .stated, program.store-atom("Illegal to increase tuple length"))
@@ -1099,7 +1099,7 @@ if indexed && types.ancestor-of(target, types.immutable-array-decl) != no-type
 for view in [types.array-row-decl, types.array-row-range-decl, types.array-field-decl]
     . found = types.ancestor-of(target, view)
     if found != no-type
-        do match? types.rows[found]
+        match? types.rows[found]
             | .type-class(row)
                 if row.args.count == 2 && types.child-type(row.args, 1) == types.array-read-access
                     = "Cannot write through a read-only array view"
@@ -1244,7 +1244,7 @@ if items.count != arity
 for item in tree.children[items]
     if position < arity
         . field = field-of(value, position)
-        do match? tree.nodes[item]
+        match? tree.nodes[item]
             | .node-identifier
                 . resolution = bindings.resolution-of(frame.binding, item)
                 if resolution.kind == .resolve-slot
@@ -1433,7 +1433,7 @@ _ do store-through
 
 ` Where the object of an index assigned is itself an index, has the `[]=` of the object that
 ` inner index reads from recorded, for the answer the type pass planned to be stored.
-do match? tree.nodes[held-syntax]
+match? tree.nodes[held-syntax]
     | .node-index-expression(row)
         . container = facts.node-type(instance, row.object)
         . key = facts.node-type(instance, row.index)
@@ -1446,10 +1446,10 @@ _ do target-of TypeId
     - lhs SyntaxId
     - narrowed Bool = false
 
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier(ident)
         . resolution = bindings.resolution-of(frame.binding, lhs)
-        do match resolution.kind
+        match resolution.kind
             |= .resolve-slot
                 . slot = resolution.slot
                 . known = if narrowed then frame.slot-type(slot) else slot-known(slot)

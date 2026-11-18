@@ -134,7 +134,7 @@ if operands.length < 3
 . lhs = operands[1]
 . is-int = false
 . value MIRInt
-do match? function.operands[operands[2]]
+match? function.operands[operands[2]]
     | .int-operand(operand)
         is-int = true
         value = operand.value
@@ -345,7 +345,7 @@ _ do note-sites
 
 ` Lists where an instruction defines each vreg an operand it writes names, in the order the
 ` blocks hold them, so that each vreg a copy reaches has its definitions settled once.
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(register)
         note-site(function.vregs[register.vreg].id, id, entry, register.vreg)
     | .vreg-group-operand(group)
@@ -609,7 +609,7 @@ _ do is-forwardable-value-into Bool
 
 . is-int = false
 . value MIRInt
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand
         = true
     | .preg-operand
@@ -636,7 +636,7 @@ _ do address-uses-vreg Bool
 
 if operand == no-operand
     = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         if vreg-id(function, address.base) == vreg || vreg-id(function, address.offset) == vreg
             = true
@@ -667,7 +667,7 @@ _ can-use-immediate Bool
 _ do shift-width U64
     - dest OperandId
 
-do match? function.operands[dest]
+match? function.operands[dest]
     | .vreg-operand(operand)
         = if function.vregs[operand.vreg].reg-class == .gpr64 then 64 else 32
     | .preg-operand(operand)
@@ -704,7 +704,7 @@ if vreg-id(function, operand) == vreg
 . base = no-operand
 . offset = no-operand
 . is-pre-index = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         is-address = true
         base = address.base
@@ -733,7 +733,7 @@ _ do as-wide-as OperandId
 ` register reads the low 32 bits of a 64-bit replacement.
 . use-row = vreg-row(function, use)
 =? replacement if use-row == no-id || function.vregs[use-row].reg-class != .gpr32
-do match? function.operands[replacement]
+match? function.operands[replacement]
     | .vreg-operand
         = builder.narrow-view(replacement)
     | .preg-operand(operand)
@@ -755,7 +755,7 @@ for position in 0 .. < operands.length
         continue
     . operand = operands[position]
     . base = no-operand
-    do match? function.operands[operand]
+    match? function.operands[operand]
         | .load-address-operand(address)
             base = address.base
     if base == no-operand || vreg-id(function, base) != vreg
@@ -773,13 +773,13 @@ _ do merge-addresses OperandId
 
 . base-register = no-operand
 . base-offset = no-operand
-do match? function.operands[base]
+match? function.operands[base]
     | .load-address-operand(row)
         base-register = row.base
         base-offset = row.offset
 . use-offset = no-operand
 . is-pre-index = false
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(row)
         use-offset = row.offset
         is-pre-index = row.is-pre-index
@@ -805,7 +805,7 @@ _ do is-encodable-address Bool
 . opcode = function.instructions[id].opcode
 . offset-operand = no-operand
 . is-pre-index = false
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(row)
         offset-operand = row.offset
         is-pre-index = row.is-pre-index
@@ -814,7 +814,7 @@ do match? function.operands[address]
 . is-page-offset = false
 if offset-operand != no-operand
     offset = known-int(function, offset-operand)
-    do match? function.operands[offset-operand]
+    match? function.operands[offset-operand]
         | .label-operand(label)
             is-label = true
             is-page-offset = label.reloc == .pageoff-reloc
@@ -868,7 +868,7 @@ _ do operand-access-size I64
     - operand OperandId
 
 . reg-class RegClass = .gpr64
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         reg-class = function.vregs[row.vreg].reg-class
     | .preg-operand(row)
@@ -1029,7 +1029,7 @@ for position in 0 .. < order.length
     . instructions = function.blocks[block].instructions
     for index in 0 .. < instructions.length
         . id = instructions[index]
-        do match? function.instructions[id]
+        match? function.instructions[id]
             | .phi-instruction(phi)
                 own(phi.reg, id, block)
                 continue
@@ -1102,7 +1102,7 @@ if vreg == no-id || definitions[vreg] != 1 || owners[vreg] == no-id
 . row = function.instructions[owners[vreg]]
 if row.opcode != .ldr || row.operands.length != 2
     = no-operand
-do match? function.operands[row.operands[1]]
+match? function.operands[row.operands[1]]
     | .load-address-operand(address)
         if address.is-pre-index
             = no-operand
@@ -1123,7 +1123,7 @@ if vreg == no-id || owners[vreg] == no-id
 if seen[vreg] == generation
     = 0
 seen[vreg] = generation
-do match? function.instructions[owners[vreg]]
+match? function.instructions[owners[vreg]]
     | .phi-instruction(phi)
         . kind U32
         for entry in 0 .. < phi.exprs.length
@@ -1145,7 +1145,7 @@ if vreg == no-id || owners[vreg] == no-id
     = constant-flag(false)
 if table-flags[vreg] != no-operand
     = table-flags[vreg]
-do match? function.instructions[owners[vreg]]
+match? function.instructions[owners[vreg]]
     | .phi-instruction(phi)
         . flag = builder.vreg(.gpr64)
         table-flags[vreg] = flag
@@ -1207,7 +1207,7 @@ _ is-table-address Bool
 _ do is-symbolic Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .symbol-operand
         = true
     | .label-operand
@@ -1223,7 +1223,7 @@ for position in 0 .. < order.length
     . instructions = function.blocks[order[position]].instructions
     for index in 0 .. < instructions.length
         . id = instructions[index]
-        do match? function.instructions[id]
+        match? function.instructions[id]
             | .phi-instruction(phi)
                 define(phi.reg, 1)
                 continue
@@ -1296,7 +1296,7 @@ _ do define
     - operand OperandId
     - weight U32
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         . vreg = function.vregs[row.vreg].id
         definitions[vreg] = definitions[vreg] + weight
@@ -1344,7 +1344,7 @@ _ do visit-phi
     - block BlockId
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         . merged = Lattice(LatticeState.top, 0)
         for entry in 0 .. < phi.blocks.length
@@ -1358,7 +1358,7 @@ do match? function.instructions[id]
 _ do has-panic-target Bool
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .call-instruction(call)
         = call.panic-target != no-operand
 = false
@@ -1465,7 +1465,7 @@ _ do value-of Lattice
 
 if operand == no-operand
     = Lattice(LatticeState.varying, 0)
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         = Lattice(LatticeState.constant, row.value.bits)
     | .vreg-operand(row)
@@ -1615,7 +1615,7 @@ _ do condition-of U32
 
 if operand == no-operand
     = no-condition
-do match? function.operands[operand]
+match? function.operands[operand]
     | .cond-operand(row)
         = row.code
 = no-condition
@@ -1695,7 +1695,7 @@ function.blocks[block].instructions = rebuilt
 _ do constant-phi InstructionId
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         . row = vreg-row(function, phi.reg)
         if row == no-id || function.vregs[row].hint != no-register
@@ -1908,7 +1908,7 @@ for position in 0 .. < order.length
         continue
     . instructions = function.blocks[block].instructions
     for index in 0 .. < instructions.length
-        do match? function.instructions[instructions[index]]
+        match? function.instructions[instructions[index]]
             | .phi-instruction(phi)
                 . exprs = phi.exprs
                 . names = phi.blocks
@@ -1943,7 +1943,7 @@ while changed
             . id = instructions[index]
             if removed[id] != 0
                 continue
-            do match? function.instructions[id]
+            match? function.instructions[id]
                 | .phi-instruction(phi)
                     . same = trivial-input(phi.reg, phi.exprs, replacements)
                     if same != no-operand
@@ -2016,7 +2016,7 @@ _ do substitute
     - id InstructionId
     - replacements CPointer'U32
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         for entry in 0 .. < phi.exprs.length
             . replaced = substituted(phi.exprs[entry], replacements)
@@ -2036,7 +2036,7 @@ _ do substituted OperandId
 
 if operand == no-operand
     = no-operand
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         if replacements[function.vregs[row.vreg].id] == 0
             = no-operand
@@ -2322,7 +2322,7 @@ for position in 0 .. < order.length
     . block = order[position]
     . instructions = function.blocks[block].instructions
     for index in 0 .. < instructions.length
-        do match? function.instructions[instructions[index]]
+        match? function.instructions[instructions[index]]
             | .phi-instruction(phi)
                 note-box-block(found, holders, block, vreg-id(function, phi.reg))
                 for entry in 0 .. < phi.exprs.length
@@ -2330,7 +2330,7 @@ for position in 0 .. < order.length
                 continue
         . operands = function.instructions[instructions[index]].operands
         for entry in 0 .. < operands.length
-            do match? function.operands[operands[entry]]
+            match? function.operands[operands[entry]]
                 | .vreg-operand(row)
                     note-box-block(found, holders, block, function.vregs[row.vreg].id)
                 | .vreg-group-operand(group)
@@ -2355,7 +2355,7 @@ _ do hold-derivation
 . derived = vreg-id(function, row.operands[0])
 =? if derived == no-id || derived >= function.vreg-count || definitions[derived] != 1 || held
 .. held = holders[derived] != U32.max
-do match? function.operands[row.operands[1]]
+match? function.operands[row.operands[1]]
     | .load-address-operand(address)
         . base = vreg-id(function, address.base)
         if base != no-id && base < function.vreg-count
@@ -2383,7 +2383,7 @@ if row.opcode == .gc-alloc
     = row.operands.length != 0
 if row.opcode != .call || symbol == no-string || row.operands.length < 2
     = false
-do match? function.operands[row.operands[0]]
+match? function.operands[row.operands[0]]
     | .symbol-operand(target)
         = target.name == symbol
 = false
@@ -2521,7 +2521,7 @@ for position in 0 .. < order.length
         . derived = vreg-id(function, row.operands[0])
         if derived == no-id || definitions[derived] != 1
             continue
-        do match? function.operands[row.operands[1]]
+        match? function.operands[row.operands[1]]
             | .load-address-operand(address)
                 if based-on-box && !address.is-pre-index && address.index-shift == 0
                     . offset = if no-offset then Known(true, 0, false) else known-offset
@@ -2569,7 +2569,7 @@ _ do box-use U32
     - id InstructionId
     - box U32
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         if vreg-id(function, phi.reg) == box
             = BoxUse.escaped
@@ -2582,7 +2582,7 @@ do match? function.instructions[id]
 . last = operands.length - 1
 . found = BoxUse.unused
 for position in 0 .. < operands.length
-    do match? function.operands[operands[position]]
+    match? function.operands[operands[position]]
         | .vreg-operand(row)
             if function.vregs[row.vreg].id == box
                 if opcode != .gc-barrier || position != 0
@@ -2624,7 +2624,7 @@ _ do access-offset U64
     - id InstructionId
 
 . operands = function.instructions[id].operands
-do match? function.operands[operands[operands.length - 1]]
+match? function.operands[operands[operands.length - 1]]
     | .load-address-operand(address)
         . derived = derived-offset(vreg-id(function, address.base))
         . start = if derived == U64.max then 0u64 else derived
@@ -2655,7 +2655,7 @@ if opcode == .ldrsw
 if opcode != .str && opcode != .stp && opcode != .ldr && opcode != .ldp
     = 0
 . value = function.instructions[id].operands[0]
-do match? function.operands[value]
+match? function.operands[value]
     | .preg-operand(row)
         if row.register == zero-register
             = 8
@@ -2702,7 +2702,7 @@ for slot in 0 .. < count
     if made == no-id
         = false
     moves = moves.appended(function.arena, made)
-do match? function.instructions[moves[0]]
+match? function.instructions[moves[0]]
     | .assembly-instruction(row)
         rewrite-assembly(function, load, row.opcode, row.operands)
 if count == 2
@@ -2726,7 +2726,7 @@ _ do forwarded-move InstructionId
 if target-class == U32.max
     = no-id
 . is-float = target-class == RegClass.fpr32 as U32 || target-class == RegClass.fpr64 as U32
-do match? function.operands[value]
+match? function.operands[value]
     | .preg-operand(row)
         if is-float || (row.register != zero-register && row.register != zero-register-32)
             = no-id
@@ -3014,7 +3014,7 @@ for position in 0 .. < blocks.length
         . id = instructions[index]
         if !keeps-memory(function.instructions[id].opcode)
             writes[block] = 1
-        do match? function.instructions[id]
+        match? function.instructions[id]
             | .phi-instruction(phi)
                 note-definition(phi.reg)
                 continue
@@ -3023,7 +3023,7 @@ for position in 0 .. < blocks.length
         for entry in 0 .. < operands.length
             if (role-at(roles, entry) /and/ def-role) == 0
                 continue
-            do match? function.operands[operands[entry]]
+            match? function.operands[operands[entry]]
                 | .vreg-operand
                     note-definition(operands[entry])
                 | .vreg-group-operand(group)
@@ -3354,7 +3354,7 @@ _ do encode Bool
 
 if operand == no-operand
     = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         . vreg = function.vregs[row.vreg].id
         if vreg >= vreg-limit || definitions[vreg] > 1
@@ -3401,7 +3401,7 @@ key-third = 0
 . slot U32
 for position in 1 .. < count
     . operand = operands[position]
-    do match? function.operands[operand]
+    match? function.operands[operand]
         | .load-address-operand(address)
             if address.is-pre-index || position != 1 || count != 2
                 = false
@@ -3642,7 +3642,7 @@ _ do note-truth
 
 if opcode == .cset && operands.length == 2
     booleans[number] = 1
-    do match? function.operands[operands[1]]
+    match? function.operands[operands[1]]
         | .cond-operand(cond)
             . base = condition-number(cond.code)
             if base != 0
@@ -3677,7 +3677,7 @@ _ do visit-phi
     - block BlockId
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         . row = vreg-row(function, phi.reg)
         if row == no-id
@@ -3853,7 +3853,7 @@ if taken == fallen
 if test-opcode == .b-cond
     if operands.length < 2
         =
-    do match? function.operands[operands[1]]
+    match? function.operands[operands[1]]
         | .cond-operand(cond)
             key = condition-number(cond.code)
             is-negated = (cond.code /and/ 1) != 0
@@ -3967,7 +3967,7 @@ _ do drop-phi-inputs
 
 . instructions = function.blocks[block].instructions
 for index in 0 .. < instructions.length
-    do match? function.instructions[instructions[index]]
+    match? function.instructions[instructions[index]]
         | .phi-instruction(phi)
             . kept U32
             for entry in 0 .. < phi.blocks.length
@@ -4060,7 +4060,7 @@ _ do gives-same Bool
 
 . instructions = function.blocks[join].instructions
 for index in 0 .. < instructions.length
-    do match? function.instructions[instructions[index]]
+    match? function.instructions[instructions[index]]
         | .phi-instruction(phi)
             . left = no-operand
             . right = no-operand
@@ -4087,7 +4087,7 @@ _ do merge-sources
 . fallen-name = function.blocks[fallen-source].name
 . instructions = function.blocks[join].instructions
 for index in 0 .. < instructions.length
-    do match? function.instructions[instructions[index]]
+    match? function.instructions[instructions[index]]
         | .phi-instruction(phi)
             . value = no-operand
             . kept U32
@@ -4121,7 +4121,7 @@ for index in 0 .. < instructions.length
     for entry in 0 .. < operands.length
         if label-name(function, operands[entry]) == name
             = true
-    do match? function.instructions[id]
+    match? function.instructions[id]
         | .call-instruction(call)
             if label-name(function, call.panic-target) == name
                 = true
@@ -4206,7 +4206,7 @@ for _ in 0 .. < 4
 _ do note-definitions
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         note-definition(id, phi.reg)
         =
@@ -4215,7 +4215,7 @@ do match? function.instructions[id]
 for position in 0 .. < operands.length
     if (role-at(roles, position) /and/ def-role) == 0
         continue
-    do match? function.operands[operands[position]]
+    match? function.operands[operands[position]]
         | .vreg-operand
             note-definition(id, operands[position])
         | .vreg-group-operand(group)
@@ -4350,7 +4350,7 @@ for index in 0 .. < instructions.length
     . reg = no-operand
     . taken-value = no-operand
     . fallen-value = no-operand
-    do match? function.instructions[id]
+    match? function.instructions[id]
         | .phi-instruction(phi)
             reg = phi.reg
             for entry in 0 .. < phi.blocks.length
@@ -4469,7 +4469,7 @@ if body.length > 2
 for index in 0 .. < body.length
     . id = body[index]
     . is-assembly = false
-    do match? function.instructions[id]
+    match? function.instructions[id]
         | .assembly-instruction
             is-assembly = true
     . opcode = function.instructions[id].opcode
@@ -4516,7 +4516,7 @@ for index in 0 .. < phis.length
         resolved.data[index] = taken-value
         continue
     . reg = no-operand
-    do match? function.instructions[phis[index]]
+    match? function.instructions[phis[index]]
         | .phi-instruction(phi)
             reg = phi.reg
     . row = function.vregs[vreg-row(function, reg)]
@@ -4645,7 +4645,7 @@ if fallen-side != no-id
 if merges
     for index in 0 .. < phis.length
         . reg = no-operand
-        do match? function.instructions[phis[index]]
+        match? function.instructions[phis[index]]
             | .phi-instruction(phi)
                 reg = phi.reg
         if !same-operand(function, reg, resolved[index])
@@ -4699,7 +4699,7 @@ while dead[block] == 0 && function.blocks[block].successors.length == 1
     . joined = function.blocks[join].instructions
     . is-simple = true
     for index in 0 .. < joined.length
-        do match? function.instructions[joined[index]]
+        match? function.instructions[joined[index]]
             | .phi-instruction(phi)
                 if phi.blocks.length != 1 || phi.exprs.length != 1 || phi.blocks[0] != name
                     is-simple = false
@@ -4753,7 +4753,7 @@ _ do set-phi-source
 . name = function.blocks[block].name
 . taken-name = if taken-side != no-id then function.blocks[taken-side].name else no-string
 . fallen-name = if fallen-side != no-id then function.blocks[fallen-side].name else no-string
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         . exprs = IdList()
         . blocks = IdList()
@@ -4774,7 +4774,7 @@ _ do rename-phi-source
 
 . instructions = function.blocks[block].instructions
 for index in 0 .. < instructions.length
-    do match? function.instructions[instructions[index]]
+    match? function.instructions[instructions[index]]
         | .phi-instruction(phi)
             for entry in 0 .. < phi.blocks.length
                 if phi.blocks[entry] == from
@@ -4793,7 +4793,7 @@ _ do condition-code U32
     - function MIRFunction
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .cond-operand(row)
         = row.code
 = no-condition
@@ -5044,7 +5044,7 @@ _ do copy-instruction InstructionId
 . has-gc-roots = false
 . gc-roots Span
 . is-assembly = false
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction(row)
         is-assembly = true
         opcode = row.opcode
@@ -5082,7 +5082,7 @@ _ do value-of Known
 
 if operand == no-operand
     = Known()
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         = Known(true, row.value.bits, row.value.is-negative)
     | .vreg-operand(row)
@@ -5178,7 +5178,7 @@ _ do condition-code U32
 
 if operand == no-operand
     = no-condition
-do match? function.operands[operand]
+match? function.operands[operand]
     | .cond-operand(row)
         = row.code
 = no-condition
@@ -5619,7 +5619,7 @@ _ do fold-address OperandId
 . offset = no-operand
 . index-shift U32
 . is-plain = false
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(row)
         is-plain = !row.is-pre-index
         base = row.base
@@ -5768,7 +5768,7 @@ _ do fits-offset Bool
     - operand OperandId
     - size I64
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         if row.value.is-negative
             = (row.value.bits as I64) >= -256
@@ -5855,7 +5855,7 @@ _ do note-definitions
 for position in 0 .. < operands.length
     if (role-at(roles, position) /and/ def-role) == 0
         continue
-    do match? function.operands[operands[position]]
+    match? function.operands[operands[position]]
         | .vreg-operand(row)
             . vreg = function.vregs[row.vreg].id
             definitions[vreg] = definitions[vreg] + 1
@@ -5878,7 +5878,7 @@ _ do combine Bool
 if removed[id] != 0
     = false
 . is-assembly = false
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction
         is-assembly = true
 if !is-assembly
@@ -6403,7 +6403,7 @@ if found == no-id
     = no-id
 . id = instructions[found]
 . is-assembly = false
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction
         is-assembly = true
 if !is-assembly || function.instructions[id].is-phi-copy || id >= instruction-limit
@@ -6453,7 +6453,7 @@ _ do reads-operand Bool
 
 if operand == no-operand
     = false
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id == vreg
     | .vreg-group-operand(group)
@@ -6992,7 +6992,7 @@ _ do object-of FrameObjectId
 
 if operand == no-operand
     = no-frame-object
-do match? function.operands[operand]
+match? function.operands[operand]
     | .frame-object-operand(row)
         = row.object
     | .load-address-operand(address)
@@ -7006,7 +7006,7 @@ _ do count-definitions
     - counts CPointer'U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         . vreg = function.vregs[row.vreg].id
         counts[vreg] = counts[vreg] + 1
@@ -7041,7 +7041,7 @@ _ do check-address
     - id InstructionId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         drop-named(address.offset)
         . vreg = vreg-id(function, address.base)
@@ -7086,7 +7086,7 @@ _ do note-pins
 
 if operand == no-operand
     =
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         if function.vregs[row.vreg].hint != no-register
             pins[function.vregs[row.vreg].id] = 1
@@ -7105,7 +7105,7 @@ _ do drop-named
 
 if operand == no-operand
     =
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         drop-base(function.vregs[row.vreg].id)
     | .vreg-group-operand(group)
@@ -7159,7 +7159,7 @@ _ access-width U32
 _ do operand-width U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = class-size(function.vregs[row.vreg].reg-class) as U32
     | .preg-operand(row)
@@ -7170,7 +7170,7 @@ do match? function.operands[operand]
 _ do target-object FrameObjectId
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         . vreg = vreg-id(function, address.base)
         if vreg != no-id && bases[vreg] != 0 && objects[bases[vreg] - 1] != 0
@@ -7183,7 +7183,7 @@ _ do target-byte U32
     - operand OperandId
 
 . start = objects[object] - 1
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         if address.offset != no-operand
             = start + (known-int(function, address.offset).bits as U32)
@@ -7357,7 +7357,7 @@ rewrite-assembly
 _ do constant-of Known
     - value OperandId
 
-do match? function.operands[value]
+match? function.operands[value]
     | .preg-operand(row)
         if row.register == zero-register || row.register == zero-register-32
             = Known(true, 0, false)
@@ -7705,7 +7705,7 @@ for position in 0 .. < order.length
     for index in 0 .. < instructions.length
         . id = instructions[index]
         . panic-target = no-operand
-        do match? function.instructions[id]
+        match? function.instructions[id]
             | .call-instruction(call)
                 panic-target = call.panic-target
                 if raises(first-operand(function, id))
@@ -7730,7 +7730,7 @@ _ do raises Bool
     - callee OperandId
 
 =? false if callee == no-operand
-do match? function.operands[callee]
+match? function.operands[callee]
     | .symbol-operand(operand)
         = builder.bundle.is-cold-callee(operand.name)
 = false
@@ -8055,7 +8055,7 @@ _ do known-int Known
     - function MIRFunction
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .int-operand(row)
         = Known(true, row.value.bits, row.value.is-negative)
 = Known()
@@ -8161,7 +8161,7 @@ _ do names-vreg Bool
     - operand OperandId
     - vreg U32
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id == vreg
     | .vreg-group-operand(group)
@@ -8234,7 +8234,7 @@ _ do rewrite-assembly
     - operands IdList
 
 function.drop-uses(id)
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction(row)
         row.opcode = opcode
         row.operands = operands
@@ -8247,7 +8247,7 @@ _ do vreg-id U32
 
 if operand == no-operand
     = no-id
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id
 = no-id
@@ -8257,7 +8257,7 @@ _ do is-load-address Bool
     - function MIRFunction
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand
         = true
 = false
@@ -8269,7 +8269,7 @@ _ do label-name StringId
 
 if operand == no-operand
     = no-string
-do match? function.operands[operand]
+match? function.operands[operand]
     | .label-operand(label)
         = label.name
 = no-string
@@ -8289,19 +8289,19 @@ _ do same-operand Bool
     - left OperandId
     - right OperandId
 
-do match? function.operands[left]
+match? function.operands[left]
     | .vreg-operand(first)
-        do match? function.operands[right]
+        match? function.operands[right]
             | .vreg-operand(second)
                 = function.vregs[first.vreg].id == function.vregs[second.vreg].id
         = false
     | .preg-operand(first)
-        do match? function.operands[right]
+        match? function.operands[right]
             | .preg-operand(second)
                 = first.register == second.register
         = false
     | .int-operand(first)
-        do match? function.operands[right]
+        match? function.operands[right]
             | .int-operand(second)
                 = first.value.bits == second.value.bits && same-sign
                     .. same-sign = first.value.is-negative == second.value.is-negative
@@ -8314,7 +8314,7 @@ _ do invert-condition OperandId
     - operand OperandId
 
 . code = no-condition
-do match? builder.function.operands[operand]
+match? builder.function.operands[operand]
     | .cond-operand(row)
         code = row.code
 if code == no-condition || code == Condition.always
@@ -8344,7 +8344,7 @@ _ do is-plain-branch Bool
     - function MIRFunction
     - id InstructionId
 
-do match? function.instructions[id]
+match? function.instructions[id]
     | .assembly-instruction(row)
         = row.opcode == .b && row.loc == no-loc && !row.gc-safepoint && !has-roots
             .. has-roots = row.has-gc-roots && row.gc-roots.count != 0
@@ -8558,7 +8558,7 @@ _ do vreg-row VRegId @inline
     - function MIRFunction
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = row.vreg
 = no-id
@@ -8694,7 +8694,7 @@ while pending.length != 0
     if !pure-only
         chains.own-reads[vreg] = chains.own-reads[vreg] - own-reads(function, id, vreg)
     function.drop-uses(id)
-    do match? function.instructions[id]
+    match? function.instructions[id]
         | .phi-instruction(phi)
             for entry in 0 .. < phi.exprs.length
                 pending = pushed-definers(function, phi.exprs[entry], chains, pending)
@@ -8728,7 +8728,7 @@ _ do removable-definition U32
 if opcode == .phi
     if pure-only
         = no-id
-    do match? function.instructions[id]
+    match? function.instructions[id]
         | .phi-instruction(phi)
             row = vreg-row(function, phi.reg)
 else if opcode != .call && opcode != .comment
@@ -8757,7 +8757,7 @@ _ do own-reads U32
 ` bits into, or the ADD of a symbol's address reads the page its ADRP puts there. A vreg that
 ` only its own definitions read is dead along with all of them.
 . count U32
-do match? function.instructions[id]
+match? function.instructions[id]
     | .phi-instruction(phi)
         for entry in 0 .. < phi.exprs.length
             count += operand-reads(function, phi.exprs[entry], vreg)
@@ -8777,7 +8777,7 @@ _ do operand-reads U32
 
 if operand == no-operand
     = 0
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = if function.vregs[row.vreg].id == vreg then 1 else 0
     | .vreg-group-operand(group)
@@ -8801,7 +8801,7 @@ _ do pushed-definers IdList
 if operand == no-operand
     = pending
 . result = pending
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         result = pushed-chain(function, function.vregs[row.vreg].id, chains, result)
     | .vreg-group-operand(group)
@@ -8918,7 +8918,7 @@ _ do is-writeback-address Bool
     - function MIRFunction
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand(address)
         = address.is-pre-index
 = true

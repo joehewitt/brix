@@ -3444,11 +3444,11 @@ span = span.length = span.size + 1
 
 ```yumi
 . found = search(1)
-do match? found
+match? found
     | name, size
         -- "$name $size"
 . none = search(5)
-do match? none
+match? none
     | name, size
         -- "$name $size"
 -- "done"

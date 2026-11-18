@@ -739,7 +739,7 @@ for row in span
             -1
 
 . selected = 0
-do match rows[2]
+match rows[2]
     | .low(low)
         selected = low.value
     | .middle(middle)
@@ -4471,7 +4471,7 @@ rows[1] = Node.wide(20, 2, 3, 200, 300)
 . stored = List'(TableRow'Node)()
 stored += rows[0].live()
 
-do match rows[0]
+match rows[0]
     | .small(small)
         . case-snapshot = small.case-snapshot()
         small.lower(5)
@@ -5324,7 +5324,7 @@ rows[0] = Node.low(10, Pair(1, 2))
 rows[1] = Node.high(30, Pair(3, 4))
 . reader = Reader()
 reader.offset = 100
-do match rows[0]
+match rows[0]
     | .low(low)
         -- reader.total(low)
     ??
@@ -5336,7 +5336,7 @@ do match rows[0]
 + do free-total I64
     - rows Table'Node
 
-do match? rows[0]
+match? rows[0]
     | .low(low)
         = sum(low)
 = -1
@@ -5362,7 +5362,7 @@ offset + base.value + base.pair.right
 + do pick I64
     - rows Table'Node
 
-do match? rows[1]
+match? rows[1]
     | .high(high)
         = total-high(high)
 = -1
@@ -5428,7 +5428,7 @@ _ do describe String
     - shapes Table'Shape
     - index Index
 
-do match shapes[index]
+match shapes[index]
     | .tall(_, size)
         = "tall $size"
     | .wide(_, size)
@@ -5833,7 +5833,7 @@ C:brixGCCollect()
 
 . rows = Table'Node(2)
 rows[0] = Node.small(10, 2)
-do match rows[0]
+match rows[0]
     | .small(small)
         -- small.pick(9)
     | .wide
@@ -5936,7 +5936,7 @@ true
 rows[0] = Node.small(10, 2)
 rows[1] = Node.wide(20, 3)
 for row in rows
-    do match? row
+    match? row
         | .small(small)
             -- small.pick(rows)
 
@@ -6123,7 +6123,7 @@ Stack trace:
 
 . rows = Table'Node(2)
 rows[0] = Node.small(10, 2)
-do match? rows[0]
+match? rows[0]
     | .small(small)
         -- small.pick(9)
 
@@ -6214,7 +6214,7 @@ store.rows[0] = Node.small(10, 1)
 store.rows[1] = Node.wide(20, 2)
 -- store.rows[0].twice
 store.rows[0] = Node.small(30, 3)
-do match? store.rows[0]
+match? store.rows[0]
     | .small(small)
         -- small.again()
 
@@ -6618,7 +6618,7 @@ rows[0] = Piece.plain(1)
 rows[1] = Piece.stop(2)
 for position in 0 .. < 2
     print(rows[position].label)
-do match rows[1]
+match rows[1]
     | .stop(stop)
         print(stop.label)
     | .plain
@@ -6668,7 +6668,7 @@ stop 2
 
 . rows = Table'Node(2)
 rows[0] = Node.small(10, 2)
-do match rows[0]
+match rows[0]
     | .small(small)
         print(small.pick(9))
     | .wide

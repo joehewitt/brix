@@ -346,7 +346,7 @@ for position in 0 .. < order.length
 _ do is-load-address Bool
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .load-address-operand
         = true
 = false
@@ -356,13 +356,13 @@ _ do frame-object-of FrameObjectId
     - operand OperandId
 
 . base = no-operand
-do match? function.operands[operand]
+match? function.operands[operand]
     | .frame-object-operand(row)
         = row.object
     | .load-address-operand(row)
         base = row.base
 if base != no-operand
-    do match? function.operands[base]
+    match? function.operands[base]
         | .frame-object-operand(row)
             = row.object
 = no-frame-object
@@ -381,7 +381,7 @@ _ do has-frame-base Bool
     - operand OperandId
 
 . base = no-operand
-do match? function.operands[operand]
+match? function.operands[operand]
     | .frame-object-operand
         = true
     | .load-address-operand(row)
@@ -418,7 +418,7 @@ _ do reserved-registers RegisterSet
 
 . base = no-operand
 . offset = no-operand
-do match? function.operands[operand]
+match? function.operands[operand]
     | .preg-operand(row)
         = registers.with(register-parent(row.register))
     | .load-address-operand(row)
@@ -482,7 +482,7 @@ if opcode == .ldrh || opcode == .strh || opcode == .ldrsh
 if opcode == .ldrsw
     = 4
 if opcode == .ldr || opcode == .ldar || opcode == .str
-    do match? function.operands[operands[0]]
+    match? function.operands[operands[0]]
         | .preg-operand(row)
             . reg-class = register-class(row.register)
             = if reg-class == .gpr32 || reg-class == .fpr32 then 4 else 8
@@ -496,7 +496,7 @@ _ do pair-size I64
 
 if index != 2 || (opcode != .ldp && opcode != .stp)
     = 0
-do match? function.operands[operands[0]]
+match? function.operands[operands[0]]
     | .preg-operand(row)
         . reg-class = register-class(row.register)
         = if reg-class == .gpr32 || reg-class == .fpr32 then 4 else 8
@@ -509,13 +509,13 @@ _ do add-address
 
 . base = no-operand
 . offset = no-operand
-do match? function.operands[address]
+match? function.operands[address]
     | .load-address-operand(row)
         base = row.base
         offset = row.offset
 ?! Panic("A lowered address is not a load address")
     if base == no-operand
-do match? function.operands[base]
+match? function.operands[base]
     | .preg-operand(row)
         if register-class(row.register) == .gpr32
             base = builder.preg(register-parent(row.register))
@@ -524,7 +524,7 @@ if offset == no-operand
     =
 . is-int = false
 . value I64
-do match? function.operands[offset]
+match? function.operands[offset]
     | .int-operand(row)
         is-int = true
         value = row.value.bits as I64

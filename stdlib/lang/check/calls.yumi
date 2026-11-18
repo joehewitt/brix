@@ -285,13 +285,13 @@ if row.module != types.arena-module || row.self-type == no-type
 if types.intrinsic-of(row.self-type) != .cpointer
     = false
 . target = program.modules[row.module]
-do match? target.decls[row.decl]
+match? target.decls[row.decl]
     | .decl-function(fn)
         if fn.owner == 0 || !fn.name || fn.name != types.store-untraced-atom!
             = false
         if fn.body == 0
             = true
-        do match? target.tree.nodes[fn.body]
+        match? target.tree.nodes[fn.body]
             | .node-block(body)
                 = body.body.count == 0
 = false
@@ -352,7 +352,7 @@ is-in-place-plan(intrinsic-plan(callee))
 ` intrinsics module declares, or of one of the four of the math module that take floats.
 . row = instances.rows[callee]
 . target = program.modules[row.module]
-do match? target.decls[row.decl]
+match? target.decls[row.decl]
     | .decl-function(fn)
         if fn.body != 0 || !fn.name || fn.owner != 0
             = .plan-none
@@ -469,7 +469,7 @@ _ do check-zone-call
 ` none is taken to do both.
 . polls = false
 . row = instances.rows[callee]
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         polls = (fn.effects /and/ CompilationEffect.gc-polling) != 0
 if may-suspend(name.text, polls)
@@ -526,7 +526,7 @@ if owner == types.gc-backing-type
 . array = if immutable != no-type then immutable else types.ancestor-of(owner, types.array-decl)
 if array == no-type
     = no-type
-do match? types.rows[array]
+match? types.rows[array]
     | .type-class(row)
         if row.args.count == 2 && types.child-type(row.args, 1) == types.gc-backing-type
             = types.child-type(row.args, 0)
@@ -589,7 +589,7 @@ if fn == no-type
     = invalid-type
 . returns = no-type
 . count U32
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         returns = row.return-type
         count = row.args.count
@@ -626,7 +626,7 @@ if fn == no-type
     = invalid-type
 . args = RowRange'TypeId()
 . returns = no-type
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         args = row.args
         returns = row.return-type
@@ -722,7 +722,7 @@ types.complete(carried)
 facts.note-carried(function, carried)
 if frame.surround.catch-depth != 0
     = carried
-do match? types.rows[carried]
+match? types.rows[carried]
     | .type-result(row)
         for offset in 0 .. < row.errors.count
             note-outgoing(types.child-type(row.errors, offset), id)
@@ -738,12 +738,12 @@ _ do declared-names
 ` The names the arguments of a function type are called by, where the type is declared.
 . level TypeId? = callee
 while level
-    do match? types.rows[level]
+    match? types.rows[level]
         | .type-class(row)
             . owner = program.modules[row.module]
-            do match? owner.decls[row.decl]
+            match? owner.decls[row.decl]
                 | .decl-class(class)
-                    do match? owner.tree.nodes[class.base]
+                    match? owner.tree.nodes[class.base]
                         | .node-type-function(fn)
                             for arg in owner.tree.children[fn.args]
                                 names += declared-name(owner.tree, arg)
@@ -755,11 +755,11 @@ _ do declared-name Atom?
     - tree AST
     - arg SyntaxId
 
-do match? tree.nodes[arg]
+match? tree.nodes[arg]
     | .node-argument-decl(row)
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-capture(capture)
-                do match? tree.nodes[capture.id]
+                match? tree.nodes[capture.id]
                     | .node-identifier(identifier)
                         = identifier.name
             | .node-identifier(identifier)
@@ -1084,7 +1084,7 @@ if results.length == 1
 . errors [TypeId]
 for result in results
     . value = result
-    do match? types.rows[result]
+    match? types.rows[result]
         | .type-result(row)
             value = row.value
             for offset in 0 .. < row.errors.count
@@ -1162,7 +1162,7 @@ _ do leading-defaults U32
 ` How many parameters of a function, from the first, are written with a default.
 . owner = program.modules[module]
 . count = 0u32
-do match? owner.decls[decl]
+match? owner.decls[decl]
     | .decl-function(fn)
         while count < fn.args.count && owner.arg-pool[fn.args.start + count].default-syntax != 0
             count += 1
@@ -1252,9 +1252,9 @@ for type in arguments.types
 _ do closure-arity Size
     - closure TypeId
 
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
-        do match? program.modules[row.module].decls[row.decl]
+        match? program.modules[row.module].decls[row.decl]
             | .decl-function(fn)
                 = fn.args.count
 = 0
@@ -1263,9 +1263,9 @@ do match? types.rows[closure]
 _ do closure-tail U32
     - closure TypeId
 
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
-        do match? program.modules[row.module].decls[row.decl]
+        match? program.modules[row.module].decls[row.decl]
             | .decl-function(fn)
                 = fn.variadic-index
 = U32.max
@@ -1276,7 +1276,7 @@ _ do closure-signature Signature
 
 . module = 0u32
 . decl = 0u32
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
         module = row.module
         decl = row.decl
@@ -1302,9 +1302,9 @@ if declared == given || declared == invalid-type || declared == no-type
 if types.completions[declared].has-variables || types.completions[declared].intrinsic == .or
     = given
 . stated = false
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
-        do match? program.modules[row.module].decls[row.decl]
+        match? program.modules[row.module].decls[row.decl]
             | .decl-function(fn)
                 if position < fn.args.count
                     stated = program.modules[row.module].arg-pool[fn.args.start + position].type-syntax != 0
@@ -1337,7 +1337,7 @@ for shape in arguments.shapes
 . declared = if first < plain.args.length then plain.args[first] else invalid-type
 . item = invalid-type
 if declared != invalid-type && !types.completions[declared].has-variables
-    do match? types.rows[declared]
+    match? types.rows[declared]
         | .type-class(row)
             if row.module == types.list-decl.module && row.decl == types.list-decl.decl && has-args
                 item = types.child-type(row.args, 0)
@@ -1403,7 +1403,7 @@ _ do binding-call TypeId
 . object = no-type
 . param-count = 0u32
 . items = RowRange'TypeId()
-do match? types.rows[callee]
+match? types.rows[callee]
     | .type-binding(row)
         form = row.form
         scope = row.scope
@@ -1470,7 +1470,7 @@ scratch.types.rewind(params-start)
 . object = no-type
 . param-count = 0u32
 . items = RowRange'TypeId()
-do match? types.rows[binding]
+match? types.rows[binding]
     | .type-binding(row)
         form = row.form
         scope = row.scope
@@ -1494,7 +1494,7 @@ if form == .bound-closure
     if returned != invalid-type
         result = BoundReturn(returned, host!.demand-lambda(object, given))
 else if form == .bound-value
-    do match? types.rows[function-row(types, object)]
+    match? types.rows[function-row(types, object)]
         | .type-function(row)
             result = BoundReturn(row.return-type)
 else
@@ -1516,7 +1516,7 @@ _ do settle-bound BoundReturn
     - asked Bool
 
 . name Atom? = null
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         name = fn.name
 . local = local-ranking(scope)
@@ -1558,7 +1558,7 @@ _ do takes-every Bool
 ` Whether a function a binding calls as a value of a function type is given every parameter,
 ` as the reference requires: a default is no part of the call, and only a variadic tail
 ` takes any number.
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.variadic-index != U32.max || fn.args.count as Size == count
 = true
@@ -1574,10 +1574,10 @@ _ do call-bound TypeId
     - arguments Arguments
 
 . name Atom? = null
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         name = fn.name
-do match form
+match form
     |= .bound-constructor
         = construction-on(id, with-params(object, arguments.params), arguments, true, 0, true)
     |= .bound-closure
@@ -1659,7 +1659,7 @@ _ do explain-row Bool
 ` Whether a value of a row converts only when asked to what it is wanted as, reported where it
 ` is written, or where a tuple written is wanted as a tuple, at the first of its items that does.
 =? false if conversions.fits-unasked(item, wanted)
-do match? frame.tree.nodes[item]
+match? frame.tree.nodes[item]
     | .node-tuple-syntax(row)
         types.complete(wanted)
         . mark = types.scratch.types.mark
@@ -1685,7 +1685,7 @@ _ do is-made-constructor Bool
     - module ModuleId
     - decl DeclId
 
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.is-generated && implicit
             .. implicit = fn.kind == .default-constructor-decl || fn.kind == .tuple-constructor-decl
@@ -1702,7 +1702,7 @@ _ do recast-property DeclId
 ` and is declared with a type that names one of the parameters. The reference gives such
 ` an argument the function type with no name, and makes the property's type of it where
 ` the property is declared. No property for any other argument.
-do match? program.modules[hit.module].decls[hit.decl]
+match? program.modules[hit.module].decls[hit.decl]
     | .decl-function(fn)
         . params = types.class-type-args(hit.module, fn.owner)
         if !fn.is-generated || fn.kind != .tuple-constructor-decl || params.count == 0
@@ -1734,7 +1734,7 @@ _ do names-parameter Bool
 if property == 0
     = false
 . tree = program.modules[module].tree
-do match? program.modules[module].decls[property]
+match? program.modules[module].decls[property]
     | .decl-property(row)
         if row.type-syntax == 0
             = false
@@ -1766,7 +1766,7 @@ if types.is-optional(given) || (kind != .closure && kind != .binding && kind != 
 if differs && conversions.convert(syntax, syntax, given, plain, .reason-argument) == invalid-type
     =
 .. differs = given != plain
-do match? program.modules[instances.rows[callee].module].decls[property]
+match? program.modules[instances.rows[callee].module].decls[property]
     | .decl-property(row)
         facts.place-cast(plain, named, callee, row.syntax)
 conversions.convert(syntax, syntax, plain, named, .reason-argument)
@@ -1795,7 +1795,7 @@ _ do with-params TypeId
 ` The class a bound constructor constructs once its call names the type parameters.
 if params.length == 0
     = object
-do match? types.rows[object]
+match? types.rows[object]
     | .type-class(row)
         . mark = scratch.types.mark
         for param in params
@@ -2109,7 +2109,7 @@ if hit && arguments.curried && types.completions[hit.receiver].has-variables
     = bind-values(.bound-constructor, receiver, arguments, module, decl)
 . form = if by-name then CallForm.call-constructor else CallForm.call-this-constructor
 . site = if missing-site != 0 then missing-site else id
-do match? frame.tree.nodes[site]
+match? frame.tree.nodes[site]
     | .node-type-arguments(named)
         site = named.base
 if hit
@@ -2178,7 +2178,7 @@ if arguments.syntax.length != 1 || arguments.shapes.length != 1
     = false
 if arguments.shapes[0].name || !conversions.is-text-literal(arguments.syntax[0])
     = false
-do match? program.modules[hit.module].decls[hit.decl]
+match? program.modules[hit.module].decls[hit.decl]
     | .decl-fromverter
         = true
 = false
@@ -2223,7 +2223,7 @@ _ do construction-receiver TypeId
     - class-module ModuleId
     - class-decl DeclId
 
-do match? frame.tree.nodes[callable]
+match? frame.tree.nodes[callable]
     | .node-type-arguments(row)
         . mark = scratch.types.mark
         for child in frame.tree.children[row.args]
@@ -2343,7 +2343,7 @@ if callee != no-instance && syntax != 0
 ` node: typed, and recorded there as a call.
 . decls = program.modules[module].decls
 for position in 0 .. < decls.length
-    do match? decls[position]
+    match? decls[position]
         | .decl-function(fn)
             if fn.owner == 0 && fn.kind == .getter-decl && fn.name == name
                 . decl = position as DeclId
@@ -2438,7 +2438,7 @@ if callee != no-instance && host
 . entry = instances.swap-entry-of(effects, effect)
 . fake = instances.swap-entries[entry - 1].fake
 . name Atom? = null
-do match? program.modules[module].decls[door]
+match? program.modules[module].decls[door]
     | .decl-function(fn)
         if fn.owner == 0 && fn.kind == .function-decl
             name = fn.name
@@ -2512,7 +2512,7 @@ _ do is-own-method Bool
 
 ` Whether a method a fake's class dispatches to is one an object of it is called with: declared by
 ` the class or one it is derived from, and not static.
-do match? program.modules[hit.module].decls[hit.decl]
+match? program.modules[hit.module].decls[hit.decl]
     | .decl-function(fn)
         = fn.owner != 0 && !fn.is-static
 = false
@@ -2804,13 +2804,13 @@ if instances.signatures[callee].errors.count != 0
 ` that has one.
 . ref = class-ref(types, receiver)
 . filler DeclId = 0
-do match? program.modules[ref.module].decls[ref.decl]
+match? program.modules[ref.module].decls[ref.decl]
     | .decl-class(class)
         filler = class.content-function
 if filler == 0
     = no-instance
 . params-mark = scratch.types.mark
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         for position in 0 .. < row.args.count
             scratch.types.push(types.child-type(row.args, position))
@@ -3256,7 +3256,7 @@ _ do declaring-interface TypeId
 ` interfaces it is derived from, as the reference fills the function's slot in that interface's
 ` part of a table. The receiver where the function belongs to no interface found.
 . owner DeclId = 0
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         owner = fn.owner
 if owner == 0 || receiver == no-type
@@ -3370,11 +3370,11 @@ for position in 0 .. < ranking.shape-count
         =
 for position in 0 .. < syntax.length
     . written = syntax[position]
-    do match? frame.tree.nodes[written]
+    match? frame.tree.nodes[written]
         | .node-argument(row)
             written = row.expr
     . fill = position as U32
-    do match? frame.tree.nodes[written]
+    match? frame.tree.nodes[written]
         | .node-cast-expression(row)
             . target = ranking.given-at(fill)
             if types.evaluate-type(frame.module, frame.tree, row.rhs, frame.env) == target
@@ -3467,10 +3467,10 @@ if same
 if !facts.traces-lint || expected == no-type || expected == invalid-type
     =
 . written = value
-do match? frame.tree.nodes[written]
+match? frame.tree.nodes[written]
     | .node-argument(row)
         written = row.expr
-do match? frame.tree.nodes[written]
+match? frame.tree.nodes[written]
     | .node-cast-expression(row)
         . source = facts.node-type(frame.instance, row.lhs)
         . target = facts.node-type(frame.instance, written)
@@ -3492,14 +3492,14 @@ _ do note-suffixes
     - expected TypeId
     - kind ContextCastKind
 
-do match? frame.tree.nodes[value]
+match? frame.tree.nodes[value]
     | .node-integer-syntax
         note-suffix(value, expected, kind)
     | .node-float-syntax
         note-suffix(value, expected, kind)
     | .node-binary-expression(row)
         if row.op == .else-op
-            do match? frame.tree.nodes[row.lhs]
+            match? frame.tree.nodes[row.lhs]
                 | .node-binary-expression(chosen)
                     . yes = facts.node-type(frame.instance, chosen.lhs)
                     . no = facts.node-type(frame.instance, row.rhs)
@@ -3534,7 +3534,7 @@ _ do written-number Bool
     - syntax SyntaxId
 
 =? true if conversions.literal-of(syntax) != 0
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-integer-syntax
         = true
     | .node-float-syntax
@@ -3800,9 +3800,9 @@ _ do live-name Atom?
     - hit Hit
 
 . owner-module = program.modules[hit.module]
-do match? owner-module.decls[hit.decl]
+match? owner-module.decls[hit.decl]
     | .decl-function(fn)
-        do match? owner-module.tree.nodes[fn.syntax]
+        match? owner-module.tree.nodes[fn.syntax]
             | .node-function-syntax(row)
                 =? fn.name if row.is-live
 = null
@@ -3860,7 +3860,7 @@ _ do convert-default
 ` A default is cast to the parameter's type, as `as` casts it, whether the parameter writes that
 ` type or the call decides it for a type parameter.
 . owner-module = program.modules[hit.module]
-do match? owner-module.decls[hit.decl]
+match? owner-module.decls[hit.decl]
     | .decl-function(fn)
         if fn.is-generated && fn.kind == .tuple-constructor-decl && !is-given
             host!.type-default(callee, position as U32)
@@ -3878,7 +3878,7 @@ do match? owner-module.decls[hit.decl]
         . literal = literal-type(types, owner as ModuleId, tree, shape.default-syntax, env)
         types.env-release(env)
         . expected = hit.args[position]
-        do match? tree.nodes[shape.default-syntax]
+        match? tree.nodes[shape.default-syntax]
             | .node-symbol(row)
                 literal = contextual-symbol(types, relations, expected, row.name, owner as ModuleId)
         if literal == invalid-type || literal == expected
@@ -4014,13 +4014,13 @@ if callee == no-instance || instances.signatures[callee].args.count != 1 || not-
 if own.module != readable.module
     = false
 . owned = false
-do match? program.modules[own.module].decls[own.decl]
+match? program.modules[own.module].decls[own.decl]
     | .decl-function(fn)
         owned = fn.owner == readable.decl
 if !owned
     = false
 . arrayed = false
-do match? types.rows[own.self-type]
+match? types.rows[own.self-type]
     | .type-class(row)
         arrayed = of-array && row.args.count == 2
             .. of-array = types.array-decl.refers-to(row.module, row.decl) || types.immutable-array-decl.refers-to(row.module, row.decl)
@@ -4040,7 +4040,7 @@ if callee == no-instance || instances.signatures[callee].args.count != 2 || not-
 if own.module != array.module
     = false
 . owned = false
-do match? program.modules[own.module].decls[own.decl]
+match? program.modules[own.module].decls[own.decl]
     | .decl-function(fn)
         owned = fn.owner == array.decl
 . stored = instances.argument-type(callee, 1)
@@ -4113,11 +4113,11 @@ if ref.module == U32.max
 . wanted = types.reserve-atom!
 . owner-module = program.modules[ref.module]
 . members = RowRange'DeclId()
-do match? owner-module.decls[ref.decl]
+match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
 for member in owner-module.members-named(members, wanted)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-function(fn)
             if fn.kind == .function-decl && fn.name && fn.name == wanted && fn.args.count == 1
                 . mark = scratch.types.mark
@@ -4232,7 +4232,7 @@ _ do redefaulted U32
 ` the reference's `redefaultedArgNames` finds them: a bit for each, among the first 32.
 . owner-module = program.modules[hit.module]
 . mask = 0u32
-do match? owner-module.decls[hit.decl]
+match? owner-module.decls[hit.decl]
     | .decl-function(fn)
         if unowned || hit.receiver == no-type || types.intrinsic-of(hit.receiver) != .class
             = 0
@@ -4270,10 +4270,10 @@ while current != no-type
     if !types.property-named(current, name)
         = false
     . declaring = program.modules[ref.module]
-    do match? declaring.decls[ref.decl]
+    match? declaring.decls[ref.decl]
         | .decl-class(class)
             for member in declaring.member-pool[class.members]
-                do match? declaring.decls[member]
+                match? declaring.decls[member]
                     | .decl-property(property)
                         if property.name && property.name == name && valued
                             = true
@@ -4293,7 +4293,7 @@ _ do push-fills
 if count == 0
     =
 . owner = program.modules[hit.module]
-do match? owner.decls[hit.decl]
+match? owner.decls[hit.decl]
     | .decl-function(fn)
         for index in 0 .. < count
             . shape = ranking.shape-at(index as U32)

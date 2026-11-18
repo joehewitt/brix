@@ -127,9 +127,9 @@ _ do product-type SyntaxId
     - tree AST
     - element SyntaxId
 
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
-        do match? tree.nodes[row.type-id]
+        match? tree.nodes[row.type-id]
             | .node-type-identifier(type)
                 if type.name.text == class-name
                     = row.type-id
@@ -151,7 +151,7 @@ _ do is-statement Bool
     - tree AST
     - element SyntaxId
 
-do match? tree.nodes[tree.root]
+match? tree.nodes[tree.root]
     | .node-top-level-syntax(top)
         for statement in tree.children[top.statements]
             if statement == element
@@ -171,12 +171,12 @@ _ do app-product AppProduct ?! ProductError
 . icon Path? = null
 . shows-in-dock Bool? = null
 . document-types [AppDocumentType]
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         ?! ProductError(problem(module, type-id, "A $class-name takes no arguments or style rules"))
             if row.args.count != 0 || row.style-rule-applications.count != 0
         for statement in tree.children[body-statements(tree, row.body)]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-assign(assignment)
                     . property = property-name(module, tree, assignment, class-name)
                     . is-set = match property
@@ -239,7 +239,7 @@ _ do document-type AppDocumentType ?! ProductError
 ?! ProductError(problem(module, row.type-id, "A DocumentType takes no arguments or style rules"))
     if row.args.count != 0 || row.style-rule-applications.count != 0
 for statement in tree.children[body-statements(tree, row.body)]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-assign(assignment)
             . property = property-name(module, tree, assignment, document-type-name)
             ?! ProductError(problem(module, assignment.lhs, "DocumentType's $property is set twice"))
@@ -276,7 +276,7 @@ _ do body-statements RowRange'SyntaxId
     - tree AST
     - body SyntaxId
 
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         = block.body
 = RowRange'SyntaxId()
@@ -290,7 +290,7 @@ _ do property-name String ?! ProductError
 
 ?! ProductError(problem(module, assignment.lhs, "$owner's properties are set with ="))
     if assignment.op != .eq-op
-do match? tree.nodes[assignment.lhs]
+match? tree.nodes[assignment.lhs]
     | .node-identifier(target)
         = target.name.text
 ?! ProductError(problem(module, assignment.lhs, "A $owner sets only its own properties"))
@@ -303,7 +303,7 @@ _ do string-value String ?! ProductError
     - owner String
     - property String
 
-do match? tree.nodes[value]
+match? tree.nodes[value]
     | .node-string-syntax(literal)
         = owned(literal.text)
 ?! ProductError(problem(module, value, "$owner's $property must be a literal: the compiler reads it to build the app bundle, and a computed value exists only when the program runs"))
@@ -335,7 +335,7 @@ _ do string-list [String] ?! ProductError
     - owner String
     - property String
 
-do match? tree.nodes[value]
+match? tree.nodes[value]
     | .node-list-syntax(list)
         . items [String]
         for item in tree.children[list.items]

@@ -2227,7 +2227,7 @@ unknown
     - present Bool
 
 . result = catch spot-found(present)
-do match? result
+match? result
     | error Error
         = "error"
     | spot Spot
@@ -2238,7 +2238,7 @@ do match? result
 + do spot-text-failing String
 
 . result = catch spot-found(true, true)
-do match? result
+match? result
     | error Error
         = "error ${error.message}"
     | spot Spot
@@ -2303,7 +2303,7 @@ error lost
     - finder Finder
 
 . result = catch finder.place(3)
-do match? result
+match? result
     | error PlaceError
         = "error"
     | place Place
@@ -2458,7 +2458,7 @@ Invalid code
     - text String
 
 . result = catch parse(text)
-do match? result
+match? result
     | error SyntaxError
         = "error ${error.message}"
     | code Code
@@ -3614,7 +3614,7 @@ second denied
 ```yumi crash
 all(0)
 . seen = catch all(1)
-do match seen
+match seen
     | err Wrapped
         -- "wrapped: ${err.message}"
     | Void
@@ -3667,7 +3667,7 @@ after
 . got = catch? outer(-5)
 -- got == null
 . other = catch outer(-1)
-do match other
+match other
     | err Small
         -- "main ${err.message}"
     | number Int
@@ -3702,7 +3702,7 @@ if value > 10
     - value Int
 
 . held = catch take(make(value), make(1))
-do match held
+match held
     | err Large
         -- "caught ${err.message}"
         = -1
@@ -3832,7 +3832,7 @@ deep denied
 . first = inner(1)
     catch err Missing
         Wrapped("top ${err.message}")
-do match first
+match first
     | err Wrapped
         -- "is wrapped ${err.message}"
     | number Int
@@ -3840,7 +3840,7 @@ do match first
 . second = inner(0)
     catch err Missing
         Wrapped("top ${err.message}")
-do match second
+match second
     | err Wrapped
         -- "is wrapped ${err.message}"
     | number Int
@@ -3900,7 +3900,7 @@ if kind == 1
     - kind Int
 
 . held = catch find(kind)
-do match? held
+match? held
     | box Box
         = box.label
     | err IOError

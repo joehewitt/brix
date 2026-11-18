@@ -191,7 +191,7 @@ _ do top-statement SyntaxId? ?! YumiSyntaxError
     - index Index
 
 . kind = head(index)
-do match? kind
+match? kind
     |= .blank-head
         = null
     |= .import-head
@@ -470,7 +470,7 @@ _ do function-key FunctionKey ?! YumiSyntaxError
 if !atom-is(result, "_")
     returns = reduce-type(result)
 . kind = head(key)
-do match? kind
+match? kind
     |= .infix-head
         . left = key + 2
         . op = tape.after(left)
@@ -641,7 +641,7 @@ _ do property-value PropertyAssignmentParts ?! YumiSyntaxError
     - index Index
 
 . kind = head(index)
-do match? kind
+match? kind
     |= .block-head
         = PropertyAssignmentParts(.property-assignment-immediate, multi(index), false)
     |= .assign-head
@@ -728,7 +728,7 @@ _ do signed-base ?! YumiSyntaxError
 ` Rejects a unit declared from a signed amount of another, as in `(is -1foo)`, which rows can't
 ` write either (`signed-unit-advice`).
 for base in bases
-    do match? tree.nodes[base]
+    match? tree.nodes[base]
         | .node-type-numeric(numeric)
             . amount = signed-amount(numeric.value)
             if amount
@@ -876,7 +876,7 @@ _ do member SyntaxId? ?! YumiSyntaxError
 . kind = head(index)
 . begin = begin-at(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .blank-head
         = null
     |= .prop-head
@@ -1135,7 +1135,7 @@ _ do keyframe-line KeyframeLine ?! YumiSyntaxError
 . close = tape.close-of(index)
 . first = index + 2
 . none = ImmutableArray'KeyframeLine()
-do match? head(index)
+match? head(index)
     |= .assign-head
         . value = expression(tape.after(first))
         = KeyframeLine
@@ -1580,7 +1580,7 @@ if tape.is-atom(index)
 . kind = head(index)
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .seq-head
         . accumulated = grammar(first)
         . item = tape.after(first)
@@ -2168,7 +2168,7 @@ _ do statement SyntaxId? ?! YumiSyntaxError
 . begin = begin-at(index)
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .blank-head
         = null
     |= .let-head
@@ -2376,7 +2376,7 @@ do match? kind
 _ do is-declaration-head Bool
     - kind BrixHead
 
-do match? kind
+match? kind
     |= .import-head
         = true
     |= .export-head
@@ -2922,7 +2922,7 @@ linked-list-tail(tree, items[0], items[1 .. < filled])
 _ do clause-operator ClauseOperator ?! YumiSyntaxError
     - index Index
 
-do match? head(index)
+match? head(index)
     |= .when-head
         = .when-clause
     |= .whenever-head
@@ -3005,6 +3005,8 @@ while rows < close && is-scope(rows)
 if sections
     = sectioned-do(tree, loc, sections, DoBody(arm-body(begin, index, rows, close), annotation-atoms(first, scopes)))
 . body = do-body(first, close, begin, index)
+?! YumiSyntaxError(loc, "A plain `do` takes no match on its row; a match on a row of its own in a body of steps runs its arms as steps")
+    if body.annotations.length == 0 && tree.nodes[body.body] is .node-match-expression
 . masks = do-annotation-masks(loc, body.annotations)
 = tree.append(ASTDoBlock(loc, body.body, masks.effects, masks.features))
 
@@ -3116,7 +3118,7 @@ _ do multi-from SyntaxId ?! YumiSyntaxError
 
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .block-head
         . statements = rows(first, close)
         = located-block(tree, located(begin, index), block-with-statements(tree, statements))
@@ -3252,7 +3254,7 @@ _ do expression-from SyntaxId ?! YumiSyntaxError
 
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .call-head
         = call(index, begin)
     |= .member-head
@@ -3599,7 +3601,7 @@ _ do call-extra SyntaxId ?! YumiSyntaxError
 
 . begin = begin-at(index)
 . kind = head(index)
-do match? kind
+match? kind
     |= .entry-head
         = entry(index, begin)
     |= .block-head
@@ -3979,7 +3981,7 @@ if tape.is-atom(index)
 . kind = head(index)
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .capture-head
         . id = identifier(first)
         . bound = pattern(tape.after(first))
@@ -4097,7 +4099,7 @@ while tape.after(item) < close
 _ do pattern-relation Operator
     - kind BrixHead
 
-do match? kind
+match? kind
     |= .pattern-ancestor-head
         = .pattern-ancestor-op
     |= .pattern-parent-head
@@ -4184,7 +4186,7 @@ _ do reduce-type-from SyntaxId ?! YumiSyntaxError
 
 . close = tape.close-of(index)
 . first = index + 2
-do match? kind
+match? kind
     |= .of-head
         . base = reduce-type(first)
         . args = type-arguments(tape.after(first), close)
@@ -4417,7 +4419,7 @@ YumiSyntaxError(MatchLocation(place, place), "(<> …) cannot be written inside 
 _ do is-place Bool
     - node SyntaxId
 
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-identifier(row)
         = !row.is-tracked
     | .node-get-expression(row)

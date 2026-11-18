@@ -22,7 +22,7 @@
 ` written among them in its place, as the reference joins them.
 . items [SyntaxId]
 for item in children[body]
-    do match? nodes[item]
+    match? nodes[item]
         | .node-state-machine(row)
             for inner in state-items(row.body)
                 items += inner
@@ -122,7 +122,7 @@ if root-this(content) != 0
     for machine in root-machines(content, true)
         found += machine
     = found
-do match? nodes[content-lines(content)]
+match? nodes[content-lines(content)]
     | .node-block(block)
         for statement in children[block.body]
             if nodes[statement] is .node-state-machine && runs-line(content, statement)
@@ -142,9 +142,9 @@ do match? nodes[content-lines(content)]
 if root == 0
     = found
 . past = false
-do match? nodes[content]
+match? nodes[content]
     | .node-content-block(row)
-        do match? nodes[row.body]
+        match? nodes[row.body]
             | .node-block(block)
                 for statement in children[block.body]
                     if statement == root
@@ -230,7 +230,7 @@ for item in state-items(state-body(node))
 
 ` Whether a task not marked `@detached` is spawned in a node, or in a node inside it.
 for node in subtree-start(item) .. item
-    do match? nodes[node]
+    match? nodes[node]
         | .node-do-task-block(row)
             =? true if !row.detached
 = false
@@ -241,9 +241,9 @@ for node in subtree-start(item) .. item
 
 ` Whether an item of a machine's body is a handler: a `for ... on` loop, which the case it is
 ` written in runs for each item of the loop's stream while the case is active.
-do match? nodes[item]
+match? nodes[item]
     | .node-for-block(row)
-        do match? nodes[row.loop]
+        match? nodes[row.loop]
             | .node-loop-syntax(loop)
                 = loop.is-subscriber
 = false
@@ -253,7 +253,7 @@ do match? nodes[item]
     - item SyntaxId
 
 ` The loop a handler runs by.
-do match? nodes[item]
+match? nodes[item]
     | .node-for-block(row)
         = row.loop
 = 0
@@ -273,7 +273,7 @@ if is-state-handler(head) then handler-loop(head) else state-trigger(head)
 ` The stream a group of a body's event transitions, or a handler, is on.
 if !is-state-handler(head)
     = trigger-stream(state-trigger(head))
-do match? nodes[handler-loop(head)]
+match? nodes[handler-loop(head)]
     | .node-loop-syntax(loop)
         = loop.container
 = 0
@@ -282,7 +282,7 @@ do match? nodes[handler-loop(head)]
 + do trigger-kind StateTriggerKind?
     - trigger SyntaxId
 
-do match? nodes[trigger]
+match? nodes[trigger]
     | .node-state-trigger(row)
         = row.kind
 = null
@@ -331,7 +331,7 @@ for transition in immediate-transitions(items)
     - trigger SyntaxId
     - position U32
 
-do match? nodes[trigger]
+match? nodes[trigger]
     | .node-state-trigger(row)
         if position < row.items.count
             = children[row.items.start + position]
@@ -383,7 +383,7 @@ if !kind
 if kind == .state-trigger-for-on || kind == .state-trigger-for-on-when
     = trigger-item(trigger, 0)
 if kind == .state-trigger-if-match
-    do match? nodes[trigger-item(trigger, 0)]
+    match? nodes[trigger-item(trigger, 0)]
         | .node-state-match-expression(row)
             = row.pattern
 = 0
@@ -395,7 +395,7 @@ if kind == .state-trigger-if-match
 ` What an `if | p = s` trigger tests.
 . kind = trigger-kind(trigger)
 if kind && kind == .state-trigger-if-match
-    do match? nodes[trigger-item(trigger, 0)]
+    match? nodes[trigger-item(trigger, 0)]
         | .node-state-match-expression(row)
             = row.subject
 = 0
@@ -418,7 +418,7 @@ if kind && kind == .state-trigger-if-match
 
 ` The case a body enters first: its first case with no trigger, or none.
 for item in items
-    do match? nodes[item]
+    match? nodes[item]
         | .node-state-case(row)
             if row.trigger == 0
                 = item
@@ -537,7 +537,7 @@ _ do find-redefined SyntaxId
     - names [Atom]
 
 for item in items
-    do match? nodes[item]
+    match? nodes[item]
         | .node-state-case(row)
             if names.find(row.name) != null
                 = item
@@ -555,7 +555,7 @@ for item in items
 
 ` The case of a name written in a body or in the bodies of its cases, or none.
 for item in items
-    do match? nodes[item]
+    match? nodes[item]
         | .node-state-case(row)
             if row.name == name
                 = item
@@ -808,26 +808,26 @@ left == right || alike-stream(this, left, right)
 ` for what is alike only with itself.
 if left == 0 || right == 0
     = false
-do match? nodes[left]
+match? nodes[left]
     | .node-identifier(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-identifier(theirs)
                 = mine.name == theirs.name && mine.is-tracked == theirs.is-tracked
     | .node-get-expression(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-get-expression(theirs)
                 if mine.name != theirs.name || mine.is-optional != theirs.is-optional
                     = false
                 = alike-stream(other, mine.object, theirs.object)
     | .node-index-expression(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-index-expression(theirs)
                 if mine.is-optional != theirs.is-optional
                     = false
                 = alike-stream(other, mine.object, theirs.object) && same-index
                     .. same-index = alike-stream(other, mine.index, theirs.index)
     | .node-call-expression(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-call-expression(theirs)
                 if mine.operands.count != theirs.operands.count || has-other-params
                     = false
@@ -838,11 +838,11 @@ do match? nodes[left]
                         = false
                 = alike-stream(other, mine.callable, theirs.callable)
     | .node-type-identifier(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-type-identifier(theirs)
                 = mine.name == theirs.name && mine.is-declare == theirs.is-declare
     | .node-type-arguments(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-type-arguments(theirs)
                 if mine.args.count != theirs.args.count
                     = false
@@ -852,11 +852,11 @@ do match? nodes[left]
                         = false
                 = alike-stream(other, mine.base, theirs.base)
     | .node-integer-syntax(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-integer-syntax(theirs)
                 = mine.value == theirs.value
     | .node-string-syntax(mine)
-        do match? other.nodes[right]
+        match? other.nodes[right]
             | .node-string-syntax(theirs)
                 = mine.text == theirs.text
 = false
@@ -905,7 +905,7 @@ for item in items
         continue
     if named == name && state-targets(item).count != 0
         found += StateSource(item, owner)
-    do match? nodes[item]
+    match? nodes[item]
         | .node-state-case
             find-payload-sources(state-items(state-body(item)), item, name, found)
         | .node-state-continuation
@@ -948,11 +948,11 @@ for item in items
 
 ` The names a trigger's pattern captures, as the reference types them: a captured name, the
 ` fields of a tuple, and the payload of a case.
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-structure-match(row)
         pattern-names(row.pattern, names)
     | .node-type-capture(row)
-        do match? nodes[row.id]
+        match? nodes[row.id]
             | .node-identifier(named)
                 if names.find(named.name) == null
                     names += named.name
@@ -969,7 +969,7 @@ do match? nodes[pattern]
 
 ` The names among what a case or a continuation gives the case it enters.
 for target in children[state-targets(node)]
-    do match? nodes[target]
+    match? nodes[target]
         | .node-identifier(row)
             if names.find(row.name) == null
                 names += row.name
@@ -1033,9 +1033,9 @@ for item in children[state-body(node)]
 
 ` The machine a property written in a case's body is, a named machine of its own, or none: its
 ` value, or the one statement of a block written for it, where it names no type.
-do match? nodes[item]
+match? nodes[item]
     | .node-property-syntax(row)
-        do match? nodes[row.left]
+        match? nodes[row.left]
             | .node-type-capture(left)
                 if left.type == 0
                     = declared-machine(row.value)
@@ -1046,11 +1046,11 @@ do match? nodes[item]
     - item SyntaxId
 
 ` The name of the property a named machine written in a case's body is.
-do match? nodes[item]
+match? nodes[item]
     | .node-property-syntax(row)
-        do match? nodes[row.left]
+        match? nodes[row.left]
             | .node-type-capture(left)
-                do match? nodes[left.id]
+                match? nodes[left.id]
                     | .node-identifier(named)
                         = named.name
 = null

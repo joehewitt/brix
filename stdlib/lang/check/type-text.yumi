@@ -30,7 +30,7 @@ types.rows[id].text(types)
 if id == no-type || id == invalid-type
     = "?"
 . text = type-text(types, id)
-do match? types.rows[id]
+match? types.rows[id]
     | .type-named-union(row)
         text = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
@@ -91,7 +91,7 @@ while current != no-type && facets.count != 0
     for position in start .. < end
         . facet = facets.class-facets[position]
         . target = program.modules[facets.modules[facet]]
-        do match? target.decls[facets.decls[facet]]
+        match? target.decls[facets.decls[facet]]
             | .decl-extension(row)
                 for syntax in target.syntax-pool[row.interfaces]
                     =? row.facet?.text if types.type-syntax-name(target.tree, syntax)?.text == wanted
@@ -122,7 +122,7 @@ _ written-member-name String
 ` `Union`. An array on the collected heap is named without its backing.
 if id == no-type || id == invalid-type
     = "?"
-do match? types.rows[id]
+match? types.rows[id]
     | .type-class(row)
         . text = class-name(types.program, row.module, row.decl)
         . count = row.args.count
@@ -192,7 +192,7 @@ if id == no-type || id == invalid-type
     = "?"
 . completion = types.completion-of(id)
 . kind = completion.intrinsic
-do match? types.rows[id]
+match? types.rows[id]
     | .type-named-union(row)
         = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
@@ -245,7 +245,7 @@ if id == no-type || id == invalid-type
     = "?"
 . settled = types.completions[id].completion == .completion-done
 . optional = settled && types.completion-of(id).intrinsic == .optional
-do match? types.rows[id]
+match? types.rows[id]
     | .type-named-union(row)
         = named-union-name(types, row.cases, row.names, row.made-at != 0)
     | .type-class(row)
@@ -297,7 +297,7 @@ if kind == .void || kind == .binding || kind == .function
 if kind == .cpointer
     = "[CPointer ${type-display(types, id)}]"
 if kind == .class || kind == .interface
-    do match? types.rows[id]
+    match? types.rows[id]
         | .type-class
             = type-display(types, id)
 = null
@@ -333,11 +333,11 @@ _ do binding-name String
 if row.form == .bound-constructor && row.object != no-type
     = type-runtime-name(types, row.object)
 if row.form == .bound-closure
-    do match? types.rows[row.object]
+    match? types.rows[row.object]
         | .type-closure(nested)
             = closure-name(program, nested.module, nested.decl)
     = ""
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         if fn.name
             = fn.name.text
@@ -365,7 +365,7 @@ do match? program.modules[row.module].decls[row.decl]
 . owner = program.modules[module]
 . tree = owner.tree
 . named = 0u32
-do match? owner.decls[decl]
+match? owner.decls[decl]
     | .decl-function(fn)
         if fn.kind == .pipeline-decl
             = "(pipeline)"
@@ -373,9 +373,9 @@ do match? owner.decls[decl]
             if tree.argument-element(fn.syntax) != 0
                 = if property then "prop-${property.text}" else "prop"
             if tree.attribute-element(fn.syntax) != 0
-                do match? tree.nodes[fn.syntax]
+                match? tree.nodes[fn.syntax]
                     | .node-assign(row)
-                        do match? tree.nodes[row.lhs]
+                        match? tree.nodes[row.lhs]
                             | .node-identifier(target)
                                 = "prop-${target.name.text}"
             = if tree.nodes[fn.syntax] is .node-declare then "var" else "assignment"
@@ -398,19 +398,19 @@ do match? owner.decls[decl]
         if fn.kind == .binder-decl
             = "markup-id-binder"
         if fn.kind == .subscriber-decl
-            do match? tree.nodes[fn.syntax]
+            match? tree.nodes[fn.syntax]
                 | .node-for-block(row)
-                    do match? tree.nodes[row.loop]
+                    match? tree.nodes[row.loop]
                         | .node-loop-syntax(loop)
                             = "on ${description-of(tree, loop.container)}"
                 | .node-iterator-expression(row)
-                    do match? tree.nodes[row.loop]
+                    match? tree.nodes[row.loop]
                         | .node-loop-syntax(loop)
                             = "on ${description-of(tree, loop.container)}"
         if fn.kind == .iterator-decl
-            do match? tree.nodes[fn.syntax]
+            match? tree.nodes[fn.syntax]
                 | .node-iterator-expression(row)
-                    do match? tree.nodes[row.loop]
+                    match? tree.nodes[row.loop]
                         | .node-loop-syntax(loop)
                             = "on ${description-of(tree, loop.container)}"
                 | .node-pipeline-expression(row)
@@ -420,7 +420,7 @@ do match? owner.decls[decl]
         named = fn.named-by
 if named == 0
     = "anon"
-do match? tree.nodes[named]
+match? tree.nodes[named]
     | .node-declare(row)
         = declared-name(tree, row.left)
     | .node-assign(row)
@@ -435,7 +435,7 @@ do match? tree.nodes[named]
 ` How the reference describes an expression in the name of a function generated for it: a
 ` name as it is written, a property after what it is read from, and anything else as a
 ` node.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         = row.name.text
     | .node-ref-identifier(row)
@@ -461,7 +461,7 @@ _ do declared-name String
     - left SyntaxId
 
 ` A declaration of several locals together names a closure for the last of them.
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-tuple-syntax(row)
         if row.items.count != 0
             = declared-name(tree, tree.children[row.items.start + row.items.count - 1])
@@ -475,7 +475,7 @@ _ do target-name String
     - tree AST
     - target SyntaxId
 
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-identifier(row)
         = row.name.text
     | .node-type-capture(row)
@@ -632,7 +632,7 @@ _ do function-key String
     - id TypeId
 
 . program = types.program
-do match? types.rows[id]
+match? types.rows[id]
     | .type-function(row)
         . head = if row.is-c then "CFunction:" else qualified-name(program, row.module, row.decl)
         . arg-list = joined-keys(types, row.args, ", ")

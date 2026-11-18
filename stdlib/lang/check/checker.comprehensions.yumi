@@ -70,7 +70,7 @@ _ Comprehensions is facet of Checker
 ` the reference finds no iterator for through its stream all the same, and one it makes no
 ` stream of is its error at the pattern. One on a stream, `<* x on s`, subscribes where it is
 ` written: see `infer-broadcaster`.
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         if row.is-subscriber && tree.is-grammar(row.pattern)
             report-pattern-on(row.pattern)
@@ -119,7 +119,7 @@ if target == no-type || target == invalid-type
 . feeds = tree.written-feeds(expr)
 if feeds == 0
     =
-do match? types.rows[wanted]
+match? types.rows[wanted]
     | .type-class(row)
         . listed = row.module == types.list-decl.module && row.decl == types.list-decl.decl
         if listed && row.args.count != 0
@@ -170,7 +170,7 @@ instances.mark-may-panic(instance)
 . feed = feeds
 while feed != 0
     . next = 0u32
-    do match? tree.nodes[feed]
+    match? tree.nodes[feed]
         | .node-feed-expression(row)
             . given = listed-item(feed, row.item, row.is-spread, row.is-optional, wanted)
             valid = valid && given != invalid-type
@@ -287,7 +287,7 @@ built-item = wanted
 orders-yields = true
 while feed != 0
     . next = 0u32
-    do match? tree.nodes[feed]
+    match? tree.nodes[feed]
         | .node-feed-expression(row)
             facts.set-feed-site(instance, feed, site, false)
             . noted = ordered-yields.length
@@ -337,7 +337,7 @@ ordered-literals.clear()
 ` or nothing for any other body.
 if !outer
     = 0
-do match? tree.nodes[frame.declaration.syntax]
+match? tree.nodes[frame.declaration.syntax]
     | .node-feed-expression
         = tree.consumer-of(frame.declaration.syntax)
 = 0
@@ -381,7 +381,7 @@ _ do spread-container LoopContainer
     - item SyntaxId
     - wanted TypeId
 
-do match? tree.nodes[item]
+match? tree.nodes[item]
     | .node-list-syntax
         if wanted != no-type
             . listed = infer(item)
@@ -452,7 +452,7 @@ if source == invalid-type
     = invalid-type
 . site = tree.source-site(left, id)
 . with-atom = program.store-atom("with")
-do match op
+match op
     |= .pipe-forward-op
         . result = infer-pipe-forward(id, source, site, right)
         if site == id
@@ -509,7 +509,7 @@ if piped == 0 && tree.nodes[left] is .node-feed-expression
 if source == invalid-type
     = invalid-type
 . pattern = right
-do match? tree.nodes[right]
+match? tree.nodes[right]
     | .node-stream-match(row)
         pattern = row.pattern
 if first-set(pattern) == 3 || tree.never-reads(pattern)
@@ -579,13 +579,13 @@ _ do piped-source TypeId
 ` reference generates the feed's own closure. The reference finds the cast of a `use` for
 ` the type of what it uses, so one whose `begin-using` gives another type has none either.
 . item SyntaxId = 0
-do match? tree.nodes[feed]
+match? tree.nodes[feed]
     | .node-feed-expression(row)
         item = row.item
 . value = infer(item)
 if value == invalid-type
     = invalid-type
-do match? tree.nodes[item]
+match? tree.nodes[item]
     | .node-use-expression(row)
         if tree.optional-chain-expr(row.expr) != 0 || facts.node-type(instance, row.expr) != value
             decline(feed)
@@ -617,7 +617,7 @@ _ do preferred-items Bool
 . peeling = true
 while peeling
     peeling = false
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-capture(row)
             node = row.pattern
             peeling = true
@@ -635,7 +635,7 @@ while peeling
             node = row.operand
             peeling = true
 . declared = no-type
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-stream-call(row)
         if rule-of(node) != 0 || holds-value(node) || row.params.count != 0
             = false
@@ -664,9 +664,9 @@ _ do rule-item TypeId
 if rule-match(program, module, decl) == 0
     = no-type
 . owner = program.modules[module]
-do match? owner.decls[decl]
+match? owner.decls[decl]
     | .decl-function(fn)
-        do match? owner.tree.nodes[fn.syntax]
+        match? owner.tree.nodes[fn.syntax]
             | .node-function-syntax(syntax)
                 . item = types.evaluate-type(module, owner.tree, syntax.pattern, types.env-frame())
                 if item != invalid-type && !types.completions[item].has-variables
@@ -710,7 +710,7 @@ for decl in [types.iterable-decl, types.indexable-decl, types.stream-decl]
 ` whose value is optional is an error.
 . pattern = right
 . helper SyntaxId = 0
-do match? tree.nodes[right]
+match? tree.nodes[right]
     | .node-stream-match(row)
         pattern = row.pattern
         helper = row.helper
@@ -809,7 +809,7 @@ _ do infer-pipeline-source TypeId
     - left SyntaxId
     - id SyntaxId
 
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-feed-expression
         = infer-feeds(left, id)
 = infer(left)
@@ -830,7 +830,7 @@ _ do infer-pipe-forward TypeId
 . syntax-start = scratch.syntax.mark
 . callable = right
 . object = CalledObject()
-do match? tree.nodes[right]
+match? tree.nodes[right]
     | .node-call-expression(call)
         callable = call.callable
         for param in tree.children[call.params]
@@ -838,7 +838,7 @@ do match? tree.nodes[right]
             param-count += 1
         object = type-called-object(callable, call.args.count + 1)
         for arg in tree.children[call.args]
-            do match tree.nodes[arg]
+            match tree.nodes[arg]
                 | .node-argument(argument)
                     scratch.types.push
                         - infer-argument(argument.expr, tree.argument-symbol(argument.expr))
@@ -1011,7 +1011,7 @@ else if calls.protocol-call(stream, program.store-atom("subscribe"), id, subscri
 facts.set-node-type(instance, loop, stream)
 facts.set-node-type(instance, id, closure-of-self())
 check-loop(loop, LoopContainer(stream, item), body, true)
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         if tree.ends-subscription(row.clause)
             demand-unsubscribe(loop)

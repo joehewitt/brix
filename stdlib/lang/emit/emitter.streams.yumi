@@ -209,7 +209,7 @@ _ do run-stream-match Typed
 . nothing = make-operand(.operand-void, 0)
 . type = facts.node-type(unit.reading, matched)
 . pattern SyntaxId = 0
-do match? tree.nodes[matched]
+match? tree.nodes[matched]
     | .node-stream-match(row)
         pattern = row.pattern
 if pattern == 0 || type == no-type || type == invalid-type || mistyped
@@ -873,7 +873,7 @@ bound += BoundValue(slot, type, value)
 ` where functions the arm's expression makes read the name.
 . kept [SlotId]
 for node in tree.subtree-start(pattern) .. < pattern + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-capture(row)
             . slot = captured-slot(row.name)
             if slot == no-slot || !is-captured(slot) || kept has slot
@@ -1021,9 +1021,9 @@ ir.start-block(whole)
 ` exception, which reads as `location` the farthest cursor a part of the pattern failed at.
 . exception SyntaxId = 0
 . located SyntaxId = 0
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-panic(row)
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-stream-transform(arm)
                 if arm.pattern == 0
                     exception = arm.right
@@ -1072,7 +1072,7 @@ _ do emit-stream-part StreamPart ?! Refused
 ` A part of a grammar tried from a cursor, as `emit-stream-part` says, which goes to
 ` `failed` where it fails with nothing more told to the helper. A sequence in a sequence is
 ` one with it, as the reference takes it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-string(row)
         = bare-part(stream-literal(run, id, row.text, cursor, failed))
     | .node-stream-call
@@ -1199,7 +1199,7 @@ ir.start-block(onward)
 
 ` The part the reference takes for a part of a pattern: the one that a part that only declares
 ` lazy locals is around.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         if row.pattern != 0 && tree.lazies-only(row.right)
             = lowered-part(row.pattern)
@@ -1302,7 +1302,7 @@ _ do rule-buffer TypeId
 
 ` The buffer of the view a rule a module declares reads its stream through, as the type pass
 ` recorded it at the rule's declaration.
-do match? program.modules[instances.rows[rule].module].decls[instances.rows[rule].decl]
+match? program.modules[instances.rows[rule].module].decls[instances.rows[rule].decl]
     | .decl-function(fn)
         = facts.node-type(rule, fn.syntax)
 = no-type
@@ -1315,7 +1315,7 @@ _ do plain-part Bool
 ` Whether a part of a pattern reads only the items it matches and gives only the text it
 ` matched: text, ranges and any item, and sequences, choices, optionals, repeats with written
 ` bounds and lookaheads of those.
-do match? syntax.nodes[id]
+match? syntax.nodes[id]
     | .node-stream-string
         = true
     | .node-stream-any
@@ -1429,7 +1429,7 @@ for capture in stream-captures
 ` rule's name it is given for, and keeps how many items each holds as the rule begins.
 . marks [LevelMark]
 for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
+    match? tree.nodes[mapping]
         | .node-stream-collector-mapping(row)
             . callee = if row.callee then row.callee.text else row.caller.text
             . level = accumulator-level(row.caller.text)
@@ -1472,7 +1472,7 @@ for mapping in tree.children[mappings]
 . nothing = make-operand(.operand-void, 0)
 . fact = own-call(id)
 . written = RowRange'SyntaxId()
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         written = row.args
 if fact == no-fact
@@ -1499,7 +1499,7 @@ else if spanned && tables.mapped-rule-of(callee, 0, no-string) != no-function
 for position in 0 .. < written.count
     . argument = tree.children[written.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     if tree.nodes[expression] is .node-stream-match
@@ -1531,7 +1531,7 @@ pending += stream.operand
 for position in 0 .. < written.count
     . argument = tree.children[written.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     . given = if tree.nodes[expression] is .node-stream-match then pattern-value(expression) else emit-expression(expression)
@@ -1672,12 +1672,12 @@ if raising
 . nothing = make-operand(.operand-void, 0)
 . matched SyntaxId = 0
 . named SyntaxId = 0
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
         matched = declaration.right
         named = declaration.left
 . pattern SyntaxId = 0
-do match? tree.nodes[matched]
+match? tree.nodes[matched]
     | .node-stream-match(row)
         pattern = row.pattern
 . place = facts.local-rule-of(unit.instance, rule)
@@ -1758,7 +1758,7 @@ arrive(site, called.value.operand, joined, slot)
 
 ` The code of the local rule a call names whose body is code that runs patterns rather than a
 ` pattern, as the binder resolved the call, or none.
-do match? tree.nodes[rule-declaration(call)]
+match? tree.nodes[rule-declaration(call)]
     | .node-declare(declaration)
         if declaration.is-pattern && declaration.right != 0 && !right-matches
             = declaration.right
@@ -1826,7 +1826,7 @@ streaming = own-streaming
 . commit = next-call(fact)
 . viewed = next-call(commit)
 . written = RowRange'SyntaxId()
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         written = row.args
 if fact == no-fact || commit == no-fact || viewed == no-fact || next-call(viewed) != no-fact
@@ -1862,7 +1862,7 @@ pending += stream.operand
 for position in 0 .. < written.count
     . argument = tree.children[written.start + position]
     . expression = argument
-    do match? tree.nodes[argument]
+    match? tree.nodes[argument]
         | .node-argument(named)
             expression = named.expr
     . value = convert(argument, .reason-argument, emit-expression(expression))
@@ -1918,9 +1918,9 @@ if value.type != result
     - call SyntaxId
 
 ` The pattern of the local rule a call names, as the binder resolved the call.
-do match? tree.nodes[rule-declaration(call)]
+match? tree.nodes[rule-declaration(call)]
     | .node-declare(declaration)
-        do match? tree.nodes[declaration.right]
+        match? tree.nodes[declaration.right]
             | .node-stream-match(rule)
                 = rule.pattern
 = 0
@@ -2104,7 +2104,7 @@ _ do lend-collectors [Lending]
 ` argument, holding the list's items and count, and the context its backing keeps them with.
 . lendings [Lending]
 for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
+    match? tree.nodes[mapping]
         | .node-stream-collector-mapping(row)
             . level = accumulator-level(row.caller.text)
             if level == U32.max
@@ -2146,11 +2146,11 @@ _ do lends-alike Bool
 . row = instances.rows[callee]
 . source = program.modules[row.module].tree
 . pattern SyntaxId = 0
-do match? source.nodes[rule-match(program, row.module, row.decl)]
+match? source.nodes[rule-match(program, row.module, row.decl)]
     | .node-stream-match(matched)
         pattern = matched.pattern
 for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
+    match? tree.nodes[mapping]
         | .node-stream-collector-mapping(written)
             . name = if written.callee then written.callee.text else written.caller.text
             . level = accumulator-level(written.caller.text)
@@ -2168,7 +2168,7 @@ _ do accumulated-site SyntaxId
     - name String
 
 ` Where a pattern captures a name it accumulates in a part of its own, or none.
-do match? source.nodes[id]
+match? source.nodes[id]
     | .node-stream-capture(row)
         . named = source.identifier-name(row.name)
         if row.accumulating && named && named.text == name
@@ -2220,7 +2220,7 @@ if fact == no-fact || facts.calls[fact].callee == no-instance
 ` for each type, and one captured as text in one arm and as what a rule gave in another has a
 ` place for each. A rule run where it is called keeps places of its own, apart from those a
 ` run of it that this one is inside keeps.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         . slot = captured-slot(row.name)
         if slot == no-slot
@@ -2469,7 +2469,7 @@ _ do activate-kind
 ` Puts the places of the names an arm captures as what a rule gave, where `valued`, or as the
 ` text they matched, after the ones their slots would read.
 for node in tree.subtree-start(arm) .. < arm + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-capture(row)
             . slot = captured-slot(row.name)
             . type = facts.node-type(unit.reading, row.name)
@@ -2563,7 +2563,7 @@ if capture.value != no-local
         kept = wrap(id, Typed(given, given-type), kept-type).operand
     store-local(capture.value, kept, id)
     = part
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-stream-unary(row)
         if row.op == .zero-or-one-op && capture.present != no-local
             . joined = ir.reserve-block()
@@ -2646,7 +2646,7 @@ _ do mark-levels-in
     - id SyntaxId
     - marks [LevelMark]
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         . held = captured-at(captured-slot(row.name))
         if held != U32.max && stream-captures[held].accumulates
@@ -2659,7 +2659,7 @@ do match? tree.nodes[id]
         mark-levels-in(row.pattern, marks)
     | .node-stream-call(row)
         for mapping in tree.children[row.collector-mappings]
-            do match? tree.nodes[mapping]
+            match? tree.nodes[mapping]
                 | .node-stream-collector-mapping(written)
                     . level = accumulator-level(written.caller.text)
                     . found = false
@@ -2951,7 +2951,7 @@ _ do clear-captures ?! Refused
     - site SyntaxId
 
 ` Leaves each optional name a part of a pattern captures holding nothing.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         . held = captured-at(captured-slot(row.name))
         if held != U32.max && stream-captures[held].present != no-local
@@ -3226,7 +3226,7 @@ _ do sequence-parts
     - parts [SyntaxId]
 
 ` The parts of a sequence in order, where a sequence in it is one with it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-and(row)
         sequence-parts(row.left, parts)
         sequence-parts(row.right, parts)
@@ -3239,7 +3239,7 @@ _ do item-ranges [ItemRange]?
 
 ` The items a part that tests one item passes on: a text of one character, or a range. None
 ` for any other part.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-string(row)
         . points = row.text.codepoints
         if points.size == 1
@@ -3254,7 +3254,7 @@ _ do looked-ranges [ItemRange]?
 
 ` The items a lookahead of a part that tests one item looks for, as `item-ranges` gives them.
 ` None for any other part.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-unary(row)
         if row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
             = item-ranges(row.operand)
@@ -3316,7 +3316,7 @@ ir.start-block(present)
 . negated = false
 for position in start .. < start + count - 1
     . part = parts[position]
-    do match? tree.nodes[part]
+    match? tree.nodes[part]
         | .node-stream-unary(row)
             . onward = ir.reserve-block()
             if row.op == .negative-lookahead-op
@@ -4092,7 +4092,7 @@ _ do first-items FirstItems
 ` choice met may start with.
 . syntax = program.modules[module].tree
 . none = no-ranges
-do match? syntax.nodes[id]
+match? syntax.nodes[id]
     | .node-stream-string(row)
         . count = row.text.length
         if count == 0
@@ -4227,7 +4227,7 @@ _ do scanned-ranges [ItemRange]
 
 ` The ranges of the items a part the reference scans for may match, in order and apart.
 . none = no-ranges
-do match? syntax.nodes[id]
+match? syntax.nodes[id]
     | .node-stream-string(row)
         . point = row.text[0] as U64
         = single-range(point, point)
@@ -4248,7 +4248,7 @@ _ do choice-arms
     - arms [SyntaxId]
 
 ` The alternatives of a choice, in the order written, those of a choice among them included.
-do match? syntax.nodes[id]
+match? syntax.nodes[id]
     | .node-stream-or(row)
         choice-arms(syntax, row.left, arms)
         choice-arms(syntax, row.right, arms)
@@ -4339,9 +4339,9 @@ if binding != no-binding
     if resolution.kind == .resolve-slot
         . row = bindings.slots[resolution.slot]
         if row.kind == .slot-lazy
-            do match? syntax.nodes[row.group]
+            match? syntax.nodes[row.group]
                 | .node-declare(declaration)
-                    do match? syntax.nodes[declaration.right]
+                    match? syntax.nodes[declaration.right]
                         | .node-stream-match(rule)
                             = RuleTarget(module, owner, rule.pattern)
 . fact = call-in(owner, id)
@@ -4351,7 +4351,7 @@ if fact != no-fact
         . home = instances.rows[callee].module
         . matched = rule-match(program, home, instances.rows[callee].decl)
         if matched != 0
-            do match? program.modules[home].tree.nodes[matched]
+            match? program.modules[home].tree.nodes[matched]
                 | .node-stream-match(rule)
                     = RuleTarget(home, callee, rule.pattern)
 = RuleTarget(module, owner, 0)
@@ -4502,7 +4502,7 @@ _ do advances Bool
 ` Whether a part of a pattern moves on by at least one item wherever it passes: text that
 ` holds some, a range or any item, a sequence with such a part, a choice whose alternatives
 ` all are, and one or more of such a part, or a count of one at least.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-string(row)
         = row.text.length != 0
     | .node-stream-any
@@ -4594,7 +4594,7 @@ _ do repeat-levels
 
 ` The lists a repeat keeps for the names its part captures, with how many repeats deep in
 ` it each name lies, counting the repeat itself.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         . held = captured-at(captured-slot(row.name))
         if held != U32.max && !stream-captures[held].accumulates && deep-enough
@@ -5763,15 +5763,15 @@ else
 ` holds any.
 . signature = instances.signatures[unit.instance]
 . declared SyntaxId = 0
-do match? program.modules[unit.source-module].decls[instances.rows[unit.instance].decl]
+match? program.modules[unit.source-module].decls[instances.rows[unit.instance].decl]
     | .decl-function(fn)
         declared = fn.syntax
 . matched SyntaxId = 0
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
         matched = declaration.right
 . pattern SyntaxId = 0
-do match? tree.nodes[matched]
+match? tree.nodes[matched]
     | .node-stream-match(row)
         pattern = row.pattern
 . result = facts.node-type(unit.reading, matched)

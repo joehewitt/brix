@@ -413,7 +413,7 @@ bound-call = other.bound-call
 row-case = other.row-case
 . receiver = other.request-receiver
 . name = other.request-name
-do match? other.request
+match? other.request
     |= .request-function
         = dispatch-function(receiver, name!)
     |= .request-c-function
@@ -664,7 +664,7 @@ _ do rank-module-function
 . target = program.modules[module]
 if target.name.ends-with(".h") != c-only
     =
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         if fn.owner == 0 && fn.kind == kind && visible-from(module, fn.access)
             accept(rank-function(module, decl, no-type, no-type-arguments(types)))
@@ -753,13 +753,13 @@ kind = .rank-static
 =? best if recall()
 types.complete(owner)
 . ref = DeclRef(U32.max, U32.max)
-do match? types.rows[owner]
+match? types.rows[owner]
     | .type-class(row)
         ref = DeclRef(row.module, row.decl)
 if ref.module == U32.max
     = null
 . target = program.modules[ref.module]
-do match? target.decls[ref.decl]
+match? target.decls[ref.decl]
     | .decl-class(row)
         open-symbols()
         rank-statics(ref.module, target, row.members, name, owner)
@@ -788,13 +788,13 @@ constructor-candidates(relations, receiver, calls, candidates, caller, first, so
 . written = false
 . alternatives = types.completions[receiver].intrinsic == .or
 for candidate in candidates
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-function(fn)
             if fn.kind == .constructor-decl
                 written = true
 for candidate in candidates
     . target = program.modules[candidate.module]
-    do match? target.decls[candidate.decl]
+    match? target.decls[candidate.decl]
         | .decl-function(fn)
             . generic = types.completions[receiver].has-variables
             if explicit.length != 0 && fn.kind != .constructor-decl
@@ -856,10 +856,10 @@ if !hit
 . receiver = hit.receiver
 if receiver == no-type || types.completions[receiver].has-variables
     = hit
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         . target = program.modules[row.module]
-        do match? target.decls[row.decl]
+        match? target.decls[row.decl]
             | .decl-class(class)
                 if class.param-constraints.count == 0
                     = hit
@@ -867,7 +867,7 @@ do match? types.rows[receiver]
                 . env = types.class-env-for(row.module, row.decl, row.args, receiver)
                 . holds = true
                 for id in target.tree.children[class.param-constraints]
-                    do match? target.tree.nodes[id]
+                    match? target.tree.nodes[id]
                         | .node-param-constraint(constraint)
                             . left = types.evaluate-type
                                 - owner as ModuleId
@@ -895,7 +895,7 @@ _ do with-defaults TypeId
 
 ` A class named without its parameters, each of which its declaration assigns a type, is the
 ` class of those types.
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         . mark = scratch.types.mark
         for position in 0 .. < row.args.count
@@ -1072,7 +1072,7 @@ for position in 0 .. < left.tail-relations.length
 _ do is-generated Bool
     - hit Hit
 
-do match? program.modules[hit.module].decls[hit.decl]
+match? program.modules[hit.module].decls[hit.decl]
     | .decl-function(fn)
         = fn.is-generated
 = false
@@ -1087,12 +1087,12 @@ _ do equal-specificity Bool
 . count = U32.max
 . start Index = 0
 . variadic = U32.max
-do match? mine.decls[left.decl]
+match? mine.decls[left.decl]
     | .decl-function(fn)
         count = fn.args.count
         start = fn.args.start
         variadic = fn.variadic-index
-do match? theirs.decls[right.decl]
+match? theirs.decls[right.decl]
     | .decl-function(fn)
         . plain = fn.variadic-index == U32.max
         if fn.args.count != count || plain != (variadic == U32.max)
@@ -1127,7 +1127,7 @@ _ do is-facet-member Bool
 ` to override it, as it would a member of the class, and which answers an interface's function as
 ` the class's own member would.
 =? false if !hit.is-extension || program.facets.count == 0
-do match? program.modules[hit.module].decls[hit.decl]
+match? program.modules[hit.module].decls[hit.decl]
     | .decl-function(fn)
         = program.facets.index-of(hit.module, fn.owner) != null
 = false
@@ -1141,11 +1141,11 @@ _ do same-signature Bool
 . theirs = program.modules[right.module]
 . count = U32.max
 . start Index = 0
-do match? mine.decls[left.decl]
+match? mine.decls[left.decl]
     | .decl-function(fn)
         count = fn.args.count
         start = fn.args.start
-do match? theirs.decls[right.decl]
+match? theirs.decls[right.decl]
     | .decl-function(fn)
         if fn.args.count != count || left.fills.length != right.fills.length
             = false
@@ -1167,7 +1167,7 @@ _ do is-variadic Bool
     - module ModuleId
     - decl DeclId
 
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.variadic-index != U32.max
 = false
@@ -1217,7 +1217,7 @@ for offset in 0 .. < chain.length
         continue
     . module = facets.modules[held]
     . target = program.modules[module]
-    do match? target.decls[facets.decls[held]]
+    match? target.decls[facets.decls[held]]
         | .decl-extension(body)
             extension-ranking = true
             extension-level = owner
@@ -1292,7 +1292,7 @@ _ readdress Hit?
 . level TypeId? = receiver
 while level
     . ref = DeclRef(U32.max, U32.max)
-    do match? types.rows[level]
+    match? types.rows[level]
         | .type-class(row)
             ref = DeclRef(row.module, row.decl)
     if ref.module != U32.max
@@ -1310,7 +1310,7 @@ while level
 . found [DeclRef]
 . level TypeId? = receiver
 while level
-    do match? types.rows[level]
+    match? types.rows[level]
         | .type-class(row)
             for extension in program.extensions-for(caller, row.module, row.decl)
                 . matched = relations.match-extension(extension.module, extension.decl, level)
@@ -1328,10 +1328,10 @@ _ do add-named-functions
     - found [DeclRef]
 
 . target = program.modules[module]
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-extension(body)
         for member in target.members-named(body.members, name)
-            do match? target.decls[member]
+            match? target.decls[member]
                 | .decl-function(row)
                     if row.name && row.name == name && row.kind == .function-decl
                         found += DeclRef(module, member)
@@ -1344,11 +1344,11 @@ _ do extends-getter Bool
     - name Atom
 
 . target = program.modules[module]
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-extension(body)
         . named = false
         for member in target.members-named(body.members, name)
-            do match? target.decls[member]
+            match? target.decls[member]
                 | .decl-function(row)
                     if row.kind == .getter-decl && row.name && row.name == name
                         named = true
@@ -1423,16 +1423,16 @@ _ do declares-method Bool
     - kind DeclKind
 
 . ref = DeclRef(U32.max, U32.max)
-do match? types.rows[interface]
+match? types.rows[interface]
     | .type-class(row)
         ref = DeclRef(row.module, row.decl)
 if ref.module == U32.max
     = false
 . owner = program.modules[ref.module]
-do match? owner.decls[ref.decl]
+match? owner.decls[ref.decl]
     | .decl-class(row)
         for member in owner.members-named(row.members, name)
-            do match? owner.decls[member]
+            match? owner.decls[member]
                 | .decl-function(fn)
                     if fn.name && fn.name == name && fn.kind == kind
                         = true
@@ -1608,13 +1608,13 @@ _ do rank-default-methods
 for interface in types.interfaces-of(level)
     rank-default-methods(interface, receiver, name, kind)
     . ref = DeclRef(U32.max, U32.max)
-    do match? types.rows[interface]
+    match? types.rows[interface]
         | .type-class(row)
             ref = DeclRef(row.module, row.decl)
     if ref.module == U32.max
         continue
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(row)
             rank-defaults(ref.module, owner, row.members, name, receiver, kind)
 
@@ -1628,7 +1628,7 @@ _ do rank-defaults
     - kind DeclKind
 
 for member in target.members-named(members, name)
-    do match? target.decls[member]
+    match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
             if named && row.kind == kind && !row.is-static && row.body != 0
@@ -1655,7 +1655,7 @@ _ do rank-methods-at
     - kind DeclKind
 
 . ref = DeclRef(U32.max, U32.max)
-do match? types.rows[level]
+match? types.rows[level]
     | .type-class(row)
         ref = DeclRef(row.module, row.decl)
 if ref.module == U32.max
@@ -1663,7 +1663,7 @@ if ref.module == U32.max
 . held = types.completions[receiver].intrinsic
 rank-extensions(level, name, kind, if intrinsic-is-class(held) then level else receiver)
 . owner = program.modules[ref.module]
-do match? owner.decls[ref.decl]
+match? owner.decls[ref.decl]
     | .decl-class(row)
         . self = if intrinsic-is-class(held) then level else receiver
         rank-members(ref.module, owner, row.members, name, self, no-type-arguments(types), kind)
@@ -1679,7 +1679,7 @@ _ do rank-extensions
 ` as a tuple, a struct or a number, is the receiver of what an extension of its base adds, as it
 ` is of what its base declares.
 . ref = DeclRef(U32.max, U32.max)
-do match? types.rows[level]
+match? types.rows[level]
     | .type-class(row)
         ref = DeclRef(row.module, row.decl)
 if ref.module == U32.max
@@ -1694,7 +1694,7 @@ for extension in program.extensions-for(caller, ref.module, ref.decl)
         . bindings = TypeArguments(bound-names, scratch.types.since(items-start))
         types.env-release(matched.env)
         . extended = program.modules[extension.module]
-        do match? extended.decls[extension.decl]
+        match? extended.decls[extension.decl]
             | .decl-extension(body)
                 extension-ranking = true
                 extension-level = level
@@ -1720,7 +1720,7 @@ _ do rank-members
     - kind DeclKind
 
 for member in target.members-named(members, name)
-    do match? target.decls[member]
+    match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
             if named && row.kind == kind && !row.is-static && visible-from(module, row.access)
@@ -1736,7 +1736,7 @@ _ do rank-statics
     - owner TypeId
 
 for member in target.members-named(members, name)
-    do match? target.decls[member]
+    match? target.decls[member]
         | .decl-function(row)
             . named = row.name && row.name == name
             . open = visible-from(module, row.access)
@@ -1800,7 +1800,7 @@ push-class-params(receiver)
 _ do push-class-params
     - receiver TypeId
 
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         for position in 0 .. < row.args.count
             scratch.types.push(types.child-type(row.args, position))
@@ -1903,11 +1903,11 @@ _ do field-has-default Bool
 
 . owner-module = program.modules[module]
 . members = RowRange'DeclId()
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-class(row)
         members = row.members
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == name
                 = row.value != 0
@@ -1922,12 +1922,12 @@ _ do rank-fields Hit?
 
 . generic = types.is-generic(receiver)
 . class-args = RowRange'TypeId()
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         class-args = row.args
 
 . owner = 0u32
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         owner = fn.owner
 
@@ -2138,7 +2138,7 @@ _ do note-missing-type
 ` where TypeScript stops the call with "Type not found" as it reads them (`missing-site`). The
 ` types are read as the function's signature reads them, with its class's and its own.
 . function = function-env(types, module, decl, bindings, receiver, true)
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         for shape in target.arg-pool[fn.args]
             if shape.type-syntax != 0
@@ -2166,7 +2166,7 @@ _ do rank-declaration Hit?
 . owner = 0u32
 . declarer = 0u32
 . own-params = RowRange'SyntaxId()
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         variadic-index = fn.variadic-index
         constraints = fn.param-constraints
@@ -2180,18 +2180,18 @@ do match? target.decls[decl]
 . specs = scratch.words.since(specs-start)
 . extended = false
 if declarer != 0 && owner == 0
-    do match? target.decls[declarer]
+    match? target.decls[declarer]
         | .decl-extension
             extended = true
 . untyped-start = scratch.words.mark
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         for shape in target.arg-pool[fn.args]
             . written = written-argument-type(types, module, target.tree, owner, shape)
             scratch.words.push(if written == 0 then 1 else 0)
 . untyped = scratch.words.since(untyped-start)
 . defaults-start = scratch.words.mark
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         for shape in target.arg-pool[fn.args]
             scratch.words.push(if shape.has-default then 1 else 0)
@@ -2372,13 +2372,13 @@ if receiver == no-type || !types.completions[receiver].has-variables
     = receiver
 . target = program.modules[module]
 . owner = 0u32
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         if is-constructor-kind(fn.kind)
             owner = fn.owner
 if owner == 0
     = receiver
-do match? target.decls[owner]
+match? target.decls[owner]
     | .decl-extension(row)
         . env = extension-env(types, module, owner)
         for offset in 0 .. < names.length
@@ -2418,7 +2418,7 @@ _ do declare-assignments
 
 . tree = program.modules[module].tree
 for id in tree.children[assignments]
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-param-assignment(row)
             . left = types.type-syntax-name(tree, row.left)
             if left
@@ -2585,7 +2585,7 @@ _ do loose-places TypeId
 =? no-type if literal == 0 || conversions == null
 . fields = RowRange'TypeId()
 . names = RowRange'Atom()
-do match? types.rows[given]
+match? types.rows[given]
     | .type-tuple(row)
         fields = row.fields
         names = row.names
@@ -2633,13 +2633,13 @@ _ do inferred-given TypeId
 if !calls[fill].symbol
     = args[fill]
 . target = program.modules[module]
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         if position < fn.args.count
             . start Index = fn.args.start
             . shape = target.arg-pool[start + position]
             if shape.type-syntax == 0 && shape.default-syntax != 0
-                do match? target.tree.nodes[shape.default-syntax]
+                match? target.tree.nodes[shape.default-syntax]
                     | .node-symbol(row)
                         . named = symbol-class(types, module, row.name)
                         if named != invalid-type
@@ -2665,7 +2665,7 @@ if !host
     =
 . empty U32 = ArgumentFill.fill-empty
 . target = program.modules[module]
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-function(fn)
         . position = 0
         for shape in target.arg-pool[fn.args]
@@ -2749,7 +2749,7 @@ if fn == no-type
 . args = RowRange'TypeId()
 . returns = no-type
 . errors = RowRange'TypeId()
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         args = row.args
         returns = row.return-type
@@ -2833,7 +2833,7 @@ _ do settle-callable TypeId
 ` it is given: what the callable returns, and the argument types it was typed with.
 if !types.completions[target].has-variables
     = target
-do match? types.rows[target]
+match? types.rows[target]
     | .type-class(row)
         . mark = scratch.types.mark
         for position in 0 .. < row.args.count
@@ -2980,7 +2980,7 @@ _ do constraints-hold Bool
 ` extension are those of the receiver, `This` is the receiver, and the function's own are
 ` those of the match.
 for id in tree.children[constraints]
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-param-constraint(row)
             . left = types.type-syntax-name(tree, row.left)
             if left && left == name
@@ -3523,11 +3523,11 @@ if ref.module == U32.max
     = null
 . owner-module = program.modules[ref.module]
 . members = RowRange'DeclId()
-do match? owner-module.decls[ref.decl]
+match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-case(row)
             if row.name && row.name == name
                 = member

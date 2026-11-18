@@ -237,7 +237,7 @@ seen[id] = true
 if is-function-node(tree, id)
     =
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-if-block(row)
         if row.condition != 0
             counts.if-branches += 1
@@ -658,7 +658,7 @@ else
     - context RuleContext
 
 for id in 1u32 .. < tree.nodes.length
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-block(block)
             for position in 0 .. < block.body.count
                 . statement = tree.children[block.body.start + position]
@@ -676,7 +676,7 @@ for id in 1u32 .. < tree.nodes.length
     - block SyntaxId
 
 ` Whether a block is the body of an imperative function, whose last statement gives no result.
-do match? tree.nodes[tree.holder-of(block)]
+match? tree.nodes[tree.holder-of(block)]
     | .node-function-syntax(row)
         = row.body == block && row.imperative
 = false
@@ -704,7 +704,7 @@ for id in 1u32 .. < tree.nodes.length
 
 ` How a match that could be `match?` is reported: actionable where every other arm proves a value,
 ` review where one may not, or none where its last arm is not a bare `?? null`.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-match-expression(row)
         . pattern = structure-pattern(tree, row.body)
         if row.is-optional || pattern == 0 || !requires-subject(tree, pattern)
@@ -713,7 +713,7 @@ do match? tree.nodes[id]
         gather-choices(tree, pattern, choices)
         if choices.length < 2
             = ""
-        do match? tree.nodes[choices[choices.length - 1]]
+        match? tree.nodes[choices[choices.length - 1]]
             | .node-type-transform(fallback)
                 if fallback.pattern == 0 && is-null-only(tree, fallback.expr)
                     for position in 0 .. < choices.length - 1
@@ -740,7 +740,7 @@ match tree.nodes[body]
     - choices [SyntaxId]
 
 ` Adds the alternatives of a match pattern to `choices`, in the order written.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         gather-choices(tree, row.left, choices)
         gather-choices(tree, row.right, choices)
@@ -836,7 +836,7 @@ for id in 1u32 .. < tree.nodes.length
     - id SyntaxId
 
 ` The last arm of a match or table where it is a bare `??` whose body only raises, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-structure-match(row)
         if row.pattern == 0
             = 0
@@ -845,7 +845,7 @@ do match? tree.nodes[id]
         if choices.length < 2
             = 0
         . fallback = choices[choices.length - 1]
-        do match? tree.nodes[fallback]
+        match? tree.nodes[fallback]
             | .node-type-transform(transform)
                 if transform.pattern == 0 && is-assertion-block(tree, transform.expr)
                     = fallback
@@ -856,7 +856,7 @@ do match? tree.nodes[id]
     - tree AST
     - body SyntaxId
 
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         if row.body.count == 0
             = false
@@ -929,7 +929,7 @@ for position in 0 .. < width
 for id in 1u32 .. < tree.nodes.length
     if !attached[id]
         continue
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-block(block)
             lint-initial-map-entries(source, tree, block.body, context)
         | .node-call-expression(call)
@@ -1057,13 +1057,13 @@ for index in 0 .. < body.count
     - id SyntaxId
 
 ` The name an eager declaration of one local gives, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
         if row.is-lazy
             = ""
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
-                do match? tree.nodes[capture.id]
+                match? tree.nodes[capture.id]
                     | .node-identifier(name)
                         = name.name.text
 = ""
@@ -1075,9 +1075,9 @@ do match? tree.nodes[id]
     - id SyntaxId
 
 ` The call that constructs an empty map as a declaration's value, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
-        do match? tree.nodes[row.right]
+        match? tree.nodes[row.right]
             | .node-call-expression(call)
                 if call.args.count == 0 && is-map-call(source, tree, row.right, call)
                     = row.right
@@ -1090,11 +1090,11 @@ do match? tree.nodes[id]
     - name String
 
 ` Whether a statement sets one entry of the map `name`, from keys and values that do not read it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-assign(row)
         if row.op != .eq-op
             = false
-        do match? tree.nodes[row.lhs]
+        match? tree.nodes[row.lhs]
             | .node-index-expression(index)
                 if index.is-optional || !is-named(tree, index.object, name)
                     = false
@@ -1317,9 +1317,9 @@ for char in text
 for id in 1u32 .. < tree.nodes.length
     if !attached[id]
         continue
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-for-block(row)
-            do match? tree.nodes[row.loop]
+            match? tree.nodes[row.loop]
                 | .node-loop-syntax(loop)
                     report-shortcut-node(tree, row, loop, context)
 
@@ -1384,7 +1384,7 @@ _ do gather-handler-use
 ` is the object a member is read from.
 if id == 0
     =
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         if row.name.text == event && !is-object
             use.raw = true
@@ -1424,7 +1424,7 @@ for child in tree.children-of(id)
     - event String
 
 ` Whether a node only cancels the event, under conditions that call nothing.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         if row.body.count == 0
             = false
@@ -1459,11 +1459,11 @@ for child in tree.children-of(id)
     - event String
 
 ` Whether a node calls `cancel` on the event with no arguments.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-call-expression(call)
         if call.operands.count != 0
             = false
-        do match? tree.nodes[call.callable]
+        match? tree.nodes[call.callable]
             | .node-get-expression(row)
                 = row.name.text == "cancel" && is-named(tree, row.object, event)
 = false
@@ -1599,7 +1599,7 @@ while pending.length != 0
 . in-context = false
 for step in 0 .. < stack.length
     . id = stack[stack.length - 1 - step]
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-function-syntax
             if !in-context
                 = List'StyleClass()
@@ -1654,7 +1654,7 @@ _ do walk-shorthands
     - context RuleContext
 
 . tree = scope.analysis.tree
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-assign(row)
         if identifier-name(tree, row.lhs).length != 0 && !is-tracked-tree(tree, id)
             report-shorthand(scope, row, stack, context)
@@ -1668,7 +1668,7 @@ stack.pop()
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         if row.is-tracked
             = true
@@ -1737,7 +1737,7 @@ context.report(message, loc.line + 1, loc.column + 1, "review")
 
 ` Whether a site is inside the style rule `name` or inside a style rule with arguments.
 for id in stack
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-rule-syntax(row)
             if row.name.text == name || row.args.count != 0
                 = true

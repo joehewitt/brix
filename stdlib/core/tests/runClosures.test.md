@@ -1843,7 +1843,7 @@ u.n = 10
 . fs = List'Doer()
 . total = 0
 for item in items
-    do match item
+    match item
         | .num(n)
             fs += => do
                 total += n

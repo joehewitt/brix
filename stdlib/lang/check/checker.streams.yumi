@@ -260,9 +260,9 @@ _ do scope-stream TypeId
 if row.enclosing != no-instance || instances.signatures[instance].args.count == 0 || ruled
     = no-type
 .. ruled = rule-match(program, row.module, row.decl) != 0
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
-        do match? program.modules[row.module].tree.nodes[fn.syntax]
+        match? program.modules[row.module].tree.nodes[fn.syntax]
             | .node-function-syntax(syntax)
                 if syntax.pattern != 0 && !fn.is-generated
                     = instances.argument-type(instance, 0)
@@ -395,7 +395,7 @@ _ do optional-text Bool
 ` Whether a name captured over the text a part of a grammar matched may hold none, as
 ` the reference types it: where the part is optional, or alternatives one of which is. A
 ` sequence holds the text it matched, though the part it ends with may be optional.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-unary(row)
         = row.op == .zero-or-one-op
     | .node-stream-or(row)
@@ -497,7 +497,7 @@ _ do closing-call SyntaxId
 
 ` The call of a rule that gives its text which a part of a grammar is, or which the
 ` sequence it is ends with, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call
         = if facts.plan-of(instance, id) == .plan-span-call then id else 0
     | .node-stream-and(row)
@@ -541,7 +541,7 @@ _ do reads-slot-in Bool
 
 ` Whether an action of a grammar reads a name.
 for node in tree.subtree-start(pattern) .. < pattern + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-transform(row)
             if row.right != 0 && !tree.lazies-only(row.right) && reads-slot(row.right, slot)
                 = true
@@ -555,7 +555,7 @@ _ do reads-plainly Bool
 ` Whether an action of a grammar reads a name for more than its length, through `.` or,
 ` for an optional name, `?.`.
 for node in tree.subtree-start(pattern) .. < pattern + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-transform(row)
             if row.right != 0 && slot-read && !reads-length-only(slot, row.right) && wide-optional
                 = true
@@ -587,7 +587,7 @@ _ do type-captures Bool
 ` grow its lists; plans each that holds a rule's value so. A name captured over a sequence
 ` that ends by testing an item against a value has no shape here: the reference converts the
 ` text the sequence matched to the value's type. False where the pattern was declined.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         if row.accumulating
             = type-accumulating(id, row.name, row.pattern)
@@ -804,7 +804,7 @@ _ do alternatives Bool
 ` Whether a place a name was captured lies in an alternative tried before one the pattern is
 ` being typed in, so that no way through the pattern passes both.
 for arm in right-arms
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-stream-or(row)
             if earlier >= tree.subtree-start(row.left) && earlier <= row.left
                 = true
@@ -927,7 +927,7 @@ _ do listable Bool
 
 ` Whether the names a repeat's part captures can be kept as lists: each is captured on every
 ` way the part passes, and the part runs no action. A name that accumulates keeps no list.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         if row.accumulating
             = listable(row.pattern, operand)
@@ -953,7 +953,7 @@ _ do holds Bool
     - slot SlotId
 
 ` Whether a part of a pattern captures a name anywhere in it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         = capture-slot(row.name) == slot || holds(row.pattern, slot)
     | .node-stream-and(row)
@@ -997,7 +997,7 @@ _ do covers Bool
 ` Whether a pattern gives a name the match captures a value on every way it passes. An
 ` optional part gives the names in it nothing where it does not pass; a repeat gives each a
 ` list, empty where it took its part no time.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         = capture-slot(row.name) == slot || covers(row.pattern, slot)
     | .node-stream-and(row)
@@ -1021,7 +1021,7 @@ _ do uncovered-read SyntaxId
 ` function the action makes reads only names that hold one value each, as `reads-captures`
 ` says, and is where it reads another.
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             if slot != no-slot && is-capture(slot) && !accumulates(slot) && !covers(pattern, slot)
@@ -1041,7 +1041,7 @@ _ do unplain-slice SyntaxId
 ` two agree only there.
 . receivers [SyntaxId]
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-get-expression(row)
             if row.name == types.length-atom! && !row.is-optional
                 receivers += row.object
@@ -1112,7 +1112,7 @@ if params > item-params
 if holds-function(value)
     = false
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-function-syntax
             = false
         | .node-type-identifier(row)
@@ -1168,7 +1168,7 @@ while waiting.length != 0
     if next == no-type || next == invalid-type || seen.find(next) != null
         continue
     seen += next
-    do match? types.rows[next]
+    match? types.rows[next]
         | .type-closure
             = true
         | .type-binding
@@ -1202,7 +1202,7 @@ _ do note-outlined-action
 ` reads them, each of the type the arm gives it, which a helper may have made another.
 . start U32 = facts.action-slots.length as U32
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             . type = no-type
@@ -1382,13 +1382,13 @@ _ do stream-arm-type TypeId
 ` text it matched, none, though it joins the other arms as the type of what it looks for, as
 ` the reference declares it, where the arms state text or no type and those then join as text.
 note-observer()
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-or(row)
         . left = stream-arm-type(row.left)
         . right = stream-arm-type(row.right)
         = join-stream-types(id, left, right)
 enter-arm(id)
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         if row.pattern == 0 || !tree.lazies-only(row.right)
             = stream-action-type(id, row.pattern, row.right)
@@ -1469,7 +1469,7 @@ _ do arm-sequence Bool
 
 ` Whether an arm that runs no expression is a sequence of parts, alone or under lazy locals
 ` it only declares.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-and
         = true
     | .node-stream-transform(row)
@@ -1481,7 +1481,7 @@ _ do looks-ahead Bool
     - id SyntaxId
 
 ` Whether an arm's pattern only looks ahead, for a part there or not.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-unary(row)
         = row.op == .positive-lookahead-op || row.op == .negative-lookahead-op
     | .node-stream-transform(row)
@@ -1552,7 +1552,7 @@ scratch.types.push(right)
 ` is. The type a pattern is declared to give asks for what its arms match as that type, as text
 ` read as a number or pieces matched as text, and for an integer written with no suffix that it
 ` holds.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-or(row)
         convert-stream-arms(row.left, result)
         convert-stream-arms(row.right, result)
@@ -1590,7 +1590,7 @@ conversions.convert
 ` Records each arm of a rule's pattern whose action gives a cast to the type the rule states
 ` (`note-context-cast`). A rule that states none takes its type from its arms, casts and all,
 ` and one that states `String` has the text of each arm made by a call, as the reference makes it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-or(row)
         note-arm-casts(row.left, declared)
         note-arm-casts(row.right, declared)
@@ -1631,7 +1631,7 @@ _ do stream-action-type TypeId
 ` reference drops, has a shape only where it gives that type; elsewhere one that gives a span, or
 ` reads `it` that holds one, which the reference reads as text, has none.
 . rolls-back = helping.explicit
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         rolls-back = rolls-back || row.rollback
 if rolls-back
@@ -1819,7 +1819,7 @@ _ do reads-atom Bool
 ` Whether an action reads a property of an `Atom`, which the reference finds no type for
 ` where it infers what an action gives, and so takes the action to give none.
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-get-expression(row)
             . held = facts.node-type(instance, row.object)
             if held != no-type && held != invalid-type && holds-atom
@@ -1842,7 +1842,7 @@ _ do observe-spans Bool
 ` False where an action has no shape.
 . seen [SlotId]
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             . position = if slot != no-slot then capture-position(slot, pattern-arms.arm) else U32.max
@@ -1895,7 +1895,7 @@ if !text-items()
     =
 . span = class-over(types.capture-span-decl, buffer-item)
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             if slot == no-slot || restores.find(slot) != null
@@ -1942,7 +1942,7 @@ _ do reads-span-numbers Bool
 . names = 0
 . reads = 0
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-function-syntax
             = false
         | .node-identifier
@@ -1968,7 +1968,7 @@ _ do passes-spans-only Bool
 ` reads it otherwise only for numbers its span gives as its text does (`reads-span-numbers`).
 . passed = false
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-call-expression(row)
             passed = passed || passed-spans(row, slot, class-over(types.capture-span-decl, buffer-item)) != 0
 = passed && reads-span-numbers(body, slot, class-over(types.capture-span-decl, buffer-item))
@@ -1986,7 +1986,7 @@ _ do passed-spans Int
 for arg in tree.children[call.args]
     . expr = arg
     . optional = false
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument(argument)
             if argument.name
                 break
@@ -2010,14 +2010,14 @@ _ do takes-span Bool
 if call.is-curried || call.param-count != 0
     = false
 . callee Atom? = null
-do match? tree.nodes[call.callable]
+match? tree.nodes[call.callable]
     | .node-identifier(read)
         callee = read.name
 if !callee
     = false
 for candidate in program.lookup(module, callee)
     . target = program.modules[candidate.module]
-    do match? target.decls[candidate.decl]
+    match? target.decls[candidate.decl]
         | .decl-function(fn)
             if fn.owner == 0 && fn.kind == .function-decl && positional && visible
                 . types-mark = types.scratch.types.mark
@@ -2062,7 +2062,7 @@ _ do observes-span Bool
 if type == no-type || type == invalid-type
     = false
 . inner = peeled-optional(type)
-do match? types.rows[inner]
+match? types.rows[inner]
     | .type-class(row)
         if types.capture-span-decl.refers-to(row.module, row.decl)
             = true
@@ -2113,7 +2113,7 @@ _ do spans-source Bool
 ` for the arms of a rule that `gives-source-span` says.
 if type == no-type || type == invalid-type
     = false
-do match? types.rows[peeled-optional(type)]
+match? types.rows[peeled-optional(type)]
     | .type-class(row)
         = types.capture-span-decl.refers-to(row.module, row.decl)
 = false
@@ -2132,7 +2132,7 @@ _ do ranged-capture Bool?
 . made = false
 . plain = false
 for node in tree.subtree-start(rule-arming.capture-root) .. < rule-arming.capture-root + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-stream-transform(row)
             if row.right != 0 && !tree.lazies-only(row.right) && reads-slot(row.right, slot)
                 . forwarded = tree.forwarded-read(row.right)
@@ -2254,7 +2254,7 @@ remade-types.clear()
 . candidates [TypeId]
 . starts [U32]
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . slot = capture-slot(node)
             . position = if slot != no-slot then capture-position(slot, pattern-arms.arm) else U32.max
@@ -3043,7 +3043,7 @@ _ do unites Bool
 
 ` Whether a type is a union as the reference holds one: one written of its cases, or one a
 ` module declares.
-do match? types.rows[type]
+match? types.rows[type]
     | .type-union
         = true
     | .type-named-union
@@ -3249,7 +3249,7 @@ _ do reads-length-only Bool
 ` `?.`.
 . receivers [SyntaxId]
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-get-expression(row)
             if length-read && row.is-optional == optional && !row.is-tracked && !row.is-loop
                 receivers += row.object
@@ -3291,7 +3291,7 @@ _ do reads-slot Bool
 
 ` Whether an expression, or a function written in it, reads a slot.
 for node in tree.subtree-start(body) .. < body + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . resolution = bindings.resolution-of(frame.binding, node)
             if resolution.kind == .resolve-slot && resolution.slot == slot
@@ -3305,7 +3305,7 @@ _ do is-quiet Bool
 ` Whether an expression cannot panic: a local or a constant named, a literal, a case of an
 ` anonymous union or a tuple made of them, texts joined or compared, a text printed, and
 ` blocks of them.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         = all-quiet(row.body)
     | .node-do-block(row)
@@ -3356,7 +3356,7 @@ _ do check-stream-panic
 ` `location` where the pattern failed farthest. One with a pattern of its own, or that gives
 ` any other value, has no shape here.
 . exception SyntaxId = 0
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-stream-transform(row)
         if row.pattern == 0
             exception = row.right
@@ -3407,7 +3407,7 @@ _ do stream-node-type TypeId
 ` reads, of a part that gives neither its text nor a value, gives none, as the reference makes
 ` none, and so do alternatives whose value nothing reads. Another count of a part that gives a
 ` value, other alternatives that call rules, and any other part have no shape here.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-string(row)
         if text-items()
             = types.string-type
@@ -3576,7 +3576,7 @@ _ do stream-arms
     - arms [SyntaxId]
 
 ` The arms of a grammar, in the order written.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-or(row)
         stream-arms(row.left, arms)
         stream-arms(row.right, arms)
@@ -3587,7 +3587,7 @@ arms += id
 _ do first-items FirstItems
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         = if row.pattern != 0 then first-items(row.pattern) else .first-open
     | .node-stream-panic(row)
@@ -3618,7 +3618,7 @@ _ do range-site SyntaxId
 ` Where the reference reports the first range of characters it meets in a part of a pattern
 ` over items that cannot be tested so: at the range, or at a repeat it scans for. None where
 ` the part has none, and `U32.max` where one lies where the reference meets it otherwise.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         = if row.pattern != 0 then range-site(row.pattern) else 0
     | .node-stream-panic(row)
@@ -3683,7 +3683,7 @@ _ do pattern-argument-type TypeId
 if known != no-type
     = known
 . pattern SyntaxId = 0
-do match? tree.nodes[arg]
+match? tree.nodes[arg]
     | .node-stream-match(row)
         pattern = row.pattern
 . reads [SlotId]
@@ -3715,7 +3715,7 @@ helping = helping.rolls = false
 rule-arming = rule-arming.casting = 0
 helping = helping.explicit = false
 helping = helping.body = arg
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-stream-call(call)
         if call.params.count == 0 && call.args.count == 0 && rule-of(pattern) == 0
             rule-arming = rule-arming.casting = pattern
@@ -3736,7 +3736,7 @@ if joined == invalid-type
 convert-stream-arms(pattern, result)
 facts.set-node-type(instance, pattern, result)
 . rule = no-instance
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-stream-call(row)
         if row.params.count == 0 && row.args.count == 0
             . fact = facts.first-call(instance, pattern)
@@ -3757,7 +3757,7 @@ if rule == no-instance
         facts.action-types.append(read-types[position])
 . count U32 = (facts.action-slots.length - start) as U32
 . local SyntaxId = 0
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-stream-call(row)
         if rule == no-instance && row.params.count == 0 && row.args.count == 0
             local = rule-of(pattern)
@@ -3799,7 +3799,7 @@ _ do plain-argument Bool
 ` read the text, and is no part of the pattern. One that is `quiet` declines nothing.
 for node in tree.subtree-start(pattern) .. < pattern + 1
     . plain = true
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . kind = bindings.resolution-of(frame.binding, node).kind
             plain = kind == .resolve-none || kind == .resolve-global || reads-given(node, reads, read-types)
@@ -3860,7 +3860,7 @@ if pattern == 0 || rule-match(program, row.module, row.decl) != 0
 . held = reads.length
 for node in tree.subtree-start(pattern) .. < pattern + 1
     . plain = true
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier
             . resolution = bindings.resolution-of(frame.binding, node)
             . own = resolution.kind == .resolve-slot && from-first && within-rule
@@ -3888,7 +3888,7 @@ _ do module-function Bool
 
 if resolution.kind != .resolve-function
     = false
-do match? program.modules[resolution.module].decls[resolution.decl]
+match? program.modules[resolution.module].decls[resolution.decl]
     | .decl-function(fn)
         = fn.owner == 0
 = false
@@ -3949,7 +3949,7 @@ _ do pattern-result TypeId
 
 ` What a pattern given to a rule gives, where a value is a `PatternFunc` of the stream's
 ` items; none otherwise.
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
         if pattern-func && row.args.count == 2 && class-arg(types, type, 0) == stream-view.item
             = class-arg(types, type, 1)
@@ -4117,7 +4117,7 @@ for held in spanning
         = true
 spanning += key
 . spans = false
-do match? source.nodes[id]
+match? source.nodes[id]
     | .node-stream-transform(arm)
         spans = arm.right == 0 && arm.pattern != 0 && spans-in(module, binding, owner, arm.pattern)
     | .node-stream-capture(capture)
@@ -4178,7 +4178,7 @@ _ do called-spans Bool
 ` the rule of the function its call was resolved to, or where the instance has not resolved
 ` it, the rule a module declares that the name binds. A call given collectors gives it.
 . source = program.modules[module].tree
-do match? source.nodes[call]
+match? source.nodes[call]
     | .node-stream-call(written)
         if written.collector-mappings.count != 0
             = true
@@ -4188,9 +4188,9 @@ if binding == no-binding
 if resolution.kind == .resolve-slot
     . slot = bindings.slots[resolution.slot]
     if slot.kind == .slot-lazy && slot.group != 0
-        do match? source.nodes[slot.group]
+        match? source.nodes[slot.group]
             | .node-declare(declaration)
-                do match? source.nodes[declaration.right]
+                match? source.nodes[declaration.right]
                     | .node-stream-match(rule)
                         = spans-in(module, binding, owner, rule.pattern)
     = false
@@ -4199,7 +4199,7 @@ if fact != no-fact && facts.calls[fact].callee != no-instance
     . callee = facts.calls[fact].callee
     . called = instances.rows[callee]
     . matched = rule-match(program, called.module, called.decl)
-    do match? program.modules[called.module].tree.nodes[matched]
+    match? program.modules[called.module].tree.nodes[matched]
         | .node-stream-match(rule)
             = spans-in
                 - called.module
@@ -4210,7 +4210,7 @@ if fact != no-fact && facts.calls[fact].callee != no-instance
 if resolution.kind != .resolve-function
     = false
 . matched = rule-match(program, resolution.module, resolution.decl)
-do match? program.modules[resolution.module].tree.nodes[matched]
+match? program.modules[resolution.module].tree.nodes[matched]
     | .node-stream-match(rule)
         = spans-in
             - resolution.module
@@ -4231,7 +4231,7 @@ _ do stream-valued Bool
 ` that gives a value, as a repeat of one does over characters; and alternatives
 ` `stream-node-type` planned to give the value of the one that passed. A call given collectors
 ` gives the text it matched, as does one that `span-call` says gives it.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         = row.collector-mappings.count == 0 && (!span-call(id) || spans-valued(id))
     | .node-stream-or
@@ -4277,7 +4277,7 @@ _ do sequence-tests-item Bool
 
 ` Whether a part of a grammar is a sequence whose value is that of a part that tests
 ` an item against a value, as `tests-item` says.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-and(row)
         = ends-testing-item(row.right)
     | .node-stream-capture(row)
@@ -4291,7 +4291,7 @@ _ do ends-testing-item Bool
     - id SyntaxId
 
 ` Whether a part of a grammar ends with a part that tests an item against a value.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-and(row)
         = ends-testing-item(row.right)
     | .node-stream-capture(row)
@@ -4306,7 +4306,7 @@ _ do tests-item Bool
 
 ` Whether a part of a grammar tests one item against a value of a type like the
 ` items' that `equality-type` typed, or for a case of a union, or is alternatives that each do.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-equality
         . type = facts.node-type(instance, id)
         if facts.plan-of(instance, id) == .plan-case
@@ -4325,7 +4325,7 @@ _ do ends-with-rule Bool
 ` gives on each pass of a repeat around it: a call, a type named, or a sequence that ends with
 ` one or with a name captured over one. A call given collectors gives no value of its own,
 ` nor does one that `span-call` says gives its text.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         = row.collector-mappings.count == 0 && (!span-call(id) || spans-valued(id))
     | .node-stream-capture(row)
@@ -4412,7 +4412,7 @@ _ do bare-arm Bool
 stream-arms(rule-arming.capture-root, arms)
 for arm in arms
     if tree.subtree-start(arm) <= id && id <= arm
-        do match? tree.nodes[arm]
+        match? tree.nodes[arm]
             | .node-stream-transform(row)
                 = row.pattern != 0 && !tree.lazies-only(row.right) && it-unread && own-part
                     .. it-unread = !tree.mentions(row.right, "it")
@@ -4425,7 +4425,7 @@ _ do bare-part Bool
     - node SyntaxId
     - id SyntaxId
 
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-stream-capture(row)
         = (row.pattern == id || tree.optional-operand(row.pattern) == id) && !row.accumulating
     | .node-stream-and(row)
@@ -4452,7 +4452,7 @@ _ do stream-call-type TypeId
 if known != no-type
     = known
 . result = invalid-type
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         . plain = row.params.count == 0 && row.args.count == 0
         . rule = rule-of(id)
@@ -4538,7 +4538,7 @@ if !text-items() || (rule != 0 && (params.count != 0 || args.count != 0))
     = invalid-type
 for arg in tree.children[args]
     . given = arg
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument(argument)
             given = argument.expr
     if tree.nodes[given] is .node-stream-match
@@ -4583,9 +4583,9 @@ _ do local-rule-declared TypeId
     - rule SyntaxId
 
 ` The type a local rule's declaration states, or none.
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
-        do match? tree.nodes[declaration.left]
+        match? tree.nodes[declaration.left]
             | .node-type-capture(row)
                 if row.type != 0
                     = types.evaluate-type(module, tree, row.type, frame.env)
@@ -4612,7 +4612,7 @@ _ do value-site Bool
 
 if node == id
     = true
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-stream-transform(row)
         if row.pattern == 0 || (!tree.lazies-only(row.right) && !tree.mentions(row.right, "it"))
             = false
@@ -4637,7 +4637,7 @@ _ do mapped Bool
 . callers [String]
 . sites [SyntaxId]
 for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
+    match? tree.nodes[mapping]
         | .node-stream-collector-mapping(row)
             . callee = if row.callee then row.callee.text else row.caller.text
             if callees.find(callee) != null
@@ -4695,7 +4695,7 @@ if rule != 0
     if rule-type(rule) == invalid-type
         = invalid-type
     for mapping in tree.children[mappings]
-        do match? tree.nodes[mapping]
+        match? tree.nodes[mapping]
             | .node-stream-collector-mapping(row)
                 . callee = if row.callee then row.callee.text else row.caller.text
                 . given = accumulated-type(pattern, callee)
@@ -4703,7 +4703,7 @@ if rule != 0
                     decline(id)
                     = invalid-type
     = types.string-type
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call(row)
         if module-rule-type(id, row.name, row.params, row.args) == invalid-type
             = invalid-type
@@ -4715,7 +4715,7 @@ if callee == no-instance
 . called = instances.rows[callee]
 . source = program.modules[called.module].tree
 . pattern SyntaxId = 0
-do match? source.nodes[rule-match(program, called.module, called.decl)]
+match? source.nodes[rule-match(program, called.module, called.decl)]
     | .node-stream-match(matched)
         pattern = matched.pattern
 if pattern == 0
@@ -4724,7 +4724,7 @@ if pattern == 0
 if !mapped(mappings, name, source, pattern)
     = invalid-type
 for mapping in tree.children[mappings]
-    do match? tree.nodes[mapping]
+    match? tree.nodes[mapping]
         | .node-stream-collector-mapping(row)
             if accumulator-type(row.caller.text) == no-type
                 decline(id)
@@ -4747,7 +4747,7 @@ _ do accumulated-type TypeId
     - name String
 
 ` The list a pattern keeps of what a name it accumulates in a part of its own adds, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-capture(row)
         if row.accumulating && tree.name-text(row.name) == name
             = facts.node-type(instance, row.name)
@@ -4776,7 +4776,7 @@ _ do accumulates-in Bool
     - name String
 
 ` Whether a pattern accumulates a name in a part of its own, not in a rule it calls.
-do match? source.nodes[id]
+match? source.nodes[id]
     | .node-stream-capture(row)
         . named = source.identifier-name(row.name)
         = accumulates-own || accumulates-in(source, row.pattern, name)
@@ -5058,7 +5058,7 @@ for arg in tree.children[args]
     . given = arg
     . label Atom? = null
     . optional = false
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument(argument)
             given = argument.expr
             label = argument.name
@@ -5093,7 +5093,7 @@ if result == invalid-type && typed
     for candidate in program.lookup(module, name)
         known = true
         . owner = program.modules[candidate.module]
-        do match? owner.decls[candidate.decl]
+        match? owner.decls[candidate.decl]
             | .decl-function(fn)
                 ruled = ruled || (fn.args.count != 0 && owner.arg-pool[fn.args.start].name?.text == "(stream)")
     . missing = "Rule \"${name.text}\" not found"
@@ -5160,13 +5160,13 @@ action-selects = false
 . planned = true
 for arg in tree.children[args]
     . given = arg
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument(argument)
             given = argument.expr
     if tree.nodes[given] is .node-stream-match
         continue
     for node in tree.subtree-start(given) .. < given + 1
-        do match? tree.nodes[node]
+        match? tree.nodes[node]
             | .node-identifier
                 . slot = capture-slot(node)
                 . position = if slot != no-slot then capture-position(slot, arm) else U32.max
@@ -5378,9 +5378,9 @@ _ do declared-rule Bool
 
 ` Whether a function is declared as a rule, over the items of a stream.
 . owner = program.modules[instances.rows[callee].module]
-do match? owner.decls[instances.rows[callee].decl]
+match? owner.decls[instances.rows[callee].decl]
     | .decl-function(fn)
-        do match? owner.tree.nodes[fn.syntax]
+        match? owner.tree.nodes[fn.syntax]
             | .node-function-syntax(syntax)
                 = syntax.pattern != 0
 = false
@@ -5404,7 +5404,7 @@ if resolution.kind != .resolve-slot
 . row = bindings.slots[resolution.slot]
 if row.kind != .slot-lazy || row.group == 0
     = 0
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         if tree.nodes[declaration.right] is .node-stream-match
             = row.group
@@ -5425,7 +5425,7 @@ _ do record-recursion Bool
 ` rule another rule calls back, one called under a helper, and one called on another stream
 ` than it was first, have no shape here.
 . matched SyntaxId = 0
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
         matched = declaration.right
 . pattern = tree.local-rule-pattern(rule)
@@ -5476,7 +5476,7 @@ if resolution.kind != .resolve-slot
 . row = bindings.slots[resolution.slot]
 if row.kind != .slot-lazy || row.group == 0
     = 0
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         if declaration.is-pattern && declaration.right != 0 && !stream-match
             = row.group
@@ -5501,13 +5501,13 @@ _ do coded-rule-type TypeId
 . left SyntaxId = 0
 . code SyntaxId = 0
 . marked = false
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
         left = declaration.left
         code = declaration.right
         marked = declaration.rollback
 . stated = false
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-type-capture(row)
         stated = row.type != 0
 if code == 0 || marked || stated || helping.helper != null
@@ -5575,7 +5575,7 @@ if class-arg(types, held, 0) != buffer-item
 ` the local rule `target`, or for none the rule the module declares that is being checked,
 ` called directly or through the local rules called first. A call of any other rule is taken
 ` to read before it calls anything. Such a rule would call itself forever.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-call
         if calls-target(id, target)
             = id
@@ -5625,7 +5625,7 @@ _ do may-read-none Bool
 
 ` Whether a part of a grammar may match without reading an item, as far as it is
 ` known here: a call of a rule other than a local one is taken to read.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-string(row)
         = row.text.length == 0
     | .node-stream-and(row)
@@ -5635,7 +5635,7 @@ do match? tree.nodes[id]
     | .node-stream-unary(row)
         = row.op != .one-or-more-op || may-read-none(row.operand, seen)
     | .node-stream-length(row)
-        do match? tree.nodes[row.min]
+        match? tree.nodes[row.min]
             | .node-integer-syntax(bound)
                 if parse-integer-literal(bound.value).value == 0
                     = true
@@ -5660,7 +5660,7 @@ do match? tree.nodes[id]
 
 ` Reports a call by which a rule calls itself before it reads anything.
 . name = ""
-do match? tree.nodes[call]
+match? tree.nodes[call]
     | .node-stream-call(row)
         name = row.name.text
 . text = "\"$name\" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with \"*\""
@@ -5687,13 +5687,13 @@ _ do rule-type TypeId
 . left SyntaxId = 0
 . matched SyntaxId = 0
 . marked = false
-do match? tree.nodes[rule]
+match? tree.nodes[rule]
     | .node-declare(declaration)
         left = declaration.left
         matched = declaration.right
         marked = declaration.rollback
 . pattern SyntaxId = 0
-do match? tree.nodes[matched]
+match? tree.nodes[matched]
     | .node-stream-match(row)
         pattern = row.pattern
 if pattern == 0
@@ -5707,7 +5707,7 @@ if known != no-type
         = invalid-type
     = known
 . declared = no-type
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-type-capture(row)
         if row.type != 0
             declared = types.evaluate-type(module, tree, row.type, frame.env)
@@ -5815,7 +5815,7 @@ if is-quiet(id)
 . plan = facts.plan-of(instance, id)
 if plan == .plan-constant || plan == .plan-type-size
     = true
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, id)
         if resolution.kind == .resolve-global
@@ -5844,14 +5844,14 @@ _ do final-raise SyntaxId
     - body SyntaxId
 
 ` The raise that always runs that an action ends in, as `?! Oops(1009)` is, or none.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-assertion-syntax(row)
         = if row.condition == 0 then body else 0
     | .node-block(row)
         . last SyntaxId = 0
         for statement in tree.children[row.body]
             . lazy = false
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-declare(declaration)
                     lazy = declaration.is-lazy
             if !lazy

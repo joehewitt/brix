@@ -255,11 +255,11 @@ _ do run BindingId
 
 reset(function-module, function-decl)
 . decls = program.modules[module].decls
-do match? decls[decl]
+match? decls[decl]
     | .decl-function(row)
         . range = row.subtree
         binding = bindings.reserve(module, decl, range)
-        do match? tree.nodes[row.syntax]
+        match? tree.nodes[row.syntax]
             | .node-function-syntax(node)
                 check-effect-names(row.syntax, node.bans, node.door)
         bind-function()
@@ -413,7 +413,7 @@ _ do bind-converter
 
 ` A converter body reads `this`; a fromverter also binds its source pattern as an argument.
 . body = 0u32
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-converter-syntax(row)
         body = row.body
     | .node-fromverter-syntax(row)
@@ -444,7 +444,7 @@ _ do bind-function
 . args = RowRange'ArgumentShape()
 . body = 0u32
 . is-main = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(row)
         syntax = row.syntax
         owner = row.owner
@@ -463,7 +463,7 @@ push-scope(.scope-function, syntax)
 owner-decl = owner
 if owner != 0 && !is-static
     declare-self()
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(row)
         if row.is-content
             fills = true
@@ -510,7 +510,7 @@ while changed
         . row = bindings.slots[slot]
         if row.kind != .slot-lazy || row.group == 0 || (row.flags /and/ SlotFlag.slot-captured) == 0
             continue
-        do match? tree.nodes[row.group]
+        match? tree.nodes[row.group]
             | .node-declare(declaration)
                 if !declaration.is-pattern && several && share-together(first, slot as SlotId)
                     changed = true
@@ -580,7 +580,7 @@ _ do names-method Bool
 ` Whether a name resolved to a method, which is called on the receiver.
 if resolution.kind != .resolve-function
     = false
-do match? program.modules[resolution.module].decls[resolution.decl]
+match? program.modules[resolution.module].decls[resolution.decl]
     | .decl-function(row)
         = row.owner != 0 && !row.is-static
 = false
@@ -609,7 +609,7 @@ for slot in first .. < bindings.slots.length
 _ do walk-top-level Void
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-top-level-syntax(row)
         predeclare-lazies(row.statements)
         place-elements(row.statements)
@@ -636,7 +636,7 @@ _ do walk-initializers
 ` declare: the names in reach when it starts are out of reach until it ends.
 . members = RowRange'SyntaxId()
 . saved-floor = value-floor
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-class-block(row)
         members = row.members
     | .node-extension(row)
@@ -661,7 +661,7 @@ if owner == 0
 . saved-owner = owner-decl
 owner-decl = owner
 for member in tree.children[members]
-    do match? tree.nodes[member]
+    match? tree.nodes[member]
         | .node-property-syntax(property)
             if property.value != 0
                 . first = bindings.slots.length
@@ -721,7 +721,7 @@ value-floor = names.length as U32
 push-scope(.scope-function, id)
 declare-self()
 for arg in tree.children[rule.args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument-decl(row)
             declare-pattern(row.pattern, .slot-local, SlotFlag.slot-constant, 0)
 walk(rule.body)
@@ -761,19 +761,19 @@ _ do walk-rule-body
 ` as an attribute of a markup element is (`walk-attribute`).
 declare-self()
 for arg in tree.children[rule.args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument-decl(row)
             declare-pattern(row.pattern, .slot-argument, 0, 0)
 styled-depth += 1
 for application in tree.children[rule.style-rule-applications]
-    do match? tree.nodes[application]
+    match? tree.nodes[application]
         | .node-style-rule-application(applied)
             for value in tree.children[applied.args]
                 walk(value)
-do match? tree.nodes[rule.body]
+match? tree.nodes[rule.body]
     | .node-block(block)
         for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-assign(line)
                     walk(line.rhs)
                     if is-live(statement)
@@ -805,7 +805,7 @@ _ do walk-style-when
 ` The body of a `when` in a style rule is bound with the rule: the values it gives the rules it
 ` applies, the value of each line that declares one, each rule written in it
 ` (`walk-nested-rule`), and the function of each line that generates content (`walk-content`).
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-assign(line)
         walk(line.rhs)
     | .node-rule-syntax(nested)
@@ -814,7 +814,7 @@ do match? tree.nodes[body]
         walk-content(body)
     | .node-block(block)
         for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-assign(line)
                     walk(line.rhs)
                 | .node-style-rule-application(applied)
@@ -835,7 +835,7 @@ _ do walk-content
 ` kept where it is written. A markup line that binds no slot generates nothing.
 if !is-slot-builder(element)
     =
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         push-scope(.scope-nested, element)
         function-depth += 1
@@ -854,10 +854,10 @@ _ do walk-root-values
 ` properties, each bound as the value a property is declared with is: under the class, in a
 ` scope of its own, at the line that gives it. So are the values it gives the style rules it
 ` applies, which its constructor evaluates, at the application that gives them.
-do match? tree.nodes[tree.root-this(content)]
+match? tree.nodes[tree.root-this(content)]
     | .node-markup(root)
         for application in tree.children[root.style-rule-applications]
-            do match? tree.nodes[application]
+            match? tree.nodes[application]
                 | .node-style-rule-application(applied)
                     if applied.args.count != 0
                         . first = bindings.slots.length
@@ -869,10 +869,10 @@ do match? tree.nodes[tree.root-this(content)]
                         pop-scope()
                         value-floor = saved-floor
                         note-window(application, first)
-        do match? tree.nodes[root.body]
+        match? tree.nodes[root.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
-                    do match? tree.nodes[statement]
+                    match? tree.nodes[statement]
                         | .node-assign(attribute)
                             . first = bindings.slots.length
                             value-floor = names.length as U32
@@ -914,7 +914,7 @@ _ do predeclare-lazies Void
 ` arms. A block that `names` declares the names its markup elements are given, and those of
 ` its slot outlets, which hold the nodes they mount.
 for statement in tree.children[statements]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             if row.is-lazy && row-getters.find(statement) == null
                 declare-pattern(row.left, .slot-lazy, 0, statement)
@@ -941,11 +941,11 @@ _ do declare-ids Void
 ` node it mounts once it is mounted.
 ` An element under an `if` or a `for` written as a line is not reached: its name is the business
 ` of the body it is in.
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         if row.id != 0
             declare-pattern(row.id, .slot-local, 0, element)
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     declare-ids(statement)
@@ -987,7 +987,7 @@ _ do raise-element Void
 if is-slot-builder(element)
     place-element(element)
     =
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         if hosts-slots(row.type-id) && supplies-slots(element)
             place-element(element)
@@ -1000,7 +1000,7 @@ do match? tree.nodes[element]
             . resolution = bindings.resolution-of(binding, row.id)
             if starts && resolution.kind == .resolve-slot
                 bindings.mark-slot(resolution.slot, SlotFlag.slot-raised)
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     raise-element(statement, raises, starts)
@@ -1056,7 +1056,7 @@ _ do is-binder Bool
 . decl = nested-decl-for(name)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .binder-decl
 = false
@@ -1105,7 +1105,7 @@ _ do place-element Void
 ` slot, and one among the lines of a class's markup that give the default slot of the class
 ` above (`declare-wrapped`); and a slot outlet, whose node is mounted where it is written. The
 ` local declared for its name is marked, and is given the object there.
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-slot-outlet(row)
         . resolution = bindings.resolution-of(binding, row.name)
         if resolution.kind == .resolve-slot
@@ -1116,7 +1116,7 @@ do match? tree.nodes[element]
             . resolution = bindings.resolution-of(binding, row.id)
             if resolution.kind == .resolve-slot
                 bindings.mark-slot(resolution.slot, SlotFlag.slot-placed)
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     place-element(statement)
@@ -1132,7 +1132,7 @@ _ do hosts-slots Bool
 while class && depth <= member-chain-limit
     . owner = program.modules[class.module]
     . next DeclRef? = null
-    do match? owner.decls[class.decl]
+    match? owner.decls[class.decl]
         | .decl-class(row)
             if row.content != 0
                 for node in owner.tree.subtree-start(row.content) .. < row.content
@@ -1153,11 +1153,11 @@ _ do supplies-slots Bool
 ` them: a line bound to a slot by name, or what the module builder took for the default slot,
 ` which a function of its own builds. An element that gives none is made as any other is, its
 ` lines content of its object.
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         if is-slot-builder(row.body)
             = true
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for line in tree.children[block.body]
                     if is-slot-builder(line) || (!gives-default(line) && !line-assigns)
@@ -1173,7 +1173,7 @@ _ do is-slot-builder Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .slot-decl
 = false
@@ -1215,9 +1215,9 @@ function-depth += 1
 open-nested(element)
 record-capture(root, slot-depth(root), false)
 . repeats = false
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
-        do match? tree.nodes[row.slot-parameter]
+        match? tree.nodes[row.slot-parameter]
             | .node-markup-slot-parameter(parameter)
                 declare-pattern(parameter.name, .slot-argument, 0, 0)
                 . given = bindings.resolution-of(binding, parameter.name).slot
@@ -1269,20 +1269,20 @@ if fills && function-depth != 0
     if name != 0
         text = tree.identifier-name(name) ?? text
     use-slot(builder-of(text), 0, 0)
-do match? tree.nodes[parameter]
+match? tree.nodes[parameter]
     | .node-markup-slot-parameter(row)
         walk(row.name)
 for rule in tree.children[rules]
-    do match? tree.nodes[rule]
+    match? tree.nodes[rule]
         | .node-style-rule-application(applied)
             styled-depth += 1
             for value in tree.children[applied.args]
                 walk(value)
             styled-depth -= 1
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-assign(attribute)
                     styled-depth += 1
                     walk(attribute.rhs)
@@ -1346,7 +1346,7 @@ _ do walk-outlet-region Void
 ` those of a match region are (`walk-match-region`); the function that selects the arm again,
 ` written at the parameter, captures them with what the name reads.
 . given SyntaxId = 0
-do match? tree.nodes[parameter]
+match? tree.nodes[parameter]
     | .node-markup-slot-parameter(row)
         given = row.name
 . kept = SlotFlag.slot-constant /or/ SlotFlag.slot-captured
@@ -1404,7 +1404,7 @@ _ do walk-made Void
 . bound SyntaxId = 0
 . parameter SyntaxId = 0
 . type SyntaxId = 0
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         bound = row.slot-binding
         parameter = row.slot-parameter
@@ -1412,7 +1412,7 @@ do match? tree.nodes[element]
 . class = class-written(module, tree, type)
 for child in tree.children-of(element)
     if child != name && child != body && child != bound && child != parameter
-        do match tree.nodes[child]
+        match tree.nodes[child]
             | .node-style-rule-application(applied)
                 styled-depth += 1
                 for value in tree.children[applied.args]
@@ -1427,16 +1427,16 @@ for child in tree.children-of(element)
                     close-receiver()
             ??
                 walk(child)
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         for statement in tree.children[row.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-assign(attribute)
                     styled-depth += 1
                     walk(attribute.rhs)
                     styled-depth -= 1
                     walk-attribute(statement)
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         walk-arguments(element, row.args)
         walk-gates(row.style-rule-applications)
@@ -1450,7 +1450,7 @@ _ do walk-gates Void
 ` reads, the list of subscribers of each local it reads tracked, and the element's object where
 ` it reads a member of the element (`keep-received`).
 for application in tree.children[applications]
-    do match? tree.nodes[application]
+    match? tree.nodes[application]
         | .node-style-rule-application(applied)
             if applied.condition != 0 && is-gate(applied.condition)
                 keep-received(applied.condition)
@@ -1466,7 +1466,7 @@ _ do is-gate Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .gate-decl
 = false
@@ -1502,7 +1502,7 @@ _ do is-live Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .live-decl
 = false
@@ -1561,7 +1561,7 @@ if gives
         .. prior = Slot(.slot-local, previous-name, statement, current-scope, decl, 0, replaced)
 note-reads(statement, slots, gives)
 capture-in(statement, slots)
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-assign(row)
         if row.op == .bind-op && nested-decl-for(row.lhs) != 0
             . written = bindings.resolution-of(binding, row.rhs)
@@ -1644,12 +1644,12 @@ for statement in tree.children[statements]
 _ do note-content-line Void
     - statement SyntaxId
 
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-if-block
         . branch = statement
         while branch != 0
             . next SyntaxId = 0
-            do match? tree.nodes[branch]
+            match? tree.nodes[branch]
                 | .node-if-block(row)
                     content-turns += tree.arm-body(branch)
                     next = row.next
@@ -1677,7 +1677,7 @@ _ do raise-lazies Void
     - statements RowRange'SyntaxId
 
 for statement in tree.children[statements]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             if row.is-lazy && !row.is-scoped && row-getters.find(statement) == null
                 declare-pattern(row.left, .slot-lazy, 0, statement)
@@ -1690,7 +1690,7 @@ _ do declare-scoped Void
 ` Declares the lazy locals a block keeps to itself, where the rest were declared with the block
 ` around it: the value a call's guards test, which each call's own block names `it`.
 for statement in tree.children[statements]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             if row.is-lazy && row.is-scoped
                 declare-pattern(row.left, .slot-lazy, 0, statement)
@@ -1701,7 +1701,7 @@ _ do is-constructor-body Bool
 
 ` Whether a block is the body of a constructor of a type, which gives the object it makes: a
 ` constructor that is a rule makes none, and its lazy declarations are its rules.
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = owned-body && fn.kind == .constructor-decl && rule-match(program, module, decl) == 0
             .. owned-body = owner-decl != 0 && fn.body == id
@@ -1715,13 +1715,13 @@ _ do mark-initializers Void
 ` value. The reference declares that value as a local at the property.
 . target = program.modules[module]
 for statement in tree.children[statements]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             . name = declared-name(row.left) if row.is-lazy
             . slot = lookup-slot(name) if name
             . member = member-of(module, owner-decl, name!, 0) if slot
             if member && member.module == (module)
-                do match? target.decls[member.decl]
+                match? target.decls[member.decl]
                     | .decl-property(property)
                         bindings.slots[slot!].property = property.syntax
 
@@ -1733,7 +1733,7 @@ _ do hide-initializers Void
 ` own or a base's, is the field's initializer, which runs before the body. The body reads and
 ` writes the field itself, so the local is in reach only of the values of such declarations.
 for statement in tree.children[statements]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             . name = declared-name(row.left) if row.is-lazy
             . position = lookup-position(name) if name
@@ -1747,7 +1747,7 @@ _ do names-field Bool
 
 . member = member-of(module, owner-decl, name, 0)
 if member
-    do match? program.modules[member.module].decls[member.decl]
+    match? program.modules[member.module].decls[member.decl]
         | .decl-property
             = true
 = false
@@ -1788,10 +1788,10 @@ _ do hoist-lazies Void
 
 ` The lazy locals of a pattern's actions are declared where the match is, in reach of every
 ` arm's pattern and action, as the reference declares a transform's where clause.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-transform(row)
         hoist-lazies(row.pattern)
-        do match? tree.nodes[row.right]
+        match? tree.nodes[row.right]
             | .node-block(block)
                 predeclare-lazies(block.body, false)
     | .node-stream-and(row)
@@ -1828,7 +1828,7 @@ _ do walk-element Void
 if body == 0
     =
 . class = class-written(module, tree, type)
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         open-receiver(element, class)
         push-scope(.scope-block, body)
@@ -1865,7 +1865,7 @@ _ do gives-default Bool
 
 ` Whether a line of an element's body is content of the default slot: neither an attribute nor
 ` content bound to a slot.
-do match? tree.nodes[line]
+match? tree.nodes[line]
     | .node-assign
         = false
     | .node-markup-slot-forward
@@ -1900,7 +1900,7 @@ push-scope(.scope-nested, body)
 function-depth += 1
 open-nested(body)
 record-capture(root, slot-depth(root), false)
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         push-scope(.scope-block, body)
         note-content(row.body)
@@ -1927,7 +1927,7 @@ _ do declare-wrapped Void
 ` declare them: the function that builds the lines reaches them there. No block of that
 ` function makes them where it starts, so each is made where it is written, as the reference
 ` makes them (`place-element`).
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         for statement in tree.children[row.body]
             if gives-default(statement)
@@ -1942,7 +1942,7 @@ _ do walk-bound Void
 ` default slot are built into a node by a function of their own (`walk-wrapped`): each is walked
 ` in the function that fills the object, which holds the function that builds it, as an
 ` element's body walks those it holds (`walk-element`).
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         push-scope(.scope-block, body)
         . lazies-end = names.length as U32
@@ -2040,7 +2040,7 @@ _ do names-element Bool
     - member DeclRef
 
 ` Whether a member is the property the markup of its class declares for an element.
-do match? program.modules[member.module].decls[member.decl]
+match? program.modules[member.module].decls[member.decl]
     | .decl-property(row)
         = row.element != 0
 = false
@@ -2051,7 +2051,7 @@ _ do walk-action Void
 
 ` An action, whose block declares no lazy local of its own: its match declared them. Nothing
 ` after a statement that leaves the block is walked, as the reference compiles none of it.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         push-scope(.scope-block, body)
         . dead = false
@@ -2109,7 +2109,7 @@ _ do walk Void
 if id == 0
     =
 
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-top-level-syntax
         walk-top-level(id)
     | .node-block(row)
@@ -2159,7 +2159,7 @@ do match tree.nodes[id]
             walk(row.right)
             note-getter-reads(id, row.right)
             declare-pattern(row.left, .slot-local, 0, 0)
-            do match? tree.nodes[row.left]
+            match? tree.nodes[row.left]
                 | .node-type-capture(capture)
                     bindings.set-getter(bindings.resolution-of(binding, capture.id).slot, id)
         else if row.is-lazy
@@ -2172,7 +2172,7 @@ do match tree.nodes[id]
             if rule
                 if stream-reach == 0 && function-depth == 0 && !lookup-slot(stream-name)
                     . site = row.left
-                    do match? tree.nodes[row.left]
+                    match? tree.nodes[row.left]
                         | .node-type-capture(capture)
                             site = capture.id
                     bindings.diagnostics.append(Diagnostic(module, site, .stream-not-found, null))
@@ -2224,7 +2224,7 @@ do match tree.nodes[id]
         walk(row.expr)
         walk-stream(id)
     | .node-get-expression(row)
-        do match tree.nodes[row.object]
+        match tree.nodes[row.object]
             | .node-identifier(root)
                 if row.is-tracked && !root.is-tracked
                     resolve(row.object, root.name, ResolutionFlag.resolution-tracked)
@@ -2631,11 +2631,11 @@ push-scope(.scope-nested, id)
 function-depth += 1
 open-nested(id)
 for arg in tree.children[args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument-decl(row)
             declare-pattern(row.pattern, .slot-argument, 0, 0)
 for arg in tree.children[args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument-decl(row)
             walk(row.default-value)
 walk(body)
@@ -2740,7 +2740,7 @@ _ do walk-nested-machine
 . cases = tree.machine-cases(items)
 . kept = tree.machine-captures(items, cases)
 . bound = no-slot
-do match? tree.nodes[item]
+match? tree.nodes[item]
     | .node-property-syntax(row)
         declare-pattern(row.left, .slot-local, 0, 0)
         bound = bindings.resolution-of(binding, tree.declared-local(row.left)).slot
@@ -2958,13 +2958,13 @@ for head in tree.group-heads(items)
 _ do walk-state-handler Void
     - head SyntaxId
 
-do match? tree.nodes[head]
+match? tree.nodes[head]
     | .node-for-block(row)
-        do match? tree.nodes[row.loop]
+        match? tree.nodes[row.loop]
             | .node-loop-syntax(loop)
                 push-scope(.scope-arm, row.loop)
                 declare-pattern(loop.pattern, .slot-pattern, SlotFlag.slot-constant, 0)
-                do match? tree.nodes[loop.clause]
+                match? tree.nodes[loop.clause]
                     | .node-clause(clause)
                         walk(clause.expr)
                 walk(row.body)
@@ -2976,7 +2976,7 @@ _ do open-nested
 
 . decl = nested-decl-for(syntax)
 . by-value = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(row)
         by-value = row.kind == .task-decl || row.kind == .region-decl
 nested-decls += decl
@@ -3081,7 +3081,7 @@ indexed[module] = true
 . index = 0u32
 for row in program.modules[module].decls
     . stepped SyntaxId = 0
-    do match? row
+    match? row
         | .decl-function(fn)
             if is-nested-kind(fn.kind)
                 . key = (wide /lshift/ 32) /or/ fn.syntax
@@ -3212,7 +3212,7 @@ while low < count
     . index = (entry /and/ 0xffffffff) as DeclId
     if index != decl
         . start = 0u32
-        do match? program.modules[module].decls[index]
+        match? program.modules[module].decls[index]
             | .decl-function(fn)
                 start = fn.subtree.start
         if start == 0
@@ -3249,7 +3249,7 @@ for offset in 0 .. < range.count
 _ do nested-subtree-start SyntaxId
     - nested NestedFunction
 
-do match? program.modules[module].decls[nested.decl]
+match? program.modules[module].decls[nested.decl]
     | .decl-function(fn)
         if fn.syntax == nested.syntax
             = fn.subtree.start
@@ -3294,7 +3294,7 @@ _ do scan-node
     - target U32
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-yield
         bindings.record-scan(target, .scan-yield, id)
     | .node-identifier(row)
@@ -3390,7 +3390,7 @@ _ do walk-generator Void
 ` subscriber: the caller evaluates the first container, so it binds outside, as does a
 ` `whenever` clause (see `walk-whenever`); the loop with its other clauses, chained headers,
 ` and body binds inside the closure's own scope and captures like a lambda body.
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         walk-source(row)
 walk-whenever(loop)
@@ -3410,7 +3410,7 @@ _ do is-broadcaster Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .subscriber-decl
 = false
@@ -3426,7 +3426,7 @@ _ do walk-broadcaster Void
 ` comprehension, which the subscriber captures before anything its loop reads, as the
 ` reference's subscriber reads the channel from the scope it closes over. A `whenever` clause
 ` binds outside too (see `walk-whenever`).
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         walk-source(row)
 walk-whenever(loop)
@@ -3467,7 +3467,7 @@ _ do walk-feed-items Void
 . feed = id
 while feed != 0
     . next = 0u32
-    do match? tree.nodes[feed]
+    match? tree.nodes[feed]
         | .node-feed-expression(row)
             walk(row.item)
             if row.is-spread
@@ -3501,7 +3501,7 @@ push-scope(.scope-nested, id)
 function-depth += 1
 open-nested(id)
 declare-loop-state(id)
-do match? tree.nodes[tree.piped-feed(id)]
+match? tree.nodes[tree.piped-feed(id)]
     | .node-feed-expression(row)
         walk(row.item)
 walk(pattern)
@@ -3535,10 +3535,10 @@ _ do arrival-name SyntaxId
     - clause SyntaxId
 
 ` The name a loop's first clause tests where it is `when arrival` or `when bubbling`, or none.
-do match? tree.nodes[clause]
+match? tree.nodes[clause]
     | .node-clause(row)
         if row.op is .when-clause
-            do match? tree.nodes[row.expr]
+            match? tree.nodes[row.expr]
                 | .node-identifier(name)
                     if name.name.text == "arrival" || name.name.text == "bubbling"
                         = row.expr
@@ -3560,7 +3560,7 @@ _ do walk-loop Void
 ` nothing declares it, and the type pass reports it where the loop is on no event. A header
 ` whose container is evaluated where its closure is made has one slot more, after its item,
 ` for the container it is given.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-loop-syntax(row)
         if !container-bound
             walk-source(row)
@@ -3655,7 +3655,7 @@ _ do walk-clauses Void
 . current = clause
 while current != 0
     . next SyntaxId = 0
-    do match? tree.nodes[current]
+    match? tree.nodes[current]
         | .node-clause(row)
             if current != skipped
                 walk(row.expr)
@@ -3675,7 +3675,7 @@ _ do walk-whenever Void
 . clause = tree.whenever-clause(loop)
 if clause == 0 || nested-decl-for(clause) == 0
     =
-do match? tree.nodes[clause]
+match? tree.nodes[clause]
     | .node-clause(row)
         walk(row.expr)
 . kept = SlotFlag.slot-constant /or/ SlotFlag.slot-captured
@@ -3749,7 +3749,7 @@ _ do walk-arms Void
 if id == 0
     =
 
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-type-or(row)
         walk-arms(row.left)
         walk-arms(row.right)
@@ -3773,7 +3773,7 @@ _ do walk-transformer
 ` declares for the error it takes and for those in its chain, as the reference defines them
 ` where it raises the exception in the error's place.
 for catcher in tree.children[catchers]
-    do match? tree.nodes[catcher]
+    match? tree.nodes[catcher]
         | .node-catcher(row)
             push-scope(.scope-catch, catcher)
             declare-pattern(row.type, .slot-pattern, SlotFlag.slot-constant, 0)
@@ -3807,7 +3807,7 @@ _ do declare-pattern-node Void
     - flags SlotMask
     - group SyntaxId
 
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-type-capture(row)
         . name = tree.identifier-name(row.id)
         if name
@@ -3918,7 +3918,7 @@ _ do declare-captured Void
 ` is not one of them: the captured name holds what it gives.
 if id == 0
     =
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-type-property
         =
     | .node-type-and(row)
@@ -3935,7 +3935,7 @@ _ do walk-tests Void
 ` what it tests with is walked: a condition reads `it`, which is declared for it.
 if id == 0
     =
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-and(row)
         walk-tests(row.left)
         walk-tests(row.right)
@@ -3974,7 +3974,7 @@ _ do walk-tested
     - pattern SyntaxId
 
 push-scope(.scope-arm, id)
-do match tree.nodes[pattern]
+match tree.nodes[pattern]
     | .node-type-list
         walk-tests(pattern)
     | .node-type-map
@@ -4123,7 +4123,7 @@ style-names-listed = true
 for position in 0 .. < program.modules.length
     . owner = program.modules[position]
     for decl in owner.decls
-        do match? decl
+        match? decl
             | .decl-class(row)
                 if row.base != 0 && type-head-name(owner.tree, row.base) == sheet-name
                     for member in owner.member-pool[row.members]
@@ -4200,17 +4200,17 @@ _ do note-getters
 if keyed
     dependent += each-name
     dependent += it-name
-    do match? tree.nodes[loop]
+    match? tree.nodes[loop]
         | .node-loop-syntax(row)
-            do match? tree.nodes[row.pattern]
+            match? tree.nodes[row.pattern]
                 | .node-type-capture(capture)
                     . named = tree.identifier-name(capture.id)
                     if named
                         dependent += named
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-declare(row)
                     . name = declared-name(row.left) if tree.nodes[row.left] is .node-type-capture
                     . plain = !row.is-pattern && row.right != 0 && name != null && no-machine
@@ -4226,7 +4226,7 @@ _ do reads-any Bool
     - names [Atom]
 
 for node in tree.subtree-start(value) .. < value + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             if names.find(row.name) != null
                 = true
@@ -4245,7 +4245,7 @@ getter-firsts += getter-names.length
 . selfish = false
 . first = getter-names.length
 for node in tree.subtree-start(value) .. < value + 1
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             . read = bindings.resolution-of(binding, node)
             if read.kind == .resolve-member
@@ -4359,10 +4359,10 @@ _ do walk-live Void
 if live == 0
     =
 . slots [SlotId]
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
         . named = row.left
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 named = capture.id
         . declared = tree.identifier-name(named)
@@ -4383,13 +4383,13 @@ _ do reads-tracked Bool
 ` alone or as the object a tracked member is read from, though later than here.
 . home = bindings.scopes[function-of(bindings.slots[slot].scope)].syntax
 for node in tree.subtree-start(home) .. home
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             if row.is-tracked && row.name == name
                 = true
         | .node-get-expression(row)
             if row.is-tracked
-                do match? tree.nodes[row.object]
+                match? tree.nodes[row.object]
                     | .node-identifier(root)
                         if root.name == name
                             = true
@@ -4404,7 +4404,7 @@ _ do is-branch Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .branch-decl
 = false
@@ -4416,7 +4416,7 @@ _ do is-selector Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .selector-decl
 = false
@@ -4430,7 +4430,7 @@ _ do selects Bool
 . decl = nested-decl-for(anchor)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .selector-decl
 = false
@@ -4440,11 +4440,11 @@ _ do walk-selector Void
     - id SyntaxId
 
 branch-depth += 1
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-match-expression(row)
         walk(row.subject)
 for arm in tree.region-arms(id)
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             if row.condition != 0
                 walk(row.condition)
@@ -4461,11 +4461,11 @@ _ do walk-chosen-fills Void
     - control SyntaxId
 
 . slots [SlotId]
-do match? tree.nodes[control]
+match? tree.nodes[control]
     | .node-match-expression(row)
         note-reads(row.subject, slots, true)
 for arm in tree.region-arms(control)
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             if row.condition != 0
                 note-reads(row.condition, slots, true)
@@ -4479,10 +4479,10 @@ for arm in tree.region-arms(control)
     if bound.length != 0
         push-scope(.scope-arm, arm)
         declare-pattern(pattern, .slot-pattern, SlotFlag.slot-constant, 0)
-    do match? tree.nodes[tree.region-arm-body(arm)]
+    match? tree.nodes[tree.region-arm-body(arm)]
         | .node-block(block)
             for line in tree.children[block.body]
-                do match? tree.nodes[line]
+                match? tree.nodes[line]
                     | .node-markup(row)
                         if row.slot-binding != 0 && is-slot-builder(line)
                             walk-slot(line, row.id, row.type-id, row.body)
@@ -4517,7 +4517,7 @@ branch-depth += 1
 . arm = id
 while arm != 0
     . next SyntaxId = 0
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             if arm != id
                 bindings.set-resolution(binding, arm, Resolution(.resolve-slot, 0, host, 0, 0))
@@ -4541,12 +4541,12 @@ slots += host + 1
 arm = id
 while arm != 0
     . next SyntaxId = 0
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             . pattern = tree.pattern-arm(arm)
             if pattern != 0
                 note-reads(tree.matched-subject(row.condition), slots, true)
-                do match? tree.nodes[pattern]
+                match? tree.nodes[pattern]
                     | .node-type-transform(transform)
                         if transform.pattern != 0
                             note-reads(transform.pattern, slots, true)
@@ -4591,7 +4591,7 @@ slots += host
 slots += host + 1
 note-reads(subject, slots, true)
 for arm in arms
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-type-transform(row)
             if row.pattern != 0
                 note-reads(row.pattern, slots, true)
@@ -4608,7 +4608,7 @@ _ do walk-match-arm Void
 ` a pattern, at `body`: given the region, as an arm of a branch region is (`walk-arm`), it reads
 ` the subject again, with what it captures of `read`, and binds `it` and the names the arm's
 ` pattern declares before its body runs.
-do match? tree.nodes[arm]
+match? tree.nodes[arm]
     | .node-type-transform(row)
         push-scope(.scope-nested, body)
         function-depth += 1
@@ -4665,7 +4665,7 @@ _ do walk-arm-lines Void
 
 ` The functions that give lines of an arm's body content again, as those of an element's body
 ` are (`walk-attribute`), where the region takes them.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(row)
         for statement in tree.children[row.body]
             if is-live(statement) && tree.content-line(statement)
@@ -4679,7 +4679,7 @@ _ do is-loop-region Bool
 . decl = nested-decl-for(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .source-decl
 = false
@@ -4699,7 +4699,7 @@ _ do walk-loop-region Void
 ` third such local keeps the batch in force where the region is written, which the row's
 ` function captures.
 . container SyntaxId = 0
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         container = row.container
 walk(container)
@@ -4744,14 +4744,14 @@ function-depth += 1
 open-nested(body)
 record-capture(root, slot-depth(root), false)
 . pattern SyntaxId = 0
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
         pattern = row.pattern
 . given = no-slot
 if names-item(pattern)
     declare-pattern(pattern, .slot-argument, 0, 0)
     . named = pattern
-    do match? tree.nodes[pattern]
+    match? tree.nodes[pattern]
         | .node-type-capture(capture)
             named = capture.id
     given = bindings.resolution-of(binding, named).slot
@@ -4786,9 +4786,9 @@ push-scope(.scope-nested, clause)
 function-depth += 1
 open-nested(clause)
 . name = each-name
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-capture(capture)
                 name = tree.identifier-name(capture.id) ?? each-name
 . given = declare(name, .slot-argument, clause, 0, 0)
@@ -4799,7 +4799,7 @@ bindings.set-resolution
 if name != each-name
     alias(each-name, given)
 alias(it-name, given)
-do match? tree.nodes[clause]
+match? tree.nodes[clause]
     | .node-clause(row)
         walk(row.expr)
 close-nested()
@@ -4854,7 +4854,7 @@ for node in tree.subtree-start(id) .. < end
 _ do reads-own-style Bool
     - node SyntaxId
 
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-style-read-expression(row)
         = row.object == 0
 = false
@@ -5063,7 +5063,7 @@ _ do resolve-stack-local
 
 for candidate in program.lookup(module, name)
     . target = program.modules[candidate.module]
-    do match? target.decls[candidate.decl]
+    match? target.decls[candidate.decl]
         | .decl-property(row)
             if row.owner == 0 && (is-public(row.access) || reaches)
                 . found = Resolution(.resolve-global, candidate.module, no-slot, candidate.decl, 0)
@@ -5253,7 +5253,7 @@ if owner-decl != 0
 . function DeclRef? = null
 for candidate in program.lookup(module, name)
     . target = program.modules[candidate.module]
-    do match? target.decls[candidate.decl]
+    match? target.decls[candidate.decl]
         | .decl-property(row)
             if row.owner == 0 && !global
                 if is-public(row.access) || reaches
@@ -5297,14 +5297,14 @@ if depth > member-chain-limit
 
 . target = program.modules[owner-module]
 . owner-tree = target.tree
-do match? target.decls[owner]
+match? target.decls[owner]
     | .decl-class(row)
         . direct = function-row(target, row.members, name)
         if direct
             = DeclRef(owner-module, direct)
         for extension in program.extensions-for(module, owner-module, owner)
             . extended = program.modules[extension.module]
-            do match? extended.decls[extension.decl]
+            match? extended.decls[extension.decl]
                 | .decl-extension(body)
                     . found = function-row(extended, body.members, name)
                     if found
@@ -5329,7 +5329,7 @@ _ do function-row DeclId?
     - name Atom
 
 for member in target.members-named(members, name)
-    do match? target.decls[member]
+    match? target.decls[member]
         | .decl-function(row)
             if row.kind != .getter-decl && row.kind != .setter-decl && row.name && row.name == name
                 = member
@@ -5350,7 +5350,7 @@ if depth > member-chain-limit
 
 . target = program.modules[owner-module]
 . owner-tree = target.tree
-do match? target.decls[owner]
+match? target.decls[owner]
     | .decl-class(row)
         . direct = member-row(target, row.members, name)
         if direct
@@ -5438,7 +5438,7 @@ for position in start .. < end
     . facet-module = facets.modules[facet]
     if program.sees-facet(module, facet)
         . target = program.modules[facet-module]
-        do match? target.decls[facets.decls[facet]]
+        match? target.decls[facets.decls[facet]]
             | .decl-extension(row)
                 . found = member-row(target, row.members, name)
                 if found && (facet-module == module || member-reaches(target, found, facet-module))
@@ -5497,7 +5497,7 @@ _ do tuple-field-named Bool
     - base SyntaxId
     - name Atom
 
-do match? owner-tree.nodes[base]
+match? owner-tree.nodes[base]
     | .node-type-tuple(row)
         for field in owner-tree.children[row.field-types]
             if capture-named(owner-tree, field, name)
@@ -5525,7 +5525,7 @@ _ do first-class-named DeclRef?
 
 . first DeclRef? = null
 for candidate in program.lookup(caller, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-class(row)
             if !first
                 first = DeclRef(candidate.module, candidate.decl)

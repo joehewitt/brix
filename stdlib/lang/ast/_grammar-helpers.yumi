@@ -394,7 +394,7 @@ for char in chars
 . has-expression = false
 . has-text = false
 for part in parts
-    do match tree.nodes[part]
+    match tree.nodes[part]
         | .node-string-syntax(row)
             has-text = has-text || row.text.length > 0
         ??
@@ -406,7 +406,7 @@ for part in parts
     if is-empty-string(tree, part)
         continue
     . piece = relocated-string(tree, loc, part)
-    do match result
+    match result
         | previous SyntaxId
             result = tree.append(ASTBinaryExpression(loc, .concat-string-op, previous, piece))
         ??
@@ -419,7 +419,7 @@ _ do is-empty-string Bool
     - part SyntaxId
 
 ` A piece of text with no characters, which a line continuation alone leaves.
-do match? tree.nodes[part]
+match? tree.nodes[part]
     | .node-string-syntax(row)
         = row.text.length == 0
 = false
@@ -430,7 +430,7 @@ do match? tree.nodes[part]
     - loc MatchLocation
     - expr SyntaxId
 
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-get-expression
         tree.nodes.loc[expr] = loc
 = expr
@@ -441,7 +441,7 @@ do match? tree.nodes[expr]
     - loc MatchLocation
     - part SyntaxId
 
-do match? tree.nodes[part]
+match? tree.nodes[part]
     | .node-string-syntax(row)
         = tree.append(ASTString(loc, row.text))
 = part
@@ -455,7 +455,7 @@ do match? tree.nodes[part]
 . end = parts.length
 . final-text String?
 while end
-    do match parts[end - 1]
+    match parts[end - 1]
         | .literal(text)
             . trimmed = trim-block-string-end(text)
             if trimmed.length
@@ -468,7 +468,7 @@ while end
 . has-expression = false
 . has-text = false
 for index in 0 .. < end
-    do match parts[index]
+    match parts[index]
         | .syntax
             has-expression = true
         | .literal(text)
@@ -486,7 +486,7 @@ for index in 0 .. < end
             tree.append(ASTString(loc, tree.store-string(text))) if text.length
                 .. text = if final-text && index == end - 1 then final-text else value
     if node
-        do match result
+        match result
             | previous SyntaxId
                 result = tree.append(ASTBinaryExpression(loc, .concat-string-op, previous, node))
             ??
@@ -621,12 +621,12 @@ for offset in 0 .. < catchers.count
 
 for offset in 0 .. < args.length
     . arg = args[offset]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument(later)
             . name = later.name
             if name
                 for earlier-offset in 0 .. < offset
-                    do match? tree.nodes[args[earlier-offset]]
+                    match? tree.nodes[args[earlier-offset]]
                         | .node-argument(earlier)
                             if earlier.name == name
                                 reject-syntax(tree, tree.nodes.loc[arg], "\"${name.text}\" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in \"• where (some(each.kids) • where each > 2)\"")
@@ -659,7 +659,7 @@ for arg in args
     - body RowRange'SyntaxId
 
 for child in tree.nodes[tree.child-ids(body)]
-    do match? child
+    match? child
         | .node-declare(declaration)
             =? true if declaration.is-lazy
         | .node-assertion-syntax
@@ -672,7 +672,7 @@ for child in tree.nodes[tree.child-ids(body)]
     - body RowRange'SyntaxId
 
 for child in tree.nodes[tree.child-ids(body)]
-    do match child
+    match child
         | .node-declare(declaration)
             =? true if !declaration.is-lazy
         | .node-list-syntax
@@ -1590,7 +1590,7 @@ node = node.door = lowered-door(tree, declared-at(location), annotations)
 =? null if !body
 . replacement SyntaxId = body
 for variant in variants
-    do match? variant
+    match? variant
         | .iterator-header(header-location, loop)
             replacement = make-iterator-from-partial(tree, header-location, replacement, loop)
 = replacement
@@ -1773,7 +1773,7 @@ _ do rooted-stream-match SyntaxId
     - tree ASTBuilder
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-match(row)
         tree.nodes[id] = ASTStreamMatch(row.loc, row.pattern, true)
 = id
@@ -1795,7 +1795,7 @@ _ do checked-arm SyntaxId ?! YumiSyntaxError
 while alternative != 0
     . next SyntaxId = 0
     . last = alternative
-    do match? tree.nodes[alternative]
+    match? tree.nodes[alternative]
         | .node-type-or(row)
             next = row.left
             last = row.right
@@ -1958,7 +1958,7 @@ id
                 identifier.name
 . checked = reject-unmarked-state-machine(tree, loc, right)
 if is-pattern
-    do match? tree.nodes[checked]
+    match? tree.nodes[checked]
         | .node-block(block)
             if block.body.count > 1
                 . beside = tree.children[block.body.start + 1]
@@ -2119,7 +2119,7 @@ given[0] = tree.make-argument(loc, tree.append(ASTString(loc, tree.store-string(
 
 =? tree.syntax-or-invalid(body) if !tags
 . bindings = tags
-do match? tree.nodes[type]
+match? tree.nodes[type]
     | .node-type-identifier(named)
         if named.name.text == "This" && !named.is-declare
             . message = "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object"
@@ -2129,7 +2129,7 @@ do match? tree.nodes[type]
 . block-loc = loc
 . lone SyntaxId = 0
 if body
-    do match tree.nodes[body]
+    match tree.nodes[body]
         | .node-block(row)
             existing = row.body
             block = body
@@ -2161,7 +2161,7 @@ if block != 0
     - is-optional Bool
 
 . rhs = if is-optional then tree.append(ASTOptionalChain(loc, right)) else right
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-structure-match
         = tree.append(ASTMatchExpression(loc, rhs, left, false))
     | .node-stream-match
@@ -2170,7 +2170,7 @@ if op == .write-all-op
     = make-write-all(tree, loc, left, rhs)
 if op == .bind-op
     track-place(tree, rhs)
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-identifier(identifier)
         assign-anonymous-case-owner-tree(tree, rhs, identifier.name)
 = tree.append(ASTAssign(loc, op, left, rhs))
@@ -2193,7 +2193,7 @@ for name in names
     - tree ASTBuilder
     - place SyntaxId
 
-do match? tree.nodes[place]
+match? tree.nodes[place]
     | .node-identifier(row)
         tree.nodes[place] = ASTIdentifier(tree.location(place), row.name, true)
     | .node-get-expression(row)
@@ -2456,7 +2456,7 @@ while index != 0
     - ordering SyntaxId
 
 ` Makes the right side of an ordering a node that holds its value.
-do match? tree.nodes[ordering]
+match? tree.nodes[ordering]
     | .node-binary-expression(row)
         . holder = tree.append(ASTHeldExpression(tree.location(row.rhs), row.rhs))
         tree.nodes[ordering] = ASTBinaryExpression(row.loc, row.op, row.lhs, holder)
@@ -2672,7 +2672,7 @@ if dependencies
 . passed SyntaxId?
 for node in statements
     if !allow-function-declarations
-        do match? tree.nodes[node]
+        match? tree.nodes[node]
             | .node-function-syntax(row) { row.names.count > 0 }
                 . begin = TokenLocation(row.loc.begin.line - 1, row.loc.begin.column)
                 . end = TokenLocation(begin.line, begin.column + 1)
@@ -3307,7 +3307,7 @@ match nodes[id]
     - id SyntaxId
     - tags RowRange'Atom
 
-do match? nodes[id]
+match? nodes[id]
     | .node-class-block(row)
         row.is-style-sheet = true
         row.tags = tags
@@ -3620,7 +3620,7 @@ _ do set-pipeline-left SyntaxId
 
 ` A pipeline takes the statement before it as its left side. When that statement was itself
 ` joined after the pipeline was written, the pipeline is written again after it.
-do match nodes[pipeline-id]
+match nodes[pipeline-id]
     | .node-pipeline-expression(pipeline)
         if left > pipeline-id
             = append(ASTPipelineExpression(pipeline.loc, pipeline.op, left, pipeline.right))
@@ -4011,7 +4011,7 @@ for node in nodes[1 .. < nodes.length]
 
 . end = nodes.length
 for node in nodes[1 .. < end]
-    do match node
+    match node
         | .node-state-case(row)
             row.body = normalized-state-body(row.body)
             validate-state-fallbacks(row.body)
@@ -4054,7 +4054,7 @@ _ do validate-state-fallbacks ?! YumiSyntaxError
 
 . found = false
 for item in nodes[child-ids(body)]
-    do match? item
+    match? item
         | .node-state-fallback(row)
             . loc = exclusive-end-location(row.loc)
             . message = "Multiple fallbacks in one state transition group"
@@ -4066,7 +4066,7 @@ for item in nodes[child-ids(body)]
 _ do slot-type-declares-params Bool
     - id SyntaxId
 
-do match nodes[id]
+match nodes[id]
     | .node-type-identifier(row)
         = row.is-declare
     | .node-type-arguments(row)

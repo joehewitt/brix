@@ -188,10 +188,10 @@ for condition in plan.conditions
     - tree AST
     - condition SyntaxId
 
-do match? tree.nodes[guard-expression(tree, condition)]
+match? tree.nodes[guard-expression(tree, condition)]
     | .node-binary-expression(row)
         if row.op == .is-op || row.op == .equals-op
-            do match? tree.nodes[row.lhs]
+            match? tree.nodes[row.lhs]
                 | .node-identifier(left)
                     if !left.is-tracked
                         = left.name.text
@@ -280,7 +280,7 @@ _ do plan-statements Plan?
 if index >= statements.length
     = open-plan()
 . statement = statements[index]
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-declare(row)
         if row.is-pattern || row.right == 0
             = null
@@ -392,9 +392,9 @@ id != 0 && !(tree.nodes[id] is .node-optional-chain) && !(tree.nodes[id] is .nod
     - id SyntaxId
 
 ` The name a declaration of one local gives, or none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 = identifier-name(tree, capture.id)
 = ""
@@ -407,9 +407,9 @@ do match? tree.nodes[id]
     - name String
 
 ` The name of a local as written, where it is written as a plain name.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
-        do match? tree.nodes[row.left]
+        match? tree.nodes[row.left]
             | .node-type-capture(capture)
                 . text = node-text(source, tree, capture.id)
                 if is-plain-name(text)
@@ -472,7 +472,7 @@ match tree.nodes[id]
 ` Whether a value is written as one that cannot fail: a direct value, or a tuple or list of them.
 if is-direct-value(tree, id)
     = true
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-tuple-syntax(row)
         for item in tree.children[row.items]
             if !is-proven-value(tree, item)
@@ -588,7 +588,7 @@ _ do visit-prefix
     - statement SyntaxId
     - path [PlanStep]
 
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-assertion-syntax(row)
         if row.condition != 0
             contexts += PlanContext(false, row.condition, path)
@@ -647,7 +647,7 @@ _ do gather-referenced
 
 if id == 0
     =
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         . name = row.name.text
         if !inside && known[name] != null && !seen[name]
@@ -860,7 +860,7 @@ found[position] = paths
 for id in 1u32 .. < tree.nodes.length
     if !attached[id]
         continue
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-function-syntax(row)
             lint-expression-function(source, tree, id as SyntaxId, row, context)
 
@@ -1161,7 +1161,7 @@ stable["false"] = true
 stable["null"] = true
 stable["this"] = true
 for arg in tree.children[function.args]
-    do match? tree.nodes[arg]
+    match? tree.nodes[arg]
         | .node-argument-decl(row)
             stable[declared-name(tree, row.pattern)] = true
 
@@ -1186,7 +1186,7 @@ if snapshots.length != 0
     - declarations [String = SyntaxId]
     - visiting [String = Bool]
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         if row.is-tracked
             = false
@@ -1225,7 +1225,7 @@ if condition != 0
         . visiting [String = Bool]
         if !read[name] && reads-local(tree, condition, name, declarations, visiting)
             read[name] = true
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-assertion-syntax(row)
             if calls-or-assigns(tree, condition)
                 for snapshot in snapshots
@@ -1259,7 +1259,7 @@ match tree.nodes[id]
 
 if id == 0
     = false
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         . found = row.name.text
         if found == name

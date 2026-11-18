@@ -130,19 +130,6 @@ ir.start-block(ir.reserve-block())
 = true
 
 ────────────────────
-+ do emit-match-statement Bool
-    - body SyntaxId
-
-` Emits `do match` of a subject, whose arms are run for what they do, and says whether the
-` body of a `do` was one.
-do match? tree.nodes[body]
-    | .node-match-expression(row)
-        if row.subject != 0 && helper-runs(row.helper)
-            emit-subject-match(body, row.subject, row.body, row.is-optional, row.helper, true)
-            = true
-= false
-
-────────────────────
 + helper-runs Bool
     - helper SyntaxId
 
@@ -165,21 +152,21 @@ helper == 0 || plan == .plan-pattern-helper
 ` that matches gives the match its value, converted as the arms record for a side of its type. A
 ` struct is copied first, so nothing an arm runs changes what is matched. The arms may stand in a
 ` block with the lazy locals they read, which emit nothing there. Where no arm matches, `match`
-` panics, `match?` and a match written on one line give an optional that holds nothing, and `do
-` match?` goes on. The match `if` or `while` tests a pattern with gives false there. The arms after
-` one that always matches are not emitted. With `is-statement` the arms are run for what they do and
-` give no value. A grammar is run as `emit-stream-match` runs it, whose optional is that of
-` `match?` too.
+` panics, `match?` and a match written on one line give an optional that holds nothing, and a
+` `match?` run as steps goes on. The match `if` or `while` tests a pattern with gives false
+` there. The arms after one that always matches are not emitted. With `is-statement` the arms
+` are run for what they do and give no value. A grammar is run as `emit-stream-match` runs it,
+` whose optional is that of `match?` too.
 . nothing = make-operand(.operand-void, 0)
 . pattern SyntaxId = 0
 . inner = body
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         inner = 0
         for statement in tree.children[block.body]
             if !is-lazy-local(statement)
                 inner = if inner == 0 then statement else body
-do match? tree.nodes[inner]
+match? tree.nodes[inner]
     | .node-structure-match(arms)
         pattern = arms.pattern
     | .node-stream-match
@@ -269,7 +256,7 @@ else
 . yes = integer(.machine-u8, 1)
 . no = integer(.machine-u8, 0)
 . is-case = false
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-symbol
         is-case = true
     | .node-type-case
@@ -282,7 +269,7 @@ if !is-case && facts.plan-of(unit.reading, rhs) == .plan-never
 . named = bound.length
 matching = matching.testing = true
 matching = matching.tested = lhs
-do match tree.nodes[rhs]
+match tree.nodes[rhs]
     | .node-symbol
         match-case(rhs, 0, value, failed)
     | .node-type-case(row)
@@ -320,7 +307,7 @@ if machine.store == .store-global
     = names-global(id, machine)
 if machine.store == .store-member
     . property = decl-name(machine.module, machine.decl)
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-get-expression(row)
             = property && row.name == property && !is-link(id)
         | .node-identifier(row)
@@ -394,7 +381,7 @@ _ do first-arm SyntaxId
     - pattern SyntaxId
 
 ` The arm written first of the arms of a match, where a match no arm matches panics.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = first-arm(row.left)
 = pattern
@@ -426,7 +413,7 @@ do match? tree.nodes[pattern]
 ` may hold tests of its own, is emitted.
 if alternative == 0 && raises == 0 && facts.plan-of(unit.reading, pattern) == .plan-switch
     = switch-arms(site, pattern, subject, held, given, type, joined, slot)
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         if match-arms(site, row.left, subject, held, given, type, joined, slot)
             = true
@@ -447,7 +434,7 @@ do match? tree.nodes[pattern]
             = false
         . tested = if alternative != 0 then alternative else row.pattern
         if tested != 0
-            do match? tree.nodes[tested]
+            match? tree.nodes[tested]
                 | .node-type-or(both)
                     if match-arms(site, pattern, subject, held, given, type, joined, slot, raises, both.left)
                         = true
@@ -484,7 +471,7 @@ do match? tree.nodes[pattern]
         ir.start-block(next)
         = false
     | .node-type-panic(row)
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-transform(arm)
                 if arm.expr != 0
                     = match-arms
@@ -668,7 +655,7 @@ _ do payload-part SyntaxId
     - inner SyntaxId
     - held TypeId
 
-do match? tree.nodes[inner]
+match? tree.nodes[inner]
     | .node-type-tuple(row)
         if row.field-types.count == 1 && intrinsic(held) != .tuple
             = tree.children[row.field-types.start]
@@ -727,7 +714,7 @@ if arm.count == 0
 if step.kind != .step-held
     = .head-none
 . kind = intrinsic(step.type)
-do match? tree.nodes[step.pattern]
+match? tree.nodes[step.pattern]
     | .node-type-case(row)
         . constant = facts.constant-of(unit.reading, step.pattern)
         if not-case-plan || kind != .union || constant == no-fact || machine-case
@@ -850,7 +837,7 @@ for _ in 0 .. < tables.layouts.rows[layout].fields.count
 for arm in arms
     . step = match-steps[arm.first]
     . start = match-steps.length as U32
-    do match? tree.nodes[step.pattern]
+    match? tree.nodes[step.pattern]
         | .node-type-tuple(row)
             for position in 0 .. < row.field-types.count
                 . part = tree.children[row.field-types.start + position]
@@ -938,7 +925,7 @@ _ do list-steps
     - first-type TypeId
     - sharing Bool
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-list(row)
         . count = row.patterns.count
         . rest = count
@@ -1078,7 +1065,7 @@ _ do gather-arms
     - pattern SyntaxId
     - arms [SyntaxId]
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         gather-arms(row.left, arms)
         gather-arms(row.right, arms)
@@ -1205,7 +1192,7 @@ case-cursors += CaseCursor(row, type, place, case-index, checked, located.column
     - object SyntaxId
 
 ` The case of a row a name read as an object stands for, or `U32.max` where it stands for none.
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-identifier
         . binding = instances.rows[unit.reading].binding
         if binding == no-binding || unit.reading != unit.instance
@@ -1265,7 +1252,7 @@ _ do in-headed-loop Bool
 
 ` Whether the body of a loop with a header is being emitted: any loop but a `while`.
 for loop in loops
-    do match? tree.nodes[loop.syntax]
+    match? tree.nodes[loop.syntax]
         | .node-while-block
             continue
     = true
@@ -1434,7 +1421,7 @@ ir.start-block(passed)
 . nothing = make-operand(.operand-void, 0)
 if pattern == 0
     = value
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-wildcard
         = value
     | .node-type-identifier
@@ -1724,7 +1711,7 @@ _ do it-read SlotId
 if binding == no-binding || unit.reading != unit.instance
     = no-slot
 for id in tree.subtree-start(expr) .. expr
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier
             . resolution = bindings.resolution-of(binding, id)
             if resolution.kind == .resolve-slot && bindings.slots[resolution.slot].kind == .slot-it
@@ -1813,7 +1800,7 @@ _ do member-flag Typed
 . nothing = make-operand(.operand-void, 0)
 if facts.plan-of(unit.reading, pattern) == .plan-refined-case
     if unreached-refined(lhs, pattern, true)
-        do match? tree.nodes[lhs]
+        match? tree.nodes[lhs]
             | .node-get-expression(row)
                 do emit-expression(row.object)
         = Typed(integer(.machine-u8, 0), types.bool-type)
@@ -1832,7 +1819,7 @@ if facts.plan-of(unit.reading, pattern) != .plan-case || constant == no-fact || 
     .. state-text = machine-tree.state-name(cases[facts.constants[constant].bits as U32])!.text
 . base = nothing
 . owner = no-type
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-get-expression(row)
         if row.name == property && !is-link(lhs)
             owner = held-type(row.object)
@@ -1881,7 +1868,7 @@ refined-payload = no-local
 . owner = refined-owner(subject, pattern, evaluates)
 . object = make-operand(.operand-void, 0)
 if owner != no-type
-    do match? tree.nodes[subject]
+    match? tree.nodes[subject]
         | .node-get-expression(row)
             object = emit-expression(row.object).operand
         | .node-identifier
@@ -1955,7 +1942,7 @@ _ do refined-owner TypeId
 . property = decl-name(root.module, root.decl) if root
 . owner = no-type
 if property && name
-    do match? tree.nodes[subject]
+    match? tree.nodes[subject]
         | .node-get-expression(row)
             . named = tree.nodes[row.object] is .node-identifier
             if row.name == property && !is-link(subject) && (named || evaluates)
@@ -2019,7 +2006,7 @@ _ do union-case-holds Bool
 . position = 0u32
 for fact in types.cases[types.completion-of(union).cases]
     if fact.name && fact.name! == name
-        do match? types.rows[union]
+        match? types.rows[union]
             | .type-named-union(row)
                 = types.child-type(row.cases, position) != types.void-type
         = false
@@ -2070,11 +2057,11 @@ if inner == 0
     = Typed(value.operand, type)
 . case-type = tables.unions.cases[union.cases.start + index].type
 . part = inner
-do match? tree.nodes[inner]
+match? tree.nodes[inner]
     | .node-type-tuple(row)
         if row.field-types.count == 1 && intrinsic(case-type) != .tuple
             part = tree.children[row.field-types.start]
-do match? tree.nodes[part]
+match? tree.nodes[part]
     | .node-identifier
         bind-case-cursor(part, value.operand, type, place, index, located)
         = Typed(value.operand, type)
@@ -2133,7 +2120,7 @@ _ do match-columns Typed
 for position in 0 .. < fields.count
     . field = tree.children[fields.start + position]
     . name SyntaxId = 0
-    do match? tree.nodes[field]
+    match? tree.nodes[field]
         | .node-type-wildcard
             table-source(field, value.operand, owner, layout)
             continue
@@ -2225,7 +2212,7 @@ for text in [prefix, suffix]
     fact = next-call(fact)
 if !matching.testing
     for part in parts
-        do match? tree.nodes[part]
+        match? tree.nodes[part]
             | .node-type-capture(row)
                 bind-name
                     - row.id
@@ -2269,7 +2256,7 @@ if types.is-optional(subject.type) || intrinsic(subject.type) == .union
 . count = items.count
 . rest = count
 for position in 0 .. < count
-    do match? tree.nodes[tree.children[items.start + position]]
+    match? tree.nodes[tree.children[items.start + position]]
         | .node-type-remainder
             rest = position
 . fixed = if rest == count then count else count - 1
@@ -2418,7 +2405,7 @@ _ do match-rest
 ` a view of a field's column, made their span or view as `t[a .. < b]` makes it. What it gives is
 ` matched by the name.
 . name SyntaxId = 0
-do match? tree.nodes[remainder]
+match? tree.nodes[remainder]
     | .node-type-remainder(row)
         name = row.name
 if name == 0
@@ -2461,7 +2448,7 @@ if types.is-optional(subject.type) || intrinsic(subject.type) == .union
 . mark = given.length
 . rest SyntaxId = 0
 for item in tree.children[items]
-    do match tree.nodes[item]
+    match tree.nodes[item]
         | .node-type-map-item(row)
             . key = convert(row.key, .reason-argument, emit-expression(tree.key-of(row.key)))
             . keyed = key.type
@@ -2497,7 +2484,7 @@ _ do match-unmatched
 ` what it holds from `mark` on, is stored in it by the call recorded next, and the rest is
 ` what the last call recorded gives of the subject and that map. The name matches it.
 . name SyntaxId = 0
-do match? tree.nodes[remainder]
+match? tree.nodes[remainder]
     | .node-type-remainder(row)
         name = row.name
 . made = call-at(remainder, .call-constructor)
@@ -2615,7 +2602,7 @@ _ do emit-arms Bool ?! Refused
 ` tests a condition reads what the condition gave as its `it`. An arm that raises for whatever
 ` is left ends them as an else does. Where the arms place, an arm that is a test and no more and
 ` an arm that raises have no shape.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         if emit-arms(site, row.left, type, joined, slot, places)
             = true
@@ -2624,7 +2611,7 @@ do match? tree.nodes[pattern]
         . condition SyntaxId = 0
         . is-else = row.pattern == 0
         if !is-else
-            do match? tree.nodes[row.pattern]
+            match? tree.nodes[row.pattern]
                 | .node-type-wildcard
                     is-else = true
                 | .node-type-predicate(predicate)
@@ -2678,13 +2665,13 @@ do match? tree.nodes[pattern]
         if places
             refuse(.refused-expression, pattern)
             = false
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-transform(arm)
                 if arm.pattern == 0 && arm.expr != 0
                     raise-given(pattern, arm.expr, row.pattern)
                     = true
                 if arm.expr != 0
-                    do match? tree.nodes[arm.pattern]
+                    match? tree.nodes[arm.pattern]
                         | .node-type-predicate(predicate)
                             . given = emit-expression(predicate.expr)
                             . tested = test(predicate.expr, given)

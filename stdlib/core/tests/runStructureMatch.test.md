@@ -108,7 +108,7 @@ false
 . selected = 0
 . trace = ""
 
-do match 2
+match 2
     |= 1
         selected = 10
         trace += "one"
@@ -132,7 +132,7 @@ two
 ```yumi
 . selected = 0
 
-do match 7
+match 7
     |? it < 0
         selected = -1
     |? it > 5
@@ -151,7 +151,7 @@ do match 7
 ```yumi
 . selected = 4
 
-do match? 7
+match? 7
     |= 1
         selected = 10
     |= 2
@@ -166,7 +166,7 @@ do match? 7
 
 ```yumi
 do new
-    do match 8
+    match 8
         |? it > 10
             -- "unreachable"
 catch failure
@@ -179,7 +179,7 @@ Pattern match failed
 
 ```yumi
 do new
-    do match 8
+    match 8
         |? it > 10
             -- "unreachable"
         ?! Panic("too much")
@@ -199,7 +199,7 @@ too much
 + do choose I32
     - value I32
 
-do match value
+match value
     |= 1
         = 10
     ??
@@ -215,7 +215,7 @@ do match value
 . total = 0
 
 for value in [1, 2, 3, 4]
-    do match value
+    match value
         |= 2
             continue
         |= 4
@@ -234,7 +234,7 @@ for value in [1, 2, 3, 4]
 . counter = Counter()
 . selected = 0
 
-do match counter.next()
+match counter.next()
     |= 1
         selected = 10
     |= 2
@@ -270,7 +270,7 @@ count += 1
         ..closed
 . selected = 0
 
-do match event
+match event
     | .opened(value)
         selected = value
     | .closed
@@ -290,7 +290,7 @@ do match event
 ```
 
 ```yumi
-do match 1
+match 1
     |= 1
         42
     ??
@@ -1082,14 +1082,14 @@ Pattern match failed
 ```yumi
 do new
     . value = 6
-    do match value
+    match value
         |= 6
             -- "six"
-    do match? value
+    match? value
         |= 4
             -- "four"
     -- "after"
-    do match value
+    match value
         |= 4
             -- "four"
         |= 5
@@ -1659,12 +1659,12 @@ bar = 42
         p.x + p.y
     ?? 0
 . sum = 0
-do match point.x
+match point.x
     |= 1
         sum += 10
     |= 2
         sum += 20
-do match? point.y
+match? point.y
     |= 7
         sum += 100
 -- sum
@@ -2495,7 +2495,7 @@ other
 
 ```yumi
 . level = Level.low
-do match level
+match level
     | .low
         -- "low"
     | .middle
@@ -3187,7 +3187,7 @@ match score
 + do name String
     - n Int
 
-do match n
+match n
     | 1
         = "one"
     | 2
@@ -3552,7 +3552,7 @@ match this
 7
 ```
 
-### A lazy local under the arms of a match is evaluated once, by the arm that reads it: in match, match? and do match?.
+### A lazy local under the arms of a match is evaluated once, by the arm that reads it: in match, match? and a match? run as steps.
 
 ```yumi
 -- Spot.first.place(10)
@@ -3613,7 +3613,7 @@ match? this
 + do shown
     - count Int
 
-do match? this
+match? this
     `
     | Spot.index(n)
         -- "index $n of $length and $length"
@@ -3955,7 +3955,7 @@ show(Foo([Foo(1)]))
 + do show
     - value
 
-do match value
+match value
     | List
         -- "list"
     | Int
@@ -4092,7 +4092,7 @@ true
     - size Int
 
 . out = Int[3]
-do match size
+match size
     |= 2
         for index in 0 .. < 3
             out[index] =
@@ -4161,7 +4161,7 @@ items += 1 as Value
 _ do after-data String
     - value Value
 
-do match value
+match value
     | number Int
         = "$number"
     | data Byte[]
@@ -4173,7 +4173,7 @@ do match value
 _ do alone String
     - value Value
 
-do match value
+match value
     | number Int
         = "$number"
     | list List
@@ -4245,7 +4245,7 @@ match held
 + do after-statement Int
     - held Holder?
 
-do match held
+match held
     |= null
         = 0
     ??
@@ -4332,4 +4332,40 @@ match? held
 ```output
 none
 none
+```
+
+### The value of an arm is that of its last row, and the rows before it run as steps, whatever they give.
+
+```brix
+(type + Shade (is Union)
+  (variant red)
+  (variant blue)
+)
+
+(fn-do + counted I64
+  (print "counted")
+  (return 3)
+)
+
+(fn-do + pick I64
+  (param s Shade)
+  (let total 0)
+  (let x (match s
+    (case .red (+= total 1) (call counted) (print "red") (+ 5 total))
+    (case .blue 2)
+  ))
+  (return x)
+)
+
+(main
+  (print (str (call pick .red)))
+  (print (str (call pick .blue)))
+)
+```
+
+```output
+counted
+red
+6
+2
 ```

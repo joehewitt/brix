@@ -298,7 +298,7 @@ _ do bind-row Bool
 
 if pattern == actual
     = true
-do match? types.rows[pattern]
+match? types.rows[pattern]
     | .type-inference
         . count = (types.scratch.types.length - mark) / 2
         for offset in 0 .. < count
@@ -316,28 +316,28 @@ do match? types.rows[pattern]
         types.scratch.types.push(actual)
         = true
     | .type-class(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-class(other)
                 if row.module != other.module || row.decl != other.decl
                     = false
                 = bind-ranges(types, row.args, other.args, mark)
         = false
     | .type-tuple(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-tuple(other)
                 if !same-names(types, row.names, other.names)
                     = false
                 = bind-ranges(types, row.fields, other.fields, mark)
         = false
     | .type-struct(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-struct(other)
                 if !same-names(types, row.names, other.names)
                     = false
                 = bind-ranges(types, row.fields, other.fields, mark)
         = false
     | .type-function(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-function(other)
                 if row.is-c != other.is-c
                     = false
@@ -348,12 +348,12 @@ do match? types.rows[pattern]
                 = bind-ranges(types, row.errors, other.errors, mark)
         = false
     | .type-union(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-union(other)
                 = bind-ranges(types, row.cases, other.cases, mark)
         = false
     | .type-result(row)
-        do match? types.rows[actual]
+        match? types.rows[actual]
             | .type-result(other)
                 if !bind-row(types, row.value, other.value, mark)
                     = false
@@ -614,7 +614,7 @@ for fact in types.cases[completion.cases]
     - types Types
     - id TypeId
 
-do match? types.rows[id]
+match? types.rows[id]
     | .type-tuple(row)
         for offset in 0 .. < row.fields.count
             types.scratch.types.push(types.child-type(row.fields, offset))
@@ -723,7 +723,7 @@ while true
 if !types.completions[expected].has-variables
     = false
 . arg-type = types.completions[arg].intrinsic
-do match? types.rows[expected]
+match? types.rows[expected]
     | .type-associated
         = true
 = arg-type == .function || arg-type == .closure || arg-type == .binding
@@ -1131,11 +1131,11 @@ if implicit(relation, texts) then relation else illegal
 . ones = RowRange'TypeId()
 . names = RowRange'Atom()
 . others = RowRange'TypeId()
-do match? types.rows[one]
+match? types.rows[one]
     | .type-tuple(row)
         ones = row.fields
         names = row.names
-do match? types.rows[other]
+match? types.rows[other]
     | .type-tuple(row)
         others = row.fields
 =? no-type if ones.count == 0 || ones.count != others.count
@@ -1249,7 +1249,7 @@ if known != 0
     = known == 2
 . holds = false
 . inner = RowRange'TypeId()
-do match? types.rows[id]
+match? types.rows[id]
     | .type-class(row)
         inner = row.args
     | .type-tuple(row)
@@ -1320,11 +1320,11 @@ _ do unify-tuples Relation?
 . left = RowRange'TypeId()
 . left-names = RowRange'Atom()
 . right = RowRange'TypeId()
-do match? types.rows[from]
+match? types.rows[from]
     | .type-tuple(row)
         left = row.fields
         left-names = row.names
-do match? types.rows[to]
+match? types.rows[to]
     | .type-tuple(row)
         right = row.fields
 =? null if left.count == 0 || left.count != right.count
@@ -1486,7 +1486,7 @@ for offset in 1 .. < count
         joined = relation.unified
     else
         . pair = types.scratch.types.mark
-        do match types.rows[joined]
+        match types.rows[joined]
             | .type-union(row)
                 for position in 0 .. < row.cases.count
                     types.scratch.types.push(types.child-type(row.cases, position))
@@ -1849,10 +1849,10 @@ for extension in program.extensions-for(caller, ref.module, ref.decl)
     . matched = match-extension(extension.module, extension.decl, id)
     if matched
         . owner-module = program.modules[extension.module]
-        do match? owner-module.decls[extension.decl]
+        match? owner-module.decls[extension.decl]
             | .decl-extension(row)
                 for member in owner-module.member-pool[row.members]
-                    do match? owner-module.decls[member]
+                    match? owner-module.decls[member]
                         | .decl-converter(converter)
                             . syntax = converter.target-type
                             . env = matched.env
@@ -1970,9 +1970,9 @@ _ do extends-converter Bool
     - decl DeclId
 
 . decls = program.modules[module].decls
-do match? decls[decl]
+match? decls[decl]
     | .decl-converter(row)
-        do match? decls[row.owner]
+        match? decls[row.owner]
             | .decl-extension
                 = true
 = false
@@ -1987,16 +1987,16 @@ _ do converter-hit ConverterHit
 . owner-module = 0u32
 . owner-decl = 0u32
 . owner-args = RowRange'TypeId()
-do match? types.rows[owner]
+match? types.rows[owner]
     | .type-class(row)
         owner-module = row.module
         owner-decl = row.decl
         owner-args = row.args
 . decls = program.modules[module].decls
 . extension-owner = U32.max
-do match? decls[decl]
+match? decls[decl]
     | .decl-converter(row)
-        do match? decls[row.owner]
+        match? decls[row.owner]
             | .decl-extension
                 extension-owner = row.owner
 . env = types.env-frame()
@@ -2016,7 +2016,7 @@ for offset in 0 .. < count
         env = types.env-bind(env, name, actual)
 . tree = program.modules[module].tree
 . result = ParamResult(env, .convertible, false)
-do match? decls[decl]
+match? decls[decl]
     | .decl-converter(row)
         . assigns = row.param-assignments
         . limits = row.param-constraints
@@ -2039,7 +2039,7 @@ _ do apply-param-declarations ParamResult
 . accepted = true
 . implicit = true
 for assignment in tree.nodes[tree.children[assignments]]
-    do match? assignment
+    match? assignment
         | .node-param-assignment(arow)
             . assigned = assignment-type(module, tree, arow.right, current)
             if assigned.type == invalid-type
@@ -2055,7 +2055,7 @@ for assignment in tree.nodes[tree.children[assignments]]
                 else if bound && bound != assigned.type
                     accepted = false
 for constraint in tree.nodes[tree.children[constraints]]
-    do match? constraint
+    match? constraint
         | .node-param-constraint(crow)
             . name = types.type-syntax-name(tree, crow.left)
             . bound = types.env-lookup(current, name) if name
@@ -2104,7 +2104,7 @@ types.scratch.types.rewind(mark)
 . owner-module = program.modules[module]
 . tree = owner-module.tree
 . result = ParamResult(env, .convertible, false)
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-extension(row)
         . assigns = row.param-assignments
         . limits = row.param-constraints
@@ -2139,7 +2139,7 @@ _ do assignment-type Assigned
     - right SyntaxId
     - env TypeEnv
 
-do match? tree.nodes[right]
+match? tree.nodes[right]
     | .node-cast-expression(cast)
         . source = types.evaluate-type(module, tree, cast.lhs, env)
         . target = types.evaluate-type(module, tree, cast.rhs, env)
@@ -2195,10 +2195,10 @@ for extension in program.extensions-for(caller, ref.module, ref.decl)
     . matched = match-extension(extension.module, extension.decl, to)
     if matched
         . owner-module = program.modules[extension.module]
-        do match? owner-module.decls[extension.decl]
+        match? owner-module.decls[extension.decl]
             | .decl-extension(row)
                 for member in owner-module.member-pool[row.members]
-                    do match? owner-module.decls[member]
+                    match? owner-module.decls[member]
                         | .decl-fromverter(fromverter)
                             . syntax = fromverter.source-type
                             . env = matched.env
@@ -2292,7 +2292,7 @@ _ do zips-columns Bool
 if row == no-type || types.completions[row].intrinsic == .union
     = false
 . zipped = RowRange'TypeId()
-do match? types.rows[from]
+match? types.rows[from]
     | .type-tuple(tuple)
         zipped = tuple.fields
 if zipped.count == 0
@@ -2380,12 +2380,12 @@ if from == no-type || to == no-type
 . to-args = RowRange'TypeId()
 . to-errors = RowRange'TypeId()
 . to-return = no-type
-do match? types.rows[from]
+match? types.rows[from]
     | .type-function(row)
         from-args = row.args
         from-errors = row.errors
         from-return = row.return-type
-do match? types.rows[to]
+match? types.rows[to]
     | .type-function(row)
         to-args = row.args
         to-errors = row.errors
@@ -2416,11 +2416,11 @@ if from == no-type || to == no-type
 . from-return = no-type
 . to-args = RowRange'TypeId()
 . to-return = no-type
-do match? types.rows[from]
+match? types.rows[from]
     | .type-function(row)
         from-args = row.args
         from-return = row.return-type
-do match? types.rows[to]
+match? types.rows[to]
     | .type-function(row)
         to-args = row.args
         to-return = row.return-type
@@ -3054,7 +3054,7 @@ for row in params[scope.start .. < scope.end]
 . closed = !types.completions[to].has-variables && !holds-alternatives(to)
 if (closed && types.intrinsic-of(to) != .or) || to == from
     = to
-do match? types.rows[to]
+match? types.rows[to]
     | .type-variable(row)
         . found = scope-find(scope, row.name)
         if found
@@ -3087,13 +3087,13 @@ do match? types.rows[to]
         if matching == no-type
             matching = converted-class(from, row.module, row.decl)
         if matching == no-type && converts-from(to, from)
-            do match? types.rows[from]
+            match? types.rows[from]
                 | .type-class(other)
                     = complete-params(row.module, row.decl, row.args, other.args, scope)
         if matching == no-type
             = complete-shape(to, row.module, row.decl, row.args, from, scope)
         . actual = RowRange'TypeId()
-        do match? types.rows[matching]
+        match? types.rows[matching]
             | .type-class(other)
                 actual = other.args
         = complete-params(row.module, row.decl, row.args, actual, scope)
@@ -3159,7 +3159,7 @@ _ do default-target TypeId
 . owner-module = 0u32
 . owner-decl = 0u32
 . owner-args = RowRange'TypeId()
-do match? types.rows[owner]
+match? types.rows[owner]
     | .type-class(row)
         owner-module = row.module
         owner-decl = row.decl
@@ -3167,11 +3167,11 @@ do match? types.rows[owner]
 . decls = program.modules[module].decls
 . tree = program.modules[module].tree
 . target = invalid-type
-do match? decls[decl]
+match? decls[decl]
     | .decl-converter(row)
         . env = types.env-frame()
         . extended = false
-        do match? decls[row.owner]
+        match? decls[row.owner]
             | .decl-extension
                 extended = true
         if extended
@@ -3183,7 +3183,7 @@ do match? decls[decl]
             env = types.class-env-for(owner-module, owner-decl, owner-args, owner)
         env = types.declare-into(env, tree, row.target-type, module, decl, env.end)
         for assignment in tree.nodes[tree.children[row.param-assignments]]
-            do match? assignment
+            match? assignment
                 | .node-param-assignment(arow)
                     . left = types.type-syntax-name(tree, arow.left)
                     . assigned = assignment-type(module, tree, arow.right, env)
@@ -3211,7 +3211,7 @@ if module == optional.module && decl == optional.decl && args.count == 1
     . inner = complete-against(types.child-type(args, 0), from, scope)
     = types.optional-of(inner) if inner
 . source = RowRange'TypeId()
-do match? types.rows[from]
+match? types.rows[from]
     | .type-tuple(other)
         source = other.fields
 . kind = types.intrinsic-of(to)
@@ -3287,7 +3287,7 @@ _ do complete-tuple TypeId?
     - scope MatchScope
 
 . source = RowRange'TypeId()
-do match? types.rows[from]
+match? types.rows[from]
     | .type-tuple(other)
         source = other.fields
 if source.count != fields.count || fields.count == 0
@@ -3341,7 +3341,7 @@ _ do unraised TypeId
 ` A class whose value raises errors of its own, as the generator of a function that yields
 ` and raises does, without them: the reference chooses among alternatives by that type, and
 ` the value keeps its own.
-do match? types.rows[id]
+match? types.rows[id]
     | .type-class(row)
         if row.errors.count != 0
             . mark = types.scratch.types.mark

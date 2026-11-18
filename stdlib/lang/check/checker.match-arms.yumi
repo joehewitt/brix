@@ -91,7 +91,7 @@ for position in 0 .. < arms.length
     . arm = arms[position]
     if facts.plan-of(instance, arm) == .plan-never
         =
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-type-transform(row)
             if row.pattern == 0 || tree.nodes[row.pattern] is .node-type-wildcard
                 if position != arms.length - 1
@@ -115,7 +115,7 @@ _ do gather-switch-arms Bool
     - pattern SyntaxId
     - arms [SyntaxId]
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = gather-switch-arms(row.left, arms) && gather-switch-arms(row.right, arms)
     | .node-type-transform(row)
@@ -139,11 +139,11 @@ _ do names-switch-number Bool
     - pattern SyntaxId
     - subject TypeId
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-equality(row)
         if row.is-contextual || types.completions[subject].has-equalities
             = false
-        do match? tree.nodes[row.expr]
+        match? tree.nodes[row.expr]
             | .node-integer-syntax(literal)
                 if literal.unit
                     = false
@@ -518,7 +518,7 @@ _ do closes Bool
 ` catch the body is, or a statement of a block the body is.
 if body == arms
     = true
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-catch-expression(row)
         = closes(row.body, arms)
     | .node-block(row)
@@ -546,11 +546,11 @@ _ do check-arm-reach Bool
     - subject TypeId
     - is-last Bool
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = check-arm-reach(row.left, subject, false) || check-arm-reach(row.right, subject, is-last)
 . armed = pattern
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-transform(row)
         armed = row.pattern
 . shown = tree.takes-all(armed)
@@ -584,7 +584,7 @@ _ do collect-arms Bool
 ` gives the element its lines, and the match nothing.
 if id == 0
     = false
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-type-or(row)
         . left = collect-arms(row.left, subject)
         if !fails-present(row.left) || untyped || !types.is-optional(subject)
@@ -629,7 +629,7 @@ do match tree.nodes[id]
         if predicate != 0 && subject == no-type
             . it-slot = arm-slot(id, .slot-it)
             . it-type = facts.node-type(instance, predicate)
-            do match? tree.nodes[predicate]
+            match? tree.nodes[predicate]
                 | .node-identifier
                     . resolution = bindings.resolution-of(frame.binding, predicate)
                     if resolution.kind == .resolve-slot
@@ -655,7 +655,7 @@ do match tree.nodes[id]
             else if arming.statement
                 value = check-steps(row.expr)
             else
-                value = check-statement(row.expr)
+                value = check-arm-value(row.expr)
             arm-typing = own-arm
         if narrowing.exits(row.expr)
             frame.restore-members(known)
@@ -663,7 +663,8 @@ do match tree.nodes[id]
             frame.keep-members(entered)
         . silent = row.expr != 0 && facts.diagnostics.length == diagnosed
         if silent && !arming.statement && lacks-value(row.expr, value) && !matches-row(subject)
-            frame.diagnose(row.expr, .stated, program.store-atom("Match arm gives no value"))
+            . stated = if in-steps() then "Match arm gives no value" else "Match arm gives no value in a value body"
+            frame.diagnose(row.expr, .stated, program.store-atom(stated))
         arm-bodies += row.expr
         arm-present += arming.present-depth != 0
         arm-starts += assigned-start
@@ -706,11 +707,11 @@ _ do passes-expected Bool
 . value = tree.arm-value(body)
 =? false if arming.expected == no-type || arming.expected == types.void-type || !tree.is-match-syntax(value)
 =? false if may-miss(value, arming.expected)
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             =? true if statement == value
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-declare(row)
                     if row.is-lazy
                         continue
@@ -772,7 +773,7 @@ _ do collect-panic Bool
     - id SyntaxId
     - subject TypeId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-transform(row)
         . is-else = tree.pattern-is-else(row.pattern)
         check-pattern(row.pattern, subject)
@@ -816,7 +817,7 @@ match tree.nodes[pattern]
 
 if pattern == 0
     =
-do match tree.nodes[pattern]
+match tree.nodes[pattern]
     | .node-type-predicate(row)
         check-predicate(pattern, row.expr, subject)
     | .node-type-equality(row)
@@ -1070,7 +1071,7 @@ _ do it-read SlotId
 ` The slot a condition reads `it` through where its pattern declares none and no arm has
 ` one: that of an earlier pattern of the same block.
 for id in tree.subtree-start(expr) .. expr
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier
             . resolution = bindings.resolution-of(frame.binding, id)
             if resolution.kind == .resolve-slot && bindings.slots[resolution.slot].kind == .slot-it
@@ -1206,7 +1207,7 @@ if plain-subject then subject else types.optional-inner(subject)
 ` pass different types: the subject stands for them.
 if pattern == 0 || subject == no-type || subject == invalid-type
     = subject
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-tuple
         = held-subject(subject)
     | .node-type-case(row)
@@ -1220,7 +1221,7 @@ do match? tree.nodes[pattern]
         if payload == no-type || payload == invalid-type
             = subject
         . part = row.value
-        do match? tree.nodes[row.value]
+        match? tree.nodes[row.value]
             | .node-type-tuple(fields)
                 if fields.field-types.count == 1 && types.intrinsic-of(payload) != .tuple
                     part = tree.children[fields.field-types][0]
@@ -1278,7 +1279,7 @@ do match? tree.nodes[pattern]
 ` pattern is a field of one that takes a tuple apart.
 if pattern == 0 || subject == no-type || subject == invalid-type
     = true
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-identifier
         = type-possible(pattern, subject, .similar)
     | .node-type-arguments
@@ -1310,7 +1311,7 @@ do match? tree.nodes[pattern]
             = true
         . item = iterable-item(held, types.indexable-decl)
         for element in tree.children[row.patterns]
-            do match tree.nodes[element]
+            match tree.nodes[element]
                 | .node-type-remainder
                     continue
                 ??
@@ -1324,7 +1325,7 @@ do match? tree.nodes[pattern]
         if map == no-type
             = false
         for element in tree.children[row.patterns]
-            do match? tree.nodes[element]
+            match? tree.nodes[element]
                 | .node-type-map-item(item)
                     if !pattern-possible(item.value, class-arg(types, map, 1))
                         = false
@@ -1482,7 +1483,7 @@ while current != no-type
     if declared == 0
         continue
     . owner-tree = program.modules[level.module].tree
-    do match? program.modules[level.module].decls[declared]
+    match? program.modules[level.module].decls[declared]
         | .decl-property(found)
             . machine = owner-tree.declared-machine(found.value)
             . items = if machine != 0 then machine-states else List'SyntaxId()
@@ -1502,7 +1503,7 @@ _ do case-owner-of TypeId
 ` name, or none.
 if subject == 0
     = no-type
-do match? tree.nodes[subject]
+match? tree.nodes[subject]
     | .node-get-expression(row)
         . held = facts.node-type(instance, row.object)
         . inner = if types.is-optional(held) then types.optional-inner(held) else held
@@ -1543,7 +1544,7 @@ for machine in facts.machines
     - property DeclId
 
 ` The name of a property a module declares.
-do match? program.modules[owner].decls[property]
+match? program.modules[owner].decls[property]
     | .decl-property(row)
         = row.name
 = null
@@ -1617,7 +1618,7 @@ for fact in types.cases-of(held)
 ` What an arm with no body gives: the subject as its pattern matched it. Of patterns written
 ` one after another it is what the last type named among them made of it. A case named with
 ` nothing written for what it holds gives the union, what an optional holds.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-and(row)
         if tree.names-type(row.right) || tree.matches-named(row.right)
             = pattern-type(row.right, subject)
@@ -1674,7 +1675,7 @@ _ do pattern-type TypeId
 ` list or a map written in brackets, or by a name that captures what it matches, what an optional
 ` holds for fields in parentheses, else the subject. Patterns written one after another narrow
 ` in turn.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-tuple
         = held-subject(subject)
     | .node-type-identifier
@@ -1781,7 +1782,7 @@ for part in parts
         . slot = declaring-slot(part)
         if slot
             frame.assign(slot, types.string-type)
-do match? tree.nodes[rest]
+match? tree.nodes[rest]
     | .node-type-remainder(row)
         if row.name != 0
             . range = range-construction(rest, .range-to-op, types.index-type, 0, 0, 0)
@@ -1845,7 +1846,7 @@ else
     facts.set-plan(instance, pattern, .plan-list-pattern)
     calls.demand-getter(subject, types.length-atom!, pattern)
 for element in tree.children[patterns]
-    do match tree.nodes[element]
+    match tree.nodes[element]
         | .node-type-remainder(row)
             if row.name != 0
                 . range = range-construction(element, .range-to-op, types.index-type, 0, 0, 0)
@@ -1887,7 +1888,7 @@ if mapped
         plan-leaves(pattern, whole, subject, .similar, U32.max)
     facts.set-plan(instance, pattern, .plan-map-pattern)
 for element in tree.children[patterns]
-    do match tree.nodes[element]
+    match tree.nodes[element]
         | .node-type-map-item(row)
             . key = infer(tree.key-expr(row.key))
             . known = mapped && key != invalid-type
@@ -1933,7 +1934,7 @@ _ do check-case-value
     - payload TypeId
 
 if value != 0 && payload != no-type
-    do match? tree.nodes[value]
+    match? tree.nodes[value]
         | .node-type-tuple(row)
             . payload-kind = types.intrinsic-of(payload)
             if row.field-types.count == 1 && payload-kind != .tuple
@@ -1981,7 +1982,7 @@ _ do reads-row Bool
 
 ` Whether a subject is the row `t[i]` reads of a table, a span or a selection, which TypeScript
 ` makes a cursor of whose storage it checked there, or a name a loop gives such a row by.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, syntax)
         = resolution.kind == .resolve-slot && checked-rows.find(resolution.slot) != null

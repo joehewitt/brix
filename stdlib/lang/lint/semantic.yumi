@@ -281,7 +281,7 @@ _ do note-declares
 ` Notes the value of each declaration of a module that declares its locals as they are written,
 ` neither lazily nor as a pattern, by the module and what the declaration declares.
 for id in 1u32 .. < tree.nodes.length
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-declare(row)
             if !row.is-lazy && !row.is-pattern
                 declares[declare-key(module, row.left)] = row.right
@@ -310,7 +310,7 @@ if fact.property == 0
     if declares[declare-key(row.module, fact.pattern)] != fact.value
         = false
     = module.tree.names-type(fact.annotation) && !takes-type-params(session, row.module, row.decl)
-do match? module.decls[fact.property]
+match? module.decls[fact.property]
     | .decl-property(property)
         if property.is-lazy || property.decoration
             = false
@@ -366,7 +366,7 @@ _ do takes-type-params Bool
 
 ` Whether a function or a class takes type parameters, or a function is a member of a class
 ` that does.
-do match? session.program.modules[module].decls[decl]
+match? session.program.modules[module].decls[decl]
     | .decl-function(row)
         if row.type-args.count != 0
             = true
@@ -386,7 +386,7 @@ _ do writes-default Bool
 . types = session.types
 . completion = types.completions[fact.declared]
 . tree = session.program.modules[session.instances.rows[fact.instance].module].tree
-do match? tree.nodes[fact.value]
+match? tree.nodes[fact.value]
     | .node-integer-syntax(row)
         = !row.unit && is-zero(row.value) && builtin-number(types, fact.declared)
     | .node-float-syntax(row)
@@ -524,9 +524,9 @@ _ do class-name String
     - type TypeId
 
 ` The name a class is declared with, which the reference names a type of it by.
-do match? session.types.rows[type]
+match? session.types.rows[type]
     | .type-class(row)
-        do match? session.program.modules[row.module].decls[row.decl]
+        match? session.program.modules[row.module].decls[row.decl]
             | .decl-class(owner)
                 = owner.name.text
 = type-display(session.types, type)
@@ -539,7 +539,7 @@ _ do encloses-params Bool
 
 ` Whether the function an instance runs takes type parameters or is a member of a class that
 ` does, as the reference counts them for a rule: a closure takes none of its own.
-do match? session.program.modules[module].decls[decl]
+match? session.program.modules[module].decls[decl]
     | .decl-function(row)
         if row.kind == .closure-decl
             = false
@@ -584,7 +584,7 @@ _ do suffix-unit String?
     - syntax SyntaxId
 
 . unit Atom?
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-integer-syntax(row)
         unit = row.unit
     | .node-float-syntax(row)
@@ -601,7 +601,7 @@ _ do cast-of SemanticCast
 . tree = session.program.modules[row.module].tree
 . begin = tree.nodes.loc[fact.syntax].begin
 . written SyntaxId = 0
-do match? tree.nodes[fact.syntax]
+match? tree.nodes[fact.syntax]
     | .node-cast-expression(cast)
         written = cast.rhs
 . target = owned(type-display(session.types, fact.target))
@@ -621,7 +621,7 @@ _ do answered-by-reference Bool
 . types = session.types
 . row = session.instances.rows[instance]
 . name = ""
-do match? session.program.modules[row.module].decls[row.decl]
+match? session.program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         if fn.kind == .getter-decl && fn.name
             name = fn.name.text
@@ -639,7 +639,7 @@ if kind == .array-builder
 . selects = kind == .table-selection || kind == .immutable-table-selection
 if tables || spans || columns || selects
     = measures
-do match? types.rows[row.self-type]
+match? types.rows[row.self-type]
     | .type-class(owner)
         . array = types.array-decl.refers-to(owner.module, owner.decl) && owner.args.count == 2
         = array && (measures || name == "data")
@@ -666,7 +666,7 @@ _ do written-type String?
     - type SyntaxId
 
 ` A type as the reference names it as written: by its name, with the names of its arguments.
-do match? tree.nodes[type]
+match? tree.nodes[type]
     | .node-type-identifier(row)
         = row.name.text
     | .node-core-type-identifier(row)
@@ -703,7 +703,7 @@ for key in sorted
     . gathered = facts[module.path]
     if !gathered
         continue
-    do match? module.decls[row.decl]
+    match? module.decls[row.decl]
         | .decl-function(fn)
             if fn.kind == .constructor-decl && !fn.is-generated && fn.body != 0
                 trace-overwrites(session, instance, gathered)
@@ -729,7 +729,7 @@ _ do trace-overwrites
 . body SyntaxId = 0
 . given [Atom]
 . args = RowRange'ArgumentShape()
-do match? source.decls[row.decl]
+match? source.decls[row.decl]
     | .decl-function(fn)
         body = fn.body
         args = fn.args
@@ -737,7 +737,7 @@ for shape in source.arg-pool[args]
     if shape.name && types.property-named(receiver, shape.name)
         given += shape.name
 . range = RowRange'SyntaxId()
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         range = block.body
 . statements [SyntaxId]
@@ -750,7 +750,7 @@ for statement in tree.children[range]
 . locals [Atom]
 for statement in statements
     for id in tree.subtree-start(statement) .. < statement + 1
-        do match? tree.nodes[id]
+        match? tree.nodes[id]
             | .node-declare(declare)
                 . name = declared-name(tree, declare.left)
                 if name && !declare.is-lazy
@@ -758,7 +758,7 @@ for statement in statements
 . assigned [Atom]
 for statement in statements
     for id in tree.subtree-start(statement) .. < statement + 1
-        do match? tree.nodes[id]
+        match? tree.nodes[id]
             | .node-assign(assign)
                 . name = assigned-name(types, receiver, tree, assign.lhs, locals)
                 if name
@@ -774,7 +774,7 @@ for statement in statements
     . name Atom? = null
     . target SyntaxId = 0
     . value SyntaxId = 0
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-assign(assign)
             if assign.op == .eq-op
                 name = assigned-name(types, receiver, tree, assign.lhs, locals)
@@ -817,7 +817,7 @@ _ do lazy-declare Atom?
     - statement SyntaxId
 
 ` The name a statement declares where it is a lazy declaration of one name.
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-declare(declare)
         if declare.is-lazy
             = declared-name(tree, declare.left)
@@ -847,12 +847,12 @@ _ do assigned-name Atom?
 
 ` The property of the object an assignment's target names: by a name no local of the body
 ` declares, or through `this`.
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-identifier(row)
         if locals.find(row.name) == null && types.property-named(receiver, row.name)
             = row.name
     | .node-get-expression(row)
-        do match? tree.nodes[row.object]
+        match? tree.nodes[row.object]
             | .node-identifier(object)
                 if object.name.text == "this" && types.property-named(receiver, row.name)
                     = row.name
@@ -887,7 +887,7 @@ while current != no-type
     . ref = class-ref(session.types, current)
     . module = session.program.modules[ref.module]
     for member in module.member-pool[class-members(module, ref.decl)]
-        do match? module.decls[member]
+        match? module.decls[member]
             | .decl-property(property)
                 if property.name && property.name == name
                     . setter = declares-setter(module, ref.decl, name)
@@ -906,7 +906,7 @@ while current != no-type
     . ref = class-ref(session.types, current)
     . module = session.program.modules[ref.module]
     for member in module.member-pool[class-members(module, ref.decl)]
-        do match? module.decls[member]
+        match? module.decls[member]
             | .decl-function(fn)
                 if fn.kind == .function-decl && fn.name
                     names += fn.name
@@ -919,7 +919,7 @@ _ do class-members RowRange'DeclId
     - decl DeclId
 
 . members = RowRange'DeclId()
-do match? module.decls[decl]
+match? module.decls[decl]
     | .decl-class(class)
         members = class.members
 = members
@@ -931,7 +931,7 @@ _ do declares-setter Bool
     - name Atom
 
 for member in module.member-pool[class-members(module, owner)]
-    do match? module.decls[member]
+    match? module.decls[member]
         | .decl-function(fn)
             if fn.kind == .setter-decl && fn.name && fn.name == name
                 = true
@@ -971,7 +971,7 @@ _ do constructor-args RowRange'ArgumentShape?
     - module Module
     - decl DeclId
 
-do match? module.decls[decl]
+match? module.decls[decl]
     | .decl-function(fn)
         if fn.kind == .constructor-decl
             = fn.args
@@ -1026,7 +1026,7 @@ _ do member-syntax SyntaxId
     - decl DeclId
 
 ` Where a rule of a class is written, or 0 for any other member.
-do match? module.decls[decl]
+match? module.decls[decl]
     | .decl-rule(rule)
         = rule.syntax
 = 0
@@ -1054,7 +1054,7 @@ _ do reads-any Bool
 if expr == 0
     = false
 for id in tree.subtree-start(expr) .. < expr + 1
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier(row)
             if row.name.text == "this" || row.name.text == "super" || names.find(row.name) != null
                 = true
@@ -1208,7 +1208,7 @@ for instance in instances.ordered
     . outer = instances.rows[row.enclosing]
     if outer.node-start == U32.max
         continue
-    do match? program.modules[row.module].decls[row.decl]
+    match? program.modules[row.module].decls[row.decl]
         | .decl-function(fn)
             . start = outer.subtree.start
             if fn.syntax >= start && fn.syntax < start + outer.subtree.count

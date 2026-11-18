@@ -91,11 +91,11 @@ _ do is-method Bool
 
 ` Whether a function is a method of a type, which the value of a stored property cannot call:
 ` the object the method would run on is not yet made.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-function(fn)
         if fn.owner == 0 || fn.is-static
             = false
-        do match? program.modules[owner].decls[fn.owner]
+        match? program.modules[owner].decls[fn.owner]
             | .decl-class
                 = true
 = false
@@ -127,9 +127,9 @@ _ do method-owner String
     - decl DeclId
 
 . decls = program.modules[owner].decls
-do match? decls[decl]
+match? decls[decl]
     | .decl-function(fn)
-        do match? decls[fn.owner]
+        match? decls[fn.owner]
             | .decl-class(class)
                 = class.name.text
 = ""
@@ -201,7 +201,7 @@ for param in tree.children[params]
 . listing = tree.listed-feeds(id)
 =? Found(infer-listed-feeds(id, callable, listing)) if listing != 0
 if args.count == 1
-    do match? tree.nodes[callable]
+    match? tree.nodes[callable]
         | .node-type-arguments
             . only = tree.children[args.start]
             expect-feeds(only, types.evaluate-type(module, tree, callable, frame.env))
@@ -214,7 +214,7 @@ if args.count == 1
 argument-typing = argument-typing.unknown-callee = attributes == 0 && names-nothing(callable, args)
 argument-typing = argument-typing.keeps = true
 for arg in tree.children[args]
-    do match tree.nodes[arg]
+    match tree.nodes[arg]
         | .node-argument(argument)
             scratch.types.push(infer-argument(argument.expr, tree.argument-symbol(argument.expr)))
             scratch.call-arguments.push
@@ -247,7 +247,7 @@ _ do tracks-method Bool
 ` Reports a method called with "#" before its name, as in `c.#size()`, which tracks nothing, as
 ` only a stored property is tracked, and says whether it did.
 . name Atom? = null
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-get-expression(get)
         name = get.name if get.is-tracked
     | .node-identifier(ident)
@@ -283,7 +283,7 @@ for param in tree.children[params]
 ` arguments, so that what the flow knows of it is what it knew before them. The call is
 ` settled with it once its arguments are typed (`infer-callable`). A type a static method is
 ` called on is no value, and nothing is typed of it here.
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-get-expression(get)
         if static-owner(get.object) != no-type
             = CalledObject()
@@ -305,7 +305,7 @@ do match? tree.nodes[callable]
 for type in arguments.types
     if type == invalid-type
         = Found(invalid-type)
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-c-identifier(row)
         = Found(calls.c-call(id, row.name, arguments))
     | .node-type-identifier(row)
@@ -395,7 +395,7 @@ do match? tree.nodes[callable]
 if is-super-syntax(callable) || tree.names-super(callable)
     = Found(super-call(id, callable, arguments))
 . resolution = bindings.resolution-of(frame.binding, callable)
-do match resolution.kind
+match resolution.kind
     |= .resolve-function
         . name = tree.identifier-name(callable)
         if !name
@@ -587,7 +587,7 @@ if is-const-array(receiver)
         facts.note-const-array(instance, id, receiver, items)
     = receiver
 . by-name = true
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-type-identifier(row)
         if types.this-atom && row.name == types.this-atom
             by-name = false
@@ -609,7 +609,7 @@ _ do fold-const-item ConstItem?
 
 ` An item of a ConstArray as TypeScript lays it down: a string literal, or a number folded
 ` to its bits and cut to the width of an integer item. Nothing for any other.
-do match? tree.nodes[site]
+match? tree.nodes[site]
     | .node-argument(row)
         = fold-const-item(row.expr, item)
     | .node-string-syntax
@@ -629,7 +629,7 @@ _ do fold-number FoldedNumber
     - site SyntaxId
 
 ` The integer a literal number is, negated or cast to an integer type, as its bits.
-do match? tree.nodes[site]
+match? tree.nodes[site]
     | .node-argument(row)
         = fold-number(row.expr)
     | .node-integer-syntax(row)
@@ -675,14 +675,14 @@ _ do taking-class (ModuleId, DeclId)
 ` The class a callable written with type arguments makes: the one its name resolves to, or where
 ` that takes fewer type arguments than are written, the first class of the name this module sees
 ` that takes as many or more, as the reference passes over one that takes fewer.
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-type-arguments(row)
         . given Size = row.args.count
         . taken Size = types.class-type-args(named-module, named).count
         . name = types.type-syntax-name(tree, row.base)
         if taken < given && name
             for candidate in program.lookup(module, name)
-                do match? program.modules[candidate.module].decls[candidate.decl]
+                match? program.modules[candidate.module].decls[candidate.decl]
                     | .decl-class
                         . held Size = types.class-type-args(candidate.module, candidate.decl).count
                         if held >= given
@@ -694,7 +694,7 @@ _ do names-const-array Bool
     - callable SyntaxId
 
 ` Whether a callable names ConstArray without the type of its items.
-do match? tree.nodes[callable]
+match? tree.nodes[callable]
     | .node-type-identifier(row)
         if row.name != types.const-array-atom!
             = false
@@ -707,11 +707,11 @@ _ do is-computed Bool
     - site SyntaxId
 
 ` Whether an item is the result of a call, which no constant array can hold.
-do match? tree.nodes[site]
+match? tree.nodes[site]
     | .node-argument(row)
         = is-computed(row.expr)
     | .node-call-expression(row)
-        do match? tree.nodes[row.callable]
+        match? tree.nodes[row.callable]
             | .node-identifier
                 = true
             | .node-get-expression
@@ -771,7 +771,7 @@ _ do dependent-name Atom?
     - object SyntaxId
 
 ` The type parameter a type's name stands for, when it names one.
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-type-identifier(row)
         . this-name = types.this-atom
         if this-name && this-name == row.name
@@ -792,7 +792,7 @@ _ do requires-static Bool
 while decl != 0
     . constraints = RowRange'SyntaxId()
     . next = 0u32
-    do match? decls[decl]
+    match? decls[decl]
         | .decl-function(fn)
             constraints = fn.param-constraints
             next = fn.owner
@@ -804,7 +804,7 @@ while decl != 0
         | .decl-class(class)
             constraints = class.param-constraints
     for constraint in tree.children[constraints]
-        do match? tree.nodes[constraint]
+        match? tree.nodes[constraint]
             | .node-param-constraint(row)
                 . constrained = types.type-syntax-name(tree, row.left)
                 if constrained && constrained == param
@@ -821,13 +821,13 @@ _ do declares-static Bool
 
 ` Whether a type, a base of it, or an interface it implements declares a static method.
 types.complete(type)
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
         . owner = program.modules[row.module]
-        do match? owner.decls[row.decl]
+        match? owner.decls[row.decl]
             | .decl-class(class)
                 for member in owner.members-named(class.members, name)
-                    do match? owner.decls[member]
+                    match? owner.decls[member]
                         | .decl-function(fn)
                             if fn.is-static && fn.name && fn.name == name
                                 = true

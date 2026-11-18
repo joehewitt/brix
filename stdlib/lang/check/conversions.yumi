@@ -505,7 +505,7 @@ types.intrinsic-of(relation.to) == .function && (casts || binds(relation.from))
 _ do binds Bool
     - type TypeId
 
-do match? types.rows[type]
+match? types.rows[type]
     | .type-binding(row)
         = (row.object != no-type && row.form != .bound-constructor) || row.items.count > row.param-count
 = false
@@ -556,12 +556,12 @@ if owner != no-type && types.completions[owner].intrinsic == .interface
     facts.record-witness-call(owner, instances.rows[runs].module, instances.rows[runs].decl)
     facts.record-witness-proto(runs)
 . signature = instances.signatures[runs]
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(shape)
         if signature.args.count < shape.args.count
             =
         . held = signature.args.count - shape.args.count
-        do match? types.rows[source]
+        match? types.rows[source]
             | .type-binding(bound)
                 for offset in bound.param-count .. < bound.items.count
                     . place = offset - bound.param-count
@@ -600,13 +600,13 @@ _ do carries-error Bool
 if fn == no-type
     = false
 types.complete(error)
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         for offset in 0 .. < row.errors.count
             if is-subtype(types, error, types.child-type(row.errors, offset))
                 = true
         if row.return-type != no-type
-            do match? types.rows[row.return-type]
+            match? types.rows[row.return-type]
                 | .type-result(held)
                     for offset in 0 .. < held.errors.count
                         if is-subtype(types, error, types.child-type(held.errors, offset))
@@ -661,11 +661,11 @@ _ do note-cast
 . given = RowRange'TypeId()
 . answered = no-type
 . returned = no-type
-do match? types.rows[function-row(types, source)]
+match? types.rows[function-row(types, source)]
     | .type-function(shape)
         taken = shape.args
         answered = carried-value(types, shape.return-type)
-do match? types.rows[function-row(types, target)]
+match? types.rows[function-row(types, target)]
     | .type-function(shape)
         given = shape.args
         returned = carried-value(types, shape.return-type)
@@ -855,7 +855,7 @@ while other != no-fact
     - syntax SyntaxId
 
 ` Whether a node is a text written in source, itself or as an argument.
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-argument(argument)
         = is-text-literal(argument.expr)
     | .node-string-syntax
@@ -1046,14 +1046,14 @@ _ do cast-site SyntaxId
 
 if at-site
     = syntax
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-identifier
         . resolution = frame.bindings.resolution-of(frame.binding, syntax)
         if resolution.kind == .resolve-slot
             . slot = resolution.slot
             if frame.bindings.lazy-inlines(slot)
                 . row = frame.bindings.slots[slot]
-                do match? frame.tree.nodes[row.group]
+                match? frame.tree.nodes[row.group]
                     | .node-declare(declaration)
                         if declaration.right != 0
                             = declaration.right
@@ -1160,7 +1160,7 @@ if fn == no-type
     = invalid-type
 . args = RowRange'TypeId()
 . returns = no-type
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         args = row.args
         returns = row.return-type
@@ -1212,7 +1212,7 @@ if !host || (kind != .closure && kind != .binding)
 if fn == no-type
     = no-instance
 . args = RowRange'TypeId()
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         args = row.args
 . start = scratch.types.mark
@@ -1240,7 +1240,7 @@ _ do bound-call-of BoundCall
 ` constructor of a class, a method of an object where the function is a member that is not
 ` static, or a function.
 . row = instances.rows[callee]
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         if fn.kind == .constructor-decl && !fn.is-generated && types.is-class-type(row.self-type)
             = .bound-call-constructor
@@ -1279,14 +1279,14 @@ types.complete(target)
 if fn == no-type
     = true
 . is-c = false
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         is-c = row.is-c
 if !binding-takes(source, target, asked)
     frame.diagnose(syntax, .illegal-cast, null, source, target)
     = false
 . bound-method = false
-do match? types.rows[source]
+match? types.rows[source]
     | .type-binding(row)
         bound-method = row.form == .bound-method
 if is-c && bound-method
@@ -1309,7 +1309,7 @@ if fn == no-type
     = true
 . args = RowRange'TypeId()
 . returns = no-type
-do match? types.rows[fn]
+match? types.rows[fn]
     | .type-function(row)
         args = row.args
         returns = row.return-type
@@ -1337,10 +1337,10 @@ _ do takes-count Bool
 ` and key a row of a markup loop region the row's item, the one that gives a markup
 ` element's name its object the object, and the one that builds what a slot that repeats is
 ` given the item.
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
         . owner = program.modules[row.module]
-        do match? owner.decls[row.decl]
+        match? owner.decls[row.decl]
             | .decl-function(fn)
                 if fn.kind == .subscriber-decl
                     = count == 2
@@ -1350,7 +1350,7 @@ do match? types.rows[closure]
                     = count == 1
                 .. arm-or-row = fn.kind == .branch-arm-decl || fn.kind == .row-decl
                 if fn.kind == .slot-decl
-                    do match? owner.tree.nodes[fn.syntax]
+                    match? owner.tree.nodes[fn.syntax]
                         | .node-markup(element)
                             = count == (if element.slot-parameter != 0 then 1 else 0)
                     = count == 0
@@ -1386,7 +1386,7 @@ match? frame.tree.nodes[syntax]
     - syntax SyntaxId
     - target TypeId
 
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-argument(argument)
         check-literal-fit(argument.expr, target)
     | .node-integer-syntax(row)
@@ -1413,7 +1413,7 @@ do match? frame.tree.nodes[syntax]
 ` an enum. A choice of two such integers takes the type both take, and a tuple written beside a
 ` tuple of as many fields is the tuple of what its items take beside those fields.
 =? given if literal == 0 || given == other || other == invalid-type || other == no-type
-do match? frame.tree.nodes[literal]
+match? frame.tree.nodes[literal]
     | .node-tuple-syntax(row)
         . adapted = adapted-tuple(row.items, given, other)
         if adapted != given
@@ -1421,7 +1421,7 @@ do match? frame.tree.nodes[literal]
         = adapted
     | .node-binary-expression(row)
         if row.op == .else-op
-            do match? frame.tree.nodes[row.lhs]
+            match? frame.tree.nodes[row.lhs]
                 | .node-binary-expression(chosen)
                     if chosen.op == .if-op && is-plain-integer(chosen.lhs) && plain-right
                         . yes = adapted-literal(chosen.lhs, given, other)
@@ -1436,7 +1436,7 @@ do match? frame.tree.nodes[literal]
     .. number-type = builtin-number(types, other)
 . kind = types.intrinsic-of(target)
 =? given if given == target
-do match? frame.tree.nodes[literal]
+match? frame.tree.nodes[literal]
     | .node-integer-syntax(row)
         . numeric = (is-integer-kind(kind) || intrinsic-is-float(kind)) && kind != .bool
         if numeric && !row.unit && literal-fits-target(types, parsed, target)
@@ -1461,7 +1461,7 @@ _ do adapted-tuple TypeId
     - given TypeId
     - other TypeId
 
-do match? types.rows[given]
+match? types.rows[given]
     | .type-tuple(row)
         types.complete(other)
         . mark = types.scratch.types.mark
@@ -1492,7 +1492,7 @@ do match? types.rows[given]
     - offset Size
 
 ` Whether the item at a place of a tuple written is an integer written with no suffix.
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-tuple-syntax(row)
         . position = 0
         for item in frame.tree.children[row.items]
@@ -1530,7 +1530,7 @@ _ do c-constant String?
 
 ` The number a constant a C header defines is written as, where an expression names one, as in
 ` `C:SEEK_END`.
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-c-identifier(row)
         = program.c-constant-text(frame.module, row.name)
 = null
@@ -1542,7 +1542,7 @@ do match? frame.tree.nodes[syntax]
 ` An argument that is a number written with no suffix or a constant a C header defines, a list
 ` of only such integers or such lists, or a choice or a tuple written with one among its sides or
 ` items, which a call may take as any type that holds it.
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-integer-syntax(row)
         = if row.unit && (unsuffixed == 0 || syntax != unsuffixed) then 0 else syntax
     | .node-c-identifier
@@ -1551,7 +1551,7 @@ do match? frame.tree.nodes[syntax]
         = if row.unit && (unsuffixed == 0 || syntax != unsuffixed) then 0 else syntax
     | .node-binary-expression(row)
         if row.op == .else-op
-            do match? frame.tree.nodes[row.lhs]
+            match? frame.tree.nodes[row.lhs]
                 | .node-binary-expression(chosen)
                     if chosen.op == .if-op && (literal-of(chosen.lhs) != 0 || right-literal)
                         = syntax
@@ -1584,7 +1584,7 @@ match? frame.tree.nodes[syntax]
     | .node-binary-expression(row)
         if row.op != .else-op
             = false
-        do match? frame.tree.nodes[row.lhs]
+        match? frame.tree.nodes[row.lhs]
             | .node-binary-expression(chosen)
                 if chosen.op == .if-op
                     = fits-unasked(chosen.lhs, target) && fits-unasked(row.rhs, target)
@@ -1592,7 +1592,7 @@ match? frame.tree.nodes[syntax]
     | .node-unary-expression(row)
         if row.op != .optional-force-op
             = false
-        do match? frame.tree.nodes[row.operand]
+        match? frame.tree.nodes[row.operand]
             | .node-binary-expression(chosen)
                 if chosen.op == .if-op
                     = fits-unasked(chosen.lhs, target)
@@ -1647,7 +1647,7 @@ fitting-literal(syntax, target) || relations.implicit(compare-held(given, target
 + do suffix-type TypeId
     - syntax SyntaxId
 
-do match frame.tree.nodes[syntax]
+match frame.tree.nodes[syntax]
     | .node-integer-syntax(row)
         =? no-type if !row.unit
     | .node-float-syntax(row)
@@ -1695,7 +1695,7 @@ match frame.tree.nodes[syntax]
     .. number-type = builtin-number(types, other)
 . kind = types.intrinsic-of(target)
 =? given if given == target
-do match? frame.tree.nodes[syntax]
+match? frame.tree.nodes[syntax]
     | .node-integer-syntax(row)
         . numeric = (is-integer-kind(kind) || intrinsic-is-float(kind)) && kind != .bool
         if numeric && literal-fits-target(types, parse-integer-literal(row.value), target)
@@ -1753,13 +1753,13 @@ _ literal-target TypeId
 
 ` Whether a closure is the condition a filter keeps its items by, which answers a truth as a
 ` condition does.
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
         . owner = program.modules[row.module]
-        do match? owner.decls[row.decl]
+        match? owner.decls[row.decl]
             | .decl-function(fn)
                 if fn.kind == .pipeline-decl
-                    do match? owner.tree.nodes[fn.syntax]
+                    match? owner.tree.nodes[fn.syntax]
                         | .node-pipeline-expression(pipe)
                             = pipe.op == .filter-op
                         | .node-binary-expression(pipe)

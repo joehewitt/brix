@@ -168,10 +168,13 @@ none. A body of steps is one whose rows run in order: that of a `fn-do`, `main`,
 - With `match?`, a match run as steps goes on to the next step where no arm is taken; with
   `match`, it panics there.
 - A `match` whose value is used, as a `let`'s value, a function's result or what a `pipe` stage
-  below it works on, gives the value of the arm it takes, so an arm that gives none is an error
-  that names the fix: `This arm gives no value, and here a match gives the value of the arm it
-  takes; to run its arms as steps, write the match on a row of its own in a body of steps`. A
-  `match` written as a row of markup content runs its arm as content instead; see Markup.
+  below it works on, gives the value of the arm it takes: that of the arm's last row, once the
+  rows before it have run as steps. An arm whose last row gives no value, such as a `print`, is an
+  error that names the fix: `This arm gives no value, and here a match gives the value of the arm
+  it takes; to run its arms as steps, write the match on a row of its own in a body of steps`.
+  Where the body that holds the match is a value, as that of a `fn-expr` or a closure without
+  `:do` is, the fix it names is `fn-do`, or `:do` in a closure. A `match` written as a row of
+  markup content runs its arm as content instead; see Markup.
 - A function whose last step is a match run as steps, with an arm for every value, each of which
   returns or raises, needs no return after it.
 

@@ -117,7 +117,7 @@ _ do index-members
 for _ in 0 .. < member-pool.length
     member-links.append(no-member)
 for index in 0 .. < decls.length
-    do match? decls[index]
+    match? decls[index]
         | .decl-class(row)
             index-range(row.members)
         | .decl-extension(row)
@@ -187,7 +187,7 @@ _ do scan-root
 
 ` A declaration no row is made for is kept as one the module does not declare, so that the
 ` passes after this one know it was written.
-do match tree.nodes[tree.root]
+match tree.nodes[tree.root]
     | .node-top-level-syntax(root)
         for offset in 0 .. < root.statements.count
             . id = tree.children[root.statements.start + offset]
@@ -211,7 +211,7 @@ _ do scan-statement
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-import-syntax(row)
         append(ImportDecl(id, row.paths, row.is-export))
     | .node-function-syntax(row)
@@ -435,7 +435,7 @@ _ do add-sheet-extension DeclId
 . start = member-pool.length
 for member-id in tree.children[member-syntax]
     . member-decl DeclId = 0
-    do match? tree.nodes[member-id]
+    match? tree.nodes[member-id]
         | .node-using-declaration(row)
             member-decl = append(UsingDecl(member-id, id, row.type))
         | .node-rule-syntax(row)
@@ -446,7 +446,7 @@ for member-id in tree.children[member-syntax]
         member-pool.append(member-decl)
     if member-id >= next-syntax
         next-syntax = member-id + 1
-do match? decls[id]
+match? decls[id]
     | .decl-sheet-extension(row)
         row.members = RowRange'DeclId(start as U32, (member-pool.length - start) as U32)
 = id
@@ -463,12 +463,12 @@ _ do add-style-rule DeclId
 ` in its own body and in the bodies of its `when`s, in the order written, with it as their
 ` `outer`.
 . decl = append(StyleRuleDecl(id, name, owner, outer))
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-rule-syntax(row)
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
-                    do match? tree.nodes[statement]
+                    match? tree.nodes[statement]
                         | .node-rule-syntax(nested)
                             add-style-rule(tree, statement, nested.name, owner, decl)
                         | .node-style-when(branch)
@@ -484,12 +484,12 @@ _ do add-when-rules
 
 ` The style rules written in the body of a `when` of a style rule, each with the rule as its
 ` `outer`.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-rule-syntax(nested)
         add-style-rule(tree, body, nested.name, owner, outer)
     | .node-block(block)
         for statement in tree.children[block.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-rule-syntax(nested)
                     add-style-rule(tree, statement, nested.name, owner, outer)
 
@@ -600,7 +600,7 @@ _ do add-class DeclId
 . projected = add-content-machine-members(tree, id, content, members)
 . filler = add-content-function(tree, id, content)
 . delegated = store-delegations(tree, member-syntax)
-do match? decls[id]
+match? decls[id]
     | .decl-class(row)
         row.members = RowRange'DeclId(members.start, members.count + generated + given + projected)
         row.content = content
@@ -661,7 +661,7 @@ _ do add-machine-members
 ` Two more, named after the class, hold the machine's part for the object, which the machines
 ` that refine it call (`MachineComposite`), and the part of the machine that refines it for the
 ` object, which it calls.
-do match? decls[member]
+match? decls[member]
     | .decl-property(row)
         . machine = if row.name && !row.is-lazy then tree.declared-machine(row.value) else 0
         if machine != 0
@@ -675,7 +675,7 @@ do match? decls[member]
                     . name = store-atom("(${row.name!.text}-event-descriptor-context-$place)")
                     member-pool.append(append(hidden-property(head, name, owner, 0, head)))
                     place += 1
-            do match? decls[owner]
+            match? decls[owner]
                 | .decl-class(class)
                     for suffix in ["part", "below"]
                         . name = store-atom("(${class.name.text}-${row.name!.text}-$suffix)")
@@ -732,7 +732,7 @@ for machine in tree.content-machines(content)
             . name = store-atom("(state-${position}-event-descriptor-context-$place)")
             member-pool.append(append(hidden-property(head, name, owner, 0, head)))
             place += 1
-    do match? decls[owner]
+    match? decls[owner]
         | .decl-class(class)
             for suffix in ["part", "below"]
                 . name = store-atom("(${class.name.text}-state-${position}-$suffix)")
@@ -795,11 +795,11 @@ _ do self-stream Bool
     - stream SyntaxId
 
 ` Whether a stream is written as a name alone, or as a name read from `this`.
-do match? tree.nodes[stream]
+match? tree.nodes[stream]
     | .node-identifier
         = true
     | .node-get-expression(row)
-        do match? tree.nodes[row.object]
+        match? tree.nodes[row.object]
             | .node-identifier(object)
                 = object.name.text == "this"
 = false
@@ -823,12 +823,12 @@ if content == 0
     = 0
 . start = member-pool.length
 . root = tree.root-this(content)
-do match? tree.nodes[root]
+match? tree.nodes[root]
     | .node-markup(element)
-        do match? tree.nodes[element.body]
+        match? tree.nodes[element.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
-                    do match? tree.nodes[statement]
+                    match? tree.nodes[statement]
                         | .node-assign(attribute)
                             . name = attribute-name(tree, attribute.op, attribute.lhs)
                             if name && (!declares(members, start, name) || awaits-value(members, name))
@@ -849,7 +849,7 @@ do match? tree.nodes[root]
 for node in first .. < content
     if !is-markup-line(tree, content, lines, node)
         continue
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-markup(element)
             . name = element-name(tree, element.id)
             if name && node != root && !is-enclosed-node && !declares(members, start, name)
@@ -868,7 +868,7 @@ for node in first .. < content
                 member-pool.append(append(decl))
             .. is-enclosed-node = is-enclosed(tree, content, node)
 if root == 0
-    do match? tree.nodes[lines]
+    match? tree.nodes[lines]
         | .node-block(block)
             for statement in tree.children[block.body]
                 . name = element-name(tree, tree.content-property-name(statement))
@@ -902,7 +902,7 @@ _ do is-markup-line Bool
 ` section, but in a `• This` only those of the lines that are not the rule's own (`runs-line`).
 if !(tree.nodes[content] is .node-rule-syntax)
     = true
-do match? tree.nodes[lines]
+match? tree.nodes[lines]
     | .node-block(block)
         for statement in tree.children[block.body]
             if tree.subtree-start(statement) <= node && node <= statement
@@ -932,7 +932,7 @@ _ do awaits-value Bool
 
 ` Whether a class writes a property of a name that it stores, with no value and no element.
 for offset in 0 .. < members.count
-    do match? decls[member-pool[members.start + offset]]
+    match? decls[member-pool[members.start + offset]]
         | .decl-property(row)
             if row.name && row.name == name
                 = row.value == 0 && !row.is-lazy && row.element == 0
@@ -962,7 +962,7 @@ _ do is-enclosed Bool
 for outer in node + 1 .. < content
     if tree.subtree-start(outer) > node
         continue
-    do match? tree.nodes[outer]
+    match? tree.nodes[outer]
         | .node-function-syntax
             = true
         | .node-for-block
@@ -978,7 +978,7 @@ _ do attribute-name Atom?
 
 if op != .eq-op
     = null
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-identifier(row)
         = row.name
 = null
@@ -990,7 +990,7 @@ _ do element-name Atom?
 
 if id == 0
     = null
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         = row.name
 = null
@@ -1078,7 +1078,7 @@ for id in 1u32 .. < total
     . listing = tree.listed-feeds(id)
     if listing != 0
         listed[listing] = true
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-feed-expression(row)
             if row.next != 0
                 chained[row.next] = true
@@ -1100,15 +1100,15 @@ for id in 1u32 .. < total
 for _ in 0 .. < total
     getters += false
 for id in 1u32 .. < total
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-block(row)
             if rows[id]
                 for line in tree.children[row.body]
-                    do match? tree.nodes[line]
+                    match? tree.nodes[line]
                         | .node-declare(declared)
                             getters[line] = declared.is-lazy
 for index in 0 .. < decls.length
-    do match? decls[index]
+    match? decls[index]
         | .decl-function(fn)
             if !fn.is-generated && fn.syntax < declared.length
                 declared[fn.syntax] = index as DeclId
@@ -1127,7 +1127,7 @@ for reverse in 1 .. < tree.root
     namings.close(id)
     . existing = declared[id]
     if existing != 0
-        do match? decls[existing]
+        match? decls[existing]
             | .decl-function(fn)
                 owners += existing
                 starts += fn.subtree.start
@@ -1137,7 +1137,7 @@ for reverse in 1 .. < tree.root
     . owner = if depth != 0 then owners[depth - 1] else main
     . named = naming(tree, id, owners, floors, namings, depth)
     . nested = 0u32
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-function-syntax(row)
             nested = add-nested-function
                 - tree
@@ -1275,7 +1275,7 @@ for reverse in 1 .. < tree.root
                     - owner
                     - 0
                     - named
-            do match? tree.nodes[row.body]
+            match? tree.nodes[row.body]
                 | .node-block(block)
                     for line in tree.children[block.body]
                         attributes[line] = true
@@ -1287,7 +1287,7 @@ for reverse in 1 .. < tree.root
                     positions[arg] = true
                 .. is-tracked-arg = reads-tracked(tree, arg, row-names)
             for application in tree.children[row.style-rule-applications]
-                do match? tree.nodes[application]
+                match? tree.nodes[application]
                     | .node-style-rule-application(applied)
                         if !root && applied.condition != 0 && is-reference
                             gates[applied.condition] = true
@@ -1497,7 +1497,7 @@ for reverse in 1 .. < tree.root
             - 0
             - named
     if nested != 0
-        do match? decls[nested]
+        match? decls[nested]
             | .decl-function(fn)
                 owners += nested
                 starts += fn.subtree.start
@@ -1520,7 +1520,7 @@ _ do mark-default Bool
 . lines = 0
 . total = 0
 . line SyntaxId = 0
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for each in tree.children[block.body]
             total += 1
@@ -1534,7 +1534,7 @@ if consulted.find(head) == null
     consulted += head
 =? false if default-hosts.find(head) == null
 if lines == 1
-    do match? tree.nodes[line]
+    match? tree.nodes[line]
         | .node-markup(row)
             if !tree.names-this(row.type-id)
                 defaulted[line] = true
@@ -1582,7 +1582,7 @@ _ do is-control-line Bool
 
 ` Whether a line of markup content is an `if`, a `match`, or a loop of content, as the
 ` reference's `isMarkupControlFlow` finds it.
-do match? tree.nodes[line]
+match? tree.nodes[line]
     | .node-if-block
         = true
     | .node-match-expression
@@ -1599,7 +1599,7 @@ _ do binds-slots Bool
     - body SyntaxId
 
 ` Whether a line of an element's body is content bound to a slot by name.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
             if !gives-default(tree, line) && !(tree.nodes[line] is .node-assign)
@@ -1640,7 +1640,7 @@ _ do naming SyntaxId
 while level > 0
     level -= 1
     . climbs = false
-    do match? decls[owners[level]]
+    match? decls[owners[level]]
         | .decl-function(fn)
             climbs = fn.kind == .pipeline-decl && !holds-id
                 .. holds-id = tree.subtree-start(fn.body) <= id && id <= fn.body
@@ -1661,7 +1661,7 @@ _ do holding-depth Size
 . depth = owners.length
 while depth != 0
     . passed = false
-    do match? decls[owners[depth - 1]]
+    match? decls[owners[depth - 1]]
         | .decl-function(fn)
             passed = fn.kind == .machine-decl && !descends(id, fn.syntax, parents)
     if !passed
@@ -1706,7 +1706,7 @@ _ do in-property-value Bool
 ` Whether a node is written in the value of a property, outside the functions written in it.
 . node = parents[id]
 while node != 0
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-property-syntax
             = true
         | .node-function-syntax
@@ -1721,7 +1721,7 @@ _ do last-feed SyntaxId
 
 . feed = id
 while true
-    do match tree.nodes[feed]
+    match tree.nodes[feed]
         | .node-feed-expression(row)
             if row.next == 0
                 = feed
@@ -1740,7 +1740,7 @@ _ do reads-tracked Bool
 ` reads them tracked.
 . id = value
 while id >= tree.subtree-start(value) && id != 0
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier(row)
             if row.is-tracked || (rows && rows.reads(id, row.name.text))
                 = true
@@ -1760,11 +1760,11 @@ _ do mark-rule-lines
     - body SyntaxId
     - ruled [Bool]
 
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
             ruled[line] = true
-            do match? tree.nodes[line]
+            match? tree.nodes[line]
                 | .node-style-when(branch)
                     mark-rule-lines(tree, branch.body, ruled)
 
@@ -1775,7 +1775,7 @@ _ do reads-styles Bool
 
 . id = value
 while id >= tree.subtree-start(value) && id != 0
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-style-read-expression
             = true
         | .node-function-syntax
@@ -1794,9 +1794,9 @@ _ do rebuilds-outlet Bool
 ` branch region of one arm, the outlet itself, built again whenever what the name reads changes,
 ` as `markupRebuildingSlotOutlet` makes it. The function that selects the arm again is written at
 ` the outlet's parameter, whose name it reads, and the arm at the outlet.
-do match? tree.nodes[parameter]
+match? tree.nodes[parameter]
     | .node-markup-slot-parameter(row)
-        do match? tree.nodes[row.name]
+        match? tree.nodes[row.name]
             | .node-identifier(named)
                 = rows.reads(row.name, named.name.text)
 = false
@@ -1944,17 +1944,17 @@ _ do mark-content
 ` keys each row. The arms after the first of an `if` follow it in the tree, so they are reached by
 ` their links.
 . row-lines = if rows[body] then row-names else null
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
             content[line] = true
-            do match? tree.nodes[line]
+            match? tree.nodes[line]
                 | .node-if-block
                     . region = is-branch-region(tree, line, row-lines) && !tree.fills-only(line)
                     . arm = line
                     while arm != 0
                         . next SyntaxId = 0
-                        do match? tree.nodes[arm]
+                        match? tree.nodes[arm]
                             | .node-if-block(branch)
                                 arms[tree.arm-body(arm)] = region
                                 mark-content(tree, tree.arm-body(arm), content, arms, rows, keys, row-names)
@@ -1965,7 +1965,7 @@ do match? tree.nodes[body]
                         . held [SyntaxId]
                         tree.match-arms(line, held)
                         for arm in held
-                            do match? tree.nodes[arm]
+                            match? tree.nodes[arm]
                                 | .node-type-transform(transform)
                                     arms[transform.expr] = true
                                     mark-content(tree, transform.expr, content, arms, rows, keys, row-names)
@@ -2004,7 +2004,7 @@ _ do add-branch
 . arm = id
 while arm != 0
     . next SyntaxId = 0
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             if arm > last
                 last = arm
@@ -2102,7 +2102,7 @@ _ do is-markup-loop Bool
 . header = loop
 while header != 0
     . next SyntaxId = 0
-    do match? tree.nodes[header]
+    match? tree.nodes[header]
         | .node-loop-syntax(row)
             if row.is-subscriber
                 = false
@@ -2126,15 +2126,15 @@ _ do is-branch-region Bool
 . arm = id
 while arm != 0
     . next SyntaxId = 0
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             . pattern = tree.pattern-arm(arm)
             if pattern != 0
                 . subject SyntaxId = 0
-                do match? tree.nodes[row.condition]
+                match? tree.nodes[row.condition]
                     | .node-match-expression(matching)
                         subject = matching.subject
-                do match? tree.nodes[pattern]
+                match? tree.nodes[pattern]
                     | .node-type-transform(transform)
                         if tracks-subject || (transform.pattern != 0 && tracks-pattern)
                             tracked = true
@@ -2159,7 +2159,7 @@ _ do is-match-region Bool
 ` when what its subject reads tracked changes, as the reference's `markupMatchBranch` compiles
 ` one: its subject reads something tracked, and its arms are each a pattern with a body
 ` (`match-arms`). One with a helper is no region here.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-match-expression(row)
         if row.subject == 0 || row.helper != 0 || !reads-tracked(tree, row.subject, row-names)
             = false
@@ -2278,7 +2278,7 @@ _ do opens-region Bool
 ` in that zone already, in a function that makes it or in such a block.
 if (effects /and/ CompilationEffect.gc-free) == 0
     = false
-do match? decls[owner]
+match? decls[owner]
     | .decl-function(fn)
         = (fn.effects /and/ CompilationEffect.gc-free) == 0
 = true
@@ -2289,7 +2289,7 @@ _ do is-machine-decl Bool
 
 ` Whether a function is a state machine's, whose cases a named machine written in them belongs
 ` to.
-do match? decls[decl]
+match? decls[decl]
     | .decl-function(fn)
         = fn.kind == .machine-decl
 = false
@@ -2482,7 +2482,7 @@ _ do add-extension DeclId
 . members = scan-members(tree, member-syntax, id)
 if written-content != 0
     keep-undeclared(written-content, 0)
-do match? decls[id]
+match? decls[id]
     | .decl-extension(row)
         row.members = members
 = id
@@ -2497,7 +2497,7 @@ _ do store-interfaces RowRange'SyntaxId
 
 . start = syntax-pool.length
 for member in tree.nodes[tree.children[member-syntax]]
-    do match? member
+    match? member
         | .node-implements-declaration(row)
             syntax-pool.append(row.type)
 = RowRange'SyntaxId(start as U32, (syntax-pool.length - start) as U32)
@@ -2513,7 +2513,7 @@ _ do store-sees RowRange'SyntaxId
 
 . start = syntax-pool.length
 for member in tree.nodes[tree.children[member-syntax]]
-    do match? member
+    match? member
         | .node-sees-declaration(row)
             syntax-pool.append(row.type)
 = RowRange'SyntaxId(start as U32, (syntax-pool.length - start) as U32)
@@ -2529,7 +2529,7 @@ _ do store-delegations RowRange'SyntaxId
 
 . start = syntax-pool.length
 for member in tree.nodes[tree.children[member-syntax]]
-    do match? member
+    match? member
         | .node-delegate-declaration(row)
             for type in tree.children[row.types]
                 syntax-pool.append(type)
@@ -2555,7 +2555,7 @@ written-content = 0
 pending-delegates = RowRange'SyntaxId()
 for offset in 0 .. < member-syntax.count
     . member-id = tree.children[member-syntax.start + offset]
-    do match? tree.nodes[member-id]
+    match? tree.nodes[member-id]
         | .node-delegate-declaration(row)
             queue-delegates(tree, row.types)
     . member-decl = scan-member(tree, member-id, owner)
@@ -2569,7 +2569,7 @@ for offset in 0 .. < member-syntax.count
         if decls[owner] is .decl-class
             add-machine-members(tree, owner, member-decl)
         member-pool.append(member-decl)
-        do match? decls[member-decl]
+        match? decls[member-decl]
             | .decl-function(fn)
                 if fn.kind == .getter-decl && pending-delegates.count != 0
                     fn.delegates = pending-delegates
@@ -2625,16 +2625,16 @@ _ do is-markup-section Bool
 ` A section of a type whose lines are markup: none of them declares anything but a lazy local
 ` the markup reads or a property the markup gives its value (`content-property`), and a state
 ` machine is written in it only as a line of its own, which the reference keeps on the object.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-content-block(row)
-        do match? tree.nodes[row.body]
+        match? tree.nodes[row.body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     if tree.content-property(statement)
                         continue
                     if is-declaration-syntax(tree, statement)
                         = false
-                    do match? tree.nodes[statement]
+                    match? tree.nodes[statement]
                         | .node-declare(declared)
                             if !declared.is-lazy
                                 = false
@@ -2708,7 +2708,7 @@ _ do add-property DeclId
     - is-lazy Bool
     - decoration Atom?
 
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-type-identifier(ident)
         = append(AssociatedDecl(syntax, ident.name, owner, RowRange'SyntaxId(), value, access))
     | .node-type-arguments(args)
@@ -2745,7 +2745,7 @@ _ do store-arg-shapes StoredShapes
 . required = 0u32
 for offset in 0 .. < args.count
     . arg-id = tree.children[args.start + offset]
-    do match tree.nodes[arg-id]
+    match tree.nodes[arg-id]
         | .node-argument-decl(arg)
             . parts = capture-parts(tree, arg.pattern)
             . default = arg.default-value
@@ -2866,25 +2866,25 @@ _ names [String]
     - body SyntaxId
 
 . first = names.length
-do match? tree.nodes[loop]
+match? tree.nodes[loop]
     | .node-loop-syntax(row)
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-capture(capture)
-                do match? tree.nodes[capture.id]
+                match? tree.nodes[capture.id]
                     | .node-identifier(named)
                         names += named.name.text
 names += "each"
 names += "it"
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
-            do match? tree.nodes[line]
+            match? tree.nodes[line]
                 | .node-declare(declared)
                     . plain = !declared.is-pattern && declared.right != 0 && holds-no-machine
                         .. holds-no-machine = tree.declared-machine(declared.right) == 0
-                    do match? tree.nodes[declared.left]
+                    match? tree.nodes[declared.left]
                         | .node-type-capture(capture)
-                            do match? tree.nodes[capture.id]
+                            match? tree.nodes[capture.id]
                                 | .node-identifier(named)
                                     if plain && (declared.is-lazy || names-first)
                                         names += named.name.text
@@ -2901,7 +2901,7 @@ _ do names-in Bool
 
 ` Whether a value reads one of the names from `first` on, functions written in it included.
 for id in tree.subtree-start(value) .. < value + 1
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier(row)
             for position in first .. < names.length
                 if names[position] == row.name.text
@@ -2939,7 +2939,7 @@ _ ends [SyntaxId]
 
 ` Opens a node that is a declaration or an assignment with a value.
 . value = 0u32
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-declare(row)
         value = row.right
     | .node-assign(row)

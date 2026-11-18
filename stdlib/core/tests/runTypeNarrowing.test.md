@@ -2485,7 +2485,7 @@ false
 . pets [Animal] = [Animal(), Dog()]
 for pet in pets
     -- "${pet is! Animal} ${pet is! Dog}"
-    do match pet
+    match pet
         | Animal!
             -- "exactly an animal"
         ??
@@ -2667,7 +2667,7 @@ if chunk
 
 . value = given
 if !value
-    do match size
+    match size
         |= 0
             = null
         ??

@@ -361,7 +361,7 @@ true
     - choice AtomChoice
 
 . name Atom? = null
-do match? choice
+match? choice
     | .named(value)
         name = value
         -- name.text
@@ -374,7 +374,7 @@ if !name
     - choice AtomChoice
 
 . name Atom? = null
-do match choice
+match choice
     | .named(value)
         name = value
     ??
@@ -386,7 +386,7 @@ do match choice
     - choice AtomChoice
 
 . name Atom? = null
-do match choice
+match choice
     | .named(value)
         name = value
     ??
@@ -541,7 +541,7 @@ if name
     - kind Int
 
 . name = find(kind)
-do match? name
+match? name
     | atom Atom
         = atom.text
 = "nothing"

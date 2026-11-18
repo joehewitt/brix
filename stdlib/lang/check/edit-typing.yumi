@@ -264,7 +264,7 @@ _ do typed-for Bool
 =? false if row.self-type == no-type
 . level TypeId? = row.self-type
 while level
-    do match? session.types.rows[level]
+    match? session.types.rows[level]
         | .type-class(class)
             =? true if class.module == module
     level = session.types.base-of(level)
@@ -370,10 +370,10 @@ _ do body-nodes [Bool]
 for _ in 0 .. < tree.nodes.length
     bodies += false
 for decl in module.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             if fn.body != 0
-                do match? tree.nodes[fn.body]
+                match? tree.nodes[fn.body]
                     | .node-block
                         bodies[fn.body] = true
                     | .node-top-level-syntax(row)
@@ -604,7 +604,7 @@ _ do outline String
 for _ in lines
     inside += false
 for decl in module.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             if fn.body != 0
                 mark-body(tree, fn.body, inside)
@@ -621,7 +621,7 @@ _ do mark-body
     - body SyntaxId
     - inside [Bool]
 
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             mark-lines(tree, statement, inside)
@@ -652,18 +652,18 @@ _ do subscriptions String
 . tree = module.tree
 . found [String]
 for decl in module.decls
-    do match? decl
+    match? decl
         | .decl-function(fn)
             if fn.kind == .constructor-decl && !fn.is-generated && fn.body != 0
                 . floor = tree.subtree-start(fn.body)
                 . node = fn.body + 1
                 while node > floor
                     node -= 1
-                    do match? tree.nodes[node]
+                    match? tree.nodes[node]
                         | .node-function-syntax
                             node = tree.subtree-start(node)
                         | .node-for-block(block)
-                            do match? tree.nodes[block.loop]
+                            match? tree.nodes[block.loop]
                                 | .node-loop-syntax(loop)
                                     if loop.is-subscriber
                                         found += subscribed-name(tree, loop.container)
@@ -674,11 +674,11 @@ _ do subscribed-name String
     - tree AST
     - container SyntaxId
 
-do match? tree.nodes[container]
+match? tree.nodes[container]
     | .node-identifier(row)
         = row.name.text
     | .node-get-expression(get)
-        do match? tree.nodes[get.object]
+        match? tree.nodes[get.object]
             | .node-identifier(row)
                 if row.name.text == "this"
                     = "this.${get.name.text}"
@@ -708,7 +708,7 @@ for char in line
 _ do decl-shape String
     - decl Decl
 
-do match? decl
+match? decl
     | .decl-function(row)
         = "function ${named(row.name)}"
     | .decl-class(row)

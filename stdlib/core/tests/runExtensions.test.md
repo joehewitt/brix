@@ -102,7 +102,7 @@ rows[1] = Node.call(20, 3)
 for row in rows
     -- row.describe()
 
-do match rows[0]
+match rows[0]
     | .literal(literal)
         -- literal.case-label
         literal.bump()

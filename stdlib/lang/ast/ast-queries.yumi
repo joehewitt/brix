@@ -87,7 +87,7 @@ for node in subtree-start(body) .. body
     - value SyntaxId
 
 ` Whether a style value is the keyword `inherit`.
-do match? nodes[value]
+match? nodes[value]
     | .node-identifier(row)
         = row.name.text == "inherit"
 = false
@@ -105,7 +105,7 @@ if body == 0
 . node = body
 while node > subtree-start(body)
     node -= 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-function-syntax
             if !(node >= skip-from && node < skip-to)
                 skip-from = subtree-start(node)
@@ -137,7 +137,7 @@ match nodes[id]
 . position = declaration.syntax
 while position > start
     position -= 1
-    do match? nodes[position]
+    match? nodes[position]
         | .node-yield
             = true
         | .node-function-syntax
@@ -149,7 +149,7 @@ while position > start
     - id SyntaxId
 
 ` The name an identifier writes, or none for any other node.
-do match? nodes[id]
+match? nodes[id]
     | .node-identifier(row)
         = row.name
 = null
@@ -173,7 +173,7 @@ match nodes[syntax]
 ` The first number with no unit a side of an equality adds to or takes from a number in a unit
 ` other than zero, which is no ratio, or none. Zero in a unit adds nothing, as in
 ` `(1 / 3) + 0foo`, which writes a third of foo.
-do match? nodes[expr]
+match? nodes[expr]
     | .node-binary-expression(row)
         . inner = offset-of(row.lhs)
         if inner != 0
@@ -225,7 +225,7 @@ match nodes[expr]
 
 ` The first operation of a side of an equality that gives no number, its operands before it and
 ` the left before the right, as the reference evaluates them, or none.
-do match? nodes[expr]
+match? nodes[expr]
     | .node-binary-expression(row)
         . left = unevaluated-operation(row.lhs)
         if left != 0
@@ -251,7 +251,7 @@ do match? nodes[expr]
 . node = body + 1
 while node > floor
     node -= 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-function-syntax
             node = subtree-start(node)
         | .node-do-task-block
@@ -332,33 +332,33 @@ for offset in 0 .. < left.count
 ` never the same as another.
 if left == 0 || right == 0
     = left == right
-do match? nodes[left]
+match? nodes[left]
     | .node-type-identifier(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-type-identifier(theirs)
                 = mine.name == theirs.name && mine.is-declare == theirs.is-declare
     | .node-type-arguments(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-type-arguments(theirs)
                 = same-syntax(mine.base, theirs.base) && same-syntaxes(mine.args, theirs.args)
     | .node-type-optional(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-type-optional(theirs)
                 = same-syntaxes(mine.field-types, theirs.field-types)
     | .node-type-tuple(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-type-tuple(theirs)
                 = same-syntaxes(mine.field-types, theirs.field-types)
     | .node-type-capture(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-type-capture(theirs)
                 = same-syntax(mine.id, theirs.id) && same-syntax(mine.type, theirs.type)
     | .node-identifier(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-identifier(theirs)
                 = mine.name == theirs.name
     | .node-param-constraint(mine)
-        do match? nodes[right]
+        match? nodes[right]
             | .node-param-constraint(theirs)
                 = same-syntax(mine.left, theirs.left) && same-syntax(mine.right, theirs.right)
 = false
@@ -378,7 +378,7 @@ while position > 0
 + do final-print SyntaxId
     - body SyntaxId
 
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         . kept = kept-row(row.body)
         = if kept != 0 && nodes[kept] is .node-print then kept else 0
@@ -434,7 +434,7 @@ match nodes[expr]
 
 ` The name a declaration declares, or the first of those it declares together: they are
 ` typed together, so what is known of the first is known of each.
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-type-capture(row)
         = row.id
     | .node-tuple-syntax(row)
@@ -453,7 +453,7 @@ do match? nodes[pattern]
 
 ` What a pattern of items declares a place with: the item at that place where it is declared
 ` with a tuple written with as many items, or else the value.
-do match? nodes[value]
+match? nodes[value]
     | .node-tuple-syntax(row)
         if row.items.count == count
             . offset = 0u32
@@ -605,7 +605,7 @@ match nodes[expr]
 
 if body == id
     = true
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         for statement in children[row.body]
             if statement == id
@@ -655,7 +655,7 @@ for around in node + 1 .. < body
     - body SyntaxId
 
 ` Whether a node is written in a line of a block that assigns.
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         for statement in children[row.body]
             if nodes[statement] is .node-assign && after-start && node < statement
@@ -684,7 +684,7 @@ for node in subtree-start(pattern) .. pattern
 for node in id + 1 .. < (nodes.length as SyntaxId)
     if subtree-start(node) > id
         continue
-    do match? nodes[node]
+    match? nodes[node]
         | .node-assign(row)
             = row.op != .eq-op && subtree-start(row.rhs) <= id && id <= row.rhs
         | .node-declare
@@ -699,7 +699,7 @@ for node in id + 1 .. < (nodes.length as SyntaxId)
 + do has-handlers Bool
     - task SyntaxId
 
-do match? nodes[task]
+match? nodes[task]
     | .node-do-task-block(row)
         = row.catchers.count != 0
 = false
@@ -741,7 +741,7 @@ match nodes[pattern]
     - id SyntaxId
 
 ` Whether a grammar matches without ever reading an item: one made only of lookaheads.
-do match? nodes[id]
+match? nodes[id]
     | .node-stream-match(row)
         = never-reads(row.pattern)
     | .node-stream-unary(row)
@@ -761,7 +761,7 @@ do match? nodes[id]
     - clause SyntaxId
 
 ` The value a clause tests.
-do match? nodes[clause]
+match? nodes[clause]
     | .node-clause(row)
         = row.expr
 = 0
@@ -801,7 +801,7 @@ match nodes[expr]
     - id SyntaxId
 
 ` Whether a node is the operand of a `<-` written before it, which reads one item.
-do match? nodes[holder-of(id)]
+match? nodes[holder-of(id)]
     | .node-unary-expression(row)
         = row.op == .read-op && row.operand == id
 = false
@@ -812,7 +812,7 @@ do match? nodes[holder-of(id)]
 
 ` Whether a key names what lasts as long as the address it makes, as the reference decides:
 ` a name, a number, a text or a case written alone, a name read from one, or a tuple of them.
-do match? nodes[key]
+match? nodes[key]
     | .node-identifier
         = true
     | .node-integer-syntax
@@ -835,7 +835,7 @@ do match? nodes[key]
     - index SyntaxId
 
 ` The key an index is written with.
-do match? nodes[index]
+match? nodes[index]
     | .node-index-expression(row)
         = row.index
 = 0
@@ -845,7 +845,7 @@ do match? nodes[index]
     - index SyntaxId
 
 ` What an index is read from.
-do match? nodes[index]
+match? nodes[index]
     | .node-index-expression(row)
         = row.object
 = 0
@@ -938,7 +938,7 @@ match nodes[matching]
     - anchor SyntaxId
 
 . holder = holder-of(anchor)
-do match? nodes[holder]
+match? nodes[holder]
     | .node-assign(row)
         if row.op == .bind-op && row.lhs == anchor && attribute-element(holder) != 0
             = holder
@@ -951,9 +951,9 @@ do match? nodes[holder]
 ` The lines of the body of a `when` of a style rule, in the order written: the one line of a
 ` `when` written on one, or those of its block.
 . lines [SyntaxId]
-do match? nodes[branch]
+match? nodes[branch]
     | .node-style-when(row)
-        do match nodes[row.body]
+        match nodes[row.body]
             | .node-block(block)
                 for line in children[block.body]
                     lines += line
@@ -965,7 +965,7 @@ do match? nodes[branch]
 + do falls-back Bool
     - row ASTSlotOutlet
 
-do match? nodes[row.body]
+match? nodes[row.body]
     | .node-block(block)
         for statement in children[block.body]
             if !(nodes[statement] is .node-assign)
@@ -987,7 +987,7 @@ match nodes[clause]
     - body SyntaxId
 
 ` The first line of a block that assigns, or none.
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         for statement in children[row.body]
             if nodes[statement] is .node-assign
@@ -1098,7 +1098,7 @@ match nodes[id]
 ` The pipeline whose left operand is the feed list, if one consumes it.
 . total = nodes.length
 for candidate in id + 1 .. < total
-    do match? nodes[candidate]
+    match? nodes[candidate]
         | .node-pipeline-expression(row)
             if row.left == id
                 = candidate as SyntaxId
@@ -1111,7 +1111,7 @@ for candidate in id + 1 .. < total
 
 for position in 0 .. < body.count - 1
     if children[body.start + position] == statement
-        do match? nodes[children[body.start + position + 1]]
+        match? nodes[children[body.start + position + 1]]
             | .node-pipeline-expression(row)
                 = row.left == 0
         = false
@@ -1124,9 +1124,9 @@ for position in 0 .. < body.count - 1
 for node in id + 1 .. < (nodes.length as SyntaxId)
     if subtree-start(node) > id
         continue
-    do match? nodes[node]
+    match? nodes[node]
         | .node-iterator-expression(row)
-            do match? nodes[row.loop]
+            match? nodes[row.loop]
                 | .node-loop-syntax(loop)
                     if subtree-start(loop.container) > id || id > loop.container
                         = node
@@ -1150,10 +1150,10 @@ match nodes[left]
     - expr SyntaxId
 
 . feeds = expr
-do match? nodes[feeds]
+match? nodes[feeds]
     | .node-argument(row)
         feeds = if row.name then 0 else row.expr
-do match? nodes[feeds]
+match? nodes[feeds]
     | .node-block(row)
         feeds = if row.body.count == 1 then children[row.body.start] else 0
 =? feeds if feeds != 0 && nodes[feeds] is .node-feed-expression
@@ -1164,7 +1164,7 @@ do match? nodes[feeds]
 
 . found [SyntaxId]
 for id in 1u32 .. < nodes.length
-    do match? nodes[id]
+    match? nodes[id]
         | .node-type-identifier(row)
             if row.is-declare
                 found += id as SyntaxId
@@ -1243,10 +1243,10 @@ match nodes[node]
 
 ` Whether a loop on an event asks with its first clause, `when arrival` or `when bubbling`,
 ` for only the events that arrive at the object or for those that bubble too.
-do match? nodes[clause]
+match? nodes[clause]
     | .node-clause(row)
         if row.op is .when-clause
-            do match? nodes[row.expr]
+            match? nodes[row.expr]
                 | .node-identifier(name)
                     = name.name.text == "arrival" || name.name.text == "bubbling"
 = false
@@ -1257,10 +1257,10 @@ do match? nodes[clause]
 
 ` Which publications a loop on an event hears where its only clause says so: 1 for
 ` `when arrival`, 2 for `when bubbling`, and else 0.
-do match? nodes[clause]
+match? nodes[clause]
     | .node-clause(row)
         if row.op is .when-clause && row.next == 0
-            do match? nodes[row.expr]
+            match? nodes[row.expr]
                 | .node-identifier(name)
                     if name.name.text == "arrival"
                         = 1
@@ -1276,7 +1276,7 @@ do match? nodes[clause]
 . current = clause
 while current != 0
     . next SyntaxId = 0
-    do match? nodes[current]
+    match? nodes[current]
         | .node-clause(row)
             if row.op == .while-clause || row.op == .until-clause
                 = true
@@ -1290,7 +1290,7 @@ while current != 0
 
 ` Whether a function written as a value is the whole value of an attribute of a markup element.
 . holder = holder-of(function)
-do match? nodes[holder]
+match? nodes[holder]
     | .node-assign(row)
         = row.rhs == function && attribute-element(holder) != 0
 = false
@@ -1303,7 +1303,7 @@ do match? nodes[holder]
 . current = clause
 while current != 0
     . next SyntaxId = 0
-    do match? nodes[current]
+    match? nodes[current]
         | .node-clause(row)
             if row.op == .whenever-clause
                 = true
@@ -1329,9 +1329,9 @@ for arm in region-arms(region)
     - id SyntaxId
 
 ` Whether a node is written in the container of a markup loop region.
-do match? nodes[region]
+match? nodes[region]
     | .node-for-block(row)
-        do match? nodes[row.loop]
+        match? nodes[row.loop]
             | .node-loop-syntax(loop)
                 = loop.container != 0 && after-start && id <= loop.container
                     .. after-start = subtree-start(loop.container) <= id
@@ -1343,7 +1343,7 @@ do match? nodes[region]
     - id SyntaxId
 
 ` Whether a node is written in the `keyed by` clause of a markup loop region.
-do match? nodes[region]
+match? nodes[region]
     | .node-for-block(row)
         . clause = keyed-clause(row.loop)
         = clause != 0 && subtree-start(clause) <= id && id <= clause
@@ -1355,7 +1355,7 @@ do match? nodes[region]
 
 ` Whether a rule a class writes runs as a live action of the object: a `when` or `whenever`
 ` rule.
-do match? nodes[syntax]
+match? nodes[syntax]
     | .node-when-rule-syntax
         = true
     | .node-whenever-rule-syntax
@@ -1367,7 +1367,7 @@ do match? nodes[syntax]
     - loop SyntaxId
 
 ` Whether the header of a loop reads a stream: `for x on s`.
-do match? nodes[loop]
+match? nodes[loop]
     | .node-loop-syntax(row)
         = row.is-subscriber
 = false
@@ -1379,7 +1379,7 @@ do match? nodes[loop]
 ` The name of a property or a local that an expression reads tracked, written `#name`, where
 ` it reads one.
 for node in subtree-start(id) .. < id + 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-identifier(row)
             if row.is-tracked
                 = row.name
@@ -1394,7 +1394,7 @@ for node in subtree-start(id) .. < id + 1
 
 ` Whether a value reads a name or a member that it tracks.
 for node in subtree-start(value) .. value
-    do match? nodes[node]
+    match? nodes[node]
         | .node-identifier(row)
             if row.is-tracked
                 = true
@@ -1410,7 +1410,7 @@ for node in subtree-start(value) .. value
 
 ` Notes each name written under a node as changed.
 for node in subtree-start(root) .. < root + 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-identifier(row)
             blocked += row.name
 
@@ -1482,7 +1482,7 @@ match nodes[syntax]
     - clause SyntaxId
 
 ` The clause written after a clause, or none.
-do match? nodes[clause]
+match? nodes[clause]
     | .node-clause(row)
         = row.next
 = 0
@@ -1498,7 +1498,7 @@ do match? nodes[clause]
 . found = false
 for node in element + 1 .. < content
     if subtree-start(node) <= element
-        do match? nodes[node]
+        match? nodes[node]
             | .node-function-syntax
                 = false
             | .node-for-block
@@ -1519,9 +1519,9 @@ for node in element + 1 .. < content
 ` Whether a class's markup gives an element of a name in an `if` or a `match` of it, outside
 ` its functions and loops.
 for node in subtree-start(content) .. < content
-    do match? nodes[node]
+    match? nodes[node]
         | .node-markup(element)
-            do match? nodes[element.id]
+            match? nodes[element.id]
                 | .node-identifier(id)
                     if id.name == name && this.branched(content, node)
                         = true
@@ -1535,7 +1535,7 @@ for node in subtree-start(content) .. < content
 ` Whether a markup element of a class's markup is written in a function or a loop there.
 for node in element + 1 .. < content
     if subtree-start(node) <= element
-        do match? nodes[node]
+        match? nodes[node]
             | .node-function-syntax
                 = true
             | .node-for-block
@@ -1547,11 +1547,11 @@ for node in element + 1 .. < content
     - body SyntaxId
 
 ` Whether the last line of a block returns or raises a panic or an error with no condition.
-do match? nodes[body]
+match? nodes[body]
     | .node-block(block)
         if block.body.count == 0
             = false
-        do match? nodes[children[block.body.start + block.body.count - 1]]
+        match? nodes[children[block.body.start + block.body.count - 1]]
             | .node-return
                 = true
             | .node-assertion-syntax(row)
@@ -1563,7 +1563,7 @@ do match? nodes[body]
     - body SyntaxId
 
 ` Whether the body of a markup element writes an attribute: a line that assigns.
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         for statement in children[row.body]
             if nodes[statement] is .node-assign
@@ -1575,11 +1575,11 @@ do match? nodes[body]
     - rule SyntaxId
 
 ` Whether a style rule is a `• This` with a line of its body that is not the rule's own.
-do match? nodes[rule]
+match? nodes[rule]
     | .node-rule-syntax(row)
         if row.name.text != "This" || row.body == 0
             = false
-        do match? nodes[row.body]
+        match? nodes[row.body]
             | .node-block(block)
                 for statement in children[block.body]
                     if !rule-part(statement)
@@ -1594,7 +1594,7 @@ do match? nodes[rule]
 ` Whether a slot outlet of the markup written in a class is no slot's: one a line forwards, or one
 ` in the body of another, which is content the other mounts where it is given none.
 for node in subtree-start(content) .. < content
-    do match? nodes[node]
+    match? nodes[node]
         | .node-markup-slot-forward(row)
             if row.outlet == outlet
                 = true
@@ -1610,7 +1610,7 @@ for node in subtree-start(content) .. < content
 
 ` Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
 ` as the reference's `isMarkupControlFlow` finds it.
-do match? nodes[line]
+match? nodes[line]
     | .node-if-block
         = true
     | .node-match-expression
@@ -1626,7 +1626,7 @@ do match? nodes[line]
     - syntax SyntaxId
 
 ` Whether a rule a class writes is a `whenever` rule on the markup an object is in.
-do match? nodes[syntax]
+match? nodes[syntax]
     | .node-whenever-rule-syntax(rule)
         = rule.kind.text != "value"
 = false
@@ -1647,11 +1647,11 @@ match nodes[holder-of(body)]
 
 ` The node that gives the body of an arm its value: the body, or of a block the last statement
 ` that runs where it stands, or none where there is none.
-do match? nodes[body]
+match? nodes[body]
     | .node-block(block)
         . last SyntaxId = 0
         for statement in children[block.body]
-            do match? nodes[statement]
+            match? nodes[statement]
                 | .node-declare(row)
                     if row.is-lazy
                         continue
@@ -1712,7 +1712,7 @@ match nodes[key]
     - subject SyntaxId
 
 ` The name of the property a subject reads from an object, or none.
-do match? nodes[subject]
+match? nodes[subject]
     | .node-get-expression(row)
         = row.name
 = null
@@ -1732,7 +1732,7 @@ if trigger != 0
 if source.owner != 0
     pattern-names(trigger-pattern(state-trigger(source.owner)), captures)
 for target in children[state-targets(source.node)]
-    do match? nodes[target]
+    match? nodes[target]
         | .node-identifier(named)
             if captures.find(named.name) == null
                 = true
@@ -1754,7 +1754,7 @@ for item in state-items(state-body(machine))
     - action SyntaxId
 
 ` What an action gives: its last statement where it is a block.
-do match? nodes[action]
+match? nodes[action]
     | .node-block(block)
         if block.body.count != 0
             = children[block.body.start + block.body.count - 1]
@@ -1788,7 +1788,7 @@ match nodes[id]
 
 ` Whether a grammar holds a count of a part whose bounds are not numbers written.
 for node in subtree-start(id) .. < id + 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-stream-length(row)
             if !count-bound(row.min) || (row.max != 0 && !count-bound(row.max))
                 = true
@@ -1822,7 +1822,7 @@ for node in subtree-start(id) .. < id + 1
 ` The name an action's expression is, where it is one name alone, as the reference finds a
 ` capture an action forwards. None for any other expression.
 . inner = body
-do match? nodes[body]
+match? nodes[body]
     | .node-block(block)
         if block.body.count != 1
             = 0
@@ -1836,7 +1836,7 @@ do match? nodes[body]
 ` Whether a lookahead looks at a test that does not read the item, as `&\{ size <= limit }` does:
 ` a guard, which tests its condition alone and needs no item, so it passes at the end of the
 ` input where the condition holds, and a record is given without waiting for one more item.
-do match? nodes[operand]
+match? nodes[operand]
     | .node-stream-predicate(row)
         = !mentions(row.predicate, "it")
 = false
@@ -1858,7 +1858,7 @@ for node in subtree-start(id) .. < id + 1
 
 ` Whether a pattern has a part marked to roll back.
 for node in subtree-start(pattern) .. < pattern + 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-stream-transform(row)
             if row.rollback
                 = true
@@ -1871,7 +1871,7 @@ for node in subtree-start(pattern) .. < pattern + 1
 
 ` Whether a node lies in the action of an arm of a grammar written within an expression.
 for outer in node + 1 .. < id
-    do match? nodes[outer]
+    match? nodes[outer]
         | .node-stream-transform(row)
             if row.right != 0 && subtree-start(row.right) <= node && node <= row.right
                 = true
@@ -1882,7 +1882,7 @@ for outer in node + 1 .. < id
     - id SyntaxId
 
 ` Whether an arm's pattern is one literal, whose text the reference gives as a constant.
-do match? nodes[id]
+match? nodes[id]
     | .node-stream-string
         = true
     | .node-stream-transform(row)
@@ -1894,9 +1894,9 @@ do match? nodes[id]
     - rule SyntaxId
 
 ` The pattern of a local rule, by its declaration.
-do match? nodes[rule]
+match? nodes[rule]
     | .node-declare(declaration)
-        do match? nodes[declaration.right]
+        match? nodes[declaration.right]
             | .node-stream-match(row)
                 = row.pattern
 = 0
@@ -1912,7 +1912,7 @@ do match? nodes[rule]
 if id == 0
     = false
 for node in subtree-start(id) .. < id + 1
-    do match? nodes[node]
+    match? nodes[node]
         | .node-identifier(row)
             if row.name.text == name && (name != "it" || !in-inner-action(node, id))
                 = true
@@ -1923,7 +1923,7 @@ for node in subtree-start(id) .. < id + 1
     - id SyntaxId
 
 ` The part an optional part of a grammar holds, or none for any other part.
-do match? nodes[id]
+match? nodes[id]
     | .node-stream-unary(row)
         if row.op == .zero-or-one-op
             = row.operand
@@ -1934,9 +1934,9 @@ do match? nodes[id]
     - rule SyntaxId
 
 ` The pattern of a local rule's declaration.
-do match? nodes[rule]
+match? nodes[rule]
     | .node-declare(declaration)
-        do match? nodes[declaration.right]
+        match? nodes[declaration.right]
             | .node-stream-match(row)
                 = row.pattern
 = 0
@@ -1948,12 +1948,12 @@ do match? nodes[rule]
 ` Whether an action is a name, a number or text written alone, which the reference keeps
 ` inline.
 . single = body
-do match? nodes[body]
+match? nodes[body]
     | .node-block(row)
         if row.body.count != 1
             = false
         single = children[row.body.start]
-do match? nodes[single]
+match? nodes[single]
     | .node-identifier
         = true
     | .node-integer-syntax
@@ -1969,7 +1969,7 @@ do match? nodes[single]
     - syntax SyntaxId
 
 ` Whether a style rule applies rules, after its name or in the body of a `when`.
-do match? nodes[syntax]
+match? nodes[syntax]
     | .node-rule-syntax(row)
         if row.style-rule-applications.count != 0
             = true
@@ -1984,12 +1984,12 @@ do match? nodes[syntax]
 
 ` Whether a style rule applies rules after its name or holds rules written in it, in its body or
 ` in that of one of its `when`s.
-do match? nodes[rule]
+match? nodes[rule]
     | .node-rule-syntax(declared)
         if declared.style-rule-applications.count != 0
             = true
         . body = declared.body
-        do match? nodes[body]
+        match? nodes[body]
             | .node-block(block)
                 for statement in children[block.body]
                     if nodes[statement] is .node-rule-syntax
@@ -2006,7 +2006,7 @@ do match? nodes[rule]
     - id SyntaxId
 
 ` Whether a node is written in what a rule a markup element applies after `•` is given.
-do match? nodes[element]
+match? nodes[element]
     | .node-markup(row)
         for application in children[row.style-rule-applications]
             if subtree-start(application) <= id && id <= application
@@ -2039,7 +2039,7 @@ for condition in conditions
 
 ` Whether a value reads something tracked.
 for node in subtree-start(value) .. value
-    do match? nodes[node]
+    match? nodes[node]
         | .node-identifier(row)
             if row.is-tracked
                 = true
@@ -2054,7 +2054,7 @@ for node in subtree-start(value) .. value
 
 ` Whether an application written after `•` is written on the root `<This` of a class's markup,
 ` whose values an instance of their own types (`check-root-values`).
-do match? nodes[holder-of(application)]
+match? nodes[holder-of(application)]
     | .node-markup(row)
         = names-this(row.type-id)
 = false
@@ -2066,10 +2066,10 @@ do match? nodes[holder-of(application)]
 ` The type written for a value a style rule takes, or the pattern that takes it where it is
 ` written with none.
 . pattern = argument
-do match? nodes[argument]
+match? nodes[argument]
     | .node-argument-decl(row)
         pattern = row.pattern
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-type-capture(capture)
         = capture.type
 = pattern
@@ -2091,7 +2091,7 @@ match nodes[syntax]
 ` The lines of the body of a style rule that generate content, in the order written: markup
 ` elements that bind a slot.
 . lines [SyntaxId]
-do match? nodes[body]
+match? nodes[body]
     | .node-block(block)
         for line in children[block.body]
             if this.generates(line)
@@ -2126,7 +2126,7 @@ match nodes[syntax]
 . whens [SyntaxId]
 if body == 0
     = whens
-do match? nodes[body]
+match? nodes[body]
     | .node-block(block)
         for statement in children[block.body]
             if nodes[statement] is .node-style-when
@@ -2270,7 +2270,7 @@ match nodes[feed]
 . loop = clause-loop(clause)
 for node in loop + 1 .. < (nodes.length as SyntaxId)
     if subtree-start(node) <= loop
-        do match nodes[node]
+        match nodes[node]
             | .node-for-block(block)
                 if block.loop != loop
                     = loop
@@ -2363,7 +2363,7 @@ match nodes[pattern]
 + do first-item SyntaxId
     - pattern SyntaxId
 
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-type-list(row)
         if row.patterns.count != 0
             . item = children[row.patterns.start]
@@ -2445,7 +2445,7 @@ match nodes[arm]
 
 ` The pattern a trigger matches what it tests with, inside its structure match, or none.
 . pattern = trigger-pattern(trigger)
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-structure-match(row)
         = row.pattern
 = pattern
@@ -2466,7 +2466,7 @@ match nodes[id]
     - id SyntaxId
 
 ` Whether a part of a grammar is an optional part.
-do match? nodes[id]
+match? nodes[id]
     | .node-stream-unary(row)
         = row.op == .zero-or-one-op
 = false
@@ -2488,7 +2488,7 @@ match nodes[argument]
 
 ` Whether a catcher declares a name for the error it names, or for one in its chain.
 for catcher in children[catchers]
-    do match? nodes[catcher]
+    match? nodes[catcher]
         | .node-catcher(row)
             if is-capture(row.type)
                 = true
@@ -2536,7 +2536,7 @@ while arm != 0
     if pattern-arm(arm) != 0
         = true
     . next SyntaxId = 0
-    do match? nodes[arm]
+    match? nodes[arm]
         | .node-if-block(row)
             next = row.next
     arm = next
@@ -2570,7 +2570,7 @@ match nodes[pattern]
 ` optional holds a value.
 if expr == 0
     = false
-do match? nodes[expr]
+match? nodes[expr]
     | .node-optional-chain
         = true
 = false
@@ -2580,7 +2580,7 @@ do match? nodes[expr]
     - id SyntaxId
 
 ` Whether an expression is `&&` or `||`.
-do match? nodes[id]
+match? nodes[id]
     | .node-binary-expression(row)
         = row.op == .and-op || row.op == .or-op
 = false
@@ -2642,7 +2642,7 @@ for _ in 0 .. < position
 
 ` Whether the reference takes a part of a pattern as one of its own: not a part that only
 ` declares lazy locals around another, nor an arm that raises.
-do match? nodes[id]
+match? nodes[id]
     | .node-stream-transform(row)
         = row.pattern == 0 || !lazies-only(row.right)
     | .node-stream-panic
@@ -2701,7 +2701,7 @@ match nodes[line]
     - id SyntaxId
 
 . object SyntaxId = 0
-do match? nodes[id]
+match? nodes[id]
     | .node-get-expression(row)
         object = row.object
 =? false if object == 0
@@ -2709,9 +2709,9 @@ do match? nodes[id]
 =? false if !scope
 for node in id + 1 .. < (nodes.length as SyntaxId)
     if subtree-start(node) <= id
-        do match? nodes[node]
+        match? nodes[node]
             | .node-markup(row)
-                do match? nodes[row.slot-parameter]
+                match? nodes[row.slot-parameter]
                     | .node-markup-slot-parameter(written)
                         =? true if identifier-name(written.name) == scope
 = false
@@ -2722,7 +2722,7 @@ for node in id + 1 .. < (nodes.length as SyntaxId)
 
 if pattern == 0
     = "??"
-do match? nodes[pattern]
+match? nodes[pattern]
     | .node-type-wildcard
         = "| _"
     | .node-type-capture(row)
@@ -2762,12 +2762,12 @@ match nodes[id]
     - id SyntaxId
 
 ` Whether a node is a negative number written in source.
-do match? nodes[id]
+match? nodes[id]
     | .node-integer-syntax(row)
         = parse-integer-literal(row.value).negative
     | .node-unary-expression(row)
         if row.op == .negative-op
-            do match? nodes[row.operand]
+            match? nodes[row.operand]
                 | .node-integer-syntax
                     = true
 = false
@@ -2778,10 +2778,10 @@ do match? nodes[id]
     - name Atom
 
 for arm in region-arms(control)
-    do match? nodes[region-arm-body(arm)]
+    match? nodes[region-arm-body(arm)]
         | .node-block(block)
             for line in children[block.body]
-                do match? nodes[line]
+                match? nodes[line]
                     | .node-markup(row)
                         if identifier-name(row.slot-binding) == name
                             = line

@@ -49,7 +49,7 @@ tree = frame.tree
 
 if condition == 0
     =
-do match? tree.nodes[condition]
+match? tree.nodes[condition]
     | .node-type-predicate(row)
         narrow-condition(row.expr, edge)
     | .node-unary-expression(row)
@@ -115,14 +115,14 @@ if present
     - id SyntaxId
 
 ` Whether an expression is `null`, the literal of core that no local or member of that name hides.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         if row.name != types.null-atom!
             = false
         . resolution = frame.bindings.resolution-of(frame.binding, id)
         if resolution.kind != .resolve-global || resolution.module != types.core-module
             = false
-        do match? frame.program.modules[resolution.module].decls[resolution.decl]
+        match? frame.program.modules[resolution.module].decls[resolution.decl]
             | .decl-property(property)
                 = property.name == types.null-atom
 = false
@@ -272,11 +272,11 @@ _ do narrow-case Bool
 
 . name Atom? = null
 . owner = 0u32
-do match? tree.nodes[case-syntax]
+match? tree.nodes[case-syntax]
     | .node-symbol(row)
         name = row.name
     | .node-get-expression(row)
-        do match? tree.nodes[row.object]
+        match? tree.nodes[row.object]
             | .node-type-identifier
                 if !row.is-optional
                     name = row.name
@@ -306,7 +306,7 @@ _ do tested-type TypeId
     - rhs SyntaxId
 
 ` The type a condition `is rhs` tests for, or none where it names a case.
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-symbol
         = no-type
     | .node-type-case
@@ -324,7 +324,7 @@ _ do matching-cases U64
 
 ` Pushes the cases of a union the condition `op rhs` tests for, of the type `target` where it
 ` names one, and answers those it allows only in part (`holding-cases`).
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-symbol(row)
         add-cases-named(row.name, cases)
         = 0
@@ -425,7 +425,7 @@ for position in mark .. < scratch.words.mark
 ` condition tests of one is known where it is read again.
 if expr == 0
     = null
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-type-predicate(row)
         = condition-slot(row.expr)
     | .node-identifier(named)
@@ -510,7 +510,7 @@ if found
 
 ` The key of what an object is read from where something is known of it or of a path from it:
 ` a local, a property of the receiver, or a path a condition tested before.
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-identifier
         . resolution = frame.bindings.resolution-of(frame.binding, expr)
         if resolution.kind == .resolve-slot
@@ -538,7 +538,7 @@ do match? tree.nodes[expr]
 ` for any other object, nor for a name that is not a property a class of the receiver's
 ` chain declares.
 . is-receiver = false
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-identifier
         . resolution = frame.bindings.resolution-of(frame.binding, object)
         if resolution.kind == .resolve-slot
@@ -549,10 +549,10 @@ if !is-receiver
 while current != no-type && current != invalid-type
     . ref = class-ref(types, current)
     . target = frame.program.modules[ref.module]
-    do match? target.decls[ref.decl]
+    match? target.decls[ref.decl]
         | .decl-class(row)
             for member in target.members-named(row.members, name)
-                do match? target.decls[member]
+                match? target.decls[member]
                     | .decl-property(property)
                         if property.name && property.name == name
                             = member-key(ref.module, member)
@@ -590,7 +590,7 @@ _ do member-declared TypeId
 if self == no-type || self == invalid-type
     = invalid-type
 . name Atom? = null
-do match? tree.nodes[subject]
+match? tree.nodes[subject]
     | .node-identifier(row)
         name = row.name
     | .node-get-expression(row)
@@ -629,7 +629,7 @@ if declared != no-type
 ` a function marked `@no-return` leaves too.
 if id == 0
     = false
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         . last = 0u32
         for statement in tree.children[row.body]
@@ -668,7 +668,7 @@ do match? tree.nodes[id]
         = !infers && is-constant(row.condition, true) && !has-break(row.body)
     | .node-match-expression(row)
         if (reaches || uses) && !row.is-optional
-            do match? tree.nodes[row.body]
+            match? tree.nodes[row.body]
                 | .node-structure-match(arms)
                     = arms-exit(arms.pattern, reaches, uses, infers)
         = !directly && exits(row.body, false, reaches, uses, infers)
@@ -688,9 +688,9 @@ while cursor != no-fact
     if named && call.callee != no-instance
         . row = frame.instances.rows[call.callee]
         . module = frame.program.modules[row.module]
-        do match? module.decls[row.decl]
+        match? module.decls[row.decl]
             | .decl-function(fn)
-                do match? module.tree.nodes[fn.syntax]
+                match? module.tree.nodes[fn.syntax]
                     | .node-function-syntax(syntax)
                         =? true if syntax.is-no-return
 = false
@@ -704,7 +704,7 @@ _ do arms-exit Bool
 
 ` Whether every arm of a match leaves the function or the loop it is in. An arm written with
 ` `?!` raises what it makes.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = arms-exit(row.left, reaches, uses, infers) && arms-exit(row.right, reaches, uses, infers)
     | .node-type-transform(row)
@@ -717,13 +717,13 @@ do match? tree.nodes[pattern]
 _ do has-else Bool
     - pattern SyntaxId
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-or(row)
         = has-else(row.left) || has-else(row.right)
     | .node-type-transform(row)
         if row.pattern == 0
             = true
-        do match? tree.nodes[row.pattern]
+        match? tree.nodes[row.pattern]
             | .node-type-wildcard
                 = true
 = false
@@ -744,7 +744,7 @@ _ do is-constant Bool
     - truth Bool
 
 ` Whether a condition is written as the constant true, or as the constant false.
-do match? tree.nodes[condition]
+match? tree.nodes[condition]
     | .node-integer-syntax(row)
         = row.value == (if truth then "1" else "0")
     | .node-identifier(row)
@@ -760,7 +760,7 @@ _ do has-break Bool
 
 if id == 0
     = false
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-block(row)
         for statement in tree.children[row.body]
             if has-break(statement)

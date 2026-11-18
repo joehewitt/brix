@@ -15,7 +15,7 @@ describe(Kind.b)
 + do describe
     - kind Kind
 
-do match kind
+match kind
     |= .a
         -- "a"
     |= .b
@@ -41,7 +41,7 @@ describe(Kind.b)
 + do describe
     - kind Kind
 
-do match kind
+match kind
     | .a
         -- "a"
     | .b
@@ -70,7 +70,7 @@ describe(Kind.b)
 + do describe
     - kind Kind
 
-do match kind
+match kind
     |= Kind.a
         -- "a"
     | Kind.b
@@ -117,7 +117,7 @@ Exception: Kind.a is an enum value, not a union case; match it with '|= .a'
 
 ```yumi crash
 . kind = Kind.b
-do match? kind
+match? kind
     | Kind.a
         -- "a"
     | Kind.b
@@ -142,7 +142,7 @@ Exception: Kind.a is an enum value, not a union case; match it with '|= Kind.a'
 
 ```yumi crash
 . kind = Kind.b
-do match kind
+match kind
     | .b
         -- "b"
     | _
@@ -198,7 +198,7 @@ describe(Kind.b)
 + do describe
     - kind Kind
 
-do match kind
+match kind
     |= Kind.a
         -- "a"
     | b

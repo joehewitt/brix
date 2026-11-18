@@ -739,7 +739,7 @@ Exception: "match?" differs from "match" only where no arm is taken, and this de
 ```
 
 ```yumi crash
-do match? n
+match? n
     |= 1
         step()
     ?! Panic("none")

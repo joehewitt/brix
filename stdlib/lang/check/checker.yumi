@@ -100,6 +100,7 @@ _ settled-store SyntaxId = 0
 _ quasi-free-block SyntaxId = 0
 _ discarding-block SyntaxId = 0
 _ steps-block SyntaxId = 0
+_ arm-block SyntaxId = 0
 _ materialized [SlotId]
 _ unsure-stores [U32]
 _ unsure-reads [U32]
@@ -470,7 +471,7 @@ checker.retire()
 . owner = 0u32
 . nested-decl = 0u32
 . enclosing = instance
-do match? types.rows[closure]
+match? types.rows[closure]
     | .type-closure(row)
         owner = row.module
         nested-decl = row.decl
@@ -557,7 +558,7 @@ for offset in 0 .. < signature.errors.count
 ` Whether a node that names an event, given to a call as its endpoint, is converted by a
 ` converter, as the reference converts no endpoint: reported as `refuse-event-value` says.
 . place = syntax
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-argument(row)
         place = row.expr
 . position = endpoint-arguments.find(place)
@@ -589,7 +590,7 @@ if completion.intrinsic == .class && completion.is-builtin
 
 if is-column-receiver(types.intrinsic-of(value))
     = column-count(value)
-do match? types.rows[value]
+match? types.rows[value]
     | .type-tuple(row)
         = row.fields.count
     | .type-class
@@ -607,7 +608,7 @@ if is-column-receiver(kind)
     if column == no-type
         = invalid-type
     = types.column-view-of(column, kind == .immutable-table || kind == .immutable-table-span)
-do match? types.rows[value]
+match? types.rows[value]
     | .type-tuple(row)
         = if position < row.fields.count then field-type else invalid-type
             .. field-type = types.child-type(row.fields, position)
@@ -678,7 +679,7 @@ if ref.module == U32.max || site == 0
     =
 . home = program.modules[ref.module]
 for member in 0 .. < home.decls.length
-    do match? home.decls[member]
+    match? home.decls[member]
         | .decl-case(row)
             if row.owner == ref.decl
                 demand-body(instances.intern-initializer(ref.module, member as DeclId, about))
@@ -711,7 +712,7 @@ if types.intrinsic-of(from) == .class && types.intrinsic-of(to) == .interface
     conform-styles(from, to)
 if types.intrinsic-of(from) != .interface && types.intrinsic-of(to) == .interface
     conform-members(from, to)
-do match? types.rows[from]
+match? types.rows[from]
     | .type-class(row)
         if row.errors.count != 0
             for offset in 0 .. < row.errors.count
@@ -834,12 +835,12 @@ for position in 0 .. < program.modules.length
     . owner = program.modules[position]
     . index = 0u32
     for decl in owner.decls
-        do match? decl
+        match? decl
             | .decl-class(class)
                 if class.type-args.count == 0
                     . ref = DeclRef(position as ModuleId, index)
                     for member in owner.member-pool[class.members]
-                        do match? owner.decls[member]
+                        match? owner.decls[member]
                             | .decl-property(property)
                                 . query = if property.type-syntax != 0 then query-type(ref, property.type-syntax) else no-type
                                 if query != no-type && !is-ancestor-query(query)
@@ -849,7 +850,7 @@ for position in 0 .. < program.modules.length
                     for part in sheet-parts(ref)
                         . written = program.modules[part.module]
                         for member in written.member-pool[part-members(part)]
-                            do match? written.decls[member]
+                            match? written.decls[member]
                                 | .decl-rule(rule)
                                     . target = trigger-target(part, rule.syntax)
                                     if target != no-type && facts.query-targets.find(target) == null
@@ -864,7 +865,7 @@ for target in facts.query-targets
 + do open-class-env Bool
     - receiver TypeId
 
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         frame.open-env(types.class-env-for(row.module, row.decl, row.args, receiver))
         = true
@@ -1058,7 +1059,7 @@ report.termination-error = calls.demand-constructor(termination, scratch.types.m
 . error-module = class-ref(types, termination).module
 . decls = program.modules[error-module].decls
 for position in 0 .. < decls.length
-    do match? decls[position]
+    match? decls[position]
         | .decl-function(fn)
             if fn.kind == .termination-panic-decl
                 . check = position as DeclId
@@ -1207,7 +1208,7 @@ writer.dismiss()
 if literal != no-type
     = literal
 . written = 0u32
-do match? program.modules[owner].decls[property]
+match? program.modules[owner].decls[property]
     | .decl-property(row)
         written = row.syntax
 = demand-initializer(instances.intern-initializer(owner, property, no-type), written)
@@ -1247,13 +1248,13 @@ if ref.module == 0 && ref.decl == 0
 . annotation = 0u32
 . written = 0u32
 . members = RowRange'DeclId()
-do match? owner-module.decls[ref.decl]
+match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
     | .decl-extension(row)
         members = row.members
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == name
                 if target == 0 || (initializer == 0 && row.value != 0)
@@ -1265,7 +1266,7 @@ for member in owner-module.members-named(members, name)
 if target == 0 && fact.type == no-type && fact.storage-kind == .storage-getter
     = calls.protocol-getter(receiver, name)
 if target != 0
-    do match? owner-module.decls[target]
+    match? owner-module.decls[target]
         | .decl-property(row)
             if row.line != 0
                 = content-property-type(ref, row.line)
@@ -1720,7 +1721,7 @@ live-owned = false
 for part in sheet-parts(ref)
     . written = program.modules[part.module]
     for member in written.member-pool[part-members(part)]
-        do match? written.decls[member]
+        match? written.decls[member]
             | .decl-rule(rule)
                 if waits-for-markup(receiver, part.module, rule.syntax)
                     instances.mark-may-panic(instance)
@@ -1744,7 +1745,7 @@ if takes-nothing && !own && !given && !only-machines(declaration.body)
 . lines [SyntaxId]
 if wraps-default(body)
     lines += body
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             if binds-slot(statement)
@@ -1821,7 +1822,7 @@ if body != 0 || (beside != 0 && !defaulted && !given)
     else if dropped != 0
         decline(dropped)
     else if defaulted
-        do match? tree.nodes[body]
+        match? tree.nodes[body]
             | .node-block(block)
                 for statement in tree.children[block.body]
                     if !ruled || !tree.rule-part(statement)
@@ -1880,7 +1881,7 @@ _ do only-machines Bool
 ` is a state machine the object keeps, and there is one.
 . content = frame.declaration.syntax
 . machines = tree.content-machines(content)
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             if tree.runs-line(content, statement) && machines.find(statement) == null
@@ -1944,9 +1945,9 @@ _ do runs-later Bool
 if unit.initializer == 0
     = false
 . tree = program.modules[unit.module].tree
-do match? program.modules[unit.module].decls[unit.initializer]
+match? program.modules[unit.module].decls[unit.initializer]
     | .decl-rule(row)
-        do match? tree.nodes[row.syntax]
+        match? tree.nodes[row.syntax]
             | .node-whenever-rule-syntax(rule)
                 if rule.kind.text != "value" || rule.body == 0
                     = false
@@ -1964,11 +1965,11 @@ _ do keeps-whole Bool
 if unit.initializer == 0
     = false
 . tree = program.modules[unit.module].tree
-do match? program.modules[unit.module].decls[unit.initializer]
+match? program.modules[unit.module].decls[unit.initializer]
     | .decl-rule(row)
-        do match? tree.nodes[row.syntax]
+        match? tree.nodes[row.syntax]
             | .node-whenever-rule-syntax(rule)
-                do match? tree.nodes[rule.expr]
+                match? tree.nodes[rule.expr]
                     | .node-identifier(read)
                         = read.name == name
 = false
@@ -1985,10 +1986,10 @@ for holder in chain
     . ref = class-ref(types, holder)
     . owner = program.modules[ref.module]
     . tree = owner.tree
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(class)
             for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
+                match? owner.decls[member]
                     | .decl-function(fn)
                         if fn.kind != .constructor-decl || fn.is-generated || fn.body == 0
                             continue
@@ -1996,11 +1997,11 @@ for holder in chain
                         . node = fn.body + 1
                         while node > floor
                             node -= 1
-                            do match? tree.nodes[node]
+                            match? tree.nodes[node]
                                 | .node-function-syntax
                                     node = tree.subtree-start(node)
                                 | .node-for-block(block)
-                                    do match? tree.nodes[block.loop]
+                                    match? tree.nodes[block.loop]
                                         | .node-loop-syntax(loop)
                                             if loop.is-subscriber
                                                 . found = own-event
@@ -2018,7 +2019,7 @@ _ do section-loop SyntaxId
 
 ` The loop a section of a class writes, or none.
 . tree = program.modules[module].tree
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-subscriber-syntax(section)
         = section.iterator
 = 0
@@ -2035,11 +2036,11 @@ _ do section-event NamedEvent?
 . iterator = section-loop(module, syntax)
 if iterator == 0
     = null
-do match? tree.nodes[iterator]
+match? tree.nodes[iterator]
     | .node-for-block(block)
         if block.next != 0
             = null
-        do match? tree.nodes[block.loop]
+        match? tree.nodes[block.loop]
             | .node-loop-syntax(loop)
                 if loop.is-subscriber && loop.next == 0 && loop.container != 0
                     = own-event(receiver, module, loop.container)
@@ -2054,11 +2055,11 @@ _ do own-event NamedEvent?
 ` The event of the object itself a container names: its name alone, read from `this`, or read
 ` from the class that declares an event that bubbles.
 . tree = program.modules[module].tree
-do match? tree.nodes[container]
+match? tree.nodes[container]
     | .node-identifier(row)
         = event-of(receiver, row.name, true)
     | .node-get-expression(get)
-        do match? tree.nodes[get.object]
+        match? tree.nodes[get.object]
             | .node-identifier(row)
                 if row.name.text == "this"
                     = event-of(receiver, get.name, true)
@@ -2079,7 +2080,7 @@ _ do bubbling-event-of NamedEvent?
 ` The event a class written in a section of `receiver`'s class declares, where it bubbles: one
 ` that is not private and is published by no key.
 . declarer = invalid-type
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-class(row)
         . env = types.class-env-for(row.module, row.decl, row.args, receiver)
         declarer = types.evaluate-type(module, tree, written, env)
@@ -2102,21 +2103,21 @@ _ do query-type TypeId
 ` The type a class writes for a property where it queries the markup an object is in,
 ` `Ancestor'T` or `Descendants'T` of the markup runtime with one argument, or no type: for the
 ` parameters a `level` of the class with type parameters gives it, where one is given.
-do match program.modules[ref.module].tree.nodes[written]
+match program.modules[ref.module].tree.nodes[written]
     | .node-type-arguments
     ??
         = no-type
 . owner = program.modules[ref.module]
 . env = types.class-env(ref.module, ref.decl)
 if level != no-type
-    do match? types.rows[level]
+    match? types.rows[level]
         | .type-class(row)
             if row.args.count != 0
                 types.env-release(env)
                 env = types.class-env-for(row.module, row.decl, row.args, level)
 . type = types.evaluate-type(ref.module, owner.tree, written, env)
 types.env-release(env)
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
         if row.args.count == 1 && (ancestor-query || descendant-query)
             = type
@@ -2129,7 +2130,7 @@ _ do query-target TypeId
     - query TypeId
 
 ` The class a query of the markup an object is in looks for: its one argument.
-do match? types.rows[query]
+match? types.rows[query]
     | .type-class(row)
         = types.child-type(row.args, 0)
 = no-type
@@ -2147,14 +2148,14 @@ _ do note-open-targets
 . env = types.class-env(ref.module, ref.decl)
 for member in owner.member-pool[members]
     . target = no-type
-    do match? owner.decls[member]
+    match? owner.decls[member]
         | .decl-property(property)
             . query = if typed then query-type(ref, property.type-syntax) else no-type
                 .. typed = property.type-syntax != 0
             if query != no-type && !is-ancestor-query(query)
                 target = query-target(query)
         | .decl-rule(rule)
-            do match? owner.tree.nodes[rule.syntax]
+            match? owner.tree.nodes[rule.syntax]
                 | .node-whenever-rule-syntax(written)
                     if written.kind.text == "children" || written.kind.text == "descendants"
                         target = types.evaluate-type
@@ -2190,15 +2191,15 @@ while level && types.intrinsic-of(level) == .class
     level = types.base-of(level)
 for position in 0 .. < chain.length
     . current = chain[chain.length - 1 - position]
-    do match? types.rows[current]
+    match? types.rows[current]
         | .type-class(row)
             . owner = program.modules[row.module]
-            do match? owner.decls[row.decl]
+            match? owner.decls[row.decl]
                 | .decl-class(class)
                     if class.type-args.count != 0
                         . ref = DeclRef(row.module, row.decl)
                         for member in owner.member-pool[class.members]
-                            do match? owner.decls[member]
+                            match? owner.decls[member]
                                 | .decl-property(property)
                                     . query = if property.type-syntax != 0 then query-type(ref, property.type-syntax, current) else no-type
                                     . target = if descends then query-target(query) else no-type
@@ -2207,7 +2208,7 @@ for position in 0 .. < chain.length
                                         facts.query-targets += target
                         . env = types.class-env-for(row.module, row.decl, row.args, current)
                         for member in owner.member-pool[class.members]
-                            do match? owner.decls[member]
+                            match? owner.decls[member]
                                 | .decl-rule(rule)
                                     . target = rule-target(row.module, rule.syntax, env)
                                     if target != no-type && facts.query-targets.find(target) == null
@@ -2242,10 +2243,10 @@ for position in 0 .. < chain.length
     . current = chain[chain.length - 1 - position]
     . ref = class-ref(types, current)
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(class)
             for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
+                match? owner.decls[member]
                     | .decl-property(property)
                         . query = if property.type-syntax != 0 then query-type(ref, property.type-syntax, current) else no-type
                         if query != no-type
@@ -2428,7 +2429,7 @@ _ do frame-types [TypeId]?
 ` The types of the values of the rule of a frame, as the class or style sheet that writes it
 ` declares them; none where they are not known here.
 . held = instances.frames[frame]
-do match? program.modules[held.module].decls[held.decl]
+match? program.modules[held.module].decls[held.decl]
     | .decl-style-rule(rule)
         = written-argument-types(held.module, rule.owner, held.decl)
 = null
@@ -2459,7 +2460,7 @@ _ do valued-frame U32
 while frame != U32.max
     . held = instances.frames[frame]
     if held.gate == 0
-        do match? program.modules[held.module].decls[held.decl]
+        match? program.modules[held.module].decls[held.decl]
             | .decl-style-rule(rule)
                 if program.modules[held.module].tree.rule-takes(rule.syntax) != 0
                     = frame
@@ -2546,7 +2547,7 @@ _ do root-scopes Bool
 ` `known` where the markup that made the object said which class it is. The states of the
 ` `when`s around them are then checked (`check-cells`). False where one is declined or reported.
 . root = tree.root-this(frame.declaration.syntax)
-do match? tree.nodes[root]
+match? tree.nodes[root]
     | .node-markup(row)
         if may-scope(receiver, row)
             . names [Atom]
@@ -2583,7 +2584,7 @@ do match? tree.nodes[root]
 if scoping-any()
     . ref = class-ref(types, receiver)
     . own-keying = keying
-    do match? program.modules[ref.module].decls[ref.decl]
+    match? program.modules[ref.module].decls[ref.decl]
         | .decl-class(class)
             keying = Keying(keying.discovering, keying.sheet-self, ref.module, class.syntax)
     default-scopes(made, 0, rule-scopes, true)
@@ -2613,7 +2614,7 @@ _ do base-scopes Bool
 if context != U32.max && instances.contexts[context].made != no-type
     made = instances.contexts[context].made
     known = true
-do match? written.nodes[root]
+match? written.nodes[root]
     | .node-markup(row)
         . names [Atom]
         for text in implicit-names(base, row.type-id, 0, written)
@@ -2653,7 +2654,7 @@ do match? written.nodes[root]
             scopes += use
 . owner = class-ref(types, receiver)
 . own-keying = keying
-do match? program.modules[owner.module].decls[owner.decl]
+match? program.modules[owner.module].decls[owner.decl]
     | .decl-class(class)
         keying = Keying(keying.discovering, keying.sheet-self, owner.module, class.syntax)
 default-scopes(base, 0, scopes, true)
@@ -2754,7 +2755,7 @@ if missing == 0
     =
 . module = (missing /rshift/ 32) as ModuleId
 . decl = (missing /and/ 0xffffffff) as DeclId
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         . declaring = declaring-interface(interface, DeclRef(module, fn.owner))
         . text = program.store-atom(unanswered-text(types, value, declaring, fn.name!))
@@ -2773,10 +2774,10 @@ _ do missing-member U64
 ` either: it is given an empty block only so that it has one to check.
 . ref = class-ref(types, interface)
 . owner = program.modules[ref.module]
-do match? owner.decls[ref.decl]
+match? owner.decls[ref.decl]
     | .decl-class(declared)
         for member in owner.member-pool[declared.members]
-            do match? owner.decls[member]
+            match? owner.decls[member]
                 | .decl-function(fn)
                     . own-params = fn.type-args.count != 0
                     . bodiless = fn.body == 0 || is-module-empty-block(ref.module, fn.body)
@@ -2879,7 +2880,7 @@ if context != U32.max
     for position in held.scope-first .. < held.scope-first + held.scopes
         if instances.context-cells[position] == 0 && instances.context-valued[position] == U32.max
             rule-scopes += ScopeUse(instances.context-scopes[position])
-do match? tree.nodes[application]
+match? tree.nodes[application]
     | .node-style-rule-application(applied)
         . given [TypeId]
         . typed = true
@@ -2913,7 +2914,7 @@ _ do scope-argument-types [TypeId]?
 
 ` The types a rule written in a rule takes its values as, as the class that writes it declares
 ` them (`written-argument-types`).
-do match? program.modules[scope.module].decls[scope.decl]
+match? program.modules[scope.module].decls[scope.decl]
     | .decl-style-rule(rule)
         = written-argument-types(scope.module, rule.owner, scope.decl)
 = null
@@ -2991,7 +2992,7 @@ _ do nested-decl DeclId
 . decls = program.modules[owner].decls
 . index = outer + 1
 while index < decls.length
-    do match decls[index]
+    match decls[index]
         | .decl-style-rule(rule)
             if rule.outer == 0
                 = 0
@@ -3028,7 +3029,7 @@ for name in implicit-names(class, row.type-id, row.id, tree)
     if scoping-named(program.store-atom(name))
         = true
 for application in tree.children[row.style-rule-applications]
-    do match? tree.nodes[application]
+    match? tree.nodes[application]
         | .node-style-rule-application(applied)
             if scoping-named(applied.name)
                 = true
@@ -3061,7 +3062,7 @@ for name in names
     if !gather-name(made, name, scopes, U32.max, U32.max, site, owner, scopes, none, 0, U32.max, U32.max)
         = false
 for application in written.children[applications]
-    do match? written.nodes[application]
+    match? written.nodes[application]
         | .node-style-rule-application(applied)
             if !scoping-named(applied.name) || (applied.condition != 0 && site != 0)
                 continue
@@ -3165,15 +3166,15 @@ for position in 0 .. < chain.length
     . holder = chain[chain.length - 1 - position]
     . ref = class-ref(types, holder)
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(class)
             for member in owner.member-pool[class.members]
-                do match? owner.decls[member]
+                match? owner.decls[member]
                     | .decl-style-rule(rule)
                         if rule.name.text != "This"
                             continue
                         . body = owner.tree.rule-body(rule.syntax)
-                        do match? owner.tree.nodes[body]
+                        match? owner.tree.nodes[body]
                             | .node-block(block)
                                 for statement in owner.tree.children[block.body]
                                     if nested && (takes-own || plain)
@@ -3219,7 +3220,7 @@ _ do rule-argument-types [TypeId]?
 
 ` The types a style rule a class or a style sheet writes takes its values as, as it declares
 ` them, or none where one is not written or is not known without the class's type arguments.
-do match? program.modules[member.module].decls[member.decl]
+match? program.modules[member.module].decls[member.decl]
     | .decl-style-rule(rule)
         = written-argument-types(member.module, rule.owner, member.decl)
 = null
@@ -3234,9 +3235,9 @@ _ do written-argument-types [TypeId]?
 ` or in a rule of either, takes its values as, as `rule-argument-types` says.
 . owner = program.modules[module]
 . taken [TypeId]
-do match? owner.decls[member]
+match? owner.decls[member]
     | .decl-style-rule(rule)
-        do match? owner.tree.nodes[rule.syntax]
+        match? owner.tree.nodes[rule.syntax]
             | .node-rule-syntax(row)
                 . env = holder-env(DeclRef(module, class))
                 for arg in owner.tree.children[row.args]
@@ -3264,18 +3265,18 @@ _ do implicit-names [String]
 . level TypeId? = made
 while level && types.intrinsic-of(level) == .class
     . ref = class-ref(types, level)
-    do match? program.modules[ref.module].decls[ref.decl]
+    match? program.modules[ref.module].decls[ref.decl]
         | .decl-class(class)
             chain += class.name.text
     level = types.base-of(level)
 . names [String]
 for position in 0 .. < chain.length
     add-name(names, chain[chain.length - 1 - position])
-do match? written.nodes[written-base(written, type-id)]
+match? written.nodes[written-base(written, type-id)]
     | .node-type-identifier(typed)
         if !typed.is-declare
             add-name(names, typed.name.text)
-do match? written.nodes[element]
+match? written.nodes[element]
     | .node-identifier(named)
         add-name(names, selector-name(named.name.text))
 = names
@@ -3386,7 +3387,7 @@ for position in 0 .. < count
         continue
     . ref = declaring-decl(types, property)
     . member = valued-property(program, ref.module, ref.decl, property.name)
-    do match? program.modules[ref.module].decls[member]
+    match? program.modules[ref.module].decls[member]
         | .decl-property(row)
             if member != 0 && !row.is-lazy
                 values[position] = row.value
@@ -3480,11 +3481,11 @@ _ do read-place U32
 ` The place among a class's own properties of the one a node of a value reads as the
 ` reference finds them: by a name alone, or after `this`. `U32.max` for any other node.
 . name Atom? = null
-do match? tree.nodes[node]
+match? tree.nodes[node]
     | .node-identifier(row)
         name = row.name
     | .node-get-expression(row)
-        do match? tree.nodes[row.object]
+        match? tree.nodes[row.object]
             | .node-identifier(object)
                 if types.this-atom && object.name == types.this-atom
                     name = row.name
@@ -3519,7 +3520,7 @@ _ do check-rule
 ` error, and one whose body holds more than its pattern and the lazy locals declared for it has
 ` no shape here.
 . pattern SyntaxId = 0
-do match? tree.nodes[matched]
+match? tree.nodes[matched]
     | .node-stream-match(row)
         pattern = row.pattern
 . declared = declared-return
@@ -3530,7 +3531,7 @@ do match? tree.nodes[matched]
 . grows = pattern == 0 || item == no-type || record-growth(given, matched, encodes)
     .. encodes = instances.rows[instance].encoded
 . marked = false
-do match? tree.nodes[declaration.syntax]
+match? tree.nodes[declaration.syntax]
     | .node-function-syntax(row)
         marked = row.rollback
 if pattern == 0 || item == no-type || owned || !grows || !lazies-beside(declaration.body, matched)
@@ -3617,7 +3618,7 @@ _ do lazies-beside Bool
 
 ` Whether the body of a rule holds nothing beside its pattern but lazy locals declared for
 ` it, as the reference's `where` holds them.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             if statement != matched && !narrowing.is-lazy-declaration(statement)
@@ -3665,7 +3666,7 @@ if declaration.kind != .function-decl || intrinsic != no-type || gives-nothing
 . self = frame.self-type
 if self != no-type && self != invalid-type && types.intrinsic-of(self) == .interface
     = 0
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         = fn.return-type
 = 0
@@ -3673,7 +3674,7 @@ do match? program.modules[module].decls[frame.decl]
 ────────────────────
 _ do refuses-unwritten Bool
 
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if fn.owner == 0 && fn.name && calls.intrinsic-plan(instance) == .plan-none
             . text = "Function \"${fn.name.text}\" has no body, and no compiler intrinsic supplies one"
@@ -3690,7 +3691,7 @@ _ do evident-return TypeId
 if declaration.is-main || declaration.is-imperative || declaration.body == 0
     = no-type
 . result = declaration.body
-do match? tree.nodes[result]
+match? tree.nodes[result]
     | .node-block(row)
         result = 0
         for statement in tree.children[row.body]
@@ -3698,9 +3699,9 @@ do match? tree.nodes[result]
                 result = statement
 if result == 0
     = no-type
-do match? tree.nodes[result]
+match? tree.nodes[result]
     | .node-call-expression(call)
-        do match? tree.nodes[call.callable]
+        match? tree.nodes[call.callable]
             | .node-type-arguments
                 . named = types.evaluate-type(module, tree, call.callable, frame.env)
                 if named != invalid-type && !types.completions[named].has-variables
@@ -3731,7 +3732,7 @@ if owner != no-type && owner != invalid-type && tree.is-empty-block(declaration.
 if final-statement == 0 && !required
     =
 . name = ""
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if fn.name
             name = fn.name.text
@@ -3791,7 +3792,7 @@ _ do math-intrinsic-return TypeId
 ` What a function the compiler computes gives, where it declares nothing: one of the four of
 ` the math module that take floats, or the intrinsic that calls an event's lowered handler.
 . name = ""
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if fn.name
             . atom = fn.name
@@ -3980,12 +3981,12 @@ types.complete(self)
 _ do owner-syntax SyntaxId
 
 . owner = 0u32
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         owner = fn.owner
 if owner == 0
     = frame.declaration.syntax
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-class(class)
         = class.syntax
 = frame.declaration.syntax
@@ -4000,7 +4001,7 @@ _ do states-type Bool
 . declared = signature.args[position]
 if declared == invalid-type || types.completions[declared].has-variables
     = false
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if position < fn.args.count
             = program.modules[module].arg-pool[fn.args.start + position].type-syntax != 0
@@ -4109,7 +4110,7 @@ _ do type-written-defaults
 ` which the reference evaluates as the function's module starts whether or not a call takes
 ` it. Any other default is typed where a call first takes it (`type-default`).
 . owner-module = program.modules[module]
-do match? owner-module.decls[frame.decl]
+match? owner-module.decls[frame.decl]
     | .decl-function(fn)
         for position in 0 .. < fn.args.count
             . syntax = owner-module.arg-pool[fn.args.start + position].default-syntax
@@ -4122,7 +4123,7 @@ _ do written-constant Bool
 
 ` Whether a default is written as a constant as the reference tells one: a number, a text, a
 ` symbol, a truth, null, an operator on one of those, or a member named on a type.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-integer-syntax
         = true
     | .node-float-syntax
@@ -4148,7 +4149,7 @@ _ do check-default
 ` written, for the calls that take it; a literal is converted at each call. One that no
 ` conversion takes to the parameter's type is reported by no call that gives the argument.
 . owner-module = program.modules[module]
-do match? owner-module.decls[frame.decl]
+match? owner-module.decls[frame.decl]
     | .decl-function(fn)
         if position >= fn.args.count
             =
@@ -4302,7 +4303,7 @@ _ do misstates-unit Bool
 ` as zero of a unit, which relates no number of one to the other, and says whether it did.
 . text = ""
 . unit Atom? = null
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-integer-syntax(row)
         text = row.value
         unit = row.unit
@@ -4325,7 +4326,7 @@ _ do unit-of TypeId
 
 ` The unit an expression of an equality measures in, and no type for a bare number. Two
 ` units cannot meet in one operation.
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-integer-syntax(row)
         = if row.unit then unit-class(row.unit) else no-type
     | .node-float-syntax(row)
@@ -4392,7 +4393,7 @@ if is-integer-kind(types.intrinsic-of(type))
 . base = types.base-of(type) ?? no-type
 if types.rows[type] is .type-class && base != no-type && types.rows[base] is .type-tuple
     = event-key(base)
-do match? types.rows[type]
+match? types.rows[type]
     | .type-tuple(row)
         if row.fields.count != 2 || row.names.count != 2
             = false
@@ -4432,7 +4433,7 @@ for position in 0 .. < rows.count
         result = position
 for position in 0 .. < rows.count
     . statement = tree.children[rows.start + position]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-assign
             = statement
         | .node-if-block
@@ -4497,7 +4498,7 @@ _ do written-type-name String?
 ` one.
 if id == 0
     = ""
-do match? written.nodes[id]
+match? written.nodes[id]
     | .node-type-identifier(row)
         = row.name.text
     | .node-type-arguments(row)
@@ -4552,7 +4553,7 @@ if id == 0
 if is-leaving(id)
     facts.mark-leaving(instance, id)
 
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-block(row)
         = check-block(id, row.body, id == quasi-free-block, want.asks(.want-match-statement))
     | .node-declare(row)
@@ -4854,10 +4855,15 @@ _ do check-block TypeId
 ` names what it does not call is checked (`check-called`) unless it gives the block its value:
 ` the last of a block the reference keeps the value of, which a `discarding-block` is not. The
 ` arms of a block a match written as a statement runs (`matched`) are that match's. A match whose
-` value nothing uses, in a body of steps, runs its arms as steps (`runs-steps`).
+` value nothing uses, in a body of steps, runs its arms as steps (`runs-steps`). The value of the
+` body of an arm whose match gives one (`arm-block`) is that of the row it ends on alone, and the
+` rows before it run as steps.
 . mark = scratch.narrowings.mark
 . discards = block == discarding-block
 . steps-body = block == steps-block && block != matching.arms
+. arm-row = if block == arm-block then tree.arm-value(block) else 0
+steps-block = 0
+arm-block = 0
 . last = if body.count != 0 then tree.children[body.start + body.count - 1] else 0
 . kept = tree.kept-row(body)
 . value = no-type
@@ -4956,11 +4962,12 @@ for statement in tree.children[body]
             limits[position] = statement
         open = finals.length
     . quasi = skips-quasi && tree.is-quasi-syntax(statement)
-    if produced != no-type && produced != types.void-type && !quasi
+    . counted = arm-row == 0 || statement == arm-row
+    if counted && produced != no-type && produced != types.void-type && !quasi
         value = produced
         value-syntax = statement
         values += 1
-    else if produced == types.void-type && !quasi && (declared == no-type || declared == produced)
+    else if counted && produced == types.void-type && !quasi && (declared == no-type || declared == produced)
         values += 1
     if !tree.is-lazy-declare(statement)
         . valued = produced != no-type && produced != types.void-type
@@ -5048,7 +5055,7 @@ _ do returns-present Bool
 ` typed, any `=? value` may be one.
 if expr == 0
     = false
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-optional-chain
         . value = facts.node-type(instance, expr)
         = value == no-type || (value != invalid-type && types.is-optional(value))
@@ -5172,7 +5179,7 @@ hold-payloads(root, owner, owner, sites, held)
 . counts [U32]
 . written [Bool]
 for position in 0 .. < sites.length
-    do match? tree.nodes[sites[position]]
+    match? tree.nodes[sites[position]]
         | .node-anonymous-case(row)
             . payload = held[position]
             . literal = written-payload(row.args)
@@ -5216,7 +5223,7 @@ _ do hold-payloads
 . declared = owner != null
 . waits = false
 for id in tree.subtree-start(root) .. root
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-anonymous-case(row)
             if owns-case(owner, row.owner)
                 . waiting = row.args.count != 0 && (!declared || reads-untyped(row.args))
@@ -5258,7 +5265,7 @@ _ do value-reads-untyped Bool
     - followed [SlotId]
 
 for id in tree.subtree-start(value) .. value
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier
             . resolution = bindings.resolution-of(frame.binding, id)
             if resolution.kind == .resolve-slot && awaits-flow(resolution.slot)
@@ -5277,7 +5284,7 @@ _ do lazy-reads-untyped Bool
 if !unread || row.group == 0 || followed.find(slot) != null
     = false
 followed += slot
-do match? tree.nodes[row.group]
+match? tree.nodes[row.group]
     | .node-declare(declaration)
         = value-reads-untyped(declaration.right, followed)
 = false
@@ -5306,7 +5313,7 @@ _ do foresee-payloads
 . mark = scratch.types.mark
 . names-mark = scratch.names.mark
 for position in 0 .. < sites.length
-    do match? tree.nodes[sites[position]]
+    match? tree.nodes[sites[position]]
         | .node-anonymous-case(row)
             if listed.find(row.name) == null
                 listed += row.name
@@ -5368,7 +5375,7 @@ _ do first-held TypeId
     - held [TypeId]
 
 for position in 0 .. < sites.length
-    do match? tree.nodes[sites[position]]
+    match? tree.nodes[sites[position]]
         | .node-anonymous-case(row)
             if row.name == name && held[position] != no-type && held[position] != invalid-type
                 = held[position]
@@ -5478,7 +5485,7 @@ _ do function-union TypeId
 ` The union of the anonymous cases a function's body gives that no declaration in it owns:
 ` the function owns them, under its own name.
 . name Atom? = null
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         name = fn.name
 . body = frame.declaration.body
@@ -5494,7 +5501,7 @@ hold-payloads(body, null, name, sites, held)
 . payloads [TypeId]
 . counts [U32]
 for position in 0 .. < sites.length
-    do match? tree.nodes[sites[position]]
+    match? tree.nodes[sites[position]]
         | .node-anonymous-case(row)
             . payload = held[position]
             . found = names.find(row.name)
@@ -5597,7 +5604,7 @@ _ do infer-declared TypeId
     - right SyntaxId
 
 . expected = no-type
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-type-capture(row)
         if row.type != 0
             expected = types.evaluate-type(module, tree, row.type, frame.env)
@@ -5611,7 +5618,7 @@ if expected != no-type && expected != invalid-type && is-async-channel(expected)
         frame.diagnose(left, .stated, program.store-atom(message), payload, expected)
         = invalid-type
 . place = right
-do match? tree.nodes[left]
+match? tree.nodes[left]
     | .node-type-capture(row)
         if row.type != 0
             place = row.type
@@ -5628,7 +5635,7 @@ _ do report-missing-signature
 
 ` Reports the first type written in the signature of the function being typed that names
 ` nothing, among its arguments and then its return.
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         . pool = program.modules[module].arg-pool
         for position in 0 .. < fn.args.count
@@ -5693,7 +5700,7 @@ types.complete(inner)
 _ do construct-declared
     - pattern SyntaxId
 
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-capture(row)
         if row.type != 0
             . declared = types.evaluate-type(module, tree, row.type, frame.env)
@@ -5742,7 +5749,7 @@ _ do declare
 
 if pattern == 0
     =
-do match tree.nodes[pattern]
+match tree.nodes[pattern]
     | .node-type-capture(row)
         if row.type != 0 && reads-name(row.type)
             plan-tested(row.type)
@@ -5848,7 +5855,7 @@ _ do plan-tested
 ` A pattern a declaration is written with that tests what it is given panics where the test
 ` fails: it is planned as arms that take nothing of what is left. A pattern of items keeps
 ` its own plan, and panics where it is declared with.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-and
         instances.mark-may-panic(instance)
         facts.set-plan(instance, pattern, .plan-unmatched)
@@ -5895,10 +5902,10 @@ if declared.decl == 0 || given.decl == 0
 _ do has-inference-args Bool
     - id TypeId
 
-do match? types.rows[id]
+match? types.rows[id]
     | .type-class(row)
         for offset in 0 .. < row.args.count
-            do match? types.rows[types.child-type(row.args, offset)]
+            match? types.rows[types.child-type(row.args, offset)]
                 | .type-inference
                     = true
 = false
@@ -6030,7 +6037,7 @@ if row.kind == .slot-lazy && row.group != 0
     lazy-marks += scratch.narrowings.mark
     typing-lazies += slot
     . forgotten = frame.forgotten
-    do match? tree.nodes[row.group]
+    match? tree.nodes[row.group]
         | .node-declare(declaration)
             note-entered(slot, declaration.right)
             check-declare
@@ -6069,13 +6076,13 @@ _ do diagnose-retyped
 ` typed, and not by a test the value made, but that may hold nothing here, is the reference's
 ` error there: the property is read from an optional.
 . value SyntaxId = 0
-do match? tree.nodes[group]
+match? tree.nodes[group]
     | .node-declare(declaration)
         value = declaration.right
 if value == 0
     =
 for id in tree.subtree-start(value) .. < value + 1
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-get-expression(row)
             if row.is-optional || facts.is-inside-read(instance, row.object) || retyped
                 continue
@@ -6096,7 +6103,7 @@ _ do known-here TypeId
 
 ` What a read of a local of this frame or of a stored property of the receiver would find
 ` here, or no type for any other read.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-identifier(named)
         . resolution = bindings.resolution-of(frame.binding, syntax)
         if resolution.kind == .resolve-slot && !frame.is-captured(resolution.slot)
@@ -6131,7 +6138,7 @@ _ do mask-tested
 ` passed only after another, under what is known there; a value typed with what it tests as its
 ` type holds at each, whatever each knows of it.
 . value SyntaxId = 0
-do match? tree.nodes[group]
+match? tree.nodes[group]
     | .node-declare(declaration)
         value = declaration.right
 if value == 0
@@ -6155,7 +6162,7 @@ _ do note-tested
 
 ` The operands a condition at a node tests of what they hold: the sides of `&&` and `||`, the
 ` condition of `if`, what `!`, `?` and `is` test, and what is compared with `null`.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-binary-expression(row)
         if row.op == .and-op || row.op == .or-op
             into += row.lhs
@@ -6213,7 +6220,7 @@ _ do known-present Bool
 
 ` Whether the flow knows here that a local, a property of the receiver or a path from one of
 ` those holds a value, as a read of it here would find.
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-type-predicate(row)
         = known-present(row.expr)
     | .node-identifier
@@ -6327,7 +6334,7 @@ _ do exception-holds Bool
 ` name is known as it was there. The names the catchers bind are its own.
 . first = tree.subtree-start(declared)
 for id in tree.subtree-start(exception) .. < exception + 1
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-identifier(name)
             . resolution = bindings.resolution-of(frame.binding, id)
             . recorded = facts.node-type(instance, id)
@@ -6373,11 +6380,11 @@ _ do settles Bool
 ` entered, which `note-entered` kept. One not known yet then, a lazy local the value is the
 ` first to read or one it declares, the value knows first as its type. A local the value read
 ` as its type holds anywhere.
-do match? tree.nodes[group]
+match? tree.nodes[group]
     | .node-declare(declaration)
         . value = declaration.right
         for id in tree.subtree-start(value) .. < value + 1
-            do match? tree.nodes[id]
+            match? tree.nodes[id]
                 | .node-identifier(name)
                     . recorded = facts.node-type(instance, id)
                     . resolution = bindings.resolution-of(frame.binding, id)
@@ -6553,7 +6560,7 @@ if frame.self-type == no-type || frame.self-type == invalid-type
 if types.intrinsic-of(frame.self-type) != .class
     = false
 . owner-module = program.modules[module]
-do match? owner-module.decls[frame.decl]
+match? owner-module.decls[frame.decl]
     | .decl-function(fn)
         if fn.owner != 0 && fn.args.count == 0 && fn.name
             . atom = fn.name
@@ -6567,10 +6574,10 @@ _ do has-events Bool
 ` Whether a class declares an event or inherits one, in its body or in a facet.
 . cursor = type
 while cursor != no-type
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             . target = program.modules[row.module]
-            do match? target.decls[row.decl]
+            match? target.decls[row.decl]
                 | .decl-class(class)
                     =? true if target.has-event-member(class.members)
             =? true if facets-have-events(row.module, row.decl)
@@ -6589,7 +6596,7 @@ _ do facets-have-events Bool
 for position in start .. < end
     . facet = facets.class-facets[position]
     . home = program.modules[facets.modules[facet]]
-    do match? home.decls[facets.decls[facet]]
+    match? home.decls[facets.decls[facet]]
         | .decl-extension(row)
             =? true if facets.states[facet] == .facet-bound && home.has-event-member(row.members)
 = false
@@ -6619,7 +6626,7 @@ if frame.self-type == no-type || frame.self-type == invalid-type
     = false
 if !same-decl(class-ref(types, frame.self-type), types.generator-decl)
     = false
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if fn.owner != 0 && fn.args.count == 0 && fn.name
             . atom = fn.name
@@ -6672,7 +6679,7 @@ _ do note-returned-match
 ` A match that is returned is the value of the declared return type, and so are its arms,
 ` and so is a grammar its body runs beside the lazy locals declared for it.
 facts.set-node-type(instance, expr, declared)
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-match-expression(row)
         facts.set-node-type(instance, row.body, declared)
         . streamed = tree.stream-statement(row.body)
@@ -6690,9 +6697,9 @@ _ do may-miss Bool
 ` at the match and not at its arms.
 if declared == no-type || declared == types.void-type || types.is-optional(declared)
     = false
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-match-expression(row)
-        do match? tree.nodes[tree.stream-statement(row.body)]
+        match? tree.nodes[tree.stream-statement(row.body)]
             | .node-stream-match(stream)
                 = !always-passes(stream.pattern)
 = false
@@ -6743,7 +6750,7 @@ if !is-conditional
 . whole = is-conditional && value != no-type && value != invalid-type && types.is-optional(value)
 if whole
     noted = types.optional-inner(value)
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-optional-chain
         if value != no-type && value != invalid-type && types.is-optional(value)
             noted = types.optional-inner(value)
@@ -6796,7 +6803,7 @@ _ do returned-value TypeId
 ` function at the return, in the place of its value.
 if value == no-type || value == invalid-type
     = value
-do match? types.rows[value]
+match? types.rows[value]
     | .type-result(row)
         for offset in 0 .. < row.errors.count
             note-outgoing(types.child-type(row.errors, offset), statement)
@@ -6965,7 +6972,7 @@ _ do yielded-value TypeId
 ` `<=?` yields only a present value, so the optional it reads unwraps; the reference types the
 ` statement as the optional it tests.
 . value = infer(expr)
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-optional-chain
         if types.is-optional(value)
             facts.set-node-type(instance, id, value)
@@ -7049,7 +7056,7 @@ if relation-legal(relation)
     giving = giving.yielded = relation.unified
 else if site != 0 && frame.yields-start < scratch.yields.length
     . first = scratch.yields[frame.yields-start].syntax
-    do match? tree.nodes[first]
+    match? tree.nodes[first]
         | .node-yield(row)
             first = row.expr
     frame.diagnose(first, .stated, program.store-atom("Unable to unify generator yield types"))
@@ -7068,7 +7075,7 @@ _ do yield-fits Bool
 
 ` Whether a yield written as a number with no suffix, as such numbers, or as a range of such
 ` integers is one a type holds.
-do match? tree.nodes[literal]
+match? tree.nodes[literal]
     | .node-range-expression(row)
         = row.increment == 0 && conversions.fitting-literal(row.left, target) && right-fits
             .. right-fits = conversions.fitting-literal(row.right, target)
@@ -7185,13 +7192,32 @@ _ do check-steps TypeId
     - body SyntaxId
 
 steps-block = body
-= check-statement(body, if runs-steps(body) then Want().adding(.want-match-statement) else Want())
+. value = check-statement(body, if runs-steps(body) then Want().adding(.want-match-statement) else Want())
+steps-block = 0
+= value
+
+────────────────────
+_ do check-arm-value TypeId
+    - body SyntaxId
+
+` The value of the body of an arm whose match gives one: that of the row it ends on.
+arm-block = body
+. value = check-statement(body)
+arm-block = 0
+= value
 
 ────────────────────
 _ runs-steps Bool
     - statement SyntaxId
 
-tree.is-match-syntax(statement) && (do-depth != 0 || frame.declaration.is-imperative || frame.declaration.is-main)
+tree.is-match-syntax(statement) && in-steps()
+
+────────────────────
+_ in-steps Bool
+
+` Whether what is checked runs as steps: in a `do`, a function or closure that runs steps, or
+` `main`.
+do-depth != 0 || frame.declaration.is-imperative || frame.declaration.is-main
 
 ────────────────────
 _ do check-if
@@ -7295,7 +7321,7 @@ _ do join-branches
 ` After an `if` with an `else`, a local both branches leave as one type is that type: the
 ` branch that assigns it leaves what it assigned, and the other what the condition tells of it.
 . other = next
-do match? tree.nodes[next]
+match? tree.nodes[next]
     | .node-if-block(row)
         if row.condition == 0
             other = row.body
@@ -7331,7 +7357,7 @@ for position in from .. < to
         direct += 1
 . written = 0
 for id in tree.subtree-start(branch) .. branch
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-assign(row)
             . target = narrowing.condition-slot(row.lhs)
             if target && target == slot
@@ -7354,7 +7380,7 @@ _ do never-holds Bool
 ` Whether a condition can never take a truth value, because a type test in it asks a local
 ` for a type its own can never be. The reference compiles neither the branch such a condition
 ` guards nor the operand it short-circuits.
-do match? tree.nodes[condition]
+match? tree.nodes[condition]
     | .node-type-predicate(row)
         = never-holds(row.expr, truth)
     | .node-unary-expression(row)
@@ -7377,7 +7403,7 @@ _ do impossible-test Bool
     - rhs SyntaxId
 
 . subject = no-type
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, lhs)
         if resolution.kind == .resolve-slot
@@ -7385,7 +7411,7 @@ do match? tree.nodes[lhs]
 if subject == no-type || subject == invalid-type
     = false
 . target = invalid-type
-do match tree.nodes[rhs]
+match tree.nodes[rhs]
     | .node-symbol
         = false
     | .node-type-case
@@ -7494,7 +7520,7 @@ _ do found-node Found
 ` members, indexes and calls, which may be links of an optional chain or name events. Any other
 ` node finds its type alone. A node that stands for a value already typed (`standing`) finds that.
 =? Found(standing-type) if id == standing && standing != 0
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         note-plain(id, row.name)
         if row.is-tracked
@@ -7560,7 +7586,7 @@ _ do unsettles Bool
 ` of an object read from a local or the receiver, which ends what the reference ends
 ` (`forget-store-root`). Anything else leaves the two in doubt, and a property
 ` read in doubt is declined.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-integer-syntax
         = false
     | .node-cast-expression
@@ -7611,7 +7637,7 @@ do match? tree.nodes[id]
             = false
         = row.op != .not-op && facts.plan-of(instance, id) != .plan-builtin
     | .node-assign(row)
-        do match? tree.nodes[row.lhs]
+        match? tree.nodes[row.lhs]
             | .node-identifier
                 . kind = bindings.resolution-of(frame.binding, row.lhs).kind
                 = kind != .resolve-slot && kind != .resolve-member
@@ -7743,7 +7769,7 @@ _ do infer-node TypeId
     - id SyntaxId
     - want Want
 
-do match tree.nodes[id]
+match tree.nodes[id]
     | .node-integer-syntax(row)
         = infer-integer(id, row.value, row.unit)
     | .node-float-syntax(row)
@@ -7989,9 +8015,9 @@ if fact == no-fact || facts.calls[fact].callee == no-instance
     = null
 . callee = instances.rows[facts.calls[fact].callee]
 . owner = program.modules[callee.module]
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
-        do match? owner.decls[callee.decl]
+        match? owner.decls[callee.decl]
             | .decl-function(fn)
                 . position U32
                 for written in tree.children[row.args]
@@ -8061,7 +8087,7 @@ _ do is-plain-body Bool
 ` read is read by the gates that test them.
 if body == 0
     = true
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             if kept-machine(statement) || rule-line || binds-slot(statement)
@@ -8081,14 +8107,14 @@ _ do is-plain-line Bool
 ` Whether a line of the body of a markup element has a shape here, as `is-plain-body` says.
 . gated [SyntaxId]
 for node in tree.subtree-start(line) .. line
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-style-rule-application(row)
             if row.condition != 0
                 gated += row.condition
 for node in tree.subtree-start(line) .. line
     if tree.in-gated(node, gated)
         continue
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             if row.is-tracked && name-plain && name-live
                 = false
@@ -8115,7 +8141,7 @@ _ do leaves-line Bool
 ` under no condition, `continue`, `break`, or a `do` block whose last statement is one.
 if is-leaving(statement) || tree.nodes[statement] is .node-return-if-true
     = true
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-do-block(row)
         = facts.is-leaving(instance, row.body)
 = false
@@ -8164,11 +8190,11 @@ _ do holds-slot Bool
 while level
     . ref = class-ref(types, level)
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(class)
             if class.content != 0
                 for node in owner.tree.subtree-start(class.content) .. < class.content
-                    do match? owner.tree.nodes[node]
+                    match? owner.tree.nodes[node]
                         | .node-slot-outlet(row)
                             if row.name == 0
                                 = true
@@ -8190,7 +8216,7 @@ _ do binds-slot Bool
 ` Whether a line is a markup element that gives a slot content, which a function of its own
 ` builds: one that binds a slot by name, or the one line of its body that gives the default slot
 ` content, element or value; or one that forwards a slot.
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-markup
         = nested-decl-of(statement) != 0
     | .node-markup-slot-forward
@@ -8229,7 +8255,7 @@ instances.set-returns(instance, wanted, wanted, .return-declared)
 . rooted = if outer then outer.slot-batch else false
 if rooted
     facts.region-roots += RegionRoot(instance, element, outer!.slot-root, batch-type())
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         if row.slot-parameter != 0
             . resolution = bindings.resolution-of(frame.binding, row.slot-parameter)
@@ -8266,7 +8292,7 @@ if typed-made && applied != 0 && !check-cells(U32.max - 1, element, made, true)
 .. typed-made = made != invalid-type && made != no-type
 if made != invalid-type && made != no-type
     conversions.convert(element, element, made, wanted, .reason-return)
-    do match? tree.nodes[element]
+    match? tree.nodes[element]
         | .node-markup(row)
             if row.id != 0
                 . place = named-place(element, row.id, made)
@@ -8394,7 +8420,7 @@ for line in lines
     . binding SyntaxId = 0
     . parameter SyntaxId = 0
     . forwarding SyntaxId = 0
-    do match? tree.nodes[line]
+    match? tree.nodes[line]
         | .node-markup(row)
             binding = row.slot-binding
             parameter = row.slot-parameter
@@ -8421,7 +8447,7 @@ for line in lines
             - .stated
             - program.store-atom("Repeated default slot content requires a slot binding")
         = false
-    do match tree.nodes[parameter]
+    match tree.nodes[parameter]
         | .node-markup-slot-parameter(written)
             if item == no-type
                 frame.diagnose
@@ -8633,7 +8659,7 @@ _ do reads-rebindable Bool
 ` them (`escaping-local`). Both are the reference's errors, the first at the member read, after
 ` the item's name. Answers false where one is reported.
 . scope Atom? = null
-do match? tree.nodes[parameter]
+match? tree.nodes[parameter]
     | .node-markup-slot-parameter(written)
         scope = tree.identifier-name(written.name)
 if !scope
@@ -8641,7 +8667,7 @@ if !scope
     = false
 . read = untracked-read(line, scope)
 if read != 0
-    do match? tree.nodes[read]
+    match? tree.nodes[read]
         | .node-get-expression(row)
             . message = "Rebindable slot scope reads must be tracked as ${scope.text}.#${row.name.text}; use an explicit snapshot inside do for a stable value"
             . object = tree.nodes.loc[row.object]
@@ -8671,7 +8697,7 @@ _ do derive-locals
     - derived [SyntaxId]
 
 ` Adds each `.` written outside a function or a `do` block whose value reads a name there.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-function-syntax
         =
     | .node-do-block
@@ -8688,7 +8714,7 @@ _ do reads-name Bool
     - scope Atom
 
 ` Whether a name is read outside a function or a `do` block.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-function-syntax
         = false
     | .node-do-block
@@ -8714,13 +8740,13 @@ _ do escaping-local SyntaxId
 ` from the block's start and another's from after its value, which `held` marks where the
 ` declaration is derived, and the arguments of each function around it. None where there is
 ` none.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-function-syntax(row)
         if row.body == 0
             = 0
         . mark = names.length
         for arg in tree.children[row.args]
-            do match? tree.nodes[arg]
+            match? tree.nodes[arg]
                 | .node-argument-decl(shape)
                     bind-names(shape.pattern, false, names, held)
         . found = escaping-local(row.body, derived, names, held, true)
@@ -8729,7 +8755,7 @@ do match? tree.nodes[id]
     | .node-block(row)
         . mark = names.length
         for statement in tree.children[row.body]
-            do match? tree.nodes[statement]
+            match? tree.nodes[statement]
                 | .node-declare(declare)
                     if declare.is-lazy
                         bind-names(declare.left, derived.find(statement) != null, names, held)
@@ -8774,7 +8800,7 @@ _ do bind-names
     - held [Bool]
 
 ` Puts in reach each name a pattern declares, marked `derived` or not.
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-identifier(row)
         names += row.name
         held += derived
@@ -8794,7 +8820,7 @@ if body == 0
 . decl = nested-decl-of(body)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .slot-decl
 = false
@@ -8809,7 +8835,7 @@ _ do gives-default Bool
 ` the body of a class's `• This` (`ruled`), where the body is not built by one.
 if wraps-default(body)
     = false
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             if !assigning && !binds-slot(statement) && !(ruled && tree.rule-part(statement))
@@ -8912,7 +8938,7 @@ if parent != no-type && outlet-region(statement) != 0
 if parent != no-type && is-loop-region(statement)
     = check-loop-region(statement, parent)
 if parent != no-type && nested-decl-of(statement) == 0
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-iterator-expression(row)
             facts.set-plan(instance, statement, .plan-content-loop)
             check-for(statement, row.loop, row.body, row.next)
@@ -8924,7 +8950,7 @@ if parent != no-type && nested-decl-of(statement) == 0
 _ do chosen-slot TypeId
     - builder TypeId
 
-do match? types.rows[builder]
+match? types.rows[builder]
     | .type-class(row)
         if row.args.count == 1
             . slot = types.child-type(row.args, 0)
@@ -8941,7 +8967,7 @@ _ do is-region Bool
 . decl = nested-decl-of(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .branch-decl
 = false
@@ -8953,7 +8979,7 @@ _ do is-selector Bool
 . decl = nested-decl-of(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .selector-decl
 = false
@@ -8966,7 +8992,7 @@ _ do is-loop-region Bool
 . decl = nested-decl-of(id)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .source-decl
 = false
@@ -9254,7 +9280,7 @@ _ do read-arms
 ` arm's pattern is tested in turn (`read-patterns`); or the name the parameter of a slot outlet
 ` that is a region gives, which must read the row's item as a getter, as the reference's
 ` `markupSlotOutletRebuildsOnArgument` asks.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-match-expression(row)
         read-patterns(id, row.subject)
         =
@@ -9267,7 +9293,7 @@ do match? tree.nodes[id]
 . arm = id
 while arm != 0
     . next SyntaxId = 0
-    do match? tree.nodes[arm]
+    match? tree.nodes[arm]
         | .node-if-block(row)
             . pattern = tree.pattern-arm(arm)
             if pattern != 0
@@ -9310,7 +9336,7 @@ _ do test-pattern Bool
 ` Tests the pattern of an arm of a match against a subject of a type, binding nothing. One that
 ` can not match is never tested; one that tests with an expression of its own has no shape here,
 ` and is declined, which answers false.
-do match? tree.nodes[arm]
+match? tree.nodes[arm]
     | .node-type-transform(row)
         if !tree.tests-plainly(row.pattern)
             decline(arm)
@@ -9344,7 +9370,7 @@ if held == no-type
     decline(subject)
 if held == no-type || held == invalid-type
     = false
-do match? tree.nodes[arm]
+match? tree.nodes[arm]
     | .node-type-transform(row)
         if !tree.pattern-is-else(row.pattern) && !pattern-possible(row.pattern, held)
             facts.set-plan(instance, arm, .plan-never)
@@ -9522,14 +9548,14 @@ if resolution.kind != .resolve-slot || content == no-type || item == no-type
 . returned = if regioned then types.void-type else content
 instances.set-returns(instance, returned, returned, .return-declared)
 . lines [SyntaxId]
-do match tree.nodes[body]
+match tree.nodes[body]
     | .node-block(block)
         for statement in tree.children[block.body]
             lines += statement
     ??
         lines += body
 for line in lines
-    do match? tree.nodes[line]
+    match? tree.nodes[line]
         | .node-markup(element)
             if element.slot-binding != 0
                 frame.diagnose
@@ -9600,10 +9626,10 @@ _ do reads-eager-getter Bool
 ` Whether the body of a row declares a getter that is not lazy, which the binder finds in the
 ` row of any keyed loop region. The reference reads such a local as a getter only where the
 ` row is given a `MarkupRowItem`.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-block(block)
         for line in tree.children[block.body]
-            do match? tree.nodes[line]
+            match? tree.nodes[line]
                 | .node-declare(declared)
                     if !declared.is-lazy && declares-getter(declared.left)
                         = true
@@ -9623,7 +9649,7 @@ prepare()
 . resolution = bindings.resolution-of(frame.binding, clause)
 . expr SyntaxId = 0
 . tests = false
-do match? tree.nodes[clause]
+match? tree.nodes[clause]
     | .node-clause(row)
         expr = row.expr
         tests = row.op == .when-clause
@@ -9681,9 +9707,9 @@ if getter-reads.find(slot) != null
     decline(id)
     = invalid-type
 getter-reads += slot
-do match? tree.nodes[bindings.slots[slot].getter]
+match? tree.nodes[bindings.slots[slot].getter]
     | .node-declare(declaration)
-        do match? tree.nodes[declaration.left]
+        match? tree.nodes[declaration.left]
             | .node-type-capture(capture)
                 if capture.type != 0
                     decline(id)
@@ -9715,7 +9741,7 @@ if scope.kind != .scope-nested
 . decl = nested-decl-of(scope.syntax)
 if decl == 0
     = false
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.kind == .row-decl || (fn.kind == .key-decl && tree.tests-row(fn.syntax))
 = false
@@ -9728,7 +9754,7 @@ _ do note-named
 ` A markup element a block declares a name for, in a function run on an object whose class
 ` has a property of that name: once the element's line has run, the reference stores in the
 ` property what the name then holds, as `named-place` says.
-do match? tree.nodes[statement]
+match? tree.nodes[statement]
     | .node-markup(row)
         . place = named-place(statement, row.id, held)
         if place
@@ -9757,12 +9783,12 @@ if !place
 . property = types.properties[place]
 . ref = declaring-decl(types, property)
 . member = owner-property(program, ref.module, ref.decl, text!)
-do match? program.modules[ref.module].decls[member]
+match? program.modules[ref.module].decls[member]
     | .decl-property(declared)
         if member != 0 && declared.element != 0
             . owner = program.modules[ref.module]
             . fills = false
-            do match? owner.decls[ref.decl]
+            match? owner.decls[ref.decl]
                 | .decl-class(class)
                     fills = ref.module == (module) && class.content-function == written-decl()
             if !fills
@@ -9931,7 +9957,7 @@ _ do note-field
 ` the node that reads or assigns it. The index one past the last field names the place a new
 ` field would take. A tuple with no name stores every field it has, in order, so the index
 ` is the field.
-do match? tree.nodes[key-syntax]
+match? tree.nodes[key-syntax]
     | .node-integer-syntax(row)
         . wanted = parse-integer-literal(row.value).value
         . range = types.completions[receiver].properties
@@ -9981,7 +10007,7 @@ _ do selection-key TypeId
 . kind = types.intrinsic-of(receiver)
 if kind != .table && kind != .immutable-table
     = key
-do match? types.rows[key]
+match? types.rows[key]
     | .type-class(row)
         if same-decl(DeclRef(row.module, row.decl), types.array-decl)
             . mark = scratch.types.mark
@@ -9997,12 +10023,12 @@ _ do tuple-field TypeId
     - key-syntax SyntaxId
 
 . fields = RowRange'TypeId()
-do match? types.rows[receiver]
+match? types.rows[receiver]
     | .type-tuple(row)
         fields = row.fields
 if fields.count == 0
     = no-type
-do match? tree.nodes[key-syntax]
+match? tree.nodes[key-syntax]
     | .node-integer-syntax(row)
         . literal = parse-integer-literal(row.value)
         if !literal.negative && !literal.overflow && literal.value < fields.count
@@ -10043,7 +10069,7 @@ _ do owns-task Bool
 ` is an object of a class, or else by the activation of a case the binder gave it to
 ` (`activation-tasks`), or else where a subscription would be owned (`is-owner`), by the receiver
 ` where that is an object of a class.
-do match? tree.nodes[task]
+match? tree.nodes[task]
     | .node-do-task-block(row)
         =? false if row.detached
         =? types.intrinsic-of(content-parents[content-parents.length - 1]) == .class if content-parents.length != 0
@@ -10059,10 +10085,10 @@ _ do class-property DeclId
 
 ` The property of a name a class declares, or none.
 . owner = program.modules[ref.module]
-do match? owner.decls[ref.decl]
+match? owner.decls[ref.decl]
     | .decl-class(class)
         for member in owner.members-named(class.members, name)
-            do match? owner.decls[member]
+            match? owner.decls[member]
                 | .decl-property(row)
                     if row.name && row.name == name
                         = member
@@ -10076,7 +10102,7 @@ _ do declared-value SyntaxId
 ` The value a property of a module declares, or none.
 if property == 0
     = 0
-do match? program.modules[owner].decls[property]
+match? program.modules[owner].decls[property]
     | .decl-property(row)
         = row.value
 = 0
@@ -10117,7 +10143,7 @@ _ do runs-class Bool
 for instance in 0 .. < instances.length
     . row = instances.rows[instance]
     if row.module == module
-        do match? decls[row.decl]
+        match? decls[row.decl]
             | .decl-function(fn)
                 if fn.owner == owner
                     = true
@@ -10264,12 +10290,12 @@ _ do check-task-handlers
 ` The handlers written after a task's block run in the task, after its cleanups, when a panic
 ` of the type each names ends it, and bind that panic: each names `Panic` or a type derived
 ` from it, and takes no errors it replaced.
-do match? tree.nodes[task]
+match? tree.nodes[task]
     | .node-do-task-block(row)
         if row.catchers.count != 0
             frame.forget-members()
         for catcher in tree.children[row.catchers]
-            do match? tree.nodes[catcher]
+            match? tree.nodes[catcher]
                 | .node-catcher(handler)
                     if handler.previous.count != 0
                         frame.diagnose(catcher, .stated, program.store-atom("A task's handler replaces no errors"))
@@ -10431,7 +10457,7 @@ _ do first-set U32
 ` choose among arms: 1 where it knows what that item may be, and 2 more where the pattern may
 ` read none. A call, a test of a type, a predicate or text found as the pattern runs is not
 ` known, and a lookahead reads none and is not known either.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-stream-match(row)
         = first-set(row.pattern)
     | .node-stream-string(row)
@@ -10456,7 +10482,7 @@ do match? tree.nodes[id]
         . item = first-set(row.operand) /and/ 1
         = if row.op == .one-or-more-op then item else (item /or/ 2)
     | .node-stream-length(row)
-        do match? tree.nodes[row.min]
+        match? tree.nodes[row.min]
             | .node-integer-syntax(bound)
                 . item = first-set(row.operand) /and/ 1
                 = if parse-integer-literal(bound.value).value == 0 then (item /or/ 2) else item
@@ -10482,7 +10508,7 @@ _ do hands-off Bool
 . decls = program.modules[module].decls
 . name = program.store-atom("unhandled-error")
 for position in 0 .. < decls.length
-    do match? decls[position]
+    match? decls[position]
         | .decl-property(property)
             if property.owner == 0 && property.name && property.name == name
                 . held = demand-property(module, position as DeclId)
@@ -10490,7 +10516,7 @@ for position in 0 .. < decls.length
                     .. held-row = function-row(types, held)
                 if fn == no-type
                     = false
-                do match? types.rows[fn]
+                match? types.rows[fn]
                     | .type-function(row)
                         . answers = row.return-type != no-type && row.return-type != types.void-type
                         if row.is-c || answers || odd-signature || not-error
@@ -10687,7 +10713,7 @@ scratch.call-arguments.rewind(shapes-start)
 _ do is-super-syntax Bool
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, id)
         if resolution.kind == .resolve-slot
@@ -10805,10 +10831,10 @@ CallArgument(name, optional, false, false, false, symbol, conversions.literal-of
 _ do symbol-choice SyntaxId
     - expr SyntaxId
 
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-binary-expression(row)
         if row.op == .else-op && tree.symbol-of(row.rhs)
-            do match? tree.nodes[row.lhs]
+            match? tree.nodes[row.lhs]
                 | .node-binary-expression(side)
                     . type = facts.node-type(instance, row.rhs)
                     . agrees = type != invalid-type && type == facts.node-type(instance, side.lhs)
@@ -10958,15 +10984,15 @@ scratch.call-arguments.rewind(shapes-start)
 _ do declares-constructor Bool
     - type TypeId
 
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
         . module = program.modules[row.module]
-        do match? module.decls[row.decl]
+        match? module.decls[row.decl]
             | .decl-class(cls)
                 if cls.members.count == 0
                     = false
                 for member in module.member-pool[cls.members]
-                    do match? module.decls[member]
+                    match? module.decls[member]
                         | .decl-function(fn)
                             if fn.kind == .constructor-decl
                                 = true
@@ -11011,7 +11037,7 @@ if initializing == 0 || owner != module || decl <= initializing
     = false
 if initializes-early()
     = reads-later-local(owner, decl)
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         if row.owner != 0 || row.value == 0 || row.is-lazy || is-task-local(owner, decl)
             = false
@@ -11052,7 +11078,7 @@ _ do is-lazy-global Bool
     - decl DeclId
 
 ` Whether a global takes its value where it is first read.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         = row.owner == 0 && row.is-lazy && row.decoration == null
 = false
@@ -11063,7 +11089,7 @@ _ do is-task-local Bool
     - decl DeclId
 
 ` Whether a global is one each task holds its own of.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         = row.decoration != null && row.decoration.text == "task"
 = false
@@ -11074,7 +11100,7 @@ _ do is-thread-local Bool
     - decl DeclId
 
 ` Whether a global is one each thread holds its own of.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         = row.decoration != null && row.decoration.text == "thread"
 = false
@@ -11085,7 +11111,7 @@ _ do is-stack-global Bool
     - decl DeclId
 
 ` Whether a global is one `do with` binds.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         = row.decoration != null && row.decoration.text == "stack"
 = false
@@ -11100,7 +11126,7 @@ _ do is-constant-global Bool
 ` module starts, or, kept for each task or thread, as the task or thread starts. One `do with`
 ` could bind is laid down so only where nothing binds it (`ProgramTables`).
 . target = program.modules[owner]
-do match? target.decls[decl]
+match? target.decls[decl]
     | .decl-property(row)
         if row.decoration != null && row.decoration.text != "stack"
             = false
@@ -11125,7 +11151,7 @@ _ do is-constant-literal Bool
 ` least or greatest value of one. A number written with a unit that declares a constructor is
 ` what the constructor makes, and no literal.
 . source = program.modules[owner].tree
-do match? source.nodes[value]
+match? source.nodes[value]
     | .node-integer-syntax(row)
         = plain-unit(owner, row.unit)
     | .node-float-syntax(row)
@@ -11159,7 +11185,7 @@ _ do names-numeric Bool
     - type-syntax SyntaxId
 
 . source = program.modules[owner].tree
-do match? source.nodes[type-syntax]
+match? source.nodes[type-syntax]
     | .node-type-identifier
         . named = types.evaluate-type(owner, source, type-syntax, types.env-frame())
         = named != invalid-type && is-numeric(types, named)
@@ -11187,7 +11213,7 @@ if is-stack-local(id)
     = true
 if is-task-local(owner, decl) || is-thread-local(owner, decl)
     = false
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-property(row)
         if row.owner == 0 && row.is-lazy
             = true
@@ -11202,7 +11228,7 @@ _ do is-deferred-value Bool
 
 if !instances.is-initializer(instance)
     = false
-do match? program.modules[module].decls[instances.rows[instance].initializer]
+match? program.modules[module].decls[instances.rows[instance].initializer]
     | .decl-property(row)
         = row.owner != 0 || row.is-lazy
 = false
@@ -11225,7 +11251,7 @@ _ do lacks-self Bool
 ` method, or the constructor of an interface, which has no value to construct.
 if outer
     = outer.lacks-self()
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         if fn.is-static
             = true
@@ -11306,7 +11332,7 @@ _ do misused-event Bool
 ` called on.
 . holder = tree.holder-of(id)
 . escaping = want.asks(.want-escape)
-do match? tree.nodes[holder]
+match? tree.nodes[holder]
     | .node-declare
         = !escaping || want.type == no-type || !takes-endpoint(endpoint, want.type)
     | .node-assign(row)
@@ -11373,9 +11399,9 @@ _ do refuse-event-read
 ` Reports an event read with `<-`, as a channel is: an event gives each value to the
 ` subscribers it has as it is published, and keeps none to be read.
 . written = name.text
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-get-expression(row)
-        do match? tree.nodes[row.object]
+        match? tree.nodes[row.object]
             | .node-identifier(object)
                 written = "${object.name.text}.${name.text}"
 . owner-name = type-short-name(types, owner)
@@ -11460,7 +11486,7 @@ _ do infer-identifier Found
 . resolution = bindings.resolution-of(frame.binding, id)
 if (resolution.flags /and/ ResolutionFlag.resolution-received) != 0
     = read-received(id, name, want)
-do match resolution.kind
+match resolution.kind
     |= .resolve-slot
         if finally.limit != 0 && bindings.slots[resolution.slot].syntax > finally.limit
             frame.diagnose(id, .stated, program.store-atom("Name not found"))
@@ -11629,7 +11655,7 @@ if waited == null || awaited[waited] == 0
 . element = awaited[waited]
 if !reached-always(read, tree.holder-of(element))
     = false
-do match? tree.nodes[element]
+match? tree.nodes[element]
     | .node-markup(row)
         held += building
         . around = building
@@ -11658,7 +11684,7 @@ _ do reached-always Bool
 while node != 0
     if building == no-slot && node == home
         = true
-    do match tree.nodes[node]
+    match tree.nodes[node]
         | .node-markup(row)
             = (element-slot(node, row.id) ?? no-slot) == building
         | .node-assign(row)
@@ -11666,7 +11692,7 @@ while node != 0
                 = false
             if building != no-slot
                 . owner = tree.body-element(tree.holder-of(node))
-                do match? tree.nodes[owner]
+                match? tree.nodes[owner]
                     | .node-markup(made)
                         = (element-slot(owner, made.id) ?? no-slot) == building
                 = false
@@ -11706,7 +11732,7 @@ _ do pulled-root Bool
     - object SyntaxId
 
 =? false if tree.pipeline-of(id) == 0 && !watched(id)
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-identifier(row)
         =? false if row.is-tracked
         = bindings.resolution-of(frame.binding, object).kind == .resolve-slot
@@ -11797,9 +11823,9 @@ if given != null
     = use
 . range = instances.rows[instance].subtree
 for id in range.start .. < range.start + range.count
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-for-block(row)
-            do match? tree.nodes[row.loop]
+            match? tree.nodes[row.loop]
                 | .node-loop-syntax(loop)
                     if loop.container == node
                         = .generator-consumed
@@ -11894,7 +11920,7 @@ _ do root-value SyntaxId
 . unit = instances.rows[instance]
 if unit.initializer == 0
     = 0
-do match? program.modules[unit.module].decls[unit.initializer]
+match? program.modules[unit.module].decls[unit.initializer]
     | .decl-property(row)
         if row.defaults-root
             = row.syntax
@@ -11910,7 +11936,7 @@ for node in id + 1 .. < (tree.nodes.length as SyntaxId)
     if node == frame.declaration.syntax && frame.declaration.kind == .row-decl
         = false
     if tree.subtree-start(node) <= id
-        do match? tree.nodes[node]
+        match? tree.nodes[node]
             | .node-for-block
                 = true
             | .node-iterator-expression
@@ -12071,7 +12097,7 @@ _ do is-eager-value Bool
 . unit = instances.rows[instance]
 if unit.initializer == 0 || frame.self-type == no-type
     = false
-do match? program.modules[unit.module].decls[unit.initializer]
+match? program.modules[unit.module].decls[unit.initializer]
     | .decl-property(row)
         = !row.is-lazy
 = false
@@ -12083,7 +12109,7 @@ _ do names-method Bool
 
 ` Whether a declaration is a method called on a receiver: read as a value by its name
 ` alone, it binds the receiver of the function that reads it.
-do match? program.modules[owner].decls[decl]
+match? program.modules[owner].decls[decl]
     | .decl-function(fn)
         = fn.owner != 0 && !fn.is-static && fn.kind == .function-decl
 = false
@@ -12111,12 +12137,12 @@ _ do note-plain
 ` evaluated again as it is read, so the reader may panic.
 . resolution = bindings.resolution-of(frame.binding, id)
 . plain = true
-do match? resolution.kind
+match? resolution.kind
     |= .resolve-slot
         plain = bindings.slots[resolution.slot].kind != .slot-lazy
     |= .resolve-global
         plain = types.is-literal-global(resolution.module, resolution.decl)
-        do match? program.modules[resolution.module].decls[resolution.decl]
+        match? program.modules[resolution.module].decls[resolution.decl]
             | .decl-property(row)
                 if row.owner == 0 && row.decoration == null && row.name && !row.is-lazy
                     plain = true
@@ -12254,7 +12280,7 @@ scratch.types.push(about)
 _ do type-info-about TypeId
     - info TypeId
 
-do match? types.rows[info]
+match? types.rows[info]
     | .type-class(row)
         if row.args.count == 1
             = types.child-type(row.args, 0)
@@ -12366,7 +12392,7 @@ _ do note-type-text
 . is-inlined = name.text == "inlined-name"
 . constant = !(is-concrete && (intrinsic-is-class(kind) || kind == .interface)) && not-inlined
     .. not-inlined = !(is-inlined && kind == .interface)
-do match types.rows[about]
+match types.rows[about]
     | .type-class(row)
         if row.args.count != 0
             constant = false
@@ -12426,7 +12452,7 @@ _ do enum-case-value SyntaxId?
 if !member
     = null
 . ref = class-ref(types, about)
-do match? program.modules[ref.module].decls[member]
+match? program.modules[ref.module].decls[member]
     | .decl-case(row)
         = row.value
 = null
@@ -12813,7 +12839,7 @@ if fact.facet == U32.max && program.reaches-private(module, ref.module)
     ??
         RowRange'DeclId()
 for member in owner-module.members-named(members, name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(property)
             if property.name && property.name == name
                 =? null if property.element != 0
@@ -12896,10 +12922,10 @@ _ do indexes-itself Bool
 ` Whether the class of a type, or a base of it, declares an index operator of its own.
 . level TypeId? = receiver
 while level
-    do match? types.rows[level]
+    match? types.rows[level]
         | .type-class(row)
             . owner = program.modules[row.module]
-            do match? owner.decls[row.decl]
+            match? owner.decls[row.decl]
                 | .decl-class(body)
                     =? true if owner.first-member(body.members, types.index-op-atom!) != no-member
     level = types.base-of(level)
@@ -12921,7 +12947,7 @@ _ do eager-field TypeId
     - item TypeId
     - key-syntax SyntaxId
 
-do match? tree.nodes[key-syntax]
+match? tree.nodes[key-syntax]
     | .node-integer-syntax(row)
         . literal = parse-integer-literal(row.value)
         if literal.negative || literal.overflow
@@ -12943,7 +12969,7 @@ _ do eager-slot U32
     - key-syntax SyntaxId
 
 ` The place in an item's layout of the stored field a constant index names.
-do match? tree.nodes[key-syntax]
+match? tree.nodes[key-syntax]
     | .node-integer-syntax(row)
         . literal = parse-integer-literal(row.value)
         if literal.negative || literal.overflow
@@ -12967,7 +12993,7 @@ _ do published-payload TypeId
 ` no type when it names anything else.
 . receiver = no-type
 . name Atom? = null
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-identifier(row)
         if bindings.resolution-of(frame.binding, target).kind == .resolve-member
             receiver = frame.self-type
@@ -13006,12 +13032,12 @@ _ do event-of NamedEvent?
 ` the type that declares it has it, or none where none does, or one it keeps from the module
 ` asking, unless it is asked for `anywhere`.
 for cursor in event-chain(receiver)
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             . found = declared-event(row.module, row.decl, name)
             if found
                 . home = found.module
-                do match? program.modules[home].decls[found.decl]
+                match? program.modules[home].decls[found.decl]
                     | .decl-event(event)
                         . hidden = !program.reaches-access(module, home, event.access)
                         if hidden && !anywhere
@@ -13035,7 +13061,7 @@ _ do declared-event DeclRef?
 ` The event of a name a class declares, in its body or in a facet of it this module sees, as the
 ` module and the declaration that declare it.
 . target = program.modules[class-module]
-do match? target.decls[class-decl]
+match? target.decls[class-decl]
     | .decl-class(class)
         =? DeclRef(class-module, found) if found
         .. found = target.member-event(class.members, name)
@@ -13046,7 +13072,7 @@ for position in start .. < end
     . facet = facets.class-facets[position]
     if facets.states[facet] == .facet-bound && program.sees-facet(module, facet)
         . home = facets.modules[facet]
-        do match? program.modules[home].decls[facets.decls[facet]]
+        match? program.modules[home].decls[facets.decls[facet]]
             | .decl-extension(row)
                 =? DeclRef(home, found) if found
                 .. found = program.modules[home].member-event(row.members, name)
@@ -13099,12 +13125,12 @@ _ do hides-event Bool
 ` Whether the event of this name a class declares or inherits, or an interface it is of
 ` declares, is kept from this module, which is reported where the event is declared.
 for cursor in event-chain(receiver)
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             . found = declared-event(row.module, row.decl, name)
             if found
                 . home = found.module
-                do match? program.modules[home].decls[found.decl]
+                match? program.modules[home].decls[found.decl]
                     | .decl-event(event)
                         if !program.reaches-access(module, home, event.access)
                             . message = program.store-atom(hidden-message("Event", name, event.access))
@@ -13333,7 +13359,7 @@ _ do event-receiver TypeId
 
 ` The type of the object a node that names an event publishes on, as the emitter evaluates it
 ` (`Emitter.event-owner`).
-do match? tree.nodes[reference]
+match? tree.nodes[reference]
     | .node-get-expression(get)
         . object = facts.node-type(instance, get.object)
         = link-receiver(get.object, object, no-type, chains-at(reference, get.is-optional))
@@ -13356,7 +13382,7 @@ _ do note-payload-effects
 if !facts.traces-lint || payload == 0
     =
 . written = payload
-do match? tree.nodes[payload]
+match? tree.nodes[payload]
     | .node-argument(row)
         written = row.expr
 . start = tree.subtree-start(written)
@@ -13368,11 +13394,11 @@ while id >= start
     . key = U32.max
     . kind = PayloadEffectKind.effect-call
     . nested = false
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-function-syntax
             nested = true
         | .node-assign
-            do match tree.nodes[tree.holder-of(id)]
+            match tree.nodes[tree.holder-of(id)]
                 | .node-block
                     key = U32.max
                 ??
@@ -13383,7 +13409,7 @@ while id >= start
                 key = tree.subtree-start(id)
                 kind = .effect-channel-write
         | .node-call-expression(row)
-            do match? tree.nodes[row.callable]
+            match? tree.nodes[row.callable]
                 | .node-get-expression(get)
                     if get.name.text == "<-write" && !get.is-optional
                         key = tree.subtree-start(id)
@@ -13640,7 +13666,7 @@ _ do declared-payload TypeId
 if syntax == 0
     = types.void-type
 . payload = invalid-type
-do match? types.rows[owner]
+match? types.rows[owner]
     | .type-class(row)
         . env = types.class-env-for(row.module, row.decl, row.args, owner)
         . tree = program.modules[home].tree
@@ -13654,7 +13680,7 @@ _ do declares-event Bool
     - name Atom
 
 for cursor in event-chain(receiver)
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             =? true if declared-event(row.module, row.decl, name) != null
 = false
@@ -13666,13 +13692,13 @@ _ do declares-method Bool
 
 . cursor = receiver
 while cursor != no-type
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             . target = program.modules[row.module]
-            do match? target.decls[row.decl]
+            match? target.decls[row.decl]
                 | .decl-class(class)
                     for member in target.members-named(class.members, name)
-                        do match? target.decls[member]
+                        match? target.decls[member]
                             | .decl-function(fn)
                                 if written && fn.kind == .function-decl && same-name
                                     = true
@@ -13688,7 +13714,7 @@ _ do inherited-getter-type TypeId
 ` The type a getter that states none returns where it is over one a base states the type of,
 ` which each getter over that one keeps.
 =? no-type if self == no-type || self == invalid-type
-do match? program.modules[module].decls[frame.decl]
+match? program.modules[module].decls[frame.decl]
     | .decl-function(fn)
         . name = fn.name
         if fn.kind == .getter-decl && fn.return-type == 0 && name
@@ -13711,13 +13737,13 @@ _ do states-getter-type Bool
 . stated = false
 . cursor = receiver
 while cursor != no-type
-    do match? types.rows[cursor]
+    match? types.rows[cursor]
         | .type-class(row)
             . target = program.modules[row.module]
-            do match? target.decls[row.decl]
+            match? target.decls[row.decl]
                 | .decl-class(class)
                     for member in target.members-named(class.members, name)
-                        do match? target.decls[member]
+                        match? target.decls[member]
                             | .decl-function(fn)
                                 if fn.kind == .getter-decl && fn.name == name
                                     stated = fn.return-type != 0
@@ -13747,7 +13773,7 @@ _ do check-constructor-fills
 . owner-module = program.modules[module]
 . owner = 0u32
 . args = RowRange'ArgumentShape()
-do match? owner-module.decls[frame.decl]
+match? owner-module.decls[frame.decl]
     | .decl-function(fn)
         owner = fn.owner
         args = fn.args
@@ -13767,7 +13793,7 @@ for shape in owner-module.arg-pool[args]
             fill-inherited(name, argument-slot(position), shape.pattern)
     position += 1
 for statement in tree.children[body-statements()]
-    do match? tree.nodes[statement]
+    match? tree.nodes[statement]
         | .node-declare(row)
             . slot = declaring-slot(row.left) if row.is-lazy
             if slot
@@ -13804,7 +13830,7 @@ if given.count == 0 || body == 0
     = false
 for node in tree.subtree-start(body) .. < body
     . name Atom? = null
-    do match? tree.nodes[node]
+    match? tree.nodes[node]
         | .node-identifier(row)
             name = row.name
         | .node-ref-identifier(row)
@@ -13841,7 +13867,7 @@ while pending.length != 0
     if value == 0
         continue
     for node in tree.subtree-start(value) .. < value + 1
-        do match? tree.nodes[node]
+        match? tree.nodes[node]
             | .node-function-syntax
                 = true
             | .node-identifier
@@ -13856,7 +13882,7 @@ _ do field-reference Atom?
     - id SyntaxId
 
 ` The name of a field a node may name: an identifier, or a member read from `this`.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier(row)
         = row.name
     | .node-get-expression(row)
@@ -13919,7 +13945,7 @@ _ do fill-property
 . given = frame.known(slot)
 if given == no-type || given == invalid-type
     =
-do match? program.modules[module].decls[property]
+match? program.modules[module].decls[property]
     | .decl-property(row)
         facts.record-fill(FillFact(instance, name, slot, row.syntax))
         . declared = invalid-type
@@ -14046,7 +14072,7 @@ _ do note-default-use
 . row = instances.rows[unit]
 if row.module != module || row.initializer == 0
     =
-do match? program.modules[row.module].decls[row.initializer]
+match? program.modules[row.module].decls[row.initializer]
     | .decl-property(property)
         if property.type-syntax != 0 && property.value != 0
             . declared = instances.signatures[unit].declared-returns
@@ -14103,11 +14129,11 @@ if tuple.decl != 0
     =
 . owner-module = program.modules[ref.module]
 . members = RowRange'DeclId()
-do match? owner-module.decls[ref.decl]
+match? owner-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
 for member in owner-module.members-named(members, fact.name)
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(row)
             if row.name && row.name == fact.name
                 if row.value != 0 || row.syntax == 0
@@ -14205,12 +14231,12 @@ while current != no-type
     . ref = class-ref(types, current)
     =? false if ref.module == 0 && ref.decl == 0
     . owner = program.modules[ref.module]
-    do match? owner.decls[ref.decl]
+    match? owner.decls[ref.decl]
         | .decl-class(class)
             =? false if class.content != 0
             if current == type
                 for member in owner.member-pool[class.members]
-                    do match? owner.decls[member]
+                    match? owner.decls[member]
                         | .decl-function(function)
                             =? false if function.kind == .constructor-decl && bare-written
                             .. bare-written = !function.is-generated && function.required-count == 0
@@ -14318,7 +14344,7 @@ _ do constructor-parameter U32
 ` The place among a constructor's parameters of the one of a name, or `U32.max`.
 . owner-module = program.modules[module]
 . position = 0u32
-do match? owner-module.decls[frame.decl]
+match? owner-module.decls[frame.decl]
     | .decl-function(fn)
         for shape in owner-module.arg-pool[fn.args]
             . named = pattern-name(types, tree, shape.pattern)
@@ -14371,7 +14397,7 @@ _ do projection-type TypeId
 . filler DeclId = 0
 . machine SyntaxId = 0
 . position U32? = null
-do match? owner-module.decls[ref.decl]
+match? owner-module.decls[ref.decl]
     | .decl-class(class)
         filler = class.content-function
         for written in owner.content-machines(class.content)
@@ -14388,7 +14414,7 @@ while true
         . same = row.module == ref.module && row.syntax == machine && row.outer == 0
         if same && instances.rows[instances.rows[row.instance].enclosing].decl == filler
             . held = no-type
-            do match? types.rows[row.union]
+            match? types.rows[row.union]
                 | .type-named-union(union)
                     held = types.optional-of(types.child-type(union.cases, position))
             if found != no-type && found != held
@@ -14403,7 +14429,7 @@ while true
         if below.module == ref.module && below.decl == ref.decl
             break
         level = types.base-of(level) ?? no-type
-        do match? program.modules[below.module].decls[below.decl]
+        match? program.modules[below.module].decls[below.decl]
             | .decl-class(class)
                 pending = pending-filler(below, class.content-function)
     if pending == no-instance && !own
@@ -14431,7 +14457,7 @@ for unit in 0u32 .. < (instances.rows.length as U32)
     if row.decl == filler
         = unit
     if constructor == no-instance
-        do match? owner-module.decls[row.decl]
+        match? owner-module.decls[row.decl]
             | .decl-function(fn)
                 if fn.owner == ref.decl && is-constructor-kind(fn.kind)
                     constructor = unit
@@ -14656,7 +14682,7 @@ _ do static-owner TypeId
     - object SyntaxId
 
 . named = false
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-type-identifier
         named = true
     | .node-core-type-identifier
@@ -14743,7 +14769,7 @@ if side != types.void-type
     scratch.types.push(side)
 . errors [TypeId]
 for catcher in tree.children[catchers]
-    do match? tree.nodes[catcher]
+    match? tree.nodes[catcher]
         | .node-catcher(row)
             if !takes-errors(catcher, row.type)
                 continue
@@ -14850,7 +14876,7 @@ _ do catcher-possible Bool
 ` arms.
 if pattern-possible(pattern, result-value(types, raw))
     = true
-do match? types.rows[raw]
+match? types.rows[raw]
     | .type-result(row)
         for offset in 0 .. < row.errors.count
             if pattern-possible(pattern, types.child-type(row.errors, offset))
@@ -14870,7 +14896,7 @@ _ do check-handled Bool
 ` Which errors leave is recorded at the expression.
 . errors = RowRange'TypeId()
 . raises = false
-do match? types.rows[raw]
+match? types.rows[raw]
     | .type-result(row)
         errors = row.errors
         raises = true
@@ -14908,7 +14934,7 @@ _ do handles Bool
     - error TypeId
 
 for catcher in tree.children[catchers]
-    do match? tree.nodes[catcher]
+    match? tree.nodes[catcher]
         | .node-catcher(row)
             if row.type == 0
                 continue
@@ -14932,7 +14958,7 @@ _ do declare-transformers
 . raised = no-type
 . typed = false
 for catcher in tree.children[catchers]
-    do match? tree.nodes[catcher]
+    match? tree.nodes[catcher]
         | .node-catcher(row)
             if row.body != 0
                 . message = "Error transformers do not support catch bodies"
@@ -15002,7 +15028,7 @@ _ do bind-catcher
 
 if pattern == 0
     =
-do match? tree.nodes[pattern]
+match? tree.nodes[pattern]
     | .node-type-capture(row)
         . slot = declaring-slot(pattern)
         . caught = types.evaluate-type(module, tree, row.type, frame.env)
@@ -15025,7 +15051,7 @@ if (op != .is-op && op != .is-not-op) || value == invalid-type || value == no-ty
 if types.intrinsic-of(value) != .class || types.completions[value].has-variables
     =
 . target = invalid-type
-do match tree.nodes[rhs]
+match tree.nodes[rhs]
     | .node-symbol
         =
     | .node-type-case
@@ -15055,7 +15081,7 @@ _ do infer-unprojected TypeId
 ` case of its union is read there as the union, not as the case, as the reference reads it.
 ` One that holds an optional of the union is known to hold a value, and is read as the union.
 . read = infer(syntax)
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, syntax)
         if resolution.kind == .resolve-slot && facts.plan-of(instance, syntax) == .plan-case-read
@@ -15086,7 +15112,7 @@ if subject == invalid-type || subject == no-type || types.completions[subject].h
     =
 . kind = is-specificity(op)
 . target = no-type
-do match tree.nodes[right]
+match tree.nodes[right]
     | .node-symbol(row)
         . given = if types.is-optional(subject) then types.optional-inner(subject) else subject
         if names-enum-value(right, 0, row.name, given)
@@ -15262,7 +15288,7 @@ if op == .and-op || op == .or-op
 if op == .coalesce-op
     = infer-coalesce(id, left, right, want)
 if op == .else-op
-    do match? tree.nodes[left]
+    match? tree.nodes[left]
         | .node-binary-expression(row)
             = infer-choice(id, row.lhs, row.rhs, right, want)
 if op == .if-op
@@ -16135,7 +16161,7 @@ _ do in-class Bool
 ` class, and not in an extension.
 =? false if callee == no-instance
 . row = instances.rows[callee]
-do match? program.modules[row.module].decls[row.decl]
+match? program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         = program.modules[row.module].decls[fn.owner] is .decl-class
 = false
@@ -16246,7 +16272,7 @@ _ do note-tested-force
     - syntax SyntaxId
     - read TypeId
 
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-unary-expression(row)
         if row.op == .optional-force-op && reads-held(row.operand, read)
             . fact = facts.first-force(instance, syntax)
@@ -16260,7 +16286,7 @@ _ do reads-held Bool
 
 ` Whether an expression reads a local that holds an optional, where the flow knows it to
 ` hold a value and so reads that value.
-do match? tree.nodes[expr]
+match? tree.nodes[expr]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, expr)
         if resolution.kind == .resolve-slot
@@ -16532,7 +16558,7 @@ _ do infer-delete TypeId
     - id SyntaxId
     - operand-syntax SyntaxId
 
-do match? tree.nodes[operand-syntax]
+match? tree.nodes[operand-syntax]
     | .node-index-expression(row)
         . object = infer(row.object)
         . key = infer(row.index)
@@ -16810,7 +16836,7 @@ _ do note-escape
 ` every property where the value is `this` (`forget-receiver`). A cast or a `!` of a value is
 ` read from what the value is.
 . subject = tree.escaped-subject(value)
-do match? tree.nodes[subject]
+match? tree.nodes[subject]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, subject)
         if resolution.kind == .resolve-slot && bindings.slots[resolution.slot].kind == .slot-this
@@ -16933,7 +16959,7 @@ if !want.asks(.want-items)
     = no-type
 . expected = types.optional-inner(want.type)
 types.complete(expected)
-do match? types.rows[expected]
+match? types.rows[expected]
     | .type-class(row)
         if row.module == types.list-decl.module && row.decl == types.list-decl.decl && row.args.count != 0
             . item = types.child-type(row.args, 0)
@@ -17056,7 +17082,7 @@ _ do is-machine-union Bool
     - union TypeId
 
 ` Whether a type is the union of a state machine: the only union told apart by where it is made.
-do match? types.rows[union]
+match? types.rows[union]
     | .type-named-union(row)
         = row.made-at != 0
 = false
@@ -17117,7 +17143,7 @@ _ do plan-array-field
 ` does not hold gives anywhere else.
 if facts.first-call(instance, id) != no-fact
     =
-do match? tree.nodes[object-syntax]
+match? tree.nodes[object-syntax]
     | .node-index-expression(row)
         if row.is-optional
             =
@@ -17344,7 +17370,7 @@ _ do check-probe-value Bool
 . value = item
 . snapshot = false
 . preview = false
-do match? tree.nodes[item]
+match? tree.nodes[item]
     | .node-probe-snapshot(row)
         value = row.content
         snapshot = true
@@ -17426,7 +17452,7 @@ _ do infer-print TypeId
 
 ` The values written in a print are made text one by one. Several are joined by a function
 ` that polls, so the instance may panic.
-do match? tree.nodes[body]
+match? tree.nodes[body]
     | .node-tuple-syntax(row)
         instances.mark-may-panic(instance)
         . narrowed = frame.members-narrowed
@@ -17507,7 +17533,7 @@ _ do stored-value TypeId
 ` what it held before. Any other value is stored as written.
 if written == invalid-type || written == no-type || !types.is-optional(written)
     = written
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-optional-chain
         = types.optional-inner(written)
 = written
@@ -17519,7 +17545,7 @@ _ do projected-from TypeId
 
 ` The union a local declares when it reads as one of that union's cases: a member the case
 ` does not answer is still the union's own.
-do match? tree.nodes[object-syntax]
+match? tree.nodes[object-syntax]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, object-syntax)
         if resolution.kind == .resolve-slot
@@ -17549,7 +17575,7 @@ _ do row-capture-of RowCapture?
 . adapted = RowCapture(own.row-receiver, own.row-case, own.row-validated)
 if object-syntax == 0
     = adapted if own.row-receiver != no-type
-do match? tree.nodes[object-syntax]
+match? tree.nodes[object-syntax]
     | .node-identifier
         . resolution = bindings.resolution-of(frame.binding, object-syntax)
         if resolution.kind == .resolve-slot
@@ -17575,7 +17601,7 @@ _ do is-stack-local Bool
 . resolution = bindings.resolution-of(frame.binding, name)
 if resolution.kind != .resolve-global
     = false
-do match? program.modules[resolution.module].decls[resolution.decl]
+match? program.modules[resolution.module].decls[resolution.decl]
     | .decl-property(row)
         = row.decoration != null && row.decoration.text == "stack"
 = false

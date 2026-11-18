@@ -206,7 +206,7 @@ _ do assigned-lazy SlotId
 . binding = instances.rows[unit.reading].binding
 if binding == no-binding || unit.reading != unit.instance
     = no-slot
-do match? tree.nodes[name]
+match? tree.nodes[name]
     | .node-identifier
         . resolution = bindings.resolution-of(binding, name)
         if resolution.kind != .resolve-slot || !is-own-slot(resolution.slot)
@@ -253,7 +253,7 @@ if is-link(lhs) && !is-pinned(receiver-of(lhs))
 if answered && plan != .plan-store-answer
     emit-assigning-call(id, assigning-call(lhs), lhs, rhs)
     = Assignment()
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-style-read-expression(row)
         emit-style-write(id, row.object, rhs)
         = Assignment()
@@ -422,7 +422,7 @@ if tables.global-kind(global.module, global.decl) == .global-lazy
 . binding = instances.rows[unit.reading].binding
 if binding == no-binding
     = no-storage
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier
         . resolution = bindings.resolution-of(binding, lhs)
         if resolution.kind == .resolve-global
@@ -439,7 +439,7 @@ _ do assigning-call FactId
 ` The call of an assigning operator that a function of its own name answers, which the type
 ` pass records as an operator's call at the place assigned. No fact when the operator is not
 ` such a one.
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-index-expression
         = no-fact
 . fact = own-call(lhs)
@@ -532,7 +532,7 @@ if managed-field && !is-framed(object) && !placed
 . given = Typed(make-operand(.operand-void, 0), no-type)
 . increment = increment-base(op)
 . site = id
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-index-expression
         site = lhs
 . stores-answer = facts.plan-of(unit.reading, site) == .plan-store-answer
@@ -571,7 +571,7 @@ _ do is-getter-name Bool
     - id SyntaxId
 
 ` Whether an expression is a name alone that a getter answers.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-identifier
         = reads-getter(id)
 = false
@@ -691,7 +691,7 @@ if facts.node-type(unit.reading, rhs) != property.type
     = null
 . target SyntaxId = 0
 . value SyntaxId = 0
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-assign(row)
         if row.op == .eq-op && !tree.is-chained(row.rhs)
             target = row.lhs
@@ -699,14 +699,14 @@ do match? tree.nodes[rhs]
 =? null if target == 0
 . object SyntaxId = 0
 . member Atom? = null
-do match? tree.nodes[target]
+match? tree.nodes[target]
     | .node-get-expression(row)
         if !row.is-optional
             object = row.object
             member = row.name
 =? null if object == 0 || !member
 . same = false
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-identifier(row)
         same = row.name == named && is-own-field(object)
 . plan = facts.plan-of(unit.reading, rhs)
@@ -831,7 +831,7 @@ _ do field-position U32
 
 ` Which stored field the left side of an assignment names: by a constant index the type pass
 ` recorded, or by the name of a property the type stores.
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-index-expression
         . place = indexed-field(lhs)
         if place != no-fact
@@ -875,7 +875,7 @@ _ do through-answer Bool
 ` Whether a struct is read from what an index answered by a function gave, itself or as a
 ` field of it. A store into it would change a value nothing names. A property of an object
 ` is stored in the object, wherever the object came from.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-get-expression(row)
         . owner = facts.node-type(unit.reading, row.object)
         if owner == no-type || owner == invalid-type || tables.is-class(owner)
@@ -897,7 +897,7 @@ _ do stores-place Bool
 ` one of the case of a row a name stands for, is one, kept in its cell.
 . owner = no-type
 . indexes = false
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-identifier
         if !is-own-field(lhs)
             = true
@@ -920,7 +920,7 @@ _ do stores-by-call Bool
 
 ` Whether an index is assigned through the function that answers `[]=`, which stores the value
 ` wherever the object keeps it.
-do match? tree.nodes[lhs]
+match? tree.nodes[lhs]
     | .node-index-expression
         if facts.plan-of(unit.reading, lhs) == .plan-item
             = false
@@ -985,7 +985,7 @@ if plan != .plan-extend && plan != .plan-truncate && places-store
 . extends = plan == .plan-extend && op == .add-eq-op
 . object = lhs
 if !extends
-    do match? tree.nodes[lhs]
+    match? tree.nodes[lhs]
         | .node-get-expression(row)
             object = row.object
         | .node-index-expression(row)
@@ -1003,7 +1003,7 @@ if extends || plan != .plan-truncate
     . value = if extends || op == .eq-op then emit-expression(rhs) else emit-builtin(id, increment!, lhs, rhs, true)
     if !extends
         . site = id
-        do match? tree.nodes[lhs]
+        match? tree.nodes[lhs]
             | .node-index-expression
                 site = lhs
         value = convert(site, .reason-assignment, value)
@@ -1498,7 +1498,7 @@ _ do emit-withheld Typed
 ` an optional, tested so: TypeScript takes it to hold a value afterwards, whatever was stored.
 . nothing = make-operand(.operand-void, 0)
 . written = 0u32
-do match? tree.nodes[rhs]
+match? tree.nodes[rhs]
     | .node-optional-chain(row)
         written = row.expr
 if written == 0 || is-link(lhs) || !is-place(lhs)
@@ -2002,7 +2002,7 @@ if owner == no-type || (is-numeric-type(owner) && !stores-back)
 if !stores-back && answers == owner && !tables.is-class(owner)
     refuse(.refused-statement, site)
     = Assignment()
-do match? tree.nodes[object]
+match? tree.nodes[object]
     | .node-index-expression(row)
         if !tables.is-class(owner)
             . outer = stored-through(object)
@@ -2181,7 +2181,7 @@ _ do is-repeatable Bool
 
 ` Whether an operand can be emitted again where the reference evaluates it again: a literal, a
 ` name, or a read, a call, a cast or an operation of such operands, none of which makes a function.
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-argument(named)
         = is-repeatable(named.expr)
     | .node-cast-expression(row)
@@ -2248,7 +2248,7 @@ _ do emit-store-through Assignment
 . stores = outer.callee
 . object = 0u32
 . key-syntax = 0u32
-do match? tree.nodes[held]
+match? tree.nodes[held]
     | .node-index-expression(row)
         object = row.object
         key-syntax = row.index
@@ -2341,7 +2341,7 @@ call-method(stores, held, back-mark)
 ` stored field or property of what such an expression names. The object of a property is the
 ` one kept when the place was read, where one was kept.
 . layout = layout-of(type, site)
-do match? tree.nodes[place]
+match? tree.nodes[place]
     | .node-identifier(row)
         if is-own-field(place)
             . owner = unit.owner-type

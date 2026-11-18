@@ -1714,7 +1714,7 @@ inner task 20
 ```yumi
 . item = Item.num(5)
 . ch SyncChannel'Int
-do match item
+match item
     | .num(n)
         do new
             ch <- n

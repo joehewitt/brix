@@ -102,7 +102,7 @@ for position in 0 .. < blocks.length
     for offset in 0 .. < instructions.length
         . id = instructions[offset]
         . operands = function.instructions[id].operands
-        do match? function.instructions[id]
+        match? function.instructions[id]
             | .call-instruction(call)
                 if operands.length > 2 && !is-void(call.return-type) && copies-memory
                     . returned = vreg-of(operands[1])
@@ -158,7 +158,7 @@ for index in 0 .. < operands.length
         continue
     . vreg = no-id
     . offset = no-operand
-    do match? function.operands[operand]
+    match? function.operands[operand]
         | .vreg-operand(row)
             vreg = function.vregs[row.vreg].id
         | .load-address-operand(row)
@@ -186,7 +186,7 @@ for index in 0 .. < operands.length
 _ do operand-kind U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         if function.vregs[row.vreg].hint != no-register
             = PointerKind.pinned
@@ -218,7 +218,7 @@ _ do is-safe-use Bool
 
 . sources = pointer-copy-sources(id)
 if index < 3 && (sources /and/ (1u32 /lshift/ index)) != 0
-    do match? function.operands[operands[0]]
+    match? function.operands[operands[0]]
         | .vreg-operand(row)
             = function.vregs[row.vreg].hint == no-register
     = false
@@ -228,7 +228,7 @@ if kind == PointerKind.direct
         = true
     if index == 2 && (opcode == .ldp || opcode == .stp)
         = true
-do match? function.instructions[id]
+match? function.instructions[id]
     | .call-instruction(call)
         if index == operands.length - 1 && call.direct-struct-return
             = true
@@ -252,7 +252,7 @@ if opcode == .csel
 if opcode == .add || opcode == .sub
     . operands = function.instructions[id].operands
     if operands.length > 2
-        do match? function.operands[operands[2]]
+        match? function.operands[operands[2]]
             | .int-operand
                 = first-source
 = 0
@@ -261,7 +261,7 @@ if opcode == .add || opcode == .sub
 _ do callee-name StringId
     - operands IdList
 
-do match? function.operands[operands[0]]
+match? function.operands[operands[0]]
     | .symbol-operand(row)
         = row.name
 = no-string
@@ -270,7 +270,7 @@ do match? function.operands[operands[0]]
 _ do is-void Bool
     - type MIRTypeId
 
-do match? function.types[type]
+match? function.types[type]
     | .void-type
         = true
 = false
@@ -279,7 +279,7 @@ do match? function.types[type]
 _ do vreg-of U32
     - operand OperandId
 
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         = function.vregs[row.vreg].id
 = no-id
@@ -297,7 +297,7 @@ _ do collect-keys
 
 if operand == no-operand
     =
-do match? function.operands[operand]
+match? function.operands[operand]
     | .vreg-operand(row)
         collect-origins(row.vreg)
     | .frame-object-operand(row)
@@ -357,7 +357,7 @@ _ do add-source
 
 . base = no-operand
 . vreg = no-id
-do match? function.operands[source]
+match? function.operands[source]
     | .load-address-operand(row)
         base = row.base
     | .vreg-operand(row)

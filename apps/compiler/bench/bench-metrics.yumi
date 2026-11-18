@@ -79,7 +79,7 @@ fields["highDispersion"] = summary.is-dispersed
     - value JSON?
 
 =? null if !value
-do match value
+match value
     | fields [String = JSON]
         = BenchSummary
             - (bench-json-number(fields["sampleCount"]) ?? 0.0) as Size
@@ -99,7 +99,7 @@ do match value
     - metric BenchMetric
     - sample JSON
 
-do match metric.extractor
+match metric.extractor
     | .value(pointer)
         = bench-json-number(bench-pointer(sample, pointer))
     | .sum(pointers)
@@ -121,7 +121,7 @@ do match metric.extractor
 . value JSON? = root
 for segment in pointer[1 ...].split("/")
     . key = bench-pointer-segment(segment)
-    do match value!
+    match value!
         | fields [String = JSON]
             =? null if fields[key] == null
             value = fields[key]
@@ -138,7 +138,7 @@ for segment in pointer[1 ...].split("/")
     - value JSON?
 
 =? null if !value
-do match value
+match value
     | number Float
         = number
     | number Int
@@ -171,7 +171,7 @@ value == value && value - value == 0.0
 
 =? "n/a" if !value
 . number = value
-do match format
+match format
     | .duration
         =? "${bench-fixed(number / 1000.0, 2)} s" if number >= 1000.0
         = "${bench-fixed(number, 0)} ms"
@@ -301,7 +301,7 @@ _ do bench-child-sum F64?
 . container = bench-pointer(sample, pointer)
 =? null if !container
 . children [JSON]
-do match container
+match container
     | fields [String = JSON]
         for _, child in fields
             children += child
@@ -325,7 +325,7 @@ _ do bench-child-value JSON?
 
 =? child if field == ""
 =? bench-pointer(child, field) if field.starts-with("/")
-do match child
+match child
     | fields [String = JSON]
         = fields[field]
     ??

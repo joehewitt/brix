@@ -125,7 +125,7 @@ _ do gives-or-yields Bool
 ` Whether any statement in a function's syntax returns a value or yields one. The statements
 ` of functions nested in it count too, so this can say yes of a function that gives nothing.
 for offset in 0 .. < subtree.count
-    do match? tree.nodes[subtree.start + offset]
+    match? tree.nodes[subtree.start + offset]
         | .node-yield
             = true
         | .node-return(row)
@@ -159,7 +159,7 @@ if constructs
 if stated == no-type && answers-bool(types.program, module, decl)
     stated = types.bool-type
 if declaration.is-imperative && stated != no-type && stated != invalid-type
-    do match? types.rows[stated]
+    match? types.rows[stated]
         | .type-result(held)
             = held.value
 = stated
@@ -172,7 +172,7 @@ if declaration.is-imperative && stated != no-type && stated != invalid-type
 
 ` Whether a function overrides an operator that answers yes or no: a comparison, a containment
 ` test, or `!`. Such a function returns Bool whether or not it says so.
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         if fn.owner == 0 || !fn.name || fn.kind != .function-decl
             = false
@@ -200,10 +200,10 @@ do match? program.modules[module].decls[decl]
 if union == no-type
     = self
 . owner = 0u32
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         owner = fn.owner
-do match? program.modules[module].decls[owner]
+match? program.modules[module].decls[owner]
     | .decl-extension
         . shared = types.shared-case-base(union)
         . matched = relations.match-extension(module, owner, union)
@@ -239,7 +239,7 @@ if self == no-type || is-constructor-kind(kind)
 . row = instances.rows[instance]
 . name Atom? = null
 . is-static = false
-do match? types.program.modules[row.module].decls[row.decl]
+match? types.program.modules[row.module].decls[row.decl]
     | .decl-function(fn)
         name = fn.name
         is-static = fn.is-static
@@ -268,11 +268,11 @@ if ref.module == 0 && ref.decl == 0
     = false
 . base-module = types.program.modules[ref.module]
 . members = RowRange'DeclId()
-do match? base-module.decls[ref.decl]
+match? base-module.decls[ref.decl]
     | .decl-class(row)
         members = row.members
 for member in base-module.members-named(members, name)
-    do match? base-module.decls[member]
+    match? base-module.decls[member]
         | .decl-function(fn)
             . plain = !fn.is-generated && !fn.is-static && !is-constructor-kind(fn.kind)
             if plain && fn.type-args.count == 0 && fn.name && fn.name == name

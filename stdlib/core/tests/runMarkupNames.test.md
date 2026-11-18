@@ -604,7 +604,7 @@ Exception: Name "word" not found
                              ^^^^
 ```
 
-### The arm a match written as a line of markup content takes runs as content, as an arm of an if does: each of its rows gives the element a child, and a match? that takes no arm gives none. A match run with do makes the elements of its arm without adding them.
+### The arm a match written as a line of markup content takes runs as content, as an arm of an if does: each of its rows gives the element a child, and a match? that takes no arm gives none. A match in a `do` block runs as steps, so it makes the elements of its arm without adding them.
 
 ```yumi
 /core/tests/support/markup-fixtures
@@ -622,11 +622,12 @@ Exception: Name "word" not found
     match? none
         | text String
             <TextBox = text
-    do match name
-        | text String
-            <TextBox = "made"
-        | _
-            <Box
+    do
+        match name
+            | text String
+                <TextBox = "made"
+            | _
+                <Box
     match none
         | text String
             <TextBox = text

@@ -370,7 +370,7 @@ sealed = true
 
 . dropped [Size]
 for closure, _ in placed
-    do match? rows[closure as TypeId]
+    match? rows[closure as TypeId]
         | .type-closure(row)
             if row.module == forgotten
                 dropped += closure
@@ -757,7 +757,7 @@ if id == no-type || id == invalid-type
     = false
 if !intrinsic-is-class(completions[id].intrinsic)
     = false
-do match? rows[id]
+match? rows[id]
     | .type-class
         = true
 = false
@@ -778,7 +778,7 @@ match rows[id]
 
 if id == no-type || id == invalid-type
     = false
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         = pattern-func-decl.refers-to(row.module, row.decl)
 = false
@@ -869,7 +869,7 @@ for fact in cases
 . base = base-of(if above != no-type then above else cases[0].type) ?? no-type
 while base != no-type
     . ref = DeclRef(0, 0)
-    do match? rows[base]
+    match? rows[base]
         | .type-class(row)
             ref = DeclRef(row.module, row.decl)
     . shared = true
@@ -889,7 +889,7 @@ while base != no-type
 . current = id
 while true
     complete(current)
-    do match? rows[current]
+    match? rows[current]
         | .type-class(row)
             if row.module == ref.module && row.decl == ref.decl
                 = current
@@ -903,10 +903,10 @@ while true
     - id TypeId
 
 ` Whether a type is `core/arena`'s `Arena`.
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         . module = program.modules[row.module]
-        do match? module.decls[row.decl]
+        match? module.decls[row.decl]
             | .decl-class(owner)
                 = module.name == "core/arena" && owner.name.text == "Arena"
 = false
@@ -916,10 +916,10 @@ do match? rows[id]
     - id TypeId
 
 ` Whether a type is `core/arena`'s `ArenaBacking`.
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         . module = program.modules[row.module]
-        do match? module.decls[row.decl]
+        match? module.decls[row.decl]
             | .decl-class(owner)
                 = module.name == "core/arena" && owner.name.text == "ArenaBacking"
 = false
@@ -932,7 +932,7 @@ do match? rows[id]
 complete(id)
 if completions[id].intrinsic != .array-builder
     = no-type
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         if row.args.count > 1 && is-arena-backing(child-type(row.args, 1))
             = child-type(row.args, 0)
@@ -1308,7 +1308,7 @@ scratch.types.rewind(mark)
 if id == 0
     = void-type
 
-do match ast.nodes[id]
+match ast.nodes[id]
     | .node-type-identifier(row)
         = type-named(caller, row.name, env)
     | .node-core-type-identifier(row)
@@ -1365,7 +1365,7 @@ do match ast.nodes[id]
 
 ` The innermost type written by name, with its arguments, that names nothing, within a type
 ` written, as TypeScript reports it; 0 where every name names a type.
-do match? ast.nodes[id]
+match? ast.nodes[id]
     | .node-type-identifier
         = if evaluate-type(caller, ast, id, env) == invalid-type then id else 0
     | .node-type-arguments(row)
@@ -1470,7 +1470,7 @@ scratch.types.rewind(mark)
 . best-place = 0u32
 . best-exact = false
 for candidate in program.lookup(caller, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-extension(row)
             if aliased || given != 0 || !named-facet(caller, DeclRef(candidate.module, candidate.decl), row.facet == name)
                 continue
@@ -1515,7 +1515,7 @@ _ do named-facet Bool
 
 ` The facet a type is, where it is the type of a facet's name.
 =? null if program.facets.count == 0
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         = program.facets.index-of(row.module, row.decl)
 = null
@@ -1629,7 +1629,7 @@ for position in 0 .. < type-args.count
     else
         scratch.types.push(invalid-type)
 env = env-with-this(env, intern-class(module, decl, mark))
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-class(row)
         env = declare-into(env, tree, row.base, module, decl, env.start)
         env = apply-constraints(module, tree, row.param-constraints, env)
@@ -1650,7 +1650,7 @@ for position in 0 .. < type-args.count
     if name && position < args.count
         env = env-bind(env, name, child-type(args, position))
 env = env-with-this(env, self)
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-class(row)
         env = declare-into(env, tree, row.base, module, decl, env.start)
         env = apply-constraints(module, tree, row.param-constraints, env)
@@ -1665,7 +1665,7 @@ do match? program.modules[module].decls[decl]
 
 . current = env
 for constraint in tree.nodes[tree.children[constraints]]
-    do match? constraint
+    match? constraint
         | .node-param-constraint(row)
             . name = type-syntax-name(tree, row.left)
             . bound = env-lookup(current, name) if name
@@ -1723,7 +1723,7 @@ fault-site = 0
     - caller ModuleId? = null
 
 . count U32 = (scratch.types.length - mark) as U32
-do match rows[owner]
+match rows[owner]
     | .type-variable
         = associated-by-constraints(owner, name, mark, count, env)
     | .type-inference
@@ -1754,7 +1754,7 @@ if id == 0
     = env
 
 . current = env
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-identifier(row)
         if row.is-declare && !env-lookup-from(current, row.name, first)
             . variable = intern-variable(module, owner, (current.end - first) as U32, row.name)
@@ -2020,10 +2020,10 @@ _ do is-facet-private Bool
 
 ` Whether a facet keeps a property of a name to its own module.
 . target = program.modules[program.facets.modules[facet]]
-do match? target.decls[program.facets.decls[facet]]
+match? target.decls[program.facets.decls[facet]]
     | .decl-extension(row)
         for member in target.members-named(row.members, name)
-            do match? target.decls[member]
+            match? target.decls[member]
                 | .decl-property(property)
                     if property.name && property.name == name
                         = property.access == .private-access
@@ -2051,7 +2051,7 @@ while current != no-type
 for module in program.modules
     . tree = module.tree
     for decl in module.decls
-        do match? decl
+        match? decl
             | .decl-unit(unit)
                 . left = constant-unit(module-index, tree, unit.number)
                 . right = constant-unit(module-index, tree, unit.value)
@@ -2113,7 +2113,7 @@ while index < keys.length
         . module = (packed /rshift/ 32) as ModuleId
         . decl = (packed /and/ 0xffffffff) as DeclId
         . written = RowRange'SyntaxId()
-        do match? program.modules[module].decls[decl]
+        match? program.modules[module].decls[decl]
             | .decl-class(row)
                 written = row.interfaces
         . env = class-env(module, decl)
@@ -2190,7 +2190,7 @@ id < reach-visited.length && reach-visited[id]
 _ do reach-children
     - id TypeId
 
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         reach-range(row.args)
         reach-range(row.errors)
@@ -2250,7 +2250,7 @@ _ do query-held TypeId
 ` The type a property holds that is written with a type that queries the markup its object is
 ` in, as the reference types it: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`.
 ` Any other type is held as it is written.
-do match? rows[type]
+match? rows[type]
     | .type-class(row)
         if row.args.count == 1 && ancestor-decl.refers-to(row.module, row.decl)
             = optional-of(child-type(row.args, 0))
@@ -2270,7 +2270,7 @@ _ do class-decl-named U32?
 . decls = program.modules[module].decls
 . index = 0u32
 for decl in decls
-    do match? decl
+    match? decl
         | .decl-class(row)
             if row.name == atom
                 = index
@@ -2330,16 +2330,16 @@ _ do through-alias TypeId
     - decl DeclId
     - id TypeId
 
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-class(row)
         if row.base != 0 && !has-explicit-members(module, row.members)
             . tree = program.modules[module].tree
-            do match? tree.nodes[row.base]
+            match? tree.nodes[row.base]
                 | .node-type-function
                     . env = env-frame()
                     . base = evaluate-type(module, tree, row.base, env)
                     env-release(env)
-                    do match? rows[base]
+                    match? rows[base]
                         | .type-function(fn)
                             if fn.is-c
                                 note-c-function-decl
@@ -2374,7 +2374,7 @@ _ do param-assignment-type TypeId?
     - env TypeEnv
 
 for assignment in tree.nodes[tree.children[assignments]]
-    do match? assignment
+    match? assignment
         | .node-param-assignment(row)
             . left = type-syntax-name(tree, row.left)
             if left && left == name
@@ -2428,7 +2428,7 @@ if !items-valid(mark)
     scratch.types.rewind(mark)
     = invalid-type
 if this-atom && name == this-atom && env.this-type != no-type
-    do match? rows[env.this-type]
+    match? rows[env.this-type]
         | .type-class(row)
             = class-with-args(row.module, row.decl, mark)
 = class-named-with-args(caller, name, mark)
@@ -2457,7 +2457,7 @@ _ do evaluate-type-map TypeId
     - env TypeEnv
 
 for child in ast.nodes[ast.children[patterns]]
-    do match? child
+    match? child
         | .node-type-map-item(row)
             . mark = scratch.types.mark
             scratch.types.push(evaluate-type(caller, ast, row.key, env))
@@ -2624,7 +2624,7 @@ scratch.types.rewind(mark)
 if found.length > 1
     raise-fault("Associated type ${name.text} is ambiguous")
     = invalid-type
-do match? rows[owner]
+match? rows[owner]
     | .type-variable(row)
         . shown = row.name.text
         raise-fault("Associated type ${name.text} is not declared by constraints on $shown")
@@ -2659,7 +2659,7 @@ if base
     if completions[base].intrinsic == .interface
         collect-requirements(base, name, count, found)
 . owner-module = program.modules[declaring.module]
-do match? owner-module.decls[declaring.decl]
+match? owner-module.decls[declaring.decl]
     | .decl-class(row)
         if row.interfaces.count != 0
             . env = class-env(declaring.module, declaring.decl)
@@ -2696,7 +2696,7 @@ if base
 
 . owner-module = program.modules[declaring.module]
 . found DeclRef?
-do match? owner-module.decls[declaring.decl]
+match? owner-module.decls[declaring.decl]
     | .decl-class(row)
         if row.interfaces.count != 0
             . env = class-env(declaring.module, declaring.decl)
@@ -2728,7 +2728,7 @@ if !ref
 . member = find-associated-member(declaring.module, declaring.decl, name, count)
 if member
     . module = program.modules[declaring.module]
-    do match? module.decls[member]
+    match? module.decls[member]
         | .decl-associated(row)
             . hidden = caller != null && !program.reaches-access(caller, declaring.module, row.access)
             if hidden
@@ -2809,7 +2809,7 @@ if members.count == 0
     = null
 
 for member in owner-module.member-pool[members]
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-associated(row)
             if row.name == name && row.type-args.count == count
                 = member
@@ -2854,7 +2854,7 @@ if state == .completion-in-progress
 
 set-completion(id, .completion-in-progress, .none, null)
 completing += 1
-do match rows[id]
+match rows[id]
     | .type-class(row)
         class-uses += DeclRef(row.module, row.decl)
         complete-class(id, row.module, row.decl, row.args, row.errors)
@@ -2905,7 +2905,7 @@ _ do make
 ` Queues a type to complete, and the types it is written with.
 if id == no-type || id == invalid-type
     =
-do match? rows[id]
+match? rows[id]
     | .type-class(row)
         if completions[id].completion != .completion-unstarted
             =
@@ -3014,7 +3014,7 @@ _ do raising TypeId
 ` raises those errors too.
 if errors.count == 0
     = base
-do match? rows[base]
+match? rows[base]
     | .type-function(row)
         . mark = scratch.types.mark
         for offset in 0 .. < row.args.count
@@ -3046,7 +3046,7 @@ if facet
 . members = RowRange'DeclId()
 . interface-list = RowRange'SyntaxId()
 . or-bases = RowRange'SyntaxId()
-do match? owner-module.decls[decl]
+match? owner-module.decls[decl]
     | .decl-class(row)
         base-syntax = row.base
         aliased = row.aliases.count != 0
@@ -3090,7 +3090,7 @@ if interface-list.count != 0
 . delegated [TypeId]
 . delegators [Atom]
 for member in owner-module.member-pool[members]
-    do match? owner-module.decls[member]
+    match? owner-module.decls[member]
         | .decl-property(row)
             if row.delegates.count != 0 && row.name
                 . delegator = row.name
@@ -3174,7 +3174,7 @@ _ do constructed-class TypeId
 ` initializer is a call of a type.
 if value == 0
     = no-type
-do match? tree.nodes[value]
+match? tree.nodes[value]
     | .node-call-expression(call)
         . named = match tree.nodes[call.callable]
             | .node-type-identifier
@@ -3306,7 +3306,7 @@ for position in start .. < end
     . facet = facets.class-facets[position]
     . facet-module = facets.modules[facet]
     . target = program.modules[facet-module]
-    do match? target.decls[facets.decls[facet]]
+    match? target.decls[facets.decls[facet]]
         | .decl-extension(row)
             for member in target.member-pool[row.members]
                 if target.decls[member] is .decl-property
@@ -3327,7 +3327,7 @@ for position in start .. < end
     . facet = facets.class-facets[position]
     . facet-module = facets.modules[facet]
     . target = program.modules[facet-module]
-    do match? target.decls[facets.decls[facet]]
+    match? target.decls[facets.decls[facet]]
         | .decl-extension(row)
             for interface in target.syntax-pool[row.interfaces]
                 scratch.types.push(evaluate-type(facet-module, target.tree, interface, env))
@@ -3344,7 +3344,7 @@ _ do gather-member
 
 . owner-module = program.modules[module]
 . tree = owner-module.tree
-do match? owner-module.decls[member]
+match? owner-module.decls[member]
     | .decl-property(row)
         . held = held-storage(mark, row.name) if row.name
         . given = row.defaults-root && (!held || held != .storage-eager)
@@ -3420,7 +3420,7 @@ _ do gather-converter
 . owner-module = program.modules[module]
 . tree = owner-module.tree
 . syntax SyntaxId = 0
-do match? owner-module.decls[member]
+match? owner-module.decls[member]
     | .decl-converter(row)
         if wants-converters
             syntax = row.target-type
@@ -3450,7 +3450,7 @@ for module in program.modules
     . tree = module.tree
     . decl-index = 0u32
     for decl in module.decls
-        do match? decl
+        match? decl
             | .decl-class(row)
                 . aliased = row.aliases.count != 0
                 if row.type-args.count == 0 && (names-unit-multiple(tree, row.base) || named-alias)
@@ -3504,7 +3504,7 @@ _ do constant-unit UnitLiteral
 . nothing = UnitLiteral(null, 0.0)
 if syntax == 0
     = nothing
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-binary-expression(row)
         . left = constant-unit(caller, tree, row.lhs)
         . right = constant-unit(caller, tree, row.rhs)
@@ -3552,7 +3552,7 @@ if !unit
 . named = type-named(caller, unit, env-frame())
 if named == invalid-type
     = false
-do match? rows[named]
+match? rows[named]
     | .type-class(row)
         = !is-builtin-decl(row.module, row.decl)
 = false
@@ -3588,7 +3588,7 @@ _ do declare-equalities
 ` when that one is completed.
 if base-syntax == 0
     =
-do match? tree.nodes[base-syntax]
+match? tree.nodes[base-syntax]
     | .node-type-identifier
         if aliased
             . base = evaluate-type(module, tree, base-syntax, env)
@@ -3603,7 +3603,7 @@ do match? tree.nodes[base-syntax]
     | .node-type-numeric(numeric)
         . unit Atom?
         . text = ""
-        do match? tree.nodes[numeric.value]
+        match? tree.nodes[numeric.value]
             | .node-integer-syntax(number)
                 unit = number.unit
                 text = number.value
@@ -3781,7 +3781,7 @@ _ do stable-key StableKey
 ` Hashed from the type's kind, its declaration, and the keys of the types it is made of. A
 ` closure's also takes the key of the instance it is written in.
 . key = stable-key-seed
-do match? rows[id]
+match? rows[id]
     | .type-invalid
         key = mixed(key, TypeTag.invalid)
     | .type-class(row)
@@ -3940,7 +3940,7 @@ subclass-scan-done = true
 for owner in program.modules
     . decl = 0u32
     for row in owner.decls
-        do match? row
+        match? row
             | .decl-class
                 note-bases(module, decl)
         decl += 1
@@ -3976,7 +3976,7 @@ _ do note-bases
 ` as the reference's `registerDeclaredSubclasses` does: the class declared is not made for it, so
 ` a class nothing uses is never typed.
 . base-syntax SyntaxId = 0
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-class(row)
         base-syntax = row.base
 if base-syntax == 0
@@ -4009,9 +4009,9 @@ match types.rows[type]
     - other TypeId
 
 ` Whether two types are each a class, and the same class whatever the arguments of each.
-do match? types.rows[type]
+match? types.rows[type]
     | .type-class(row)
-        do match? types.rows[other]
+        match? types.rows[other]
             | .type-class(of)
                 = row.module == of.module && row.decl == of.decl
 = false
@@ -4023,7 +4023,7 @@ do match? types.rows[type]
 
 ` The function type a type is, or the one a class it derives from is, completing the classes it
 ` passes through; no type for any other.
-do match? types.rows[id]
+match? types.rows[id]
     | .type-function
         = id
     | .type-class
@@ -4054,7 +4054,7 @@ match types.rows[id]
 ` Whether a type is a C function's: a value of it is code alone, with no data beside it.
 . fn = function-row(types, id)
 if fn != no-type
-    do match? types.rows[fn]
+    match? types.rows[fn]
         | .type-function(row)
             = row.is-c
 = false

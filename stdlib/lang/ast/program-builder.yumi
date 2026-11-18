@@ -305,7 +305,7 @@ for position in 0 .. < program.modules.length
     . tree = program.modules[position].tree
     . decl = 0u32
     for row in program.modules[position].decls
-        do match? row
+        match? row
             | .decl-effect(effect)
                 . index = table.modules.length as U32
                 table.modules += position as U32
@@ -324,9 +324,9 @@ for position in 0 .. < program.modules.length
     . tree = program.modules[position].tree
     . decl = 0u32
     for row in program.modules[position].decls
-        do match? row
+        match? row
             | .decl-function(function)
-                do match? tree.nodes[function.syntax]
+                match? tree.nodes[function.syntax]
                     | .node-function-syntax(node)
                         . place = effect-place(position as U32, decl)
                         . bans = program.bans-named(position as ModuleId, node.bans)
@@ -757,7 +757,7 @@ for position in 0 .. < modules.length
     . module = modules[position]
     . decl = 0u32
     for row in module.decls
-        do match? row
+        match? row
             | .decl-extension(extension)
                 . head = receiver-head(module.tree, extension.receiver) if !extension.facet
                 if head
@@ -827,7 +827,7 @@ _ do receiver-head Atom?
     - tree AST
     - id SyntaxId
 
-do match? tree.nodes[id]
+match? tree.nodes[id]
     | .node-type-identifier(row)
         = row.name
     | .node-type-arguments(row)
@@ -881,7 +881,7 @@ _ do build-facet-table FacetTable
 for position in 0 .. < modules.length
     . decl = 0u32
     for row in modules[position].decls
-        do match? row
+        match? row
             | .decl-extension(extension)
                 if extension.facet
                     table.places[place-key(position as U32, decl)] = table.modules.length as U32
@@ -922,7 +922,7 @@ _ do bind-facet
 if !found
     state = .facet-owner-missing
 else
-    do match modules[found.module].decls[found.decl]
+    match modules[found.module].decls[found.decl]
         | .decl-class(owner)
             if owner.type-args.count != 0 || tree.nodes[receiver] is .node-type-arguments
                 state = .facet-owner-generic
@@ -973,7 +973,7 @@ _ do see-facets
 ` none for a name that is no such facet's.
 . module = table.modules[facet]
 . target = modules[module]
-do match? target.decls[table.decls[facet]]
+match? target.decls[table.decls[facet]]
     | .decl-extension(row)
         for offset in 0 .. < row.sees.count
             . syntax = target.syntax-pool[row.sees.start + offset]
@@ -1106,7 +1106,7 @@ _ do collect-module-names
 . module = modules[index]
 . tree = module.tree
 for decl in 1 .. < module.decls.length
-    do match? module.decls[decl]
+    match? module.decls[decl]
         | .decl-function(row)
             if row.owner == 0 && row.name
                 add-pair(row.name, index as ModuleId, decl as DeclId)
@@ -1258,7 +1258,7 @@ _ do scan-gates
     - gates List'U32'ArenaBacking
 
 for id in 0 .. < tree.nodes.length
-    do match? tree.nodes[id]
+    match? tree.nodes[id]
         | .node-do-block(row)
             if row.feature-gate-features != CompilerFeature.none
                 gates += id as U32

@@ -402,31 +402,31 @@ if function.types[left].size != function.types[right].size
     = false
 if function.types[left].alignment != function.types[right].alignment
     = false
-do match function.types[left]
+match function.types[left]
     | .void-type
-        do match? function.types[right]
+        match? function.types[right]
             | .void-type
                 = true
     | .int-type(first)
-        do match? function.types[right]
+        match? function.types[right]
             | .int-type(second)
                 = same-bit-size && first.is-signed == second.is-signed && same-class
                     .. same-bit-size = first.bit-size == second.bit-size
                     .. same-class = first.reg-class == second.reg-class
     | .float-type(first)
-        do match? function.types[right]
+        match? function.types[right]
             | .float-type(second)
                 = first.bit-size == second.bit-size && first.reg-class == second.reg-class
     | .pointer-type(first)
-        do match? function.types[right]
+        match? function.types[right]
             | .pointer-type(second)
                 = first.reg-class == second.reg-class
     | .array-type(first)
-        do match? function.types[right]
+        match? function.types[right]
             | .array-type(second)
                 = first.length == second.length && has-same-type(first.item, second.item)
     | .struct-type(first)
-        do match? function.types[right]
+        match? function.types[right]
             | .struct-type(second)
                 if first.format != second.format || first.fields.count != second.fields.count
                     = false
@@ -493,7 +493,7 @@ for root in roots.start .. < roots.end
         continue
     seen-roots[slot] = root + 1
     taken = taken.appended(arena, slot)
-    do match function.roots[root]
+    match function.roots[root]
         | .register-root(row)
             function.roots.append(RegisterRoot(row.register))
         | .stack-root(row)
@@ -506,7 +506,7 @@ _ do root-slot U32
 
 ` Where the table starts to look for a root: by what `is-same-root` compares.
 . key U32
-do match function.roots[root]
+match function.roots[root]
     | .register-root(row)
         key = row.register * 2
     | .stack-root(row)
@@ -520,13 +520,13 @@ _ do is-same-root Bool
     - left U32
     - right U32
 
-do match function.roots[left]
+match function.roots[left]
     | .register-root(a)
-        do match? function.roots[right]
+        match? function.roots[right]
             | .register-root(b)
                 = a.register == b.register
     | .stack-root(a)
-        do match? function.roots[right]
+        match? function.roots[right]
             | .stack-root(b)
                 = a.gc-descriptor == b.gc-descriptor && a.gc-root-mode == b.gc-root-mode && function.frame-objects[a.object].offset == function.frame-objects[b.object].offset
 = false

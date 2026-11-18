@@ -139,7 +139,7 @@ _ do is-written-force Bool
     - tree AST
     - syntax SyntaxId
 
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-unary-expression(row)
         . written = tree.nodes.loc[syntax].end
         . operand = tree.nodes.loc[row.operand].end
@@ -274,7 +274,7 @@ _ do written-line SyntaxId
 ` of the domain's flag names it, `named` itself: where the reference reports an error about it.
 . tree = session.program.modules[module].tree
 for index in 0 .. < tree.nodes.length
-    do match? tree.nodes[index as SyntaxId]
+    match? tree.nodes[index as SyntaxId]
         | .node-style-annotation(row)
             for item in tree.children[row.domains]
                 if item == named
@@ -532,7 +532,7 @@ _ do declared-syntax SyntaxId
     - module ModuleId
     - decl DeclId
 
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(fn)
         = fn.syntax
 = 0
@@ -589,7 +589,7 @@ for position in 0 .. < program.modules.length
         raises = true
     . owner = program.modules[position]
     for index in 0 .. < owner.decls.length
-        do match? owner.decls[index]
+        match? owner.decls[index]
             | .decl-property(property)
                 if property.owner == 0 && property.is-lazy && property.decoration == null
                     . unit = instances.find-initializer
@@ -720,7 +720,7 @@ _ do seed-module-functions
 . owner-module = session.program.modules[module]
 . index = 0u32
 for decl in owner-module.decls
-    do match? decl
+    match? decl
         | .decl-function(row)
             . accessor = row.owner == 0 && (row.kind == .getter-decl || row.kind == .setter-decl)
             . concrete = !row.is-generated && !row.is-static && row.body != 0
@@ -751,7 +751,7 @@ _ do seed-sheet-rules
 for decl in owner.decls
     . sheet = no-type
     . members = RowRange'DeclId()
-    do match? decl
+    match? decl
         | .decl-class(class)
             if class.type-args.count == 0
                 . env = types.class-env(module, index)
@@ -765,7 +765,7 @@ for decl in owner.decls
             members = extension.members
     if sheet != no-type && sheet != invalid-type && types.intrinsic-of(sheet) == .style-sheet
         for member in owner.member-pool[members]
-            do match? owner.decls[member]
+            match? owner.decls[member]
                 | .decl-style-rule(rule)
                     if rule.outer == 0
                         instances.queue(instances.intern-initializer(module, member, sheet))
@@ -780,7 +780,7 @@ _ do seed-unmade-classes
 . made = made-classes(session, module)
 . index = 0u32
 for decl in owner.decls
-    do match? decl
+    match? decl
         | .decl-class(class)
             if class.type-args.count == 0 && !made[index]
                 seed-constructors(session, module, index, class)
@@ -835,7 +835,7 @@ if kind != .class
 . writes = false
 . generated DeclId = 0
 for member in owner.member-pool[class.members]
-    do match? owner.decls[member]
+    match? owner.decls[member]
         | .decl-function(fn)
             if fn.kind == .constructor-decl && !fn.is-generated
                 writes = true
@@ -877,7 +877,7 @@ match types.rows[type]
 . program = session.program
 . owner = 0u32
 . effects EffectMask = 0
-do match? program.modules[module].decls[decl]
+match? program.modules[module].decls[decl]
     | .decl-function(row)
         owner = row.owner
         effects = declared-effects(program, module, decl)
@@ -888,7 +888,7 @@ do match? program.modules[module].decls[decl]
 . receiver = no-type
 
 if owner != 0
-    do match? program.modules[module].decls[owner]
+    match? program.modules[module].decls[owner]
         | .decl-class(class)
             if class.type-args.count != 0
                 = null

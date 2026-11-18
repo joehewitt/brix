@@ -81,7 +81,7 @@ _ texts [String = [String]]
 for index in 0 .. < program.modules.length
     . module = program.modules[index]
     for decl in 1 .. < module.decls.length
-        do match? module.decls[decl]
+        match? module.decls[decl]
             | .decl-class(row)
                 . ref = DeclRef(index as ModuleId, decl as DeclId)
                 . kinds = kinds-of(ref, wanted)
@@ -100,7 +100,7 @@ _ do kinds-of [String]
 while current && depth < 64
     . module = program.modules[current.module]
     . next DeclRef? = null
-    do match? module.decls[current.decl]
+    match? module.decls[current.decl]
         | .decl-class(row)
             for interface in module.syntax-pool[row.interfaces]
                 . head = type-head-name(module.tree, interface)
@@ -122,7 +122,7 @@ _ do class-named DeclRef?
     - name Atom
 
 for candidate in program.lookup(caller, name)
-    do match? program.modules[candidate.module].decls[candidate.decl]
+    match? program.modules[candidate.module].decls[candidate.decl]
         | .decl-class
             = DeclRef(candidate.module, candidate.decl)
 = null
@@ -148,7 +148,7 @@ for interface in module.syntax-pool[row.interfaces]
 . properties [CatalogProperty]
 . machines [CatalogMachine]
 for member in module.member-pool[row.members]
-    do match? module.decls[member]
+    match? module.decls[member]
         | .decl-property(property)
             . name = if property.name then property.name.text else ""
             . line = tree.nodes.loc[property.syntax].begin.line + 1
@@ -179,7 +179,7 @@ _ do is-machine Bool
     - syntax SyntaxId
 
 =? false if syntax == 0
-do match? tree.nodes[syntax]
+match? tree.nodes[syntax]
     | .node-state-machine
         = true
 = false
@@ -190,7 +190,7 @@ _ do machine-steps [CatalogStep]
     - machine SyntaxId
 
 . steps [CatalogStep]
-do match? module.tree.nodes[machine]
+match? module.tree.nodes[machine]
     | .node-state-machine(row)
         add-steps(module, row.body, 0, steps)
 = steps
@@ -205,7 +205,7 @@ _ do add-steps
 . tree = module.tree
 for child in tree.children[body]
     . line = tree.nodes.loc[child].begin.line + 1
-    do match? tree.nodes[child]
+    match? tree.nodes[child]
         | .node-state-case(row)
             steps += CatalogStep(row.name.text, text-of(module, row.trigger), depth, line, false)
             add-steps(module, row.body, depth + 1, steps)
