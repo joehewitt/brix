@@ -8182,38 +8182,6 @@ while true
     checking = !changed
 
 ────────────────────
-_ is-made Bool
-    - bits CPointer'U64
-    - bit U32
-
-(bits[bit / 64] /and/ (1u64 /lshift/ (bit % 64))) != 0
-
-────────────────────
-_ do mark-made
-    - bits CPointer'U64
-    - bit U32
-
-bits[bit / 64] = bits[bit / 64] /or/ (1u64 /lshift/ (bit % 64))
-
-────────────────────
-_ do join-made Bool
-    - known CPointer'U64
-    - start U32
-    - made CPointer'U64
-    - words U32
-    - fresh Bool
-
-` Narrows what is known to be made where a block starts to what is also made on one more
-` way in, or takes that whole for the first way found. Says whether anything changed.
-. changed = fresh
-for word in 0 .. < words
-    . joined = if fresh then made[word] else known[start + word] /and/ made[word]
-    if joined != known[start + word]
-        changed = true
-    known[start + word] = joined
-= changed
-
-────────────────────
 _ do keep-step
     - number U64
     - site SyntaxId
@@ -13804,21 +13772,6 @@ widened(held, width, is-signed(layout))
 .. source-width = tables.layouts.rows[source].size * 8
 .. width = tables.layouts.rows[layout].size * 8
 .. held = widened(bits, source-width, is-signed(source))
-
-────────────────────
-_ widened U64
-    - bits U64
-    - width U32
-    - signed Bool
-
-|? width >= 64
-    bits
-|? signed && (low /and/ (1u64 /lshift/ (width - 1))) != 0
-    low /or/ (0 - (1u64 /lshift/ width))
-??
-    low
-
-.. low = bits /and/ ((1u64 /lshift/ width) - 1)
 
 ────────────────────
 _ do equalize Typed
@@ -20883,3 +20836,50 @@ if syntax != 0 && (unit.source-module == home || placing)
 . placed = if unit.source-module != home then unit.source-module else U32.max
 = ir.append
     - IRInstruction(op, ir.current, layout, no-type, syntax, line, column, operands, aux, placed)
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-made Bool
+    - bits CPointer'U64
+    - bit U32
+
+(bits[bit / 64] /and/ (1u64 /lshift/ (bit % 64))) != 0
+
+━━━━━━━━━━━━━━━━━━━━
+_ do mark-made
+    - bits CPointer'U64
+    - bit U32
+
+bits[bit / 64] = bits[bit / 64] /or/ (1u64 /lshift/ (bit % 64))
+
+━━━━━━━━━━━━━━━━━━━━
+_ do join-made Bool
+    - known CPointer'U64
+    - start U32
+    - made CPointer'U64
+    - words U32
+    - fresh Bool
+
+` Narrows what is known to be made where a block starts to what is also made on one more
+` way in, or takes that whole for the first way found. Says whether anything changed.
+. changed = fresh
+for word in 0 .. < words
+    . joined = if fresh then made[word] else known[start + word] /and/ made[word]
+    if joined != known[start + word]
+        changed = true
+    known[start + word] = joined
+= changed
+
+━━━━━━━━━━━━━━━━━━━━
+_ widened U64
+    - bits U64
+    - width U32
+    - signed Bool
+
+|? width >= 64
+    bits
+|? signed && (low /and/ (1u64 /lshift/ (width - 1))) != 0
+    low /or/ (0 - (1u64 /lshift/ width))
+??
+    low
+
+.. low = bits /and/ ((1u64 /lshift/ width) - 1)

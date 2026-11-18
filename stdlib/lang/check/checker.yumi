@@ -3284,14 +3284,6 @@ do match? written.nodes[element]
 = names
 
 ────────────────────
-_ do add-name
-    - names [String]
-    - name String
-
-if name != "This" && names.find(name) == null
-    names += name
-
-────────────────────
 _ written-base SyntaxId
     - written AST
     - id SyntaxId
@@ -3339,20 +3331,6 @@ for owner in facts.nested-modules
     if program.shares-case(module, owner)
         = true
 = false
-
-────────────────────
-_ do selector-name String
-    - name String
-
-` An id as a style rule's name matches it: each capital is a hyphen and its small letter.
-. spelled = ""
-for char in name
-    if char >= 'A' && char <= 'Z'
-        spelled += "-"
-        spelled += "$char".lowercased
-    else
-        spelled += char
-= spelled
 
 ────────────────────
 _ do demand-event-register
@@ -3783,11 +3761,6 @@ if required
     . shown = type-short-name(types, declared)
     . message = "Function $name can fall through without returning $shown"
     frame.diagnose(declaration.syntax, .stated, program.store-atom(message), declared)
-
-────────────────────
-_ bare-value-text String
-
-"A value cannot stand alone as a step; use it, or remove it"
 
 ────────────────────
 _ is-module-empty-block Bool
@@ -5045,11 +5018,6 @@ _ is-step-position Bool
 .. builds = giving.yields || is-constructor-kind(frame.declaration.kind)
 
 ────────────────────
-_ print-block-text String
-
-"A print is a step and gives no value; end the block with its value"
-
-────────────────────
 _ is-leaving Bool
     - statement SyntaxId
 
@@ -5269,15 +5237,6 @@ _ do report-unheld
 
 . message = "Unable to infer payload type for anonymous case '..${name.text}'"
 frame.diagnose(id, .stated, program.store-atom(message))
-
-────────────────────
-_ do owns-case Bool
-    - owner Atom?
-    - written Atom?
-
-if owner && written
-    = owner == written
-= !owner && !written
 
 ────────────────────
 _ do reads-untyped Bool
@@ -8756,32 +8715,6 @@ for child in tree.children-of(pattern)
     bind-names(child, derived, names, held)
 
 ────────────────────
-_ do unbind-names
-    - mark Size
-    - names [Atom]
-    - held [Bool]
-
-` Takes out of reach the names put in reach since a mark.
-while names.length > mark
-    names.pop()
-    held.pop()
-
-────────────────────
-_ do add-slot
-    - name Atom
-    - builder TypeId
-    - given [Atom]
-    - builders [TypeId]
-
-` Adds a slot to those given, with its builder, in the order of their names, the default one
-` first, as the reference orders them.
-. spot = given.length
-while spot != 0 && given[spot - 1].text > name.text
-    spot -= 1
-given.insert(name, spot)
-builders.insert(builder, spot)
-
-────────────────────
 _ do wraps-default Bool
     - body SyntaxId
 
@@ -10473,14 +10406,6 @@ do match? tree.nodes[id]
     | .node-stream-panic(row)
         = first-set(row.pattern)
 = 0
-
-────────────────────
-_ optional-match-text String
-    - form String
-
-` The error for a stream pattern loop or pipeline whose matches give an optional value, which
-` the values it gives can't hold, since none of them ends it.
-"Stream pattern $form can't give an optional value; add an action that gives one"
 
 ────────────────────
 _ do hands-off Bool
@@ -12428,45 +12353,6 @@ else if asked == "is-signed"
 else if asked == "is-tuple"
     answer = intrinsic-is-tuple-like(kind) && kind != .struct
 note-integer(id, if answer then 1 else 0)
-
-────────────────────
-_ is-type-info-text Bool
-    - name Atom
-
-match name.text
-    |= "name"
-        true
-    |= "inlined-name"
-        true
-    |= "concrete-name"
-        true
-    |= "concrete-key"
-        true
-    |= "key"
-        true
-    ??
-        false
-
-────────────────────
-_ is-type-info-flag Bool
-    - name Atom
-
-` The Bool facts a type's info answers in the reference: `Item.is-integer` and its kin.
-match name.text
-    |= "is-integer"
-        true
-    |= "is-number"
-        true
-    |= "is-signed"
-        true
-    |= "is-tuple"
-        true
-    |= "is-struct"
-        true
-    |= "read-only"
-        true
-    ??
-        false
 
 ────────────────────
 _ do enum-case-value SyntaxId?
@@ -18385,3 +18271,117 @@ pulled-pipelines.clear()
 pulled-reads.clear()
 pulled-names.clear()
 held.clear()
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-name
+    - names [String]
+    - name String
+
+if name != "This" && names.find(name) == null
+    names += name
+
+━━━━━━━━━━━━━━━━━━━━
+_ do add-slot
+    - name Atom
+    - builder TypeId
+    - given [Atom]
+    - builders [TypeId]
+
+` Adds a slot to those given, with its builder, in the order of their names, the default one
+` first, as the reference orders them.
+. spot = given.length
+while spot != 0 && given[spot - 1].text > name.text
+    spot -= 1
+given.insert(name, spot)
+builders.insert(builder, spot)
+
+━━━━━━━━━━━━━━━━━━━━
+_ bare-value-text String
+
+"A value cannot stand alone as a step; use it, or remove it"
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-type-info-flag Bool
+    - name Atom
+
+` The Bool facts a type's info answers in the reference: `Item.is-integer` and its kin.
+match name.text
+    |= "is-integer"
+        true
+    |= "is-number"
+        true
+    |= "is-signed"
+        true
+    |= "is-tuple"
+        true
+    |= "is-struct"
+        true
+    |= "read-only"
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ is-type-info-text Bool
+    - name Atom
+
+match name.text
+    |= "name"
+        true
+    |= "inlined-name"
+        true
+    |= "concrete-name"
+        true
+    |= "concrete-key"
+        true
+    |= "key"
+        true
+    ??
+        false
+
+━━━━━━━━━━━━━━━━━━━━
+_ optional-match-text String
+    - form String
+
+` The error for a stream pattern loop or pipeline whose matches give an optional value, which
+` the values it gives can't hold, since none of them ends it.
+"Stream pattern $form can't give an optional value; add an action that gives one"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do owns-case Bool
+    - owner Atom?
+    - written Atom?
+
+if owner && written
+    = owner == written
+= !owner && !written
+
+━━━━━━━━━━━━━━━━━━━━
+_ print-block-text String
+
+"A print is a step and gives no value; end the block with its value"
+
+━━━━━━━━━━━━━━━━━━━━
+_ do selector-name String
+    - name String
+
+` An id as a style rule's name matches it: each capital is a hyphen and its small letter.
+. spelled = ""
+for char in name
+    if char >= 'A' && char <= 'Z'
+        spelled += "-"
+        spelled += "$char".lowercased
+    else
+        spelled += char
+= spelled
+
+━━━━━━━━━━━━━━━━━━━━
+_ do unbind-names
+    - mark Size
+    - names [Atom]
+    - held [Bool]
+
+` Takes out of reach the names put in reach since a mark.
+while names.length > mark
+    names.pop()
+    held.pop()
