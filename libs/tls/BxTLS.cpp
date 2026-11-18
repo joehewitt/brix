@@ -9,6 +9,9 @@ brixInitSSL(const char* clientCert, const char* clientKey, const char* caCert) {
     OpenSSL_add_all_algorithms();
 
     SSL_CTX* ctx = SSL_CTX_new(SSLv23_method());
+    if (!ctx) {
+        return NULL;
+    }
 
     SSL_CTX_set_options(ctx, SSL_OP_SINGLE_DH_USE);
 
@@ -19,16 +22,19 @@ brixInitSSL(const char* clientCert, const char* clientKey, const char* caCert) {
     bool hasClientKey = clientKey && clientKey[0];
     if (hasClientCert || hasClientKey) {
         if (!hasClientCert || !hasClientKey) {
+            SSL_CTX_free(ctx);
             return NULL;
         }
 
         if (SSL_CTX_use_certificate_file(ctx, clientCert, SSL_FILETYPE_PEM) <= 0) {
             ERR_print_errors_fp(stderr);
+            SSL_CTX_free(ctx);
             return NULL;
         }
 
         if (SSL_CTX_use_PrivateKey_file(ctx, clientKey, SSL_FILETYPE_PEM) <= 0) {
             ERR_print_errors_fp(stderr);
+            SSL_CTX_free(ctx);
             return NULL;
         }
     }
@@ -39,6 +45,7 @@ brixInitSSL(const char* clientCert, const char* clientKey, const char* caCert) {
         loadedCustomCA = SSL_CTX_load_verify_locations(ctx, caCert, NULL);
         if (!loadedCustomCA) {
             ERR_print_errors_fp(stderr);
+            SSL_CTX_free(ctx);
             return NULL;
         }
         if (!loadedDefaultCA) {
@@ -47,6 +54,7 @@ brixInitSSL(const char* clientCert, const char* clientKey, const char* caCert) {
     }
     if (!loadedDefaultCA && !loadedCustomCA) {
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ctx);
         return NULL;
     }
 
