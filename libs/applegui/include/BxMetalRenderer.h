@@ -220,7 +220,11 @@ extern "C" void brixGuiMetalPacketPushFilterLayer(
     const double* imageScales,
     uint64_t imageCount,
     double time,
-    double alpha
+    double alpha,
+    double resolutionX,
+    double resolutionY,
+    const double* keeps,
+    uint64_t keepCount
 );
 extern "C" void brixGuiMetalPacketPopLayer(void* renderer);
 extern "C" bool brixGuiMetalPacketAppendItems(

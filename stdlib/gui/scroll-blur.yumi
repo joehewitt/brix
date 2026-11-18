@@ -1,10 +1,13 @@
 /graphics/point
 /graphics/primitives
+/graphics/shader
 /graphics/shader-declarations
 /math
 
 + gui-scroll-blur-stills Size = 4
 _ scroll-blur-slack Length = 0.5
+_ scroll-blur-half-span F64 = 8
+_ scroll-blur-quarter-span F64 = 32
 
 ━━━━━━━━━━━━━━━━━━━━
 + ScrollBlur is LayerShader
@@ -102,6 +105,22 @@ float4 filter(float2 position, ShaderLayer layer, ScrollBlurArgs args) {
     float3 color = scrollBlurUnmixed(sum.rgb / sum.a);
     return float4(brixLinearColor(color, layer.space, layer.space), sum.a / weight);
 }
+
+━━━━━━━━━━━━━━━━━━━━
++ do scroll-blur-pass ShaderFilter
+    - motion Point
+    - stills [Rect]
+    - scale F64
+
+. kept = List'Rect()
+for still in scroll-blur-merged(stills)
+    if kept.length < gui-scroll-blur-stills
+        kept += still
+. base ShaderFilter = ScrollBlur(motion, kept)
+. pixels = sqrt(motion.x * motion.x + motion.y * motion.y) * scale
+. share = if pixels >= scroll-blur-quarter-span then 0.25 else if pixels >= scroll-blur-half-span then 0.5 else 1.0
+. resolution = if abs(motion.y) >= abs(motion.x) then Point(1, share) else Point(share, 1)
+= ShaderFilter(base.shader, base.args, base.images, base.is-live, base.frame-rate, base.time, base.arg-kinds, resolution, kept)
 
 ━━━━━━━━━━━━━━━━━━━━
 + do scroll-blur-merged [Rect]

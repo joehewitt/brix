@@ -195,12 +195,17 @@ struct BlurLayerOp {
     float radius;
 };
 
+static const uint32_t kMaxFilterKeeps = 4;
+
 struct FilterLayerOp {
     float x, y, width, height, alpha, time;
     uint32_t shader;
     uint32_t argCount;
     uint32_t imageStart;
     uint32_t imageCount;
+    float resolution[2];
+    uint32_t keepCount;
+    float keeps[kMaxFilterKeeps * 4];
 };
 
 struct BackdropOp {
@@ -299,6 +304,9 @@ struct LayerPass {
     float filterTime = 0;
     double filterRegion[4] = {0, 0, 0, 0};
     double filterScale = 1;
+    float filterResolution[2] = {1, 1};
+    uint32_t filterKeepCount = 0;
+    float filterKeeps[kMaxFilterKeeps * 4] = {};
     bool transformed = false;
     double composite[6] = {1, 0, 0, 1, 0, 0};
 };
@@ -324,6 +332,16 @@ struct LayerBlurGPU {
     uint32_t radius;
     uint32_t vertical;
     float limit[4];
+};
+
+struct FilterComposeGPU {
+    float target[4];
+    float origin[2];
+    float resolution[2];
+    float reduced[2];
+    float scale;
+    uint32_t keepCount;
+    float keeps[kMaxFilterKeeps * 4];
 };
 
 static const uint32_t kMaxLayerBlur = 256;
@@ -927,6 +945,8 @@ struct FilterParamsGPU {
     float sourceOrigin[2];
     float sourceScale;
     float padding;
+    float resolution[2];
+    float tail[2];
 };
 
 static std::string rendererColorSource() {
@@ -953,6 +973,7 @@ struct BrixFilterParams {
     float time;
     float2 sourceOrigin;
     float sourceScale;
+    float2 resolution;
 };
 
 struct BrixFilterVertexOut {
@@ -979,7 +1000,7 @@ fragment float4 brixFilterFragment(
 ) {
     ShaderLayer layer = {source, params.sourceOrigin, params.sourceScale, params.size, kBrixOutputSpace};
     ShaderArgs shaderArgs = {args, params.argCount, images, frames, params.imageCount, kBrixOutputSpace, params.time};
-    float2 position = (in.position.xy - params.origin) / params.scale;
+    float2 position = (in.position.xy / params.resolution - params.origin) / params.scale;
     return brixShaderOutput(shade(position, layer, shaderArgs), kBrixOutputSpace, kBrixExtendedOutput ? 0u : 1u);
 }
 )METAL";
@@ -1034,6 +1055,7 @@ struct SurfacePipelines {
     id<MTLRenderPipelineState> fillBlend = nil;
     id<MTLRenderPipelineState> shadowBlurPipelines[5] = {nil, nil, nil, nil, nil};
     id<MTLRenderPipelineState> layerBlurPipeline = nil;
+    id<MTLRenderPipelineState> filterComposePipeline = nil;
 };
 
 struct FillSlot {
@@ -1865,6 +1887,45 @@ fragment float4 brixGuiMetalLayerBlurFragment(
         total += weight;
     }
     return sum / total;
+}
+
+struct FilterCompose {
+    float4 target;
+    float2 origin;
+    float2 resolution;
+    float2 reduced;
+    float scale;
+    uint keepCount;
+    float4 keeps[4];
+};
+
+vertex LayerBlurOut brixGuiMetalFilterComposeVertex(
+    uint vertexId [[vertex_id]],
+    constant FilterCompose& compose [[buffer(0)]],
+    constant float2& viewport [[buffer(1)]]
+) {
+    float2 corner = float2(float(vertexId & 1u), float(vertexId >> 1u));
+    float2 pixel = compose.target.xy + corner * compose.target.zw;
+    LayerBlurOut out;
+    out.position = float4(pixel / viewport * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+    return out;
+}
+
+fragment float4 brixGuiMetalFilterComposeFragment(
+    LayerBlurOut in [[stage_in]],
+    constant FilterCompose& compose [[buffer(0)]],
+    texture2d<float> source [[texture(0)]]
+) {
+    float2 point = (in.position.xy - compose.origin) / compose.scale;
+    for (uint index = 0; index < compose.keepCount; ++index) {
+        float4 keep = compose.keeps[index];
+        if (point.x >= keep.x && point.y >= keep.y && point.x < keep.x + keep.z && point.y < keep.y + keep.w) {
+            discard_fragment();
+        }
+    }
+    constexpr sampler pixels(coord::pixel, address::clamp_to_edge, filter::linear);
+    float2 at = clamp(in.position.xy * compose.resolution, float2(0.5), compose.reduced - 0.5);
+    return source.sample(pixels, at);
 }
 
 struct BackdropGather {
@@ -4489,6 +4550,7 @@ static bool buildSurfacePipelines(SharedPipelines& shared, SurfacePipelines& set
     id<MTLFunction> fillVertex = [library newFunctionWithName:@"brixGuiMetalFillVertex"];
     id<MTLFunction> blurVertex = [library newFunctionWithName:@"brixGuiMetalShadowBlurVertex"];
     id<MTLFunction> layerBlurVertex = [library newFunctionWithName:@"brixGuiMetalLayerBlurVertex"];
+    id<MTLFunction> composeVertex = [library newFunctionWithName:@"brixGuiMetalFilterComposeVertex"];
     NSString* fragments[6] = {
         @"brixGuiMetalTier1Fragment",
         @"brixGuiMetalMaskFragment",
@@ -4533,6 +4595,10 @@ static bool buildSurfacePipelines(SharedPipelines& shared, SurfacePipelines& set
     jobs.push_back(renderJob(
         &set.layerBlurPipeline, layerBlurVertex, @"brixGuiMetalLayerBlurFragment", nil, false, MTLColorWriteMaskAll,
         set.format
+    ));
+    jobs.push_back(renderJob(
+        &set.filterComposePipeline, composeVertex, @"brixGuiMetalFilterComposeFragment", nil, false,
+        MTLColorWriteMaskAll, set.format
     ));
     return buildRenderPipelines(shared.device, library, jobs);
 }
@@ -8541,6 +8607,13 @@ static void expandPacket(MetalRenderer* renderer, FramePacket* packet, FrameStat
             layer.filterRegion[3] = bounds[3] * scale;
             double determinant = state.matrix[0] * state.matrix[3] - state.matrix[1] * state.matrix[2];
             layer.filterScale = scale * std::sqrt(std::fabs(determinant));
+            for (int axis = 0; axis < 2; ++axis) {
+                float resolution = op.resolution[axis];
+                bool reduces = std::isfinite(resolution) && resolution > 0 && resolution < 1;
+                layer.filterResolution[axis] = reduces ? resolution : 1;
+            }
+            layer.filterKeepCount = std::min(op.keepCount, kMaxFilterKeeps);
+            memcpy(layer.filterKeeps, op.keeps, sizeof(layer.filterKeeps));
             if (pushExpandClip(state)) {
                 state.clip = {bounds[0], bounds[1], bounds[2], bounds[3]};
                 state.roundedClip = 0;
@@ -9722,12 +9795,25 @@ static bool encodeLayerFilter(
     if (!width || !height) {
         return true;
     }
+    bool reduces = layer.filterResolution[0] < 1 || layer.filterResolution[1] < 1;
+    const SurfacePipelines* surface = reduces ? surfacePipelinesFor(renderer, layer.texture.pixelFormat) : nullptr;
+    if (!surface || !surface->filterComposePipeline) {
+        reduces = false;
+    }
+    float resolution[2] = {
+        reduces ? layer.filterResolution[0] : 1.0f,
+        reduces ? layer.filterResolution[1] : 1.0f,
+    };
+    uint32_t passWidth = std::max<uint32_t>(1, static_cast<uint32_t>(std::ceil(width * resolution[0])));
+    uint32_t passHeight = std::max<uint32_t>(1, static_cast<uint32_t>(std::ceil(height * resolution[1])));
     double scale = layer.filterScale > 0 ? layer.filterScale : 1;
     FilterParamsGPU params = {};
     params.target[0] = -1;
     params.target[1] = 1;
     params.target[2] = 1;
     params.target[3] = -1;
+    params.resolution[0] = resolution[0];
+    params.resolution[1] = resolution[1];
     params.origin[0] = static_cast<float>(layer.filterRegion[0] - layer.origin[0]);
     params.origin[1] = static_cast<float>(layer.filterRegion[1] - layer.origin[1]);
     params.size[0] = static_cast<float>((layer.filterRegion[2] - layer.filterRegion[0]) / scale);
@@ -9756,11 +9842,11 @@ static bool encodeLayerFilter(
     pass.colorAttachments[0].texture = target;
     pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.renderTargetWidth = width;
-    pass.renderTargetHeight = height;
+    pass.renderTargetWidth = passWidth;
+    pass.renderTargetHeight = passHeight;
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:pass];
     [encoder setRenderPipelineState:pipeline];
-    [encoder setViewport:MTLViewport{0, 0, static_cast<double>(width), static_cast<double>(height), 0, 1}];
+    [encoder setViewport:MTLViewport{0, 0, static_cast<double>(passWidth), static_cast<double>(passHeight), 0, 1}];
     [encoder setVertexBytes:&params length:sizeof(params) atIndex:0];
     [encoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
     [encoder setFragmentBytes:args length:(params.argCount + 1) * sizeof(float) atIndex:1];
@@ -9769,6 +9855,42 @@ static bool encodeLayerFilter(
     [encoder setFragmentTextures:images withRange:NSMakeRange(1, kMaxFilterImages)];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [encoder endEncoding];
+    ++drawCalls;
+    ++pipelineSwitches;
+    if (reduces) {
+        FilterComposeGPU compose = {};
+        compose.target[2] = static_cast<float>(width);
+        compose.target[3] = static_cast<float>(height);
+        compose.origin[0] = params.origin[0];
+        compose.origin[1] = params.origin[1];
+        compose.resolution[0] = resolution[0];
+        compose.resolution[1] = resolution[1];
+        compose.reduced[0] = static_cast<float>(passWidth);
+        compose.reduced[1] = static_cast<float>(passHeight);
+        compose.scale = params.scale;
+        compose.keepCount = layer.filterKeepCount;
+        memcpy(compose.keeps, layer.filterKeeps, sizeof(compose.keeps));
+        float viewport[2] = {static_cast<float>(layer.texture.width), static_cast<float>(layer.texture.height)};
+        MTLRenderPassDescriptor* composing = [MTLRenderPassDescriptor renderPassDescriptor];
+        composing.colorAttachments[0].texture = layer.texture;
+        composing.colorAttachments[0].loadAction = MTLLoadActionLoad;
+        composing.colorAttachments[0].storeAction = MTLStoreActionStore;
+        composing.depthAttachment.texture = layer.depth;
+        composing.depthAttachment.loadAction = MTLLoadActionDontCare;
+        composing.depthAttachment.storeAction = MTLStoreActionDontCare;
+        id<MTLRenderCommandEncoder> composer = [commandBuffer renderCommandEncoderWithDescriptor:composing];
+        [composer setRenderPipelineState:surface->filterComposePipeline];
+        [composer setDepthStencilState:renderer->shared->depthNone];
+        [composer setVertexBytes:&compose length:sizeof(compose) atIndex:0];
+        [composer setVertexBytes:viewport length:sizeof(viewport) atIndex:1];
+        [composer setFragmentBytes:&compose length:sizeof(compose) atIndex:0];
+        [composer setFragmentTexture:target atIndex:0];
+        [composer drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+        [composer endEncoding];
+        ++drawCalls;
+        ++pipelineSwitches;
+        return true;
+    }
     id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
     [blit copyFromTexture:target
               sourceSlice:0
@@ -9780,8 +9902,6 @@ static bool encodeLayerFilter(
          destinationLevel:0
         destinationOrigin:MTLOriginMake(0, 0, 0)];
     [blit endEncoding];
-    ++drawCalls;
-    ++pipelineSwitches;
     return true;
 }
 
@@ -9974,6 +10094,8 @@ static void encodeBackdropShader(
     params.target[1] = 1;
     params.target[2] = 1;
     params.target[3] = -1;
+    params.resolution[0] = 1;
+    params.resolution[1] = 1;
     params.origin[0] = record.shaderOrigin[0];
     params.origin[1] = record.shaderOrigin[1];
     params.size[0] = record.shaderSize[0];
@@ -12160,7 +12282,11 @@ extern "C" void brixGuiMetalPacketPushFilterLayer(
     const double* imageScales,
     uint64_t imageCount,
     double time,
-    double alpha
+    double alpha,
+    double resolutionX,
+    double resolutionY,
+    const double* keeps,
+    uint64_t keepCount
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     FramePacket* packet = renderer ? renderer->currentPacket : nullptr;
@@ -12183,7 +12309,13 @@ extern "C" void brixGuiMetalPacketPushFilterLayer(
         count,
         static_cast<uint32_t>(packet->images.size()),
         inputs,
+        {static_cast<float>(resolutionX), static_cast<float>(resolutionY)},
+        static_cast<uint32_t>(std::min<uint64_t>(keeps ? keepCount : 0, kMaxFilterKeeps)),
+        {},
     };
+    for (uint32_t index = 0; index < op.keepCount * 4; ++index) {
+        op.keeps[index] = static_cast<float>(keeps[index]);
+    }
     size_t offset = packet->bytes.size();
     size_t payload = offset + 1 + sizeof(op);
     size_t required = payload + count * sizeof(float) + inputs * 4 * sizeof(float);
