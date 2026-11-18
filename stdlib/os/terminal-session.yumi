@@ -94,9 +94,7 @@ if group > 0
 . opened = pty
 =? if !opened
 opened.hang-up()
-. current = generation
-do new
-    escalate(opened, current)
+opened.escalate(terminal-stop-grace)
 
 ────────────────────
 + do restart ?! Error
@@ -208,14 +206,16 @@ outbox?.clear()
 outbox = null
 is-running = false
 release-hold()
-opened?.close()
+=? if !opened
+opened.close()
+opened.escalate(terminal-stop-grace)
 
 ────────────────────
 _ do pump Int?
     - opened Pty
     - current Size
 
-do finally opened.process.reap()
+do finally opened.reap()
 while true
     . count = opened.read(buffer.length, buffer)
     if current != generation
@@ -244,18 +244,6 @@ release-hold()
 revision += 1
 exited <- code
 = code
-
-────────────────────
-_ do escalate
-    - opened Pty
-    - current Size
-
-terminal-stop-grace.wait()
-=? if current != generation || !is-running
-opened.terminate()
-terminal-stop-grace.wait()
-=? if current != generation || !is-running
-opened.kill()
 
 ────────────────────
 _ do absorb

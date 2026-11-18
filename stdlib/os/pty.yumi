@@ -8,6 +8,7 @@
 /signal.h
 /string.h
 /sys/ioctl.h
+/time/duration
 /unistd.h
 
 _ default-search-path = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -24,6 +25,8 @@ _ default-search-path = "/usr/bin:/bin:/usr/sbin:/sbin"
 _ input File
 _ output File
 _ is-closed = false
+_ has-exited = false
+_ escalation Task?
 
 ────────────────────
 + This ?! Error
@@ -122,7 +125,16 @@ while true
 ────────────────────
 + do wait Int?
 
-= process.wait(null)
+. status = process.wait(null)
+if status != null
+    exited()
+= status
+
+────────────────────
++ do reap
+
+process.reap()
+exited()
 
 ────────────────────
 + do hang-up
@@ -143,8 +155,19 @@ signal(C:SIGKILL)
 _ do signal
     - number I32
 
-=? if is-closed
+=? if is-closed && has-exited
 C:kill(-(process.pid as I32), number)
+
+────────────────────
++ do escalate
+    - grace Seconds
+
+=? if has-exited || escalation
+escalation = do new @detached
+    grace.wait()
+    terminate()
+    grace.wait()
+    kill()
 
 ────────────────────
 + do close
@@ -161,6 +184,12 @@ process.close()
 
 =? 0 if is-closed
 = input.write(buffer, size)
+
+────────────────────
+_ do exited
+
+has-exited = true
+escalation?.cancel-later()
 
 ━━━━━━━━━━━━━━━━━━━━
 + do find-executable String?
