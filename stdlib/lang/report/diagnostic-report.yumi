@@ -563,9 +563,20 @@ _ missing-note String
     - wants-type Bool
     - nearby [String]
 
-if elsewhere then "; ${elsewhere}" else suggested(name.text, nearby)
+|? elsewhere
+    "; ${elsewhere}"
+|? !wants-type && name.text == "pow"
+    "; write \"${raising(caller)}\" to raise a to the power b"
+??
+    suggested(name.text, nearby)
 
 .. elsewhere = absent-hint(caller, name, wants-type) ?? unimported-hint(caller, name, wants-type)
+
+────────────────────
+_ raising String
+    - module ModuleId
+
+if is-brix-tree(program.modules[module].tree) then "(%% a b)" else "a %% b"
 
 ────────────────────
 _ do c-function-message String
@@ -612,6 +623,8 @@ _ method-message String
     "$shown has no method \"$method\" here; facet $unseen declares it, and only the facets a facet sees are in reach. Write \"sees $unseen\" under the facet that uses it"
 |? widening
     "$shown has no method \"$method\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"${casting(caller, widening ?? "")}\" to reach the rest of $widening"
+|? method == "pow" && member-signatures(caller, receiver, program.store-atom("%%"), null, added).length != 0
+    "$shown has no method \"pow\"; write \"${raising(caller)}\" to raise a to the power b"
 ??
     "$shown has no method \"$method\"${suggested(method, member-names(caller, receiver))}"
 

@@ -419,3 +419,43 @@ Exception: Name "each" not found, as nothing here gives an item; "each" reads th
         ~> busy if each > 1
                    ^^^^
 ```
+
+### pow names the power operator
+
+```yumi crash
+-- pow(2.0, 3.0)
+```
+
+```output
+Exception: Function "pow" not found; write "a %% b" to raise a to the power b
+<no file:2>
+    -- pow(2.0, 3.0)
+       ^^^^^^^^^^^^^
+```
+
+### pow as a method of a number names the power operator
+
+```yumi crash
+. x = 2.0
+-- x.pow(3.0)
+```
+
+```output
+Exception: F64 has no method "pow"; write "a %% b" to raise a to the power b
+<no file:3>
+    -- x.pow(3.0)
+       ^^^^^^^^^^
+```
+
+### in Brix, pow names the power operator in Brix
+
+```brix crash
+(main (print (str (call pow 2.0 3.0))))
+```
+
+```output
+Exception: Function "pow" not found; write "(%% a b)" to raise a to the power b
+<no file:2>
+    (main (print (str (call pow 2.0 3.0))))
+                      ^^^^^^^^^^^^^^^^^^
+```

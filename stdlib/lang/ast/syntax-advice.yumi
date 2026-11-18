@@ -42,6 +42,8 @@
     "The place of \"<->\" is a name or a chain of members, written without \"#\", as in \"value <-> settings.volume\""
 |? is-camel(camel)
     "Names are kebab-case; write \"${kebab(camel)}\", not \"$camel\""
+|? power
+    power
 |? spaced
     "An operator needs a space on each side; write \"${spaced}\""
 |? stacked
@@ -75,6 +77,7 @@
 .. cast = line.cast-before(column)
 .. camel = if is-camel(line.word-around(column)) then line.word-around(column) else declared
 .. spaced = line.unspaced-operator(column)
+.. power = line.power-advice(column)
 .. previous = previous-code(source, spot.line)
 .. ending = line.dangling-end(column)
 .. stacked = line.stacked-repeat(column)
@@ -489,6 +492,19 @@ while end < chars.length && chars[end] == ' '
 .. left-word = word-ending(spot - 1)
 .. rest-start = spot + op.length
 .. right-word = word-from(rest-start)
+
+────────────────────
++ power-advice String?
+    - spot Index
+
+|? char(spot) == '^' && spot > indent
+    "Raise to a power with \"a %% b\"; for the bits set in one but not the other, write \"a /xor/ b\""
+|? char(spot) != '*' || (char(spot + 1) != '*' && (spot == 0 || char(spot - 1) != '*'))
+    null
+|? char(spot + 1) == '=' || char(spot + 2) == '='
+    "Raise in place with \"x %%= b\""
+??
+    "Raise to a power with \"a %% b\""
 
 ────────────────────
 + stacked-repeat String?

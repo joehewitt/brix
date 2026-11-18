@@ -128,6 +128,49 @@ Exception: An operator needs a space on each side; write "x += 1"
      ^
 ```
 
+### power written as two stars
+
+```yumi crash
+. x = 2 ** 3
+-- x
+```
+
+```output
+Exception: Raise to a power with "a %% b"
+<no file:2>
+    . x = 2 ** 3
+             ^
+```
+
+### power in place written as two stars
+
+```yumi crash
+. x = 2
+x **= 3
+-- x
+```
+
+```output
+Exception: Raise in place with "x %%= b"
+<no file:3>
+    x **= 3
+       ^
+```
+
+### power written as a caret
+
+```yumi crash
+. x = 2 ^ 3
+-- x
+```
+
+```output
+Exception: Raise to a power with "a %% b"; for the bits set in one but not the other, write "a /xor/ b"
+<no file:2>
+    . x = 2 ^ 3
+            ^
+```
+
 ### list continued across lines
 
 ```yumi crash

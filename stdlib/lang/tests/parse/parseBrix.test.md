@@ -139,6 +139,32 @@ Exception: `&&` is not a form. Write `(and a b)`.
 
 ```brix
 (main
+  (print (str (** 2 3)))
+)
+```
+
+```output
+Exception: `**` is not a form. Write `(%% a b)` to raise a to the power b.
+<no file:3>
+      (print (str (** 2 3)))
+                  ^
+```
+
+```brix
+(main
+  (print (str (^ 2 3)))
+)
+```
+
+```output
+Exception: `^` is not a form. Write `(%% a b)` to raise a to the power b, or `(/xor/ a b)` for the bits set in one but not the other.
+<no file:3>
+      (print (str (^ 2 3)))
+                  ^
+```
+
+```brix
+(main
   (-- "start")
 )
 ```
