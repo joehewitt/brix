@@ -1373,6 +1373,50 @@ for item in list
 15
 ```
 
+### A slice ends at most at the list's last item, whatever room the list has reserved or kept after removing items.
+
+```yumi
+. empty = List'Int()
+empty.reserve(4)
+-- empty[0 .. < 0].length
+try-slice(empty, 0 .. < 2)
+. list = [1, 2, 3]
+list.reserve(8)
+-- list[3 .. < 3].length
+-- list[1 .. < 3]
+-- list[2 .. 0]
+try-slice(list, 1 .. < 4)
+try-slice(list, 4 .. 2)
+list.pop()
+-- list[0 .. < 2]
+try-slice(list, 0 .. < 3)
+try-slice(list, 3 .. 1)
+
+━━━━━━━━━━━━━━━━━━━━
++ do try-slice
+    - list [Int]
+    - range Range'Int
+
+. attempt = do new
+    -- list[range]
+catch failure
+    -- failure
+attempt.wait()
+```
+
+```output
+0
+Range out of bounds (1 / 0)
+0
+2, 3
+1, 2, 3
+Range out of bounds (3 / 3)
+Range out of bounds (4 / 3)
+1, 2
+Range out of bounds (2 / 2)
+Range out of bounds (3 / 2)
+```
+
 ### A list as a stream: looped over, joined, and given to a function that takes a stream of any item.
 
 ```yumi

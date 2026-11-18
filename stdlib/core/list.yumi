@@ -123,26 +123,12 @@ size
 ────────────────────
 + do this[range Range'Position]
 
-. list = This(context, 0)
-list.items = items[normal]
-list.size = normal.length
-list.shares-storage = true
-shares-storage = true
-= list
-
-.. normal = range.normalize(this).forward()
+= slice-raw(range.normalize(this).forward())
 
 ────────────────────
 + do this[range Range'Index]
 
-. list = This(context, 0)
-list.items = items[normal]
-list.size = normal.length
-list.shares-storage = true
-shares-storage = true
-= list
-
-.. normal = range.forward()
+= slice-raw(range.forward())
 
 ────────────────────
 + do reversed
@@ -622,6 +608,21 @@ _ do check-range
     if (index as UInt) > (size as UInt)
 ?! OutOfBoundsError("List range at index $index with count $count out of range")
     if (count as UInt) > ((size - index) as UInt)
+
+────────────────────
+_ do slice-raw This @inline
+    - normal Range'Index
+
+?! OutOfBoundsError("Range out of bounds ($out-index / $size)")
+    if normal.increment == 1 && normal.end > size
+. list = This(context, 0)
+list.items = items[normal]
+list.size = normal.length
+list.shares-storage = true
+shares-storage = true
+= list
+
+.. out-index = if normal.end > 0 then normal.end - 1 else normal.end
 
 ────────────────────
 _ do append-raw @inline
