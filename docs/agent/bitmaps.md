@@ -33,7 +33,7 @@ GC storage stays traced through a retained bitmap or iterator.
 
 ## Focused coverage
 
-`stdlib/core/tests/runBitmap.test` and `stdlib/core/tests/runBitmapTypes.test` state the Bitmap
+`stdlib/core/tests/runBitmap.test.md` and `stdlib/core/tests/runBitmapTypes.test.md` state the Bitmap
 behavior: integer storage size and canonical widths, buffer capacity, read and write panics at
 capacity, conversions, value and buffer copy semantics, fill and counts, indexing at word
 boundaries, iteration order and snapshots, and search rules.

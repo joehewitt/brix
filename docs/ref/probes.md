@@ -951,8 +951,8 @@ groups that never ended.
 - **A case checks prints.** What a test compares is what the program prints, so a probe never
   changes a case's expected output, unless code under it prints. To see why a case fails, run its
   program with `--probes`.
-- **`%probes: selectors`** in a `.test` case compiles those probes into its program, and a bare
-  `%probes` compiles what `--probes` compiles with no selectors. The case runs alone, and its trace
+- **`probes=selectors`** on a `.test.md` case's program fence compiles those probes into its
+  program, and a bare `probes` compiles what `--probes` compiles with no selectors. The case runs alone, and its trace
   is removed with the case's directory.
 - **Test modules** run by `brix test` have no probes, and `brix test` clears any `PROBES_`
   variables for the programs it runs.

@@ -10,7 +10,7 @@
   create or populate it without that approval. Its examples are test cases: the `docs` suite
   compiles each `brix` block as a program, runs it, and compares what it prints with the `output`
   block that follows. Words after `brix` are the case's options, such as `compile-error` or
-  `crash`, as the `%` lines of a `.test` file are. Code in its prose is written as Brix forms,
+  `crash`, as on the program fences of a `.test.md` file. Code in its prose is written as Brix forms,
   tagged as `` `(let name value)`{.brix} ``, which the website shows as rows; inside a table, a
   form's `|` is written `\|`. Only text about the rows view itself is written as rows, tagged
   `{.rows}`. The suite's "Inline forms" case for each document checks that every tagged form

@@ -16,7 +16,8 @@ SOURCES = os.path.join(WORK, 'sources')
 CONVERTED = os.path.join(WORK, 'converted')
 REPORT = os.path.join(WORK, 'report.json')
 TREE_FOLDERS = ('stdlib/',)
-LEFT_IN_PLACE = ('.yumi', '.test')
+SPEC_EXTENSION = '.test.md'
+LEFT_IN_PLACE = ('.yumi', SPEC_EXTENSION)
 PARSE_SUITE = 'parse'
 CASE_SUITES = (
     (PARSE_SUITE, 'stdlib/lang/tests/parse'),
@@ -25,7 +26,8 @@ CASE_SUITES = (
 )
 MODULE_SUITES = (('stdlib', 'stdlib'),)
 FAILING = ('failed', 'crashed', 'killed')
-EXPECTS_DIAGNOSTIC = ('compile-error', 'crash', 'warnings', 'warn')
+PROGRAMS = ('yumi', 'brix')
+EXPECTS_DIAGNOSTIC = ('compile-error', 'crash', 'warn')
 KINDS = (
     ('shape', 'the converter makes Brix the reader rejects, or reads back differently'),
     ('diagnostic', 'a case that expects a diagnostic, which Brix reports otherwise'),
@@ -34,20 +36,16 @@ KINDS = (
 SHOWN_FAILURES = 30
 SHOWN_LINES = 12
 WORKERS = os.cpu_count() or 4
-HEAD = re.compile(r'::?===+\n?$')
-MID = re.compile(r':---+\n$')
-TAIL = re.compile(r';===+')
-COMMENT = re.compile(r'===+\n$')
-IGNORED = re.compile(r'/:===')
-NOTE = re.compile(r'#[ \t\r\v\f]')
-BRIX_BLOCK = re.compile(r'%brix[ \t]*\n$')
+OPENING = re.compile(r'(````|```(?!`))')
+CLOSING = re.compile(r'```+[ \t\r\v\f]*\n?$')
+LONG_CLOSING = re.compile(r'````+[ \t\r\v\f]*\n?$')
+HEADING = re.compile(r'#+ ')
 PLACE = re.compile(r'(no file|[\w./+-]+\.(?:yumi|bx)):\d+(?::\d+)?')
 SOURCE_NAME = re.compile(r'([\w./+-]+)\.(?:yumi|bx)\b')
 PLACE_LINE = re.compile(r'<[^<>]*:\d+>$')
 CARET = re.compile(r'\s*\^+\s*$')
 LINE_NUMBER = re.compile(r'\bline \d+\b')
 BARE_PLACE = re.compile(r'(?<=: )\d+:\d+$')
-SKIPPED = '# This case does not convert to Brix.\n'
 
 
 def main(arguments):
@@ -90,7 +88,7 @@ def main(arguments):
         report['unconverted'] += ['%s:%d' % (test_file.path, case.line) for case in test_file.cases if case.unconverted]
         report['problems'] += ['%s:%d: %s' % (test_file.path, case.line, problem)
                                for case in test_file.cases for problem in case.problems]
-    running = dict(environment, BRIXPATH=os.path.join(TREE, 'stdlib'), BRIX_TEST_BRIX='1')
+    running = dict(environment, BRIXPATH=os.path.join(TREE, 'stdlib'))
     for suite, root in CASE_SUITES:
         if suite in chosen:
             suite_files = [test_file for test_file in files if test_file.suite == suite]
@@ -122,55 +120,82 @@ def copy_resources(root, folders):
 def test_paths(root):
     found = []
     for folder, _, names in os.walk(os.path.join(ROOT, root)):
-        found += [os.path.relpath(os.path.join(folder, name), ROOT) for name in names if name.endswith('.test')]
+        found += [os.path.relpath(os.path.join(folder, name), ROOT) for name in names if name.endswith(SPEC_EXTENSION)]
     return sorted(found)
 
 
-class Case:
-    def __init__(self, line):
+class Fence:
+    def __init__(self, line, opening, content, closing):
         self.line = line
-        self.head = ''
-        self.notes = []
-        self.code = []
-        self.mid = ''
-        self.settings = []
-        self.expected = []
-        self.tail = ''
-        self.brix = None
-        self.unconverted = False
-        self.problems = []
-        self.files = {}
+        self.opening = opening
+        self.content = content
+        self.closing = closing
+        self.words = opening.lstrip('`').split()
+        self.replaced = None
+        self.dropped = False
 
     @property
-    def source(self):
-        return ''.join(self.code)
+    def kind(self):
+        return self.words[0] if self.words else ''
 
-    def has_option(self, name):
-        return any(kind == 'option' and option_name(parts[0]) == name for kind, parts in self.settings)
+    @property
+    def file(self):
+        return next((word[len('file='):] for word in self.words if word.startswith('file=')), None)
+
+    @property
+    def body(self):
+        return ''.join(self.content).removesuffix('\n')
+
+    def replace(self, words, body):
+        self.replaced = (words, body)
 
     def text(self):
-        lines = [self.head] + self.notes
+        if self.dropped:
+            return ''
+        if self.replaced is None:
+            return self.opening + ''.join(self.content) + self.closing
+        words, body = self.replaced
+        ticks = fence_ticks(body)
+        lines = [ticks + ' '.join(words) + '\n']
+        if body:
+            lines.append(body + '\n')
+        return ''.join(lines + [ticks + '\n'])
+
+
+class Case:
+    def __init__(self, program):
+        self.program = program
+        self.twin = None
+        self.files = []
+        self.errors = None
+        self.output = None
+        self.brix = None
+        self.converted = {}
+        self.unconverted = False
+        self.problems = []
+
+    @property
+    def line(self):
+        return self.program.line
+
+    def has_flag(self, name):
+        return name in self.program.words[1:]
+
+    def fences(self):
+        return [fence for fence in [self.program, self.twin, self.errors, self.output] + self.files if fence]
+
+    def settle(self):
         if self.unconverted:
-            lines.append(SKIPPED)
-        elif self.brix:
-            lines.append(self.brix if self.brix.endswith('\n') else self.brix + '\n')
-        lines.append(self.mid)
-        if self.unconverted and not self.has_option('skip'):
-            lines.append('%skip\n')
-        for kind, parts in self.settings:
-            if kind == 'brix':
-                continue
-            if kind == 'file':
-                header, content, mid = parts
-                name = file_name(header)
-                if name in self.files:
-                    converted = self.files[name]
-                    header = '%%file: %s.bx\n' % name[:-len('.yumi')]
-                    content = [converted if converted.endswith('\n') else converted + '\n'] if converted else []
-                lines += [header] + content + [mid]
-            else:
-                lines += parts
-        return ''.join(lines + self.expected + [self.tail])
+            for fence in self.fences():
+                fence.dropped = True
+            return
+        if self.twin:
+            self.twin.dropped = True
+        if self.brix is not None:
+            self.program.replace(['brix'] + self.program.words[1:], self.brix)
+        for fence in self.files:
+            if fence.file in self.converted:
+                fence.replace(['brix', 'file=%s.bx' % fence.file[:-len('.yumi')]], self.converted[fence.file])
 
 
 class TestFile:
@@ -183,93 +208,83 @@ class TestFile:
         self.cases = []
         self.parse()
 
+    @property
+    def kept(self):
+        return [case for case in self.cases if not case.unconverted]
+
     def parse(self):
         lines = self.lines
+        current = None
+        stage = None
         index = 0
         while index < len(lines):
             line = lines[index]
-            if HEAD.match(line) and self.has_mid(index + 1):
-                index = self.parse_case(index)
-            elif COMMENT.match(line):
+            opening = OPENING.match(line)
+            if opening:
+                closing = LONG_CLOSING if opening.group(1) == '````' else CLOSING
                 end = index + 1
-                while end < len(lines) and not COMMENT.match(lines[end]):
+                while end < len(lines) and not closing.match(lines[end]):
                     end += 1
-                self.items.append(''.join(lines[index:end + 1]))
+                if end == len(lines):
+                    raise Failure('%s:%d: The fence is never closed' % (self.path, index + 1))
+                fence = Fence(index + 1, line, lines[index + 1:end], lines[end])
+                self.items.append(fence)
+                current, stage = self.take(fence, current, stage)
                 index = end + 1
-            elif IGNORED.match(line):
-                self.items.append(''.join(lines[index:]))
-                index = len(lines)
-            else:
-                self.items.append(line)
-                index += 1
+                continue
+            if HEADING.match(line):
+                current = None
+                stage = None
+            self.items.append(line)
+            index += 1
 
-    def has_mid(self, index):
-        return any(MID.match(line) for line in self.lines[index:])
-
-    def parse_case(self, index):
-        lines = self.lines
-        case = Case(index + 1)
-        case.head = lines[index]
-        index += 1
-        while not MID.match(lines[index]):
-            if NOTE.match(lines[index]):
-                case.notes.append(lines[index])
-            else:
-                case.code.append(lines[index])
-            index += 1
-        case.mid = lines[index]
-        index += 1
-        while index < len(lines):
-            line = lines[index]
-            if line.startswith('%file:') or BRIX_BLOCK.match(line):
-                end = index + 1
-                while not MID.match(lines[end]):
-                    end += 1
-                kind = 'brix' if BRIX_BLOCK.match(line) else 'file'
-                case.settings.append((kind, (line, lines[index + 1:end], lines[end])))
-                index = end + 1
-            elif line.startswith('%'):
-                case.settings.append(('option', [line]))
-                index += 1
-            else:
-                break
-        while index < len(lines) and not TAIL.match(lines[index]):
-            case.expected.append(lines[index])
-            index += 1
-        if index < len(lines):
-            case.tail = lines[index]
-            index += 1
-        self.items.append(case)
-        self.cases.append(case)
-        return index
+    def take(self, fence, current, stage):
+        if fence.file is not None:
+            current.files.append(fence)
+            return current, 'file'
+        if fence.kind in PROGRAMS:
+            if current and stage == 'program' and current.program.kind != fence.kind:
+                current.twin = fence
+                return current, 'twin'
+            case = Case(fence)
+            self.cases.append(case)
+            return case, 'program'
+        if fence.kind == 'stderr':
+            current.errors = fence
+            return current, 'errors'
+        if fence.kind == 'output':
+            current.output = fence
+            return current, 'output'
+        return current, stage
 
     def jobs(self):
         for case in self.cases:
-            if self.suite == PARSE_SUITE:
-                brix = [parts for kind, parts in case.settings if kind == 'brix']
-                if brix:
-                    case.brix = ''.join(brix[0][1])
-                else:
+            if case.program.kind == 'yumi':
+                if case.twin:
+                    case.brix = case.twin.body.strip()
+                elif self.suite == PARSE_SUITE:
                     case.unconverted = True
-                continue
-            yield (case, None, case.source)
-            for kind, parts in case.settings:
-                if kind == 'file' and file_name(parts[0]).endswith('.yumi'):
-                    yield (case, file_name(parts[0]), ''.join(parts[1]).removesuffix('\n'))
+                    continue
+                else:
+                    yield (case, None, case.program.body)
+            for fence in case.files:
+                if fence.file.endswith('.yumi'):
+                    yield (case, fence.file, fence.body)
 
     def write(self):
+        for case in self.cases:
+            case.settle()
         target = os.path.join(TREE, self.path)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, 'w') as file:
             file.write(''.join(item if isinstance(item, str) else item.text() for item in self.items))
 
 
-def option_name(line):
-    return line[1:].split(':', 1)[0].strip()
-
-
-def file_name(header):
-    return header[len('%file:'):].strip()
+def fence_ticks(body):
+    lines = body.split('\n')
+    if any(line.startswith('````') for line in lines):
+        return None
+    return '````' if any(line.startswith('```') for line in lines) else '```'
 
 
 def convert_cases(converter, files, environment):
@@ -299,13 +314,12 @@ def convert_cases(converter, files, environment):
             case.unconverted = True
             continue
         with open(converted) as handle:
-            text = handle.read()
-        if any(MID.match(line) or TAIL.match(line) or HEAD.match(line) or NOTE.match(line)
-               for line in text.splitlines(True)):
-            case.problems.append('its Brix holds a line the test format reads as its own')
+            text = handle.read().strip('\n')
+        if fence_ticks(text) is None:
+            case.problems.append('its Brix holds a line that would close its fence')
             case.unconverted = True
         elif file:
-            case.files[file] = text
+            case.converted[file] = text
         else:
             case.brix = text
 
@@ -344,13 +358,12 @@ def run_case_suite(suite, root, files, runner, environment, report):
     results = run_suite(suite, [runner, 'catalog'], [runner, 'run'], variables)
     cases = {}
     for test_file in files:
-        for number, case in enumerate(test_file.cases):
+        for number, case in enumerate(test_file.kept):
             cases['test:%s:%s:%d' % (suite, test_file.path, number + 1)] = (test_file, case)
     adopted = []
     for result in results.values():
         found = cases.get(result['id'])
-        if result['status'] == 'failed' and found and adoptable(found[1], result):
-            adopt(found[1], result['actual'])
+        if result['status'] == 'failed' and found and adoptable(result) and adopt(found[1], result['actual']):
             adopted.append(result['id'])
     if adopted:
         for test_file in set(cases[identifier][0] for identifier in adopted):
@@ -419,14 +432,12 @@ def record(suite, results, report, cases):
 
 
 def failure_kind(case):
-    if case and any(case.has_option(name) for name in EXPECTS_DIAGNOSTIC):
+    if case and any(case.has_flag(name) for name in EXPECTS_DIAGNOSTIC):
         return 'diagnostic'
     return 'shape' if case and case.problems else 'other'
 
 
-def adoptable(case, result):
-    if any(line.startswith('?') for line in case.expected):
-        return False
+def adoptable(result):
     return shape(result.get('expected', '')) == shape(result.get('actual', ''))
 
 
@@ -450,16 +461,23 @@ def placeless(match):
 
 
 def adopt(case, actual):
-    text = ''.join(case.expected)
-    leading = text[:len(text) - len(text.lstrip())]
-    trailing = text[len(text.rstrip()):]
-    case.expected = [leading + actual.strip() + trailing]
+    whole = actual.strip()
+    if case.errors and case.output:
+        printed = case.output.body.strip()
+        if not whole.endswith('\n' + printed):
+            return False
+        whole = whole[:-len(printed) - 1].rstrip()
+    fence = case.errors or case.output
+    if not fence or fence_ticks(whole) is None:
+        return False
+    fence.replace([fence.kind], whole)
+    return True
 
 
 def show(report, seconds):
     for suite, counts in report['suites'].items():
         say('%s: %s' % (suite, ', '.join('%d %s' % (count, status) for status, count in sorted(counts.items()))))
-    say('%d cases have no Brix and are skipped, %d convert with problems, %d took the places their Brix moved' % (
+    say('%d cases have no Brix and are left out, %d convert with problems, %d took the places their Brix moved' % (
         len(report['unconverted']), len(report['problems']), len(report['adopted'])))
     for kind, label in KINDS:
         count = len([failure for failure in report['failures'] if failure['kind'] == kind])

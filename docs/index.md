@@ -30,13 +30,14 @@ whole program with the output it prints, or the error the compiler gives it. The
 language accepts and what each construct does, so they answer "is this legal, and what does it
 print?". They are kept short to test one thing each, so take their constructs, not their style.
 
-- Each file covers one topic, such as `runLoops.test`, `runOptionals.test`, `runStreamMatch.test`
-  or `runStateMachines.test`. To find cases that use a construct, search the files for it.
-- [The test format](style/agent-brix-test-format.md) explains a case's parts. Its source runs from
-  `:====` to `:----`, and its expected output runs from there to `;====`. Lines such as
-  `%compile-error` change what is expected.
+- Each file covers one topic, such as `runLoops.test.md`, `runOptionals.test.md`,
+  `runStreamMatch.test.md` or `runStateMachines.test.md`. To find cases that use a construct,
+  search the files for it.
+- [The test format](style/agent-brix-test-format.md) explains a case's parts. Each is Markdown: its
+  program is a `yumi` or `brix` fence, and the `output` or `stderr` fences after it hold what it
+  prints. Words on the program fence, such as `compile-error`, change what is expected.
 - Some cases import helpers from [`stdlib/core/tests/support`](../stdlib/core/tests/support).
-- To try a case, copy its source into a file and run it with `brix case.yumi -o case`.
+- To try a case, copy its program into a file and run it with `brix case.yumi -o case`.
 
 ## Example Programs
 

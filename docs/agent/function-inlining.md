@@ -101,8 +101,8 @@ has finalized those paths, then become SSA values where supported. Each phi's in
 and values are extended independently when consumer paths are copied.
 
 `--warnings` enables all compiler warnings. They are off by default, go to stderr, and remain
-nonfatal. In a `.test` case, `%warnings` enables warnings and includes them in the expected
-output, before stdout. `%warn` enables them without comparing their text.
+nonfatal. In a `.test.md` case, the `warn` flag enables warnings, and a `stderr` fence
+compares their text. Without one, they are not compared.
 
 A missed-inline warning identifies the surviving source call, target, reason, annotated
 declaration, and any outer expansion context. Warnings are deduplicated by source call,

@@ -46,18 +46,18 @@ listed in a suite of `.brix/tests.json`. Add one when the user asks, or to fix a
 linter false positive: reduce it to a focused linter test and fix the rule.
 
 The `core` import boundary is strict: a `core` case may import only modules under `/core`. Use local
-declarations or `%file` fixtures instead of pulling in a non-core module as a helper.
+declarations or `file=` fixtures instead of pulling in a non-core module as a helper.
 
 ### Scratch Cases
 
-To check your own change, write a scratch case. Scratch cases live in `.tmp/scratch/*.test`, use
+To check your own change, write a scratch case. Scratch cases live in `.tmp/scratch/*.test.md`, use
 the format in `docs/style/agent-brix-test-format.md`, may import any module, and are git-ignored.
 
 - Write the smallest program that exercises the behavior you changed, and print the values whose
   expected output shows the change works. One or two cases is normal.
-- Name the file for the task, such as `.tmp/scratch/path-offset.test`, so parallel work does not
+- Name the file for the task, such as `.tmp/scratch/path-offset.test.md`, so parallel work does not
   collide.
-- Run it with `file:.tmp/scratch/path-offset.test`.
+- Run it with `file:.tmp/scratch/path-offset.test.md`.
 - Delete the file when it passes. Do not move it into a library test module.
 - A case's prints are what it checks, not a way to look inside. To see what a program does, or why
   a case fails, put the program in `.tmp/scratch/<task>.yumi`, which is git-ignored and is not a
@@ -89,16 +89,16 @@ holds without running it.
 
 | Selector | Runs |
 | --- | --- |
-| `file:stdlib/core/tests/runArrays.test` | Every case in one file |
-| `test:stdlib/core/tests/runArrays.test:12` | The twelfth case in the file |
-| `stdlib/core/tests/runArrays.test:340` | The case containing line 340 |
+| `file:stdlib/core/tests/runArrays.test.md` | Every case in one file |
+| `test:stdlib/core/tests/runArrays.test.md:12` | The twelfth case in the file |
+| `stdlib/core/tests/runArrays.test.md:340` | The case containing line 340 |
 | `file:stdlib/graphics/tests/path.yumi` | One native test module |
 | `suite:core` | A whole suite |
 
 A path followed by a bare number is a line number, not a case number. A native module is one test
 however many cases it holds. The `stdlib` suites run every `.yumi` file directly inside a `tests`
-folder, from a copy of its `tests/fixtures/<module name>/` folder. To run one case of a `.test` file,
-select it by number rather than adding a focus marker.
+folder, from a copy of its `tests/fixtures/<module name>/` folder. To run one case of a `.test.md` file,
+select it by its number or a line in it.
 
 ### Scope
 
@@ -135,5 +135,5 @@ run.
 
 ## Format
 
-- For `.test` syntax, fixtures, and expected output, read `docs/style/agent-brix-test-format.md`.
+- For `.test.md` cases, fixtures, and expected output, read `docs/style/agent-brix-test-format.md`.
 - For native library test modules, read `docs/style/agent-brix-test-modules.md`.

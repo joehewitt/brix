@@ -24,6 +24,6 @@ existing identity header and checkpoint behavior. Arena-backed references retain
 the backing's existing untraced ownership requirements.
 
 Empty iteration, slicing, copying, conversion, bounds checks, and later mutable
-resize are covered by `stdlib/core/tests/runArrayStreams.test`. The native zero-length
+resize are covered by `stdlib/core/tests/runArrayStreams.test.md`. The native zero-length
 array copy helpers return before calling memmove or the bulk write barrier, so
 storage-free arrays do not pass null pointers to those operations.

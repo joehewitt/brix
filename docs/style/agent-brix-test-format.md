@@ -1,252 +1,224 @@
 # Brix Test File Format
 
-The language's own tests, such as those in `stdlib/core/tests`, are `.test` files. A `.test` file
-is a line-oriented file read by the test runner, not Yumi source, and it holds many independent
-cases.
+The language's own tests, such as those in `stdlib/core/tests`, are `.test.md` files. A test file
+is Markdown that follows a fixed convention. The runner reads its headings and fences, ignores all
+other prose, and finds many independent cases in it.
 
-## Basic Test Case
+## A Case
 
-A test case has three parts:
+A case is a program fence and the fences of what it should print:
 
-```text
-:====
+````markdown
+### Printing a string
 
+```yumi
 -- "hello"
+```
 
-:----
-
+```output
 hello
-;====
+```
+````
+
+A case has these parts, in this order and no other:
+
+1. An optional `##` or `###` heading.
+2. Optional prose.
+3. The program: a `yumi` or `brix` fence, whose other words are its flags.
+4. In the parse suite only, an optional twin: the same program in the other language.
+5. Any number of extra files, each a fence with `file=`.
+6. An optional `stderr` fence, then an optional `output` fence.
+
+Prose may sit between a case's fences. A case ends at the next program fence that is not its twin,
+at the next heading, or at the end of the file. Any fence out of order, or an unknown word on a
+program, file or expected fence, is an error that names its line.
+
+## A File
+
+A file opens with one `# Title`, then optional prose about the whole file, then its cases. `##`
+headings group cases into sections, and `###` headings title them.
+
+A case's title is the nearest `##` or `###` heading above it, and every case below a heading
+carries it until the next one. Cases that share a heading are labeled by their position under it,
+as in `Printing a string (2)`. A case with no heading above it but the `#` title is labeled by the
+start of its program.
+
+Fences in any other language, such as `text`, are illustrations. The runner ignores them, as it
+ignores prose.
+
+## The Program
+
+The program is its fence's content, trimmed. A `yumi` fence holds Yumi and a `brix` fence holds
+Brix. The runner writes it to a file after one blank line, so its first line is line 2 in the
+diagnostics it gives:
+
+````markdown
+```yumi crash
+-- area("a")
+
+━━━━━━━━━━━━━━━━━━━━
++ area I32
+    - width I32
+    - height I32
+
+width * height
 ```
 
-Meaning:
+```output
+Exception: No function "area" accepts (String); it is declared as "area(width I32, height I32)"
+<no file:2>
+    -- area("a")
+       ^^^^^^^^^
+```
+````
 
-- `:====` starts a test.
-- Lines after `:====` are the Yumi source under test.
-- `:----` separates source from options/expected output.
-- Lines after `:----` are expected output unless they are option lines.
-- `;====` ends the test.
+Notes about a case go in prose above its fences. Nothing inside a fence is the runner's own
+syntax, so a program may hold any line, and comments in it are the language's own.
 
-The runner compares:
+## Flags
 
-```text
-stdout.trim() == expected.trim()
+Flags follow the language on the program fence, separated by spaces:
+
+- `crash`: the program, or the compiler with a diagnostic, may exit with a failure status, which
+  otherwise fails the case. The runner still compares stdout with `output`, and stderr with
+  `stderr` when the case has one.
+- `compile-error`: the compiler is expected to reject the program. Its diagnostic is on stdout, so
+  the `output` fence holds the `Exception:` line followed by its location and caret lines. Use it
+  instead of `crash` when the case states a compile-time diagnostic.
+- `warn`: compile with warnings. Without a `stderr` fence their text is not compared. With one,
+  the fence holds the warnings followed by what the program wrote to stderr, and an empty
+  `stderr` fence states that there are none. Warnings from the program and its extra files are
+  included. The case's temporary folder is removed from them, so relative file names, line
+  numbers, source excerpts and carets remain testable. The case runs alone, outside any batch.
+- `probes` or `probes=a,b`: compile the probes these selectors name into the program, as
+  `--probes` does, and record the run's trace in the case's folder, which is removed after the
+  run. A bare `probes` compiles the probes `--probes` compiles with no selectors. The case runs
+  alone, outside any batch. Probe records go to the trace, not stdout, so `output` is still what
+  the program prints.
+
+A flag with a value is written `name=value`, without spaces.
+
+## Expected Output
+
+- An `output` fence is compared with stdout.
+- A `stderr` fence is compared with stderr: what the compiler and the program wrote there.
+- Without an `output` fence, stdout must be empty, unless the case has a `stderr` fence; then stdout
+  is not compared.
+
+Both are trimmed before they are compared, so blank lines at their start and end do not matter,
+but whitespace inside them and the order of their lines do.
+
+A case whose program crashes with a panic states it on stderr:
+
+````markdown
+```yumi crash
+do new
+    ?! Panic("task boom")
 ```
 
-So leading and trailing blank lines around the whole source and expected blocks do not matter, but internal whitespace and line order do matter.
+```stderr
+Unhandled panic: task boom
+<no file:3>
 
-## Separators
+Task 2, spawned by task 1 from no file:2:1
 
-The parser accepts separators with at least three repeated marker characters:
-
-- `:===` or `:====` starts a test.
-- `:---` or `:----` separates sections.
-- `;===` or `;====` ends a test.
-
-Most existing tests use four characters. Prefer matching the local file style.
-
-## Source Section
-
-The source section is copied into the compiler as the test program.
-
-```text
-:====
-
-. x = 42
--- x
-
-:----
-
-42
-;====
+Stack trace:
+  0  __source__:Fork no file:3:5
 ```
+````
 
-In the source section only, lines beginning with `# ` are ignored by the test parser:
+## Extra Files
 
-```text
-:====
-# This parser-level comment is not part of the Yumi source.
--- "ok"
-:----
-ok
-;====
-```
+A fence with `file=path` writes an extra file before the program compiles, for imports or for
+the program to read. Its content is written exactly, without trimming. Its first word only sets
+the fence's highlighting, so any word works for a file that is not Yumi:
 
-Use this sparingly. Most comments inside source should be valid Yumi comments if they are meant to exercise or document source behavior.
-
-## Expected Section
-
-The expected section is the output or diagnostic text to compare against.
-
-Lines beginning with `?` are ignored by the test parser:
-
-```text
-:====
-
--- "hello"
-
-:----
-? The next line is the expected stdout.
-hello
-;====
-```
-
-Ignored `?` lines are useful for notes, unstable diagnostic lines, or documenting why an expectation looks unusual.
-
-## Options
-
-Options appear immediately after the first `:----`, before the expected output body.
-
-```text
-:====
-
-futureFeature()
-
-:----
-%nyi
-
-;====
-```
-
-Supported options:
-
-- `%skip`: mark the test skipped.
-- `%nyi`: mark the test skipped because behavior is not implemented yet.
-- `%crash`: a compiler/runtime crash or nonzero exit is expected; the runner compares stdout to the expected body and keeps stderr as failure diagnostic context.
-- `%compile-error`: the compiler is expected to reject the program; the runner compares stdout,
-  which holds the diagnostic, to the expected body. Use it instead of `%crash` when the case states
-  a compile-time diagnostic: the `Exception:` line followed by its location and caret lines.
-- `%crash-stderr`: a compiler/runtime crash or nonzero exit is expected; the runner compares stderr to the expected body.
-- `%warn`: run the compiler with warnings enabled without comparing warnings.
-- `%warnings`: enable warnings and compare stderr followed by stdout, separated by a newline,
-  against the expected body. Diagnostics from the case source and its `%file` modules are
-  included. The case's temporary directory prefix is removed; relative file names, line numbers,
-  source excerpts, and carets remain testable. With `%crash-stderr`, only stderr is compared, as
-  usual.
-- `%file: relative/path`: create an extra file before compiling/running this test.
-- `%probes: selectors`: compile the probes these selectors name into the program, as `--probes`
-  does, and record the run's trace in the case's directory, which is removed after the run. A bare
-  `%probes` compiles the probes `--probes` compiles with no selectors. The case runs alone, outside
-  any batch. Probe records go to the trace, not stdout, so the expected body is still what the
-  program prints.
-
-Options with values use this form:
-
-```text
-%name: value
-```
-
-Options without values use this form:
-
-```text
-%name
-```
-
-## `%file` Blocks
-
-Use `%file` to create additional files for imports or runtime file IO.
-
-```text
-:====
-
+````markdown
+```yumi
 ./lib/foo
+
 -- foo()
+```
 
-:----
-%file: lib/foo.yumi
-
-<Yumi declaration divider line>
+```yumi file=lib/foo/foo.yumi
+━━━━━━━━━━━━━━━━━━━━
 + foo
 
--- "from foo"
-
-:----
-
-from foo
-;====
+24
 ```
 
-The `<Yumi declaration divider line>` placeholder represents the long divider used by existing Yumi source examples before declarations. It is Yumi source content, not test-runner syntax.
-
-Rules:
-
-- `%file: path` starts a file-content block.
-- The file content continues until the next `:----`.
-- After that `:----`, more options may follow, or the expected body begins.
-- Relative paths are written under a per-test temporary directory.
-- Relative imports resolve against that temporary directory for tests using `%file`.
-
-A test may have multiple `%file` blocks:
-
-```text
-:----
-%file: lib/foo.yumi
-...
-:----
-%file: data/input.txt
-...
-:----
-expected output
-;====
+```text file=data/input.txt
+first line
 ```
 
-## Focused Tests
+```output
+24
+```
+````
 
-A focused test starts with two colons:
+Paths are relative to the case's temporary folder, and the program's relative imports resolve
+against it.
 
-```text
-::====
+## Twins
+
+In the parse suite, a case may give its program in both languages. A program fence followed by one
+in the other language, with only prose between them, is one program and its twin. The runner
+checks that each reads as the AST in `output`:
+
+````markdown
+```yumi
+foo = bar
 ```
 
-Focus markers are easy to leave behind, so select a single case by its number instead when the
-runner allows it.
-
-## File-Level Comments And Ignored Remainders
-
-At top level, a plain separator starts or ends a comment block:
-
-```text
-====
-This text is ignored by the test parser.
-====
+```brix
+(main
+  (= foo bar)
+)
 ```
 
-At top level, this form ignores the remainder of the file:
-
-```text
-/:====
+```output
+<AssignmentExpression op="=">
+    <Id name="foo"/>
+    <Id name="bar"/>
+</AssignmentExpression>
 ```
+````
 
-Use remainder ignore only for temporary local work. Do not leave it in committed tests unless intentionally disabling the rest of the file.
+Two program fences in the same language are two cases. Outside the parse suite a twin is an
+error, so a program with no expected output must not be followed by a case in the other language.
 
-## Running One Case By Hand
+## Fences
 
-To run a case's program by itself, copy its source section into a file, write each `%file` block
-to its path beside that file, and run it with `brix case.yumi -o case`. Its stdout should match the
-expected section.
+A fence opens with three backticks, or four when its content holds a line that starts with three.
+It closes at a line of at least as many backticks and nothing else.
 
-## Editing Existing Tests
+## Selecting And Running Cases
 
-Be careful not to confuse separator lines with Yumi syntax. The separator lines are test-runner syntax and are not part of the compiled source.
+Cases are numbered from 1 in each file. `stdlib/core/tests/runArrays.test.md:340` selects the
+case that holds line 340, and `test:stdlib/core/tests/runArrays.test.md:12` the twelfth case.
 
-When updating expected output:
+To run a case's program by itself, copy its program into `case.yumi`, or `case.bx` for a `brix`
+fence, write each extra file to its path beside it, and run it with `brix case.yumi -o case`. Its
+stdout should match the `output` fence.
 
-- Preserve internal whitespace exactly.
-- Do not include parser note lines beginning with `?` if they should be compared.
-- For diagnostic tests, use the actual failure text the runner reports.
-- Prefer adding a new test block over mutating an unrelated existing test.
+## Editing Tests
+
+- Preserve whitespace inside expected output exactly.
+- For diagnostic cases, use the failure text the runner reports.
+- Prefer adding a case over changing an unrelated one.
+- Put prose and headings between cases, never inside a fence.
 
 ## Common Mistakes
 
-- Forgetting the final `;====`.
-- Putting expected output before all `%file` blocks are closed.
-- Adding `%file` content but forgetting the second `:----` before expected output.
-- Expecting lines beginning with `?` to be compared.
-- Editing the long visual divider lines inside Yumi source as if they were test separators. Only lines like `:----` and `;====` are separators.
+- Putting a `file=` fence after `stderr` or `output`, or `stderr` after `output`.
+- Writing an `output` fence for a `warn` case's warnings. They go in `stderr`.
+- Leaving out the `output` fence of a case that prints, which then fails because stdout is not
+  empty.
+- Closing a four-backtick fence with three.
 - Assigning a script-level variable from inside a `do new` task. Task bodies capture a by-value
   snapshot of script locals (unlike ordinary closures, which share), so the write mutates the
   task's private copy — live/style actions re-evaluate against the unchanged main-task value and
   appear stale. Drive all script-variable updates from the main task, and use a `Semaphore` plus
-  `do new` blocks only for checkpoint/observation, as in runStyleAuthoring.test. (Lazy `..`
+  `do new` blocks only for checkpoint/observation, as in `runStyleAuthoring.test.md`. (Lazy `..`
   script variables first touched inside a task now materialize at the spawn site; see the
-  "Capture scope" tests in runTasks.test.)
+  "Capture scope" tests in `runTasks.test.md`.)
