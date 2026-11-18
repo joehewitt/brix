@@ -9,6 +9,7 @@
 /fcntl.h
 /gc/gc
 /math
+/sys/stat.h
 /time/deadline
 /unistd.h
 
@@ -523,19 +524,31 @@ match err
 + do write-file-atomically ?! Error
     - path Path
     - text String
-    - perms = all-rw-perm
+    - perms FilePermissions? = null
 
 . temporary = Path("$path.${Task().id}.saving", 0)
 do finally
     if temporary.exists
         catch temporary.delete()
+. exact = perms ?? kept-perms(path)
 . mode = FileFlags.write-mode + FileFlags.create-mode + FileFlags.truncate-mode
-. file = File(temporary, mode, perms)
+. file = File(temporary, mode, exact ?? all-rw-perm)
 do use file
+    if exact
+        ?! Error("Unable to set permissions of $path")
+            if C:fchmod(file.fd, exact)
     file.write(text)
     ?! Error("Unable to flush $path")
         if file.flush()
 temporary.move(path)
+
+━━━━━━━━━━━━━━━━━━━━
+_ do kept-perms FilePermissions?
+    - path Path
+
+. mode = catch? path.mode
+=? null if mode == null
+= (mode as FilePermissions) /and/ all-rwx-perm
 
 ━━━━━━━━━━━━━━━━━━━━
 + do wait-until-readable ?! TimeoutError
