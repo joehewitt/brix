@@ -4119,7 +4119,7 @@ Exception: A stream of a value follows the reads written with "#", and this one 
 ```
 
 ```output
-Exception: A stream of a value is made only by a statement in a function's body, as in ". values = <c.#count>"; make it there, move a machine as a value changes with a "whenever" trigger, as in "then loading whenever #feed", or publish an event from a "whenever" rule and loop on it
+Exception: A stream of a value is made only by a statement in a function's body, as in "(let values (stream (. c #count)))"; make it there, move a machine as a value changes with a "whenever" trigger, as in "(then loading (trigger whenever #feed))", or publish an event from a "whenever" rule and loop on it
 <no file:9>
       (prop + feeds _ (= (stream #feed)))
                          ^^^^^^^^^^^^^^
@@ -4159,7 +4159,7 @@ Exception: An event gives each subscriber a value, so it cannot carry Void; an e
 ```
 
 ```output
-Exception: "rang" is an event of Door, which gives each value to its subscribers and keeps none to read with "<-"; hear the next one with "for value on d.rang", and end the loop with "break"
+Exception: "rang" is an event of Door, which gives each value to its subscribers and keeps none to read with "<-"; hear the next one with "(for (on value (. d rang)) …)", and end the loop with "break"
 <no file:4>
       (let first (<- (. d rang)))
                      ^^^^^^^^^^

@@ -11,7 +11,7 @@ Syntax errors at a known trap say what Brix expects instead
 ```
 
 ```output
-Exception: "where" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in "• where (some(each.kids) • where each > 2)"
+Exception: "where" is given twice in one call; a nested call takes its own named arguments inside its parentheses, as in "(call some groups (:where (call some (. each kids) (:where (> each 2)))))"
 <no file:3>
       (print (call some (list 3 1) (:where (> each 1)) (:where (> each 2))))
                                                        ^^^^^^^^^^^^^^^^^^

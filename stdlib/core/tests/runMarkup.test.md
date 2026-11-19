@@ -435,7 +435,7 @@ Exception: Content not accepted
 ```
 
 ```output
-Exception: Property "b" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: "do b = …"
+Exception: Property "b" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a "(do …)": "(do (= b …))"
 <no file:4>
         (= b 10)
            ^

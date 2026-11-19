@@ -119,7 +119,7 @@ Exception: Parameter "b" has no default but comes after "a", which has a default
 ```
 
 ```output
-Exception: No function "f" accepts (I64); it is declared as "f(a I32, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "b I32? = null"
+Exception: No function "f" accepts (I64); it is declared as "f(a I32, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "(param b (? I32) (= null))"
 <no file:3>
       (print (call f 1))
              ^^^^^^^^^^

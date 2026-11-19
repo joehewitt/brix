@@ -158,8 +158,8 @@ stored 18, changes 2
   getter, which is never stored, so a dependency on it never runs; depend on the properties it
   reads`.
 - **Inherited.** A subclass runs the rules of its base class.
-- **Leaving early.** `(return)`{.brix} ends one run of a rule. A rule gives no value: `A rule
-  gives no value, so its body cannot return one with "="; end it early with "= alone"`.
+- **Leaving early.** `(return)`{.brix} ends one run of a rule. A rule gives no value: `A rule gives
+  no value, so its body cannot return one with "(return …)"; end it early with "(return)"`.
 - **Only in a class.** A rule written at the top level of a file is a syntax error.
 
 ## Live statements
@@ -401,12 +401,12 @@ outside: bob
   worked out.
 - **Not a value.** An event cannot be stored or passed: `"rang" is an event of Door; it cannot be
   used as a value`. Nor can it be read once: `"rang" is an event of Door, which gives each value to
-  its subscribers and keeps none to read with "<-"; hear the next one with "for value on d.rang",
-  and end the loop with "break"`. Declared with the type `Broadcastable`, as in
-  `(let e (of Broadcastable String) (. door rang))`{.brix}, it can be, and its `subscribe` and
-  `unsubscribe` methods take a function. It can subscribe but not publish: `Operator "<-" is not
-  defined for Broadcastable'String`. So a type can hand out an event as a `Broadcastable` to let
-  others listen, and keep publishing to itself.
+  its subscribers and keeps none to read with "<-"; hear the next one with "(for (on value (. d
+  rang)) …)", and end the loop with "break"`. Declared with the type `Broadcastable`, as in `(let e
+  (of Broadcastable String) (. door rang))`{.brix}, it can be, and its `subscribe` and `unsubscribe`
+  methods take a function. It can subscribe but not publish: `Operator "<-" is not defined for
+  Broadcastable'String`. So a type can hand out an event as a `Broadcastable` to let others listen,
+  and keep publishing to itself.
 
 | Subscription | Written |
 | --- | --- |

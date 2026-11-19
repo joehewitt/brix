@@ -5056,7 +5056,7 @@ Exception: A style value that reads StyleSheet slots may read no local, member, 
 ```
 
 ```output
-Exception: A style rule takes a StyleSheet slot only alone, as in "• bg:panel-color", not in an expression
+Exception: A style rule takes a StyleSheet slot only alone, as in "(• bg panel-color)", not in an expression
 <no file:10>
         (<> Label (• ink-of (+ dim 1)))
                                ^^^

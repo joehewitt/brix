@@ -3524,7 +3524,7 @@ Exception: "size" is a method, so "#" before it tracks nothing; track the proper
 ```
 
 ```output
-Exception: A rule gives no value, so its body cannot return one with "="; end it early with "= alone"
+Exception: A rule gives no value, so its body cannot return one with "(return …)"; end it early with "(return)"
 <no file:10>
         (return 5)
         ^^^^^^^^^^

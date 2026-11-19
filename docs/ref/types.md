@@ -517,7 +517,7 @@ parameters as its first rows: `(fn-do + This _ (param high Int))`{.brix}.
   the value, as `as` does, through a conversion the type declares; see Conversions.
 
 A lazy binding runs before the object exists, so it cannot call the type's methods:
-`A ".." initializer runs before the object exists, so it cannot call "measure", a method of
+`A "lazy" initializer runs before the object exists, so it cannot call "measure", a method of
 Span; compute the value from the constructor's parameters, or assign it in the constructor's
 body`. It runs before the body, too, so it cannot read a property the body assigns:
 

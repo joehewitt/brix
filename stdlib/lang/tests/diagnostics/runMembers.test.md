@@ -262,7 +262,7 @@ Interface:
       (fn-expr + revision U64 :get)
 ```
 
-### a constructor's ".." initializer that calls a method of the object
+### a constructor's "lazy" initializer that calls a method of the object
 
 ```brix crash
 (main
@@ -282,7 +282,7 @@ Interface:
 ```
 
 ```output
-Exception: A ".." initializer runs before the object exists, so it cannot call "add-step", a method of Steps; compute the value from the constructor's parameters, or assign it in the constructor's body
+Exception: A "lazy" initializer runs before the object exists, so it cannot call "add-step", a method of Steps; compute the value from the constructor's parameters, or assign it in the constructor's body
 <no file:9>
         (lazy first (call add-step "Check"))
                     ^^^^^^^^^^^^^^^^^^^^^^^

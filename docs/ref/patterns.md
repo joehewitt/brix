@@ -228,8 +228,8 @@ arm is a tuple pattern, as in
 
 ### Names
 
-- **A name alone** fits any value and names it, so no arm may follow it: `Arm '| n' takes every
-  value, so the arms after it are never reached`. `_` is the same, and names nothing.
+- **A name alone** fits any value and names it, so no arm may follow it: `Arm "(case n …)" takes
+  every value, so the arms after it are never reached`. `_` is the same, and names nothing.
 - **A name before a pattern** names what fits the pattern, as in `(: n ({} (> it 20)))`{.brix} and
   `(: n Int)`{.brix}.
 - **Scope.** A name a pattern gives is known in its arm's value, or the body the pattern guards,
@@ -656,11 +656,11 @@ three
   `(let (tuple x (tuple y z)) value)`{.brix}, skipped with `_`, or given types,
   `(let (tuple (: a Int) (: b String)) value)`{.brix}, which convert them. Fewer names than fields
   take the first fields. More names than fields is an error: `Pattern has no possible matches`.
-- **Existing locals.** `(= (tuple a b) pair)`{.brix} assigns the fields to locals that exist, so
-  `(= (tuple a b) (tuple b a))`{.brix} swaps two locals. Only a tuple is assigned this way:
-  `(= (list x y) items)`{.brix} is an error, `Names in brackets can be declared from a list, as in
-  ". [x, y] = items", but not assigned again; assign a tuple to them, as in "x, y = items[0],
-  items[1]"`.
+- **Existing locals.** `(= (tuple a b) pair)`{.brix} assigns the fields to locals that exist, so `(=
+  (tuple a b) (tuple b a))`{.brix} swaps two locals. Only a tuple is assigned this way: `(= (list x
+  y) items)`{.brix} is an error, `Names in a list pattern can be declared from a list, as in "(let
+  (list x y) items)", but not assigned again; assign a tuple to them, as in "(= (tuple x y) (tuple
+  ([] items 0) ([] items 1)))"`.
 - **Optionals.** A tuple taken apart from an optional takes apart the tuple it holds, and panics
   where it holds nothing: `Optional'Pair is null`.
 - **Patterns that can fail.** A declaration with a pattern that does not fit its value panics, at

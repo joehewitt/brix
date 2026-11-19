@@ -350,7 +350,7 @@ Exception: (if …) cannot be the `body` of (fn-expr …), which takes Value. To
 ```
 
 ```output
-Exception: A unit is declared from an amount of another unit with no sign, as in "+ Bar (bar) is 1foo"; to relate two units by a negative amount, declare Bar from a number type and write an equality, as in "+ 1bar = -1foo"
+Exception: A unit is declared from an amount of another unit with no sign, as in "(type-line + Bar (alias bar) (is 1foo))"; to relate two units by a negative amount, declare Bar from a number type and write an equality, as in "(unit + 1bar -1foo)"
 <no file:3>
     (type-line + Bar (alias bar) (is -1foo))
                                      ^^^^

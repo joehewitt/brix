@@ -6900,7 +6900,7 @@ Exception: State machine "phase" moves only by its transitions, so it cannot be 
 ```
 
 ```output
-Exception: A state machine's handler gives no value, so it cannot return one with "="; end it early with "= alone"
+Exception: A state machine's handler gives no value, so it cannot return one with "(return …)"; end it early with "(return)"
 <no file:8>
             (return 3)
             ^^^^^^^^^^
@@ -7080,7 +7080,7 @@ Exception: Case ".nope" not found in state machine (.idle | .busy)
 ```
 
 ```output
-Exception: A state machine's case is tested with "is" or "is not", which count the cases nested in it; write "is .closed" in place of "== .closed"
+Exception: A state machine's case is tested with "is" or "is-not", which count the cases nested in it; write "(is … .closed)" in place of "(== … .closed)"
 <no file:11>
       (print (== phase .closed))
                        ^^^^^^^

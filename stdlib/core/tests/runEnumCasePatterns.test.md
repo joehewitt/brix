@@ -263,7 +263,7 @@ Exception: Arm "(case b …)" binds a new name, not the value Kind.b; match the 
 ```
 
 ```output
-Exception: An arm written '|=' compares the subject with one value, and this lists several; to take any of several, write a condition, as in '|? it == .a || it == .b'
+Exception: An arm written "(case= …)" compares the subject with one value, and this lists several; to take any of several, write a condition, as in "(case? (or (== it .a) (== it .b)) …)"
 <no file:15>
         (case= (tuple .a .b)
                ^^^^^^^^^^^^^

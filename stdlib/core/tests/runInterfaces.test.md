@@ -8118,7 +8118,7 @@ Exception: Shape is an interface, so it cannot store "name"; declare a getter fo
 ```
 
 ```output
-Exception: Shape is an interface, so it cannot store "name"; declare a getter that gives the value, with "=>" in place of "="
+Exception: Shape is an interface, so it cannot store "name"; declare a getter that gives the value, as in "(fn-expr + name _ :get …)"
 <no file:8>
       (prop + name _ (= "shape"))
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^

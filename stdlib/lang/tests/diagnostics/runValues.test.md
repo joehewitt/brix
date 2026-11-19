@@ -33,7 +33,7 @@ Exception: This list mixes Thing and Other, which have no common type; convert t
 ```
 
 ```output
-Exception: A for loop cannot iterate over I64; to count, loop over a range, as in "0 .. < 42"
+Exception: A for loop cannot iterate over I64; to count, loop over a range, as in "(..< 0 42)"
 <no file:3>
       (for (in item 42)
                     ^^

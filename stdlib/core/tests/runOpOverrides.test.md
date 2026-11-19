@@ -1357,7 +1357,7 @@ Exception: function has-items cannot be tested as a condition; it is a function,
 ```
 
 ```output
-Exception: Thing cannot be tested as a condition, since operator "!" is not defined for it
+Exception: Thing cannot be tested as a condition, since operator "not" is not defined for it
 <no file:4>
       (if thing
           ^^^^^
@@ -1415,7 +1415,7 @@ Exception: Operator "!" is not defined for function has-items; it is a function,
 ```
 
 ```output
-Exception: Range'I64 cannot be tested as a condition, since operator "!" is not defined for it
+Exception: Range'I64 cannot be tested as a condition, since operator "not" is not defined for it
 <no file:4>
       (if r
           ^
@@ -1439,7 +1439,7 @@ Exception: Range'I64 cannot be tested as a condition, since operator "!" is not 
 ```
 
 ```output
-Exception: Table'Point cannot be tested as a condition, since operator "!" is not defined for it
+Exception: Table'Point cannot be tested as a condition, since operator "not" is not defined for it
 <no file:7>
       (print (only-if "made" (if t)))
              ^^^^^^^^^^^^^^^^^^^^^^^

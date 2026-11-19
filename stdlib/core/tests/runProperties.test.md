@@ -1003,7 +1003,7 @@ Exception: Illegal to reference 'this' in eager properties or properties referen
 ```
 
 ```output
-Exception: A ".." initializer runs before the object exists, so it cannot call "foo", a method of Thing; compute the value from the constructor's parameters, or assign it in the constructor's body
+Exception: A "lazy" initializer runs before the object exists, so it cannot call "foo", a method of Thing; compute the value from the constructor's parameters, or assign it in the constructor's body
 <no file:10>
         (lazy b (call foo))
                 ^^^^^^^^^^

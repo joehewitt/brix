@@ -4108,7 +4108,7 @@ false
 ```
 
 ```output
-Exception: Only types may be written in parentheses after "is"; to test what the fields hold, match the value with an arm, as in "| (3, name)"
+Exception: Only types may be written in parentheses after "is"; to test what the fields hold, match the value with an arm, as in "(case (tuple 3 name) …)"
 <no file:4>
       (print (is pair (tuple 3 String)))
                       ^^^^^^^^^^^^^^^^
@@ -4125,7 +4125,7 @@ Exception: Only types may be written in parentheses after "is"; to test what the
 ```
 
 ```output
-Exception: Names in brackets can be declared from a list, as in ". [x, y] = items", but not assigned again; assign a tuple to them, as in "x, y = items[0], items[1]"
+Exception: Names in a list pattern can be declared from a list, as in "(let (list x y) items)", but not assigned again; assign a tuple to them, as in "(= (tuple x y) (tuple ([] items 0) ([] items 1)))"
 <no file:5>
       (= (list x y) (list 3 4))
          ^^^^^^^^^^

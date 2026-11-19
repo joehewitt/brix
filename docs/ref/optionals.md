@@ -132,7 +132,8 @@ welcome, cy
 - **Optional is not left out.** A parameter declared `(param name (? String))`{.brix} may be given
   `null`, but must be given: `No function "greet" accepts (); it is declared as "greet(name
   String?)"; "name" may be null but has no default, so a call must give it: pass null, or declare
-  "name String? = null"`. Declared `(param name (? String) (= null))`{.brix}, it may be left out.
+  "(param name (? String) (= null))"`. Declared `(param name (? String) (= null))`{.brix}, it may be
+  left out.
 - **Defaults.** An optional given for a parameter that is not optional but has a default gives
   its value when it holds one, and the default when it holds nothing, as
   `(call welcome nobody)`{.brix} does. For a parameter without a default, an optional is an error:

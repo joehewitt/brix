@@ -591,7 +591,7 @@ node TextStyle.ink layer=5 order=0 kind=inherit bits=0
 ```
 
 ```output
-Exception: Property "glow" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: "do glow = …"
+Exception: Property "glow" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a "(do …)": "(do (= glow …))"
 <no file:10>
           (= glow 1)
              ^^^^

@@ -180,7 +180,7 @@ false
 - **Result.** The operator must give a `Bool`. With another result type declared, it is an error:
   `Operator must return Bool`.
 - **Without it.** A value of a type that does not define it cannot be a condition: `Thing cannot be
-  tested as a condition, since operator "!" is not defined for it`.
+  tested as a condition, since operator "not" is not defined for it`.
 
 ## `if` and `else`
 
@@ -364,9 +364,9 @@ q
 ```
 
 - **Sources.** A loop reads lists, arrays, text, maps, ranges, streams and generators, and values of
-  types that implement `Iterable`, `CursorIterable` or `Indexable`; see Collections and Streams.
-  A number is not a source: `A for loop cannot iterate over I64; to count, loop over a range, as
-  in "0 .. < 42"`.
+  types that implement `Iterable`, `CursorIterable` or `Indexable`; see Collections and Streams. A
+  number is not a source: `A for loop cannot iterate over I64; to count, loop over a range, as in
+  "(..< 0 42)"`.
 - **Text** gives its characters, not its bytes. A **map** gives each key and its value as a tuple.
   The order of a map's entries is not defined.
 - **Taking items apart.** The item can be a pattern: `(for (in (tuple name age) ages) body)`{.brix}

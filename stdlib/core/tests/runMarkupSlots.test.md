@@ -3355,7 +3355,7 @@ Exception: A slot is filled by a line of the element's body, or by a line of an 
 ```
 
 ```output
-Exception: A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does
+Exception: A match arm that fills a slot binds no names; test the subject without binding, as "(case= value …)" or a type alone does
 <no file:10>
           (case (: n Int)
                 ^^^^^^^^^

@@ -4500,7 +4500,7 @@ oooo
 ```
 
 ```output
-Exception: A count in a pattern is read each time the part repeats, and this one may change between reads; compute it in a lazy local with ".." and count by its name
+Exception: A count in a pattern is read each time the part repeats, and this one may change between reads; compute it in a "lazy" local and count by its name
 <no file:5>
           (~ (seq (: size U8) (: data ({} Byte (call half size))))
                                                ^^^^^^^^^^^^^^^^
@@ -13732,7 +13732,7 @@ Nine
 ```
 
 ```output
-Exception: An arm's action gives the arm's value, so it cannot be a raise; call a function that raises it, or write "?! error" as the rule's last arm, which raises where no arm before it matches
+Exception: An arm's action gives the arm's value, so it cannot be a raise; call a function that raises it, or write "(throw error)" as the rule's last arm, which raises where no arm before it matches
 <no file:8>
         (throw (call SyntaxError "letter"))
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -13757,7 +13757,7 @@ Exception: An arm's action gives the arm's value, so it cannot be a raise; call 
 ```
 
 ```output
-Exception: "refused" raises, and a rule a pattern calls may raise only where its body is "~" arms, the last of which may be "?!"; give it a "~" arm before its "?!" arm with any "|?" condition in its pattern, or raise from a function an action calls
+Exception: "refused" raises, and a rule a pattern calls may raise only where its body is "(~ …)" arms, the last of which may be "(throw …)"; give it a "(~ …)" arm before its "(throw …)" arm with any "({} …)" test in its pattern, or raise from a function an action calls
 <no file:7>
       (~ (seq (chars "a-z") \refused)
                             ^^^^^^^^

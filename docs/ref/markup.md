@@ -150,9 +150,9 @@ A row `(= price 4)`{.brix} in an element's body is an attribute: it sets the ele
 - **Setters** run as for any assignment.
 - **Defaults.** A property no attribute sets keeps its declared value.
 - **Always an attribute.** `(= name value)` in an element's body sets the element's property, even
-  where a local of that name exists. To assign a local, write the assignment in a `(do …)` row,
-  as the error says: `Property "count" not found; an assignment in an element's body sets the
-  element's property. To assign a local, put it in a do row: "do count = …"`.
+  where a local of that name exists. To assign a local, write the assignment in a `(do …)` row, as
+  the error says: `Property "count" not found; an assignment in an element's body sets the element's
+  property. To assign a local, put it in a "(do …)": "(do (= count …))"`.
 - **Private properties** can be set from markup in their own module only.
 - **Messages.** An unknown property gives `Property "pages" not found; …`, as above, a value of the
   wrong type `Expected I64 here, but this is String, and there is no conversion between them`, a
@@ -666,11 +666,11 @@ arm taken.
   is a slot the component's own `content` fills, as a subclass's may, and a subclass's `content`
   fills its base's slots outside arms. `(<+ …)` is not written in an arm, a slot filled in an arm
   is not passed on with `(<+ …)`, and the component does not read that slot's outlet by its `id`.
-- **Messages.** `A match arm that fills a slot binds no names; test the subject without binding,
-  as |= value or a type alone does`, `An if that fills a slot tests a condition, not a pattern;
-  write is or == instead`, `A repeated slot cannot be filled inside an if or match`, `Slot "title"
-  is filled inside an if or match where this object is made, so the class's content does not fill
-  it too`, `A subclass fills its base's slots with lines of its content, not inside an if or
+- **Messages.** `A match arm that fills a slot binds no names; test the subject without binding, as
+  "(case= value …)" or a type alone does`, `An if that fills a slot tests a condition, not a
+  pattern; write is or == instead`, `A repeated slot cannot be filled inside an if or match`, `Slot
+  "title" is filled inside an if or match where this object is made, so the class's content does not
+  fill it too`, `A subclass fills its base's slots with lines of its content, not inside an if or
   match`, `A slot is not passed on with <+ inside an if or match; write <+ as a line of the
   element's body`, `A slot filled inside an if or match is not passed on with <+; give it content
   here instead`, and `Outlet "title" is not read by its name where its slot is filled inside an if

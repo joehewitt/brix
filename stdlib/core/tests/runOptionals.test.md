@@ -188,7 +188,7 @@ Optional'core/number:I64 is null
 ```
 
 ```output
-Exception: No function "foo" accepts (I32?); it is declared as "foo(a I32?, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "b I32? = null"
+Exception: No function "foo" accepts (I32?); it is declared as "foo(a I32?, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "(param b (? I32) (= null))"
 <no file:4>
       (call foo a)
       ^^^^^^^^^^^^

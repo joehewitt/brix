@@ -7984,7 +7984,7 @@
     (if (and (!= handling 0) (!= expr 0))
       (let text
         (paragraph
-          "A state machine's handler gives no value, so it cannot return one with \"=\"; end it early with \"= alone\""
+          "A state machine's handler gives no value, so it cannot return one with \"(return …)\"; end it early with \"(return)\""
         )
       )
       (call (. frame diagnose) id .stated (call (. program store-atom) text))
@@ -7994,7 +7994,7 @@
       (if (!= expr 0)
         (let text
           (paragraph
-            "A rule gives no value, so its body cannot return one with \"=\"; end it early with \"= alone\""
+            "A rule gives no value, so its body cannot return one with \"(return …)\"; end it early with \"(return)\""
           )
         )
         (call (. frame diagnose) id .stated (call (. program store-atom) text))
@@ -8006,12 +8006,9 @@
       (return)
     )
     (if (and (== (. frame declaration kind) .task-decl) (!= expr 0))
-      (let brix (call (. tree source-path ends-with) ".bx"))
-      (let returning (if-expr brix "(return …)" "="))
-      (let ending (if-expr brix "(return)" "= alone"))
       (let text
         (paragraph
-          (str "A task gives no value, so its body cannot return one with \"" returning "\"; end it with \"" ending "\", or send the value on a channel")
+          "A task gives no value, so its body cannot return one with \"(return …)\"; end it with \"(return)\", or send the value on a channel"
         )
       )
       (call (. frame diagnose) id .stated (call (. program store-atom) text))
@@ -13647,7 +13644,7 @@
       (case (call .node-get-expression row)
         (match? ([] (. tree nodes) (. row object))
           (case (call .node-identifier object)
-            (= written (str (. object name text) "." (. name text)))
+            (= written (str "(. " (. object name text) " " (. name text) ")"))
           )
         )
       )
@@ -13655,7 +13652,7 @@
     (let owner-name (call type-short-name types owner))
     (let message
       (paragraph
-        (str "\"" (. name text) "\" is an event of " owner-name ", which gives each value to its subscribers and keeps none to read with \"<-\"; hear the next one with \"for value on " written "\", and end the loop with \"break\"")
+        (str "\"" (. name text) "\" is an event of " owner-name ", which gives each value to its subscribers and keeps none to read with \"<-\"; hear the next one with \"(for (on value " written ") …)\", and end the loop with \"break\"")
       )
     )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
@@ -14407,7 +14404,7 @@
     )
     (let message
       (paragraph
-        "A stream of a value is made only by a statement in a function's body, as in \". values = <c.#count>\"; make it there, move a machine as a value changes with a \"whenever\" trigger, as in \"then loading whenever #feed\", or publish an event from a \"whenever\" rule and loop on it"
+        "A stream of a value is made only by a statement in a function's body, as in \"(let values (stream (. c #count)))\"; make it there, move a machine as a value changes with a \"whenever\" trigger, as in \"(then loading (trigger whenever #feed))\", or publish an event from a \"whenever\" rule and loop on it"
       )
     )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
@@ -18233,7 +18230,7 @@
           (if (== (. facts diagnostics length) reported)
             (let text
               (paragraph
-                "Only types may be written in parentheses after \"is\"; to test what the fields hold, match the value with an arm, as in \"| (3, name)\""
+                "Only types may be written in parentheses after \"is\"; to test what the fields hold, match the value with an arm, as in \"(case (tuple 3 name) …)\""
               )
             )
             (call (. frame diagnose) right .stated (call (. program store-atom) text))
@@ -18471,11 +18468,11 @@
     (if (or (not (call is-machine-union machine)) (not (call names-case machine name)))
       (return false)
     )
-    (let test (if-expr (== op .equals-op) "is" "is not"))
+    (let test (if-expr (== op .equals-op) "is" "is-not"))
     (let written (str "." (. name text)))
     (let message
       (paragraph
-        (str "A state machine's case is tested with \"is\" or \"is not\", which count the cases nested in it; write \"" test " " written "\" in place of \"" op " " written "\"")
+        (str "A state machine's case is tested with \"is\" or \"is-not\", which count the cases nested in it; write \"(" test " … " written ")\" in place of \"(" op " … " written ")\"")
       )
     )
     (call (. frame diagnose) symbol .stated (call (. program store-atom) message))

@@ -489,12 +489,12 @@
       ""
     )
     (default
-      (str "; \"" label "\" may be null but has no default, so a call must give it: pass null, or declare \"" label " " typed " = null\"")
+      (str "; \"" label "\" may be null but has no default, so a call must give it: pass null, or declare \"(param " label " (? " typed ") (= null))\"")
     )
     (where
       (lazy shape ([] (. owner arg-pool) (+ (. fn args start) count)))
       (lazy label (if-expr (. shape name) (. shape name text) "?"))
-      (lazy typed (call written-type (. owner tree) (. shape type-syntax)))
+      (lazy typed (call written-type (. owner tree) ([] (. owner tree children) (call optional-inner-syntax (. owner tree) (. shape type-syntax)))))
     )
   )
   (fn-expr _ is-optional-syntax Bool
@@ -1079,7 +1079,7 @@
             "; it is a function, so call it first"
           )
           (default
-            ", since operator \"!\" is not defined for it"
+            ", since operator \"not\" is not defined for it"
           )
         )
       )
@@ -1884,7 +1884,7 @@
       base
     )
     (case? (call is-integer-kind (. (call (. types completion-of) type) intrinsic))
-      (str cannot "; to count, loop over a range, as in \"0 .. < " written "\"")
+      (str cannot "; to count, loop over a range, as in \"(..< 0 " written ")\"")
     )
     (default
       (str cannot "; loop over a list, a range or a stream")

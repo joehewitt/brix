@@ -1309,7 +1309,7 @@ raised=false
 ```
 
 ```output
-Exception: ParserError can leave recursive function items before its errors are inferred; For a local '.. name ~' grammar, declare ?! ParserError on the enclosing '+ name ~ ...' function so generated pattern helpers inherit the result ABI.
+Exception: ParserError can leave recursive function items before its errors are inferred; for a local "(lazy name Type (pattern …))" grammar, declare "(?! ParserError)" on the enclosing function so generated pattern helpers inherit the result ABI.
 <no file:16>
             (~ (seq (: head \item) (: tail (? \items)))
                             ^^^^^

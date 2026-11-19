@@ -65,7 +65,7 @@ other
 ```
 
 ```output
-Exception: Arm '| any' takes every value, so the arms after it are never reached
+Exception: Arm "(case any …)" takes every value, so the arms after it are never reached
 <no file:15>
         (case any
               ^^^

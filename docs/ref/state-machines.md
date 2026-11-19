@@ -395,8 +395,8 @@ saved
 
 - **A copy.** Reading a machine copies its case and payload. A local that holds the copy keeps them
   after the machine moves on, and `is`, `match` and `path` read the copy. `==` compares two copies.
-  A case is tested with `is`, not `==`: `A state machine's case is tested with "is" or "is not",
-  which count the cases nested in it; write "is .locked" in place of "== .locked"`.
+  A case is tested with `is`, not `==`: `A state machine's case is tested with "is" or "is-not",
+  which count the cases nested in it; write "(is … .locked)" in place of "(== … .locked)"`.
 - **Tracked reads.** `(is #phase .saved)`{.brix} in a property's value or a rule's test follows the
   machine, as `status` does above; see Reactivity. Without `#`, the value is worked out once.
 - **Cases** are named with a dot, and a case the machine does not have is an error:
@@ -596,7 +596,7 @@ whistling 90
   case is active. It subscribes as the case is entered and ends as it is left. It takes one source
   and only a `when` clause: `A state handler subscribes to a single source`, `A state handler
   accepts only a when clause`. It gives no value: `A state machine's handler gives no value, so it
-  cannot return one with "="; end it early with "= alone"`.
+  cannot return one with "(return …)"; end it early with "(return)"`.
 - **Order.** The handlers and transitions of a case take a value in the order they are written, so
   a transition written first may leave before a handler sees the value.
 - **Timers.** `/stream/timing` makes timers from a stream of `F64` ticks, each the time since the

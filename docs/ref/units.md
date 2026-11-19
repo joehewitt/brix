@@ -122,9 +122,9 @@ that family.
   `Duration` holds nanoseconds, so `1500ms` stored as a `Duration` is 1500000000.
 - **Ratios.** The number in `is` is a literal with a unit, such as `100cents` or `2.54cm`. A
   negative or computed ratio is written as an equality. A sign in `is` is an error: `A unit is
-  declared from an amount of another unit with no sign, as in "+ Bar (bar) is 1foo"; to relate two
-  units by a negative amount, declare Bar from a number type and write an equality, as in
-  "+ 1bar = -1foo"`.
+  declared from an amount of another unit with no sign, as in "(type-line + Bar (alias bar) (is
+  1foo))"; to relate two units by a negative amount, declare Bar from a number type and write an
+  equality, as in "(unit + 1bar -1foo)"`.
 - **No type parameters.** A unit's type takes none: `Unit types must be numeric and unqualified`.
 - **Extending a family.** A module adds units to a family another module declares, as in
   `(type-line + Fortnights (alias fortnights) (is 14days))`{.brix} in a module that imports
