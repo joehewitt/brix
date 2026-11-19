@@ -303,10 +303,17 @@
       (if (== head "fn-do")
         (return (and (>= (call (. store count) around) 4) (call is-list-type (call (. store item) around 3))))
       )
-      (return-if false (if (has (list "fn-expr" "=>" "main" "type" "do-new-thread") head)))
+      (return-if false (if (not (call passes-return head))))
       (= around (call parent-of root (. around id)))
     )
     (return false)
+  )
+  (fn-expr _ passes-return Bool
+    (param head String)
+    (or (has steps head) (call (. head starts-with) "match") (call (. head starts-with) "case") (== head "default"))
+    (where
+      (lazy steps (list "if" "else-if" "else" "for" "while" "do" "do-use" "on-error" "finally" "subscribe" "subscribe-for"))
+    )
   )
   (fn-do _ guard (? (of ImmutableTableRow SourceNode))
     (param node (of ImmutableTableRow SourceNode))
