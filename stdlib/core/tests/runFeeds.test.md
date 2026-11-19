@@ -1601,6 +1601,80 @@ b
 8.5
 ```
 
+### Feeds of numbers written with no suffix made a list by `List` are given where a list of another number type is wanted, as a list written so is.
+
+```brix
+(main
+  (print (call scaled (call List (block (item 1) (item 2))) 2))
+  (print (call count-of (call List (block (item 1) (item 255)))))
+  (let values (list Float) (list 0.0))
+  (= values
+    (call List
+      (block
+        (item 3)
+        (item 4)
+      )
+    )
+  )
+  (print (call scaled values 0.5))
+  (let plain (call List (block (item 1) (item 2))))
+  (print (+ ([] plain 0) 1))
+)
+
+(fn-do + scaled Float
+  (param values (list Float))
+  (param factor Float)
+  (let sum 0.0)
+  (for (in value values)
+    (+= sum value)
+  )
+  (return (* sum factor))
+)
+
+(fn-expr + count-of Int
+  (param values (list U8))
+  (. values length)
+)
+```
+
+```output
+6
+2
+3.5
+2
+```
+
+### Feeds made a list by `List` where a list of a union is wanted convert each item to it, as a list written so does.
+
+```brix
+(main
+  (let values (list Value)
+    (call List
+      (block
+        (item 3)
+        (item "three")
+        (item null)
+      )
+    )
+  )
+  (print (. values length))
+  (= values (call List (block (item "five") (item 5))))
+  (print (is ([] values 1) Int))
+)
+
+(type + Value (is Union)
+  (variant Null)
+  (variant Int)
+  (variant String)
+  (variant Float)
+)
+```
+
+```output
+3
+true
+```
+
 ### A list written after `**` where a list of a type is wanted is a list of that type.
 
 ```brix
