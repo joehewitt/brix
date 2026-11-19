@@ -104,8 +104,9 @@ every row it makes fits:
 - a call that is the whole value of its row, a thrown value or a named argument's value included,
   gets its arguments one to a row, its named arguments among them;
 - a quoted text, or the last operand of `++` when it is one, becomes a text block;
-- a `(list …)` literal becomes item rows, `(block (item …))`, as the value of a `let` or lazy
-  declared with a list type or of a `return` in a `fn-do` declared to return one, and
+- a `(list …)` literal becomes item rows: `(block (item …))` as the value of a `let` or lazy
+  declared with a list type or of a `return` in a `fn-do` declared to return one, the body's own
+  rows when it is the whole value of a `fn-expr` declared to return one, and
   `(call List (block (item …)))` elsewhere, which is typed as the literal is and built directly;
 - `(return-if value (if condition))` becomes `(if condition (return value))`, and
   `(throw value (if condition))` becomes `(if condition (throw value))` in a function body, a
