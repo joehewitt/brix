@@ -1027,3 +1027,43 @@ Exception: 'scale' is a global that is not @stack, so a do-with cannot bind it
       (do-with scale 2
       ^^^^^^^^^^^^^^^
 ```
+
+### A subscription loop reaches what was bound where it subscribed: the real door outside a binding, and the fake inside one
+
+```brix
+(prop + numbers (of AsyncChannel Int))
+(prop + letters (of AsyncChannel Int))
+(blank)
+
+(main
+  (for (on n numbers)
+    (print (+ n (call roll)))
+  )
+  (do-with world (call Stub)
+    (for (on n letters)
+      (print (+ n (call roll)))
+    )
+  )
+  (<- numbers 0)
+  (<- letters 0)
+  (print "done")
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (return 1)
+  )
+)
+```
+
+```output
+done
+10
+1
+```
