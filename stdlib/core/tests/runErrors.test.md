@@ -888,7 +888,7 @@ Invalid cast to [Object __source__:Baz]
 ```
 
 ```output
-Exception: "foo" can fail with Error, but the interface method it implements cannot; add "?! Error" to that method, or catch the error inside "foo"
+Exception: "foo" can fail with Error, but the interface method it implements cannot; add "(?! Error)" to that method, or catch the error inside "foo"
 <no file:14>
       (fn-expr + foo _
       ^^^^^^^^^^^^^^^

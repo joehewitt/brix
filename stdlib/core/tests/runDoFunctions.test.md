@@ -67,7 +67,7 @@ boolean returned
 ```
 
 ```output
-Exception: Function missing ends with a value it does not return; return it with "= value", or remove it
+Exception: Function missing ends with a value it does not return; return it with "(return value)", or remove it
 <no file:11>
       (call Item)
       ^^^^^^^^^^^
@@ -525,7 +525,7 @@ Exception: (or …) cannot be a `row` of (fn-do …), which takes Step. This bod
 ```
 
 ```output
-Exception: Function first-even ends with a value it does not return; return it with "= value", or remove it
+Exception: Function first-even ends with a value it does not return; return it with "(return value)", or remove it
 <no file:9>
       (call evens n)
       ^^^^^^^^^^^^^^

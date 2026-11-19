@@ -89,8 +89,7 @@ outer
   `(let name value)`{.brix}, changes the local it names, wherever that local was declared, so
   `count` above is `9` after the `if`.
 - **Redeclaring.** A name declared twice in one block is an error: `"x" is already declared on line
-  1 in this scope; to change its value, assign it without the ".", as in "x = value", or choose
-  another name`.
+  1 in this scope; to change its value, assign it with "(= x value)", or choose another name`.
 - **After the block.** Reading a block's local after it is an error: `Name "doubled" not found`.
 
 ## Conditions

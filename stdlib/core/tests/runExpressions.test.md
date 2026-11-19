@@ -36,7 +36,7 @@
 ```
 
 ```output
-Exception: "a" is already declared on line 3 in this scope; to change its value, assign it without the ".", as in "a = value", or choose another name
+Exception: "a" is already declared on line 3 in this scope; to change its value, assign it with "(= a value)", or choose another name
 <no file:4>
       (let a 6)
            ^

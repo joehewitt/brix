@@ -167,7 +167,7 @@ done
 ```
 
 ```output
-Exception: The body of a loop on "numbers" cannot return with "="; skip to the next value with "continue", or stop the loop with "break"
+Exception: The body of a loop on "numbers" cannot return with "(return …)"; skip to the next value with "continue", or stop the loop with "break"
 <no file:7>
         (return)
         ^^^^^^^^

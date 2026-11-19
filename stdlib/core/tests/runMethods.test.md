@@ -754,7 +754,7 @@ Exception: Thing has no method "foo"
 ```
 
 ```output
-Exception: "value" can fail with Error, but the method it overrides cannot; add "?! Error" to that method, or catch the error inside "value"
+Exception: "value" can fail with Error, but the method it overrides cannot; add "(?! Error)" to that method, or catch the error inside "value"
 <no file:14>
       (fn-expr + value Int
       ^^^^^^^^^^^^^^^^^^^

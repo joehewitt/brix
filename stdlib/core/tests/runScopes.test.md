@@ -8,7 +8,7 @@
 ```
 
 ```output
-Exception: "a" is already declared on line 3 in this scope; to change its value, assign it without the ".", as in "a = value", or choose another name
+Exception: "a" is already declared on line 3 in this scope; to change its value, assign it with "(= a value)", or choose another name
 <no file:4>
       (let a I32 2)
            ^^^^^
@@ -495,7 +495,7 @@ early 1
 ```
 
 ```output
-Exception: "kept" is already declared on line 5 in this scope; to change its value, assign it without the ".", as in "kept = value", or choose another name
+Exception: "kept" is already declared on line 5 in this scope; to change its value, assign it with "(= kept value)", or choose another name
 <no file:7>
         (let kept (+ (!! path) 2))
              ^^^^

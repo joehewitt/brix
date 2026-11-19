@@ -136,7 +136,7 @@ Exception: IOError can leave "walk", which calls itself, so its errors cannot be
 ```
 
 ```output
-Exception: "foo" can fail with Error, but the interface method it implements cannot; add "?! Error" to that method, or catch the error inside "foo"
+Exception: "foo" can fail with Error, but the interface method it implements cannot; add "(?! Error)" to that method, or catch the error inside "foo"
 <no file:13>
       (fn-expr + foo _
       ^^^^^^^^^^^^^^^
@@ -186,7 +186,7 @@ Exception: "42" cannot fail, so the catch attached to it has nothing to handle; 
 ```
 
 ```output
-Exception: The event handler for "pings" cannot return with "="; move its body into a method, as in "_ do handle-pings", and call that, or end the handler early with "continue"
+Exception: The event handler for "pings" cannot return with "(return …)"; move its body into a method, as in "(fn-do _ handle-pings …)", and call that, or end the handler early with "continue"
 <no file:11>
         (return-if (if (not event)))
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

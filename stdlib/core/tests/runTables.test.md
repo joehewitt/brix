@@ -2140,7 +2140,7 @@ Table range source is too short
 ```
 
 ```output
-Exception: No C function "ctest15" accepts (Table'Thing); it is declared as "ctest15((of CPointer I8))"
+Exception: No C function "ctest15" accepts (Table'Thing); it is declared as "ctest15(CPointer'I8)"
 <no file:9>
       (call C:ctest15 ([] &table 0))
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

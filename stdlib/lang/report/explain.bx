@@ -12,7 +12,6 @@
 (import /lang/check/session)
 (import /lang/check/type-text)
 (import /lang/check/types)
-(import /lang/target)
 (import /lang/ubrix/convert)
 (import /os/path)
 (blank)
@@ -347,18 +346,11 @@
     (let first (as (. ([] (. holder tree nodes loc) (. fn syntax)) begin line) Size))
     (let all (list String) (call (. source split) "\n"))
     (return-if "" (if (>= first (. all length))))
-    (let is-brix (call (. holder path ends-with) brix-extension))
     (let last first)
-    (while (and (< (+ last 1) (. all length)) (call is-header-row ([] all (+ last 1)) is-brix))
+    (while (and (< (+ last 1) (. all length)) (call is-header-row ([] all (+ last 1))))
       (+= last 1)
     )
-    (let shown (call (of List String) ([] all (.. first last))))
-    (if is-brix
-      (= shown (call ubrix-lines shown))
-      (else
-        (= shown (call (of List String) (in (call trailing-trimmed each) shown)))
-      )
-    )
+    (let shown (call ubrix-lines (call (of List String) ([] all (.. first last)))))
     (return-if (call (. "\n" join) shown) (if (== (. copies length) 0)))
     (let filled (call inferred-header session (. ref module) (. ref decl) copies))
     (return-if (call (. "\n" join) shown) (if (not filled)))
@@ -714,15 +706,7 @@
 
 (fn-expr _ is-header-row Bool
   (param line String)
-  (param is-brix Bool)
-  (if-expr is-brix (call (. (call (. line trim)) starts-with) "(param ") is-indented)
-  (where
-    (lazy is-indented
-      (block
-        (and (!= (. line length) 0) (or (call (. line starts-with) " ") (call (. line starts-with) "\t")) (!= (. (call (. line trim)) length) 0))
-      )
-    )
-  )
+  (call (. (call (. line trim)) starts-with) "(param ")
 )
 
 (fn-do _ trailing-trimmed String

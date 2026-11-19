@@ -131,7 +131,7 @@ cannot divide 5 by zero
   Bool (?! IOError) …)", or catch them here`.
 - **Overrides** may raise fewer errors than the method they override, not more, and so may a
   method that implements an interface's method: `"read" can fail with IOError, but the interface
-  method it implements cannot; add "?! IOError" to that method, or catch the error inside "read"`.
+  method it implements cannot; add "(?! IOError)" to that method, or catch the error inside "read"`.
   A function value converts to a function type only if the type declares every error the
   function can raise.
 

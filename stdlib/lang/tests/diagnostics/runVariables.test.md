@@ -12,7 +12,7 @@ Errors about locals name the local, where it was declared, and how to declare or
 ```
 
 ```output
-Exception: "count" is already declared on line 3 in this scope; to change its value, assign it without the ".", as in "count = value", or choose another name
+Exception: "count" is already declared on line 3 in this scope; to change its value, assign it with "(= count value)", or choose another name
 <no file:4>
       (let count 6)
            ^^^^^

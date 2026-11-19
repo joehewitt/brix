@@ -78,7 +78,7 @@ as `/curl/curl.h`, passes the check, and the build fails at the link with `Undef
   an error: `Integer literal -1 does not fit U64`. A number, a `Bool` or a `Char` never becomes a
   pointer, and `null` is the null pointer.
 - **Mismatches** name the declarations: `No C function "strlen" accepts (I64); it is declared as
-  "strlen((of CPointer Char8))"`.
+  "strlen(CPointer'Char8)"`.
 - **Text to C.** A `String` is given where C takes a `char *`, and C sees its UTF-8 bytes ending in
   a zero byte. Slices and joined texts arrive the same way. An optional `String?` holding nothing is
   a null pointer.

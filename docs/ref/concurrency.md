@@ -538,8 +538,8 @@ seen 25
 - **Clauses.** `when`, `while` and `until` work as in other loops; see Control flow.
 - **Ending.** `break` ends the subscription. Closing the channel ends every subscription after it
   gets the values already published. The body cannot return a value: `The body of a loop on
-  "temps" cannot return with "="; skip to the next value with "continue", or stop the loop with
-  "break"`.
+  "temps" cannot return with "(return …)"; skip to the next value with "continue", or stop the
+  loop with "break"`.
 - **Errors** a subscription's body raises go to `unhandled-error`, and later values are still
   delivered.
 - **Reading once.** `(<- temps)`{.brix} on an `AsyncChannel` subscribes, waits for the next value

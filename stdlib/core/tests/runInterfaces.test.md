@@ -1291,7 +1291,7 @@ called act 24
 ```
 
 ```output
-Exception: "p" is declared Proto with no value, but Proto is an interface, so there is nothing to construct; give it a value, as in ". p Proto = value", or declare it "Proto?" to start as null
+Exception: "p" is declared Proto with no value, but Proto is an interface, so there is nothing to construct; give it a value, as in "(let p Proto value)", or declare it "(? Proto)" to start as null
 <no file:3>
       (let p Proto)
              ^^^^^

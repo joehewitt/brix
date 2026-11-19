@@ -61,7 +61,7 @@
             (call stated-message diagnostic base)
           )
           (case= .explicit-return-requires-do
-            (call imperative-message diagnostic (str "cannot return with \"" returning "\"") base)
+            (call imperative-message diagnostic "cannot return with \"(return …)\"" base)
           )
           (case= .no-possible-matches
             (call declared-match-message diagnostic base)
@@ -104,7 +104,6 @@
           )
         )
       )
-      (lazy returning (if-expr (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree)) "(return …)" "="))
     )
   )
   (fn-do _ sourced String
@@ -215,7 +214,7 @@
         (call stated-property-message diagnostic base)
       )
       (case= "Immediate declaration requires do"
-        (call imperative-message diagnostic "cannot hold \". name = value\" declarations" base)
+        (call imperative-message diagnostic "cannot hold \"(let name value)\" declarations" base)
       )
       (case= "Loop requires do"
         (call imperative-message diagnostic "cannot hold loops" base)
@@ -239,7 +238,7 @@
             (arg diagnostic)
             (arg "cannot hold \"if\" statements")
             (arg base)
-            (arg "write a check as \"?! error if condition\", put other steps in a \"do\" block")
+            (arg "write a check as \"(throw error (if condition))\"")
           )
         )
       )
@@ -282,7 +281,7 @@
         (call arm-step-message)
       )
       (case= "Match arm gives no value in a value body"
-        (call arm-value-message diagnostic)
+        (call arm-value-message)
       )
       (case= "Object is not iterable"
         (call iteration-message diagnostic base)
@@ -329,7 +328,7 @@
     (param diagnostic TypeDiagnostic)
     (param base String)
     (case? (and (call (. base starts-with) "Function ") (call (. base ends-with) " ends with a value it does not return"))
-      (str base "; return it with \"= value\", or remove it")
+      (str base "; return it with \"(return value)\", or remove it")
     )
     (case? (call (. base starts-with) "Function returns error (")
       (call raised-message diagnostic base)
@@ -516,45 +515,8 @@
     (case? (call is-optional-syntax tree id)
       (str (call written-type tree ([] (. tree children) (call optional-inner-syntax tree id))) "?")
     )
-    (case? (call is-brix-tree tree)
+    (default
       (call spelled-type tree id)
-    )
-    (case? (!= suffix "")
-      (str (call written-type tree ([] (. tree children) (call optional-inner-syntax tree id))) suffix)
-    )
-    (default
-      (call node-text tree id)
-    )
-    (where
-      (lazy suffix (call type-suffix-text tree id))
-    )
-  )
-  (fn-expr _ type-suffix-text String
-    (param tree AST)
-    (param id SyntaxId)
-    ; The suffix of a type written `T[]` or `T<>`, whose syntax spans `T` alone.
-    (case? (== named "Array")
-      "[]"
-    )
-    (case? (== named "SyncChannel")
-      "<>"
-    )
-    (default
-      ""
-    )
-    (where
-      (lazy named
-        (match ([] (. tree nodes) id)
-          (case (call .node-type-arguments row)
-            (scope (only-if (call written-name tree (. row base)) (if (and (== (. row args count) 1) shorthand)))
-              (lazy shorthand (== (. ([] (. tree nodes loc) (. row base)) begin) (. ([] (. tree nodes loc) ([] (. tree children) (. row args start))) begin)))
-            )
-          )
-          (default
-            null
-          )
-        )
-      )
     )
   )
   (fn-do _ spelled-type String
@@ -589,10 +551,6 @@
     (param tree AST)
     (param args (of RowRange SyntaxId))
     (call (. "" join) (in (str "'" (call written-type tree each)) ([] (. tree children) args)))
-  )
-  (fn-expr _ is-brix-tree Bool
-    (param tree AST)
-    (call (. tree source-path ends-with) brix-extension)
   )
   (fn-expr _ optional-inner-syntax Index
     (param tree AST)
@@ -678,7 +636,7 @@
       (str "; " elsewhere)
     )
     (case? (and (not wants-type) (== (. name text) "pow"))
-      (str "; write \"" (call raising caller) "\" to raise a to the power b")
+      "; write \"(%% a b)\" to raise a to the power b"
     )
     (default
       (call suggested (. name text) nearby)
@@ -686,10 +644,6 @@
     (where
       (lazy elsewhere (?? (call absent-hint caller name wants-type) (call unimported-hint caller name wants-type)))
     )
-  )
-  (fn-expr _ raising String
-    (param module ModuleId)
-    (if-expr (call is-brix-tree (. ([] (. program modules) module) tree)) "(%% a b)" "a %% b")
   )
   (fn-do _ c-function-message String
     (param caller ModuleId)
@@ -725,7 +679,7 @@
       (str "Method \"" method "\" not found")
     )
     (case? (and (!= inner no-type) (call class-declares inner name))
-      (str "Method \"" method "\" is called on " shown ", which may be null; unwrap it first with " (call unwrapping caller))
+      (str "Method \"" method "\" is called on " shown ", which may be null; unwrap it first with \"(!! …)\" or \"(?. …)\"")
     )
     (case? (not (call is-letter ([] method (..< 0 1))))
       (str "Operator \"" (call operator-name method) "\" is not defined for " shown)
@@ -743,10 +697,10 @@
       (str shown " has no method \"" method "\" here; facet " unseen " declares it, and only the facets a facet sees are in reach. Write \"sees " unseen "\" under the facet that uses it")
     )
     (case? widening
-      (str shown " has no method \"" method "\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"" (call casting caller (?? widening "")) "\" to reach the rest of " widening)
+      (str shown " has no method \"" method "\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"" (call casting (?? widening "")) "\" to reach the rest of " widening)
     )
     (case? (and (== method "pow") (!= (. (call member-signatures caller receiver (call (. program store-atom) "%%") null added) length) 0))
-      (str shown " has no method \"pow\"; write \"" (call raising caller) "\" to raise a to the power b")
+      (str shown " has no method \"pow\"; write \"(%% a b)\" to raise a to the power b")
     )
     (default
       (str shown " has no method \"" method "\"" (call suggested method (call member-names caller receiver)))
@@ -1040,13 +994,13 @@
       (str "Property \"" property "\" not found")
     )
     (case? (and (!= inner no-type) (call class-declares inner name))
-      (str "Property \"" property "\" is read from " shown ", which may be null; unwrap it first with " (call unwrapping caller))
+      (str "Property \"" property "\" is read from " shown ", which may be null; unwrap it first with \"(!! …)\" or \"(?. …)\"")
     )
     (case? unseen
       (str shown " has no property \"" property "\" here; facet " unseen " declares it, and only the facets a facet sees are in reach. Write \"sees " unseen "\" under the facet that uses it")
     )
     (case? widening
-      (str shown " has no property \"" property "\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"" (call casting caller (?? widening "")) "\" to reach the rest of " widening)
+      (str shown " has no property \"" property "\"; a facet's value has only its facet's members and those of the facets it is part of. Write \"" (call casting (?? widening "")) "\" to reach the rest of " widening)
     )
     (default
       (str shown " has no property \"" property "\"" (call suggested property (call member-names caller receiver)))
@@ -1169,7 +1123,7 @@
         (if (== right no-type)
           (= right (call (. facts node-type) (. diagnostic instance) (. row rhs)))
         )
-        (let op (if-expr (call is-brix-tree tree) (str (. row op)) (call between tree (. row lhs) (. row rhs))))
+        (let op (str (. row op)))
         (if (and (call known left) (call known right) (!= (. op length) 0))
           (return (str "Operator \"" op "\" is not defined for " (call operands-text left right)))
         )
@@ -1197,24 +1151,6 @@
     (param left TypeId)
     (param right TypeId)
     (str (call type-source types left) " and " (call type-source types right))
-  )
-  (fn-expr _ between String
-    (param tree AST)
-    (param left SyntaxId)
-    (param right SyntaxId)
-    (case? (or (!= (. left-end line) (. right-start line)) (>= start end) (> end (. line length)))
-      ""
-    )
-    (default
-      (call (. ([] line (..< start end)) trim))
-    )
-    (where
-      (lazy left-end (. ([] (. tree nodes loc) left) end))
-      (lazy right-start (. ([] (. tree nodes loc) right) begin))
-      (lazy line (call source-line (. tree source) (. left-end line)))
-      (lazy start (+ (. left-end column) 1))
-      (lazy end (. right-start column))
-    )
   )
   (fn-do _ type-not-found-message String
     (param diagnostic TypeDiagnostic)
@@ -1458,7 +1394,7 @@
       (let owner (call type-source types (call (. types facet-owner) viewed)))
       (return
         (paragraph
-          (str "\"" name "\" is declared " wanted ", but its value is " shown ", a facet's value, which becomes only the facets it is part of unasked; write \"" (call casting (. diagnostic module) owner) "\" to convert its class")
+          (str "\"" name "\" is declared " wanted ", but its value is " shown ", a facet's value, which becomes only the facets it is part of unasked; write \"" (call casting owner) "\" to convert its class")
         )
       )
     )
@@ -1527,52 +1463,16 @@
       (lazy lead (str "Expected " target " here, but this is " (call type-source types (. diagnostic from))))
       (lazy tree (. ([] (. program modules) (. diagnostic module)) tree))
       (lazy binds (call binding-site tree (. diagnostic syntax)))
-      (lazy is-brix (call is-brix-tree tree))
       (lazy held (call brix-held tree (. diagnostic syntax)))
-      (lazy cast (if-expr is-brix (str "(as " held " " (call type-brix types (. diagnostic to)) ")") (str "as " target)))
-      (lazy unwrap
-        (block
-          (case? is-brix
-            (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing")
-          )
-          (default
-            "write \"!\" after it to unwrap it, or \"?? fallback\" to give a value for nothing"
-          )
-        )
-      )
-      (lazy texting
-        (block
-          (case? is-brix
-            (str "write \"" cast "\", or put it in a \"(str …)\"")
-          )
-          (default
-            (str "write \"as " target "\", or write it inside a text, as in \"\$name\"")
-          )
-        )
-      )
-      (lazy narrowing
-        (block
-          (case? is-brix
-            (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\"")
-          )
-          (default
-            (str "match it with \"| name " target "\", or write \"as " target "\"")
-          )
-        )
-      )
+      (lazy cast (str "(as " held " " (call type-brix types (. diagnostic to)) ")"))
+      (lazy unwrap (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing"))
+      (lazy texting (str "write \"" cast "\", or put it in a \"(str …)\""))
+      (lazy narrowing (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\""))
     )
   )
   (fn-expr _ casting String
-    (param module ModuleId)
     (param target String)
-    ; How a value is converted to a type named by its text, in the module's own language.
-    (if-expr (call is-brix-tree (. ([] (. program modules) module) tree)) (str "(as … " target ")") (str "as " target))
-  )
-  (fn-expr _ unwrapping String
-    (param module ModuleId)
-    ; How a value that may be null is unwrapped before a member is read from it, in the module's
-    ; own language.
-    (if-expr (call is-brix-tree (. ([] (. program modules) module) tree)) "\"(!! …)\" or \"(?. …)\"" "! or ?.")
+    (str "(as … " target ")")
   )
   (fn-do _ brix-held String
     (param tree AST)
@@ -1627,31 +1527,26 @@
       base
     )
     (case? (== (. fn kind) .closure-decl)
-      (str lead "; " offered "write \"" (if-expr is-brix ":do" "=> do") "\"" returning)
+      (str lead "; " offered "write \":do\"" returning)
     )
-    (case? (and is-brix (call (. header starts-with) "(fn-expr "))
+    (case? (call (. header starts-with) "(fn-expr ")
       (str lead "; " offered "write \"(fn-do " ([] header (... 9)) " …)\"" returning)
     )
-    (case? (not (or (call (. header starts-with) "+ ") (call (. header starts-with) "_ ")))
-      (str lead "; " offered "declare it with " doing returning)
-    )
     (default
-      (str lead "; " offered "write \"" ([] header (..< 0 2)) "do " ([] header (... 2)) "\"" returning)
+      (str lead "; " offered "declare it with fn-do" returning)
     )
     (where
       (lazy owner ([] (. program modules) (. diagnostic module)))
-      (lazy is-brix (call is-brix-tree (. owner tree)))
-      (lazy doing (if-expr is-brix "fn-do" "do"))
       (lazy fn (call enclosing-function-decl owner (. diagnostic syntax)))
       (lazy header (call (. (call line-at (. owner tree) (. fn syntax)) trim)))
       (lazy name (. (!! (. fn name)) text))
       (lazy lead
         (match (. fn kind)
           (case= .closure-decl
-            (str "A closure without " (if-expr is-brix ":do" "do") " is one expression and " limit)
+            (str "A closure without :do is one expression and " limit)
           )
           (default
-            (str "Function \"" name "\" is not declared with " doing ", so its body is one expression and " limit)
+            (str "Function \"" name "\" is not declared with fn-do, so its body is one expression and " limit)
           )
         )
       )
@@ -1662,7 +1557,7 @@
             ""
           )
           (default
-            (str " and return its value with \"" (if-expr is-brix "(return value)" "= value") "\"")
+            " and return its value with \"(return value)\""
           )
         )
       )
@@ -1841,7 +1736,7 @@
       (lazy earlier (call earlier-slot module syntax name))
       (lazy tree (. ([] (. program modules) module) tree))
       (lazy place (if-expr (!= earlier 0) (str " on line " (+ (. ([] (. tree nodes loc) earlier) begin line) 1)) ""))
-      (lazy fix (str "to change its value, assign it without the \".\", as in \"" name " = value\""))
+      (lazy fix (str "to change its value, assign it with \"(= " name " value)\""))
     )
   )
   (fn-do _ earlier-slot SyntaxId
@@ -1894,8 +1789,7 @@
       (lazy tree (. ([] (. program modules) module) tree))
       (lazy written (call node-text tree syntax))
       (lazy whole (== (. ([] (. tree nodes loc) syntax) end line) (. ([] (. tree nodes loc) syntax) begin line)))
-      (lazy declaring (if-expr (call is-brix-tree tree) (call brix-declaring written name whole) yumi-declaring))
-      (lazy yumi-declaring (if-expr (call (. written starts-with) (str name " = ")) (str ". " written) (str ". " name " = value")))
+      (lazy declaring (call brix-declaring written name whole))
     )
   )
   (fn-expr _ brix-declaring String
@@ -1963,20 +1857,7 @@
     "This arm gives no value, and here a match gives the value of the arm it takes; to run its arms as steps, write the match on a row of its own in a body of steps"
   )
   (fn-expr _ arm-value-message String
-    (param diagnostic TypeDiagnostic)
-    (str "This arm gives no value, and this body is a value, so a match gives the value of the arm it takes; to run its arms as steps, " fix)
-    (where
-      (lazy fix
-        (block
-          (case? (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree))
-            "write `fn-do`, or `:do` in a closure"
-          )
-          (default
-            "declare the function with `do`, or write `=> do` for a closure"
-          )
-        )
-      )
-    )
+    "This arm gives no value, and this body is a value, so a match gives the value of the arm it takes; to run its arms as steps, write `fn-do`, or `:do` in a closure"
   )
   (fn-do _ list-message String
     (param diagnostic TypeDiagnostic)
@@ -2078,13 +1959,13 @@
   (fn-expr _ storage-text String
     (param tree AST)
     (param syntax SyntaxId)
-    (case? (or (call (. text starts-with) "+ get ") (call (. text starts-with) "_ get ") brix-getter)
+    (case? (!= (call (. text find) " :get") null)
       "as a getter"
     )
-    (case? (!= (call (. text find) (if-expr is-brix " (:= " " := ")) null)
+    (case? (!= (call (. text find) " (:= ") null)
       "with \":=\""
     )
-    (case? (!= (call (. text find) (if-expr is-brix " (= " " = ")) null)
+    (case? (!= (call (. text find) " (= ") null)
       "with \"=\""
     )
     (default
@@ -2092,8 +1973,6 @@
     )
     (where
       (lazy text (call (. (call line-at tree syntax) trim)))
-      (lazy is-brix (call is-brix-tree tree))
-      (lazy brix-getter (and is-brix (!= (call (. text find) " :get") null)))
     )
   )
   (fn-expr _ line-at String
@@ -2318,7 +2197,7 @@
   (fn-expr _ chaining-message String
     (param diagnostic TypeDiagnostic)
     (param base String)
-    (case? (or (== object 0) (not (or (call is-brix-tree tree) (call (. written starts-with) receiver))) not-chained)
+    (case? (or (== object 0) not-chained)
       base
     )
     (default
@@ -2332,7 +2211,7 @@
       (lazy receiver (call node-text tree object))
       (lazy link (call chained-link tree (. diagnostic syntax)))
       (lazy linked (- (. ([] (. tree nodes loc) link) begin column) (. ([] (. tree nodes loc) (. diagnostic syntax)) begin column)))
-      (lazy mark (if-expr (call is-brix-tree tree) (as (+ linked 1) Index) (. receiver length)))
+      (lazy mark (as (+ linked 1) Index))
       (lazy fixed (++ ([] written (..< 0 mark)) ([] written (... (+ mark 1)))))
       (lazy type (call (. facts node-type) (. diagnostic instance) object))
       (lazy typed (if-expr (call known type) (str (call type-source types type) ", which is ") ""))
@@ -2345,14 +2224,11 @@
       base
     )
     (default
-      (str "\"" forced "\" is " typed "never null here, so it needs no \"" mark "\"")
+      (str "\"" forced "\" is " typed "never null here, so it needs no \"!!\"")
     )
     (where
       (lazy tree (. ([] (. program modules) (. diagnostic module)) tree))
-      (lazy written (call node-text tree (. diagnostic syntax)))
-      (lazy forced (if-expr (call is-brix-tree tree) (call forced-operand tree (. diagnostic syntax)) unforced))
-      (lazy unforced (if-expr (call (. written ends-with) "!") ([] written (..< 0 (- (. written length) 1))) ""))
-      (lazy mark (if-expr (call is-brix-tree tree) "!!" "!"))
+      (lazy forced (call forced-operand tree (. diagnostic syntax)))
       (lazy typed (if-expr (call known (. diagnostic from)) (str from-text ", which is ") ""))
       (lazy from-text (call type-source types (. diagnostic from)))
     )
@@ -2447,9 +2323,7 @@
       (lazy reason "calls itself before its return type is known, so the type cannot be inferred")
       (lazy header (call (. (call line-at (. owner tree) (. fn syntax)) trim)))
       (lazy returned (if-expr (call known (. diagnostic to)) (call type-source types (. diagnostic to)) "ReturnType"))
-      (lazy cut (call (. header find) " ?! "))
-      (lazy declared (if-expr (call is-brix-tree (. owner tree)) (call brix-returning header returned) typed))
-      (lazy typed (if-expr cut (str ([] header (..< 0 cut)) " " returned ([] header (... cut))) (str header " " returned)))
+      (lazy declared (call brix-returning header returned))
     )
   )
   (fn-do _ brix-returning String
@@ -2521,8 +2395,8 @@
     )
     (where
       (lazy nothing "there is nothing to construct")
-      (lazy fix (str "give it a value, as in \". " name " " type " = value\", or " declare))
-      (lazy declare (str "declare it \"" type "?\" to start as null"))
+      (lazy fix (str "give it a value, as in \"(let " name " " type " value)\", or " declare))
+      (lazy declare (str "declare it \"(? " type ")\" to start as null"))
     )
   )
   (fn-expr _ return-message String
@@ -2532,20 +2406,16 @@
       base
     )
     (case? (not at-top)
-      (str "Only a function can return with \"" returning "\", and this statement is not inside one; remove the \"" returning "\"")
+      "Only a function can return with \"return\", and this statement is not inside one; remove the \"return\""
     )
     (default
-      (str "The top level of a module cannot return a value with \"" returning "\"; " removal)
+      (str "The top level of a module cannot return a value with \"return\"; " removal)
     )
     (where
       (lazy owner ([] (. program modules) (. diagnostic module)))
       (lazy tree (. owner tree))
-      (lazy is-brix (call is-brix-tree tree))
-      (lazy at-top (if-expr is-brix (== (call (. tree holder-of) (. diagnostic syntax)) (. tree root)) at-margin))
-      (lazy at-margin (== (. ([] (. tree nodes loc) (. diagnostic syntax)) begin column) 0))
-      (lazy returning (if-expr is-brix "return" "="))
-      (lazy printing (if-expr is-brix "print" "--"))
-      (lazy removal (str "remove the \"" returning "\", or print the value with \"" printing "\""))
+      (lazy at-top (== (call (. tree holder-of) (. diagnostic syntax)) (. tree root)))
+      (lazy removal "remove the \"return\", or print the value with \"print\"")
     )
   )
   (fn-expr _ subscriber-return-message String
@@ -2558,10 +2428,10 @@
       base
     )
     (case? (call is-class-section owner (. fn syntax))
-      (str "The event handler for \"" source "\" cannot return with \"=\"; move its body into a method" method " and call that, or end the handler early with \"continue\"")
+      (str "The event handler for \"" source "\" cannot return with \"(return …)\"; move its body into a method" method " and call that, or end the handler early with \"continue\"")
     )
     (default
-      (str "The body of a loop on \"" source "\" cannot return with \"=\"; skip to the next value with \"continue\", or stop the loop with \"break\"")
+      (str "The body of a loop on \"" source "\" cannot return with \"(return …)\"; skip to the next value with \"continue\", or stop the loop with \"break\"")
     )
     (where
       (lazy owner ([] (. program modules) (. diagnostic module)))
@@ -2569,7 +2439,7 @@
       (lazy stream (call subscribed-stream (. owner tree) (. fn syntax)))
       (lazy source (call node-text (. owner tree) stream))
       (lazy name (call written-name (. owner tree) stream))
-      (lazy method (if-expr name (str ", as in \"_ do handle-" name "\",") ""))
+      (lazy method (if-expr name (str ", as in \"(fn-do _ handle-" name " …)\",") ""))
     )
   )
   (fn-do _ is-class-section Bool
@@ -2668,12 +2538,8 @@
       (lazy name (. fn-name text))
       (lazy implements (call (. base ends-with) " interface does not"))
       (lazy other (if-expr implements "the interface method it implements" "the method it overrides"))
-      (lazy fix (str "add \"" (call declared-errors names) "\" to that method, or catch the error inside \"" name "\""))
+      (lazy fix (str "add \"" (call brix-errors names) "\" to that method, or catch the error inside \"" name "\""))
     )
-  )
-  (fn-expr _ declared-errors String
-    (param names String)
-    (call (. " " join) (*> (call (. names split) ", ") (str "?! " each)))
   )
   (fn-expr _ brix-errors String
     (param names String)
@@ -2712,13 +2578,7 @@
       (lazy names (call type-short-name types (. diagnostic from)))
       (lazy owner ([] (. program modules) (. diagnostic module)))
       (lazy example (call declaring-example owner name names))
-      (lazy raising
-        (call (. (call node-text (. owner tree) (. diagnostic syntax)) starts-with)
-          (block
-            (arg (if-expr (call is-brix-tree (. owner tree)) "(throw " "?! "))
-          )
-        )
-      )
+      (lazy raising (call (. (call node-text (. owner tree) (. diagnostic syntax)) starts-with) "(throw "))
       (lazy catching (if-expr raising "" ", or catch it here"))
     )
   )
@@ -2731,8 +2591,7 @@
         (case (call .decl-function fn)
           (if (and (. fn name) (== (. fn name text) name))
             (let header (call (. (call line-at (. owner tree) (. fn syntax)) trim)))
-            (return-if (str ", as in \"" header " " (call brix-errors names) " …)\"") (if (call is-brix-tree (. owner tree))))
-            (return (str ", as in \"" header " " (call declared-errors names) "\""))
+            (return (str ", as in \"" header " " (call brix-errors names) " …)\""))
           )
         )
       )
@@ -2763,22 +2622,12 @@
       (lazy on-result (call (. base starts-with) "Non-exhaustive match for Result;"))
       (lazy matching (str "This match on " (if-expr on-result "Result" (call type-source types (. diagnostic from)))))
       (lazy inner (call optional-inner (. diagnostic from)))
-      (lazy is-brix (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree)))
-      (lazy present
-        (block
-          (case? is-brix
-            (str "(case (: value " (call type-brix types inner) ") …)")
-          )
-          (default
-            (str "| value " (call type-source types inner))
-          )
-        )
-      )
+      (lazy present (str "(case (: value " (call type-brix types inner) ") …)"))
       (lazy labels (call List (call (. missing split) ", ")))
       (lazy cases (call List (*> labels (call plain-label each))))
-      (lazy arms (call List (*> (?> labels (call is-literal-label each)) (if-expr is-brix (str "\"(case= " (call brix-label each) " …)\"") (str "\"|= " each "\"")))))
+      (lazy arms (call List (*> (?> labels (call is-literal-label each)) (str "\"(case= " (call brix-label each) " …)\""))))
       (lazy each (if-expr (== (. cases length) 1) "it" "each"))
-      (lazy rest (if-expr is-brix "or \"(default …)\" for the rest" "or \"??\" for the rest"))
+      (lazy rest "or \"(default …)\" for the rest")
     )
   )
   (fn-expr _ brix-label String
@@ -3577,39 +3426,6 @@
     (if (not text)
       (return)
     )
-    (if (call (. (as path String) ends-with) brix-extension)
-      (call read-brix-module text line type-table value-table)
-      (return)
-    )
-    (let after-divider false)
-    (for (in row (call (. text split) "\n"))
-      (if (call (. row starts-with) "━")
-        (= after-divider true)
-        (continue)
-      )
-      (if (== (. row length) 0)
-        (continue)
-      )
-      (if (call (. row starts-with) "+ ")
-        (let name (call declared-name row))
-        (if (!= (. name length) 0)
-          (let upper (and (>= ([] name (..< 0 1)) "A") (<= ([] name (..< 0 1)) "Z")))
-          (if (and upper (not (call (. row starts-with) "+ This")) (or after-divider (!= (call (. row find) " is ") null)))
-            (call add type-table name line)
-            (else-if (and (not upper) after-divider)
-              (call add value-table name line)
-            )
-          )
-        )
-      )
-      (= after-divider false)
-    )
-  )
-  (fn-do _ read-brix-module _
-    (param text String)
-    (param line String)
-    (param type-table (map String (list String)))
-    (param value-table (map String (list String)))
     (for (in row (call (. text split) "\n"))
       (for (in head (list "type" "type-line"))
         (let name (call brix-declared-name row head))
@@ -3646,16 +3462,6 @@
         (= ([] table name) (++ held (list line)))
       )
     )
-  )
-  (fn-do _ declared-name String
-    (param row String)
-    (let rest ([] row (... 2)))
-    (for (in word (list "do " "get " "set "))
-      (if (call (. rest starts-with) word)
-        (= rest ([] rest (... (. word length))))
-      )
-    )
-    (return (call leading-name rest))
   )
   (fn-do _ leading-name String
     (param text String)
