@@ -14,6 +14,7 @@ forms. The home page and the reference both use it.
 
 `rows.css` styles them: the spans by kind and the boxes, in the colors of the editor's light and
 dark themes from `stdlib/gui/source-editor` and `stdlib/gui/theme.bx`. A block takes the theme of
-its `color-scheme`, which it inherits from the page, and the page frames it. A page puts `rows.css`
+its `color-scheme`, which it inherits from the page, and the page frames it. In the dark theme a
+function of steps takes the plain wash and border, not the editor's gold. A page puts `rows.css`
 before its own style. Inline rows read the `--s-` colors from the page, so a page sets them to
 match its theme.
