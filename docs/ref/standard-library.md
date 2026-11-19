@@ -158,7 +158,8 @@ Files, processes and the environment. There is no `/os` module; import each one.
 
 - **Files and paths:** `/os/path` (`Path`, with joining by `/`, file information, directory
   listings and change notifications, `remove-tree`, and the doors of `files`), `/os/file` (`File`,
-  standard input and output, and reading and writing whole files), `/os/files` (the `files`
+  standard input and output and the `console` effect they go through, and reading and writing
+  whole files), `/os/fake-console` (`FakeConsole`, a fake for `console` whose streams are pipes), `/os/files` (the `files`
   effect, which every call that names a path on the disk goes through), `/os/fake-files`
   (`FakeFiles`, a fake for `files` that maps every path into a real folder), `/os/file-tree` and
   `/os/file-session` (watched trees of files).

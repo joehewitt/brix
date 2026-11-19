@@ -1167,3 +1167,27 @@ hello Ada
 
 0
 ```
+
+`console`, in `/os/file`, has as its doors `standard-input`, `standard-output` and
+`standard-error`, which `stdin`, `stdout` and `stderr` call each time they are read, so a fake
+bound later is not missed. `--` and `print` are not doors yet. `FakeConsole`, in
+`/os/fake-console`, is a fake for `console` whose streams are pipes: `type-in` and `end-input`
+give code under it something to read, and `written` and `complained` give what it wrote:
+
+```brix
+(import /os/fake-console)
+(import /os/file)
+
+(main
+  (let fake (call FakeConsole))
+  (do-with console fake
+    (<- stdout "kept aside\n")
+  )
+  (print (call (. fake written)))
+)
+```
+
+```output
+kept aside
+
+```

@@ -30,10 +30,35 @@
 (prop + group-rw-perm _ (= (/or/ group-read-perm group-write-perm)))
 (prop + other-rw-perm _ (= (/or/ other-read-perm other-write-perm)))
 (prop + all-rw-perm _ (= (/or/ user-rw-perm group-rw-perm other-rw-perm)))
-(prop + stdin _ (:= (call File 0 true false)))
-(prop + stdout _ (:= (call File 1 true false)))
-(prop + stderr _ (:= (call File 2 true false)))
-(prop + console _ (:= stdout))
+(prop _ real-stdin _ (:= (call File 0 true false)))
+(prop _ real-stdout _ (:= (call File 1 true false)))
+(prop _ real-stderr _ (:= (call File 2 true false)))
+(blank)
+(effect + console)
+
+(fn-do + standard-input File (door console)
+  (return real-stdin)
+)
+
+(fn-do + standard-output File (door console)
+  (return real-stdout)
+)
+
+(fn-do + standard-error File (door console)
+  (return real-stderr)
+)
+
+(fn-expr + stdin File :get
+  (call standard-input)
+)
+
+(fn-expr + stdout File :get
+  (call standard-output)
+)
+
+(fn-expr + stderr File :get
+  (call standard-error)
+)
 (blank)
 (type-line + FileOffset (is Long))
 (type-line + FileSize (is Long))

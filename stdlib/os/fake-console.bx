@@ -1,0 +1,37 @@
+(import ./file)
+(import ./process)
+
+(type + FakeConsole
+  (prop + input ProcessPipe)
+  (prop + output ProcessPipe)
+  (prop + errors ProcessPipe)
+  (fn-do + This _ (?! IOError)
+    (= input (call process-pipe))
+    (= output (call process-pipe))
+    (= errors (call process-pipe))
+  )
+  (fn-do + standard-input File
+    (return (. input reader))
+  )
+  (fn-do + standard-output File
+    (return (. output writer))
+  )
+  (fn-do + standard-error File
+    (return (. errors writer))
+  )
+  (fn-do + type-in _
+    (param text String)
+    (call (. input writer write) text)
+  )
+  (fn-do + end-input _
+    (call (. input writer close))
+  )
+  (fn-do + written String
+    (call (. output writer close))
+    (return (as (. output reader) String))
+  )
+  (fn-do + complained String
+    (call (. errors writer close))
+    (return (as (. errors reader) String))
+  )
+)

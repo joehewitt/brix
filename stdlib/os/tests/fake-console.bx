@@ -1,0 +1,37 @@
+(import /os/fake-console)
+(import /os/file)
+(import /test)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Console Output"))
+  (call (. cases run) output-tests)
+  (= cases (call (. cases then) "Fake Console Input" input-tests))
+  (return cases)
+)
+
+(fn-do + output-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeConsole))
+  (do-with console fake
+    (<- stdout "to the output\n")
+    (<- stderr "to the errors\n")
+  )
+  (call (. t expect) "what is written to stdout lands in the fake" "to the output\n" (call (. fake written)))
+  (call (. t expect) "what is written to stderr lands in the fake" "to the errors\n" (call (. fake complained)))
+  (return t)
+)
+
+(fn-do + input-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeConsole))
+  (call (. fake type-in) "typed")
+  (call (. fake end-input))
+  (do-with console fake
+    (call (. t expect) "stdin reads what was typed into the fake" "typed" (as stdin String))
+  )
+  (return t)
+)
