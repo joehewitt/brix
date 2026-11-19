@@ -1,5 +1,4 @@
 (import ./../markdown-site/site)
-(import ./annotations)
 (import /code/structure/document)
 (import /code/structure/rows)
 (import /data/markdown)
@@ -24,12 +23,17 @@
   (prop + sizes (list ReferenceSize))
 )
 
-(fn-do + render-reference-forms String
+(fn-do + render-reference-code String
   (param document MarkdownSiteDocument)
   (param code MDFencedCode)
-  (let forms (call (. code body trim)))
-  (let source (use (call reference-document forms (str (. document source-name) ":" (. code first-body-line)))))
-  (return (call reference-forms-html (call reference-rows-html source) (call reference-html forms)))
+  (if (== (. code language) "brix")
+    (let forms (call (. code body trim)))
+    (let source (use (call reference-document forms (str (. document source-name) ":" (. code first-body-line)))))
+    (return (call reference-forms-html (call reference-rows-html source) (call reference-html forms)))
+  )
+  (let text (call reference-html (. code body)))
+  (return-if (str "<pre><code>" text "</code></pre>") (if (not (. code language))))
+  (return (str "<pre><code class=\"language-" (call reference-html-attribute (. code language)) "\">" text "</code></pre>"))
 )
 
 (fn-do + render-reference-inline-code String
@@ -46,6 +50,16 @@
   )
   (return-if (str "<code>" text "</code>") (if (not (. code language))))
   (return (str "<code class=\"language-" (call reference-html-attribute (. code language)) "\">" text "</code>"))
+)
+
+(fn-expr + reference-html String
+  (param text String)
+  (call (. "" join) (in (call reference-html-character each) text))
+)
+
+(fn-expr + reference-html-attribute String
+  (param text String)
+  (call (. "" join) (in (call reference-html-attribute-character each) text))
 )
 
 (fn-do _ reference-document SourceDocument
@@ -425,5 +439,40 @@
   (param forms String)
   (paragraph
     (str "<div class=\"brix-code\" data-brix-code><div class=\"brix-rows\">" rows "</div><div class=\"brix-forms\"><pre><code class=\"language-brix\">" forms "</code></pre></div></div>")
+  )
+)
+
+(fn-expr _ reference-html-character String
+  (param char Char)
+  (case? (== char '&')
+    "&amp;"
+  )
+  (case? (== char '<')
+    "&lt;"
+  )
+  (case? (== char '>')
+    "&gt;"
+  )
+  (case? (== char (char "\""))
+    "&quot;"
+  )
+  (case? (== char (char "'"))
+    "&#39;"
+  )
+  (default
+    (as char String)
+  )
+)
+
+(fn-expr _ reference-html-attribute-character String
+  (param char Char)
+  (case? (== char (char "\""))
+    "&quot;"
+  )
+  (case? (== char (char "'"))
+    "&#39;"
+  )
+  (default
+    (call reference-html-character char)
   )
 )
