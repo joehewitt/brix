@@ -5,6 +5,7 @@
 (import /lang/ast/ast)
 (import /lang/ast/ast-children)
 (import /lang/ast/ast-nodes)
+(import /lang/ast/brix)
 (import /lang/ast/error)
 (import /lang/ast/module-resolver)
 (import /lang/ast/operator)
@@ -137,7 +138,7 @@
     (param module DeclaredModule)
     (let text (call read-file-text (call Path (. module path))))
     (let builder
-      (call parse-lint-text text (. module path)
+      (call parse-brix text (. module path)
         (block
           (on-error YumiSyntaxError
             (throw (call Error "Syntax error"))
@@ -499,11 +500,7 @@
     )
     (let line (as (. ([] (. tree nodes loc) id) begin line) Index))
     (let header (if-expr (< line (. source lines length)) ([] (. source lines) line) ""))
-    (let operator
-      (scope (if-expr (. source is-brix) brix-operator (call header-operator name header))
-        (lazy brix-operator (call brix-header-operator name header))
-      )
-    )
+    (let operator (call brix-header-operator name header))
     (let bucket (call operator-bucket operator))
     (let called (if-expr (!= (. operator length) 0) operator name))
     (call add-entry id bucket (call function-signature row called bucket params))

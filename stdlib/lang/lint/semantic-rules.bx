@@ -1,5 +1,4 @@
 (import ./brix-fixes)
-(import ./diagnostics)
 (import ./rule-context)
 (import ./semantic-facts)
 (import ./source)
@@ -127,41 +126,13 @@
       (continue)
     )
     (= ([] seen key) true)
-    (let fix
-      (scope (if-expr (. source is-brix) brix-fix (call suffix-removal source suffix))
-        (lazy brix-fix (call brix-suffix-fix source (. suffix line) (. suffix column) (. suffix unit)))
-      )
-    )
+    (let fix (call brix-suffix-fix source (. suffix line) (. suffix column) (. suffix unit)))
     (if (not fix)
       (continue)
     )
     (let lead (str "Remove redundant suffix \"" (. suffix unit) "\";"))
     (let message (str lead " where it is written, the number already takes that type."))
     (call (. context report) message (. suffix line) (. suffix column) "actionable" fix)
-  )
-)
-
-(fn-expr + suffix-removal (? LintFix)
-  (param source LintSource)
-  (param suffix SemanticSuffix)
-  (case? (or (!= (. suffix end-line) (. suffix line)) (<= cut (. suffix column)))
-    null
-  )
-  (case? (!= (call (. source slice) start end) (. suffix unit))
-    null
-  )
-  (default
-    (call LintFix "safe" "Remove redundant suffix" (list edit))
-  )
-  (where
-    (lazy row (- (. suffix line) 1))
-    (lazy cut (- (. suffix end-column) (as (. suffix unit length) U32)))
-    (lazy start (call (. source offset-of) row (- cut 1)))
-    (lazy end (call (. source offset-of) row (- (. suffix end-column) 1)))
-    (lazy line ([] (. source lines) row))
-    (lazy first (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- cut 1))))))
-    (lazy last (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- (. suffix end-column) 1))))))
-    (lazy edit (call LintTextEdit first last "" (. suffix unit)))
   )
 )
 
@@ -194,55 +165,10 @@
     )
     (if same
       (let message "Omit initializer; the declared type already supplies this default.")
-      (let fix
-        (scope (if-expr (. source is-brix) brix-fix (call default-removal source first))
-          (lazy brix-fix (call brix-default-fix source (. first line) (. first column)))
-        )
-      )
+      (let fix (call brix-default-fix source (. first line) (. first column)))
       (call (. context report) message (. first line) (. first column) "actionable" fix)
     )
   )
-)
-
-(fn-expr + default-removal (? LintFix)
-  (param source LintSource)
-  (param value SemanticDefault)
-  ; The edit that removes a value and the `=` before it, from where its type ends, where both end
-  ; on the line the value is written on and only spaces lie around the `=`.
-  (case? (or (!= (. value type-end-line) (. value line)) (!= (. value end-line) (. value line)))
-    null
-  )
-  (case? (or (<= end begin) (not (call is-assignment-gap (call (. source slice) start begin))))
-    null
-  )
-  (default
-    (call LintFix "safe" "Omit redundant default initializer" (list edit))
-  )
-  (where
-    (lazy row (- (. value line) 1))
-    (lazy start (call (. source offset-of) row (- (. value type-end-column) 1)))
-    (lazy begin (call (. source offset-of) row (- (. value column) 1)))
-    (lazy end (call (. source offset-of) row (- (. value end-column) 1)))
-    (lazy line ([] (. source lines) row))
-    (lazy first (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- (. value type-end-column) 1))))))
-    (lazy last (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- (. value end-column) 1))))))
-    (lazy edit (call LintTextEdit first last "" (call (. source slice) start end)))
-  )
-)
-
-(fn-do + is-assignment-gap Bool
-  (param text String)
-  ; Whether text is one `=` with only spaces and tabs around it.
-  (let equals 0)
-  (for (in char text)
-    (if (== char '=')
-      (+= equals 1)
-      (else-if (and (!= char (char " ")) (!= char (char "\t")))
-        (return false)
-      )
-    )
-  )
-  (return (== equals 1))
 )
 
 (fn-do + lint-constructor-overwrite _
@@ -265,11 +191,7 @@
     (if (. overwrite actionable)
       (let lead (str "Initialize " name " with `..`; this assignment discards the default"))
       (let message (str lead " " type " the constructor already built."))
-      (let fix
-        (scope (if-expr (. source is-brix) brix-fix (call initializer-fix source overwrite))
-          (lazy brix-fix (call brix-initializer-fix source (. overwrite line) (. overwrite column) name))
-        )
-      )
+      (let fix (call brix-initializer-fix source (. overwrite line) (. overwrite column) name))
       (call (. context report) message (. overwrite line) (. overwrite column) "actionable" fix)
       (else
         (let lead (str "This assignment discards the default " type " the constructor already built"))
@@ -280,26 +202,3 @@
   )
 )
 
-(fn-expr + initializer-fix (? LintFix)
-  (param source LintSource)
-  (param overwrite SemanticOverwrite)
-  ; The edit that makes an assignment's target, the property by its name or through `this`, an
-  ; initializer of it.
-  (case? (and (!= target name) (!= target (str "this." name)))
-    null
-  )
-  (default
-    (call LintFix "safe" "Initialize with `..`" (list edit))
-  )
-  (where
-    (lazy row (- (. overwrite target-line) 1))
-    (lazy start (call (. source offset-of) row (- (. overwrite target-column) 1)))
-    (lazy end (call (. source offset-of) row (- (. overwrite target-end-column) 1)))
-    (lazy target (call (. source slice) start end))
-    (lazy name (. overwrite name))
-    (lazy line ([] (. source lines) row))
-    (lazy first (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- (. overwrite target-column) 1))))))
-    (lazy last (+ ([] (. source utf16-line-starts) row) (call utf16-length ([] line (..< 0 (- (. overwrite target-end-column) 1))))))
-    (lazy edit (call LintTextEdit first last (str ".. " name) target))
-  )
-)

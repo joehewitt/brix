@@ -16,17 +16,17 @@ LINT_SECONDS = 300
 ON_MAC = sys.platform == 'darwin'
 
 MODULES = {
-    'variant.linux.yumi': '+ variant-name = "linux"\n',
-    'variant.macos.yumi': '+ variant-name = "macos"\n',
-    'variant.apple.yumi': '+ variant-name = "apple"\n',
+    'variant.linux.bx': '(prop + variant-name _ (= "linux"))\n',
+    'variant.macos.bx': '(prop + variant-name _ (= "macos"))\n',
+    'variant.apple.bx': '(prop + variant-name _ (= "apple"))\n',
 }
 SOURCES = {
-    'platforms.yumi': './variant.macos\n./variant.linux\n',
-    'families.yumi': './variant.macos\n./variant.apple\n',
+    'platforms.bx': '(import ./variant.macos)\n(import ./variant.linux)\n',
+    'families.bx': '(import ./variant.macos)\n(import ./variant.apple)\n',
 }
 HEADER_SOURCES = {
-    'headers.yumi': '/unistd.h\n/stdlib.h\n',
-    'overloads.yumi': '/string.h\n/dns_sd.h\n',
+    'headers.bx': '(import /unistd.h)\n(import /stdlib.h)\n',
+    'overloads.bx': '(import /string.h)\n(import /dns_sd.h)\n',
 }
 
 
@@ -75,22 +75,22 @@ class ImportConflicts(unittest.TestCase):
         return diagnostics[0].get('fix')
 
     def test_platform_variants_no_build_loads_together_do_not_conflict(self):
-        self.assertEqual(conflict_names(self.found, 'platforms.yumi'), set())
-        self.assertIsNotNone(self.sort_fix(self.found, 'platforms.yumi'))
+        self.assertEqual(conflict_names(self.found, 'platforms.bx'), set())
+        self.assertIsNotNone(self.sort_fix(self.found, 'platforms.bx'))
 
     def test_platform_variants_one_build_loads_together_conflict(self):
-        self.assertEqual(conflict_names(self.found, 'families.yumi'), {'variant-name'})
-        self.assertIsNone(self.sort_fix(self.found, 'families.yumi'))
+        self.assertEqual(conflict_names(self.found, 'families.bx'), {'variant-name'})
+        self.assertIsNone(self.sort_fix(self.found, 'families.bx'))
 
     @unittest.skipUnless(ON_MAC, 'declarations of the macOS SDK')
     def test_agreeing_c_declarations_in_two_headers_are_one_binding(self):
-        self.assertEqual(conflict_names(self.found, 'headers.yumi'), set())
-        self.assertIsNotNone(self.sort_fix(self.found, 'headers.yumi'))
+        self.assertEqual(conflict_names(self.found, 'headers.bx'), set())
+        self.assertIsNotNone(self.sort_fix(self.found, 'headers.bx'))
 
     @unittest.skipUnless(ON_MAC, 'declarations of the macOS SDK')
     def test_c_declarations_that_differ_conflict(self):
-        self.assertIn('strchr', conflict_names(self.found, 'overloads.yumi'))
-        self.assertIsNone(self.sort_fix(self.found, 'overloads.yumi'))
+        self.assertIn('strchr', conflict_names(self.found, 'overloads.bx'))
+        self.assertIsNone(self.sort_fix(self.found, 'overloads.bx'))
 
 
 if __name__ == '__main__':

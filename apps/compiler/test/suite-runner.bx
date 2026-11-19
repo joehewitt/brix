@@ -5,7 +5,6 @@
 (import /lang/ast/ast-xml)
 (import /lang/ast/brix)
 (import /lang/ast/error)
-(import /lang/ast/grammar)
 (import /lang/brix/convert)
 (import /lang/constants)
 (import /lang/target)
@@ -44,7 +43,6 @@
   (prop + file-label String)
   (prop + case-index Int)
   (prop + source String)
-  (prop + is-brix Bool)
   (prop + output (? String))
   (prop + errors (? String))
   (prop + line-no-start Int)
@@ -60,7 +58,6 @@
     (param case-index _)
     (param parsed ParsedCase)
     (lazy source (. parsed source))
-    (lazy is-brix (. parsed is-brix))
     (lazy output (. parsed output))
     (lazy errors (. parsed errors))
     (lazy line-no-start (. parsed line-no-start))
@@ -82,10 +79,7 @@
     (?? title (if-expr (> (. source length) 50) ([] source (..< 0 50)) source))
   )
   (fn-expr + source-name String :get
-    (if-expr is-brix (str "__source__" brix-extension) "__source__.yumi")
-  )
-  (fn-expr + source-extension String :get
-    (if-expr is-brix brix-extension ".yumi")
+    (str "__source__" brix-extension)
   )
   (fn-expr + has-option _
     (param name String)
@@ -95,7 +89,6 @@
 
 (type + ParsedCase
   (prop + source String)
-  (prop + is-brix Bool)
   (prop + line-no-start Int)
   (prop + line-no-end Int)
   (prop + options (map String String))
@@ -105,7 +98,6 @@
   (prop + title (? String) (= null))
   (fn-do + This _
     (param source _)
-    (param is-brix _)
     (param line-no-start _)
     (param options _)
     (param title _)
@@ -312,8 +304,8 @@
     (let file (call file-name words))
     (if file
       (call take-file fence words file)
-      (else-if (or (== kind "yumi") (== kind "brix"))
-        (call take-program fence words (== kind "brix"))
+      (else-if (== kind "brix")
+        (call take-program fence words)
       )
       (else-if (or (== kind "stderr") (== kind "output"))
         (call take-expected fence words kind)
@@ -323,8 +315,7 @@
   (fn-do _ take-program _ (?! Error)
     (param fence DocumentFence)
     (param words (list String))
-    (param is-brix Bool)
-    (let made (call ParsedCase (call (. fence content trim)) is-brix (. fence line) (call flag-options words (. fence line)) title))
+    (let made (call ParsedCase (call (. fence content trim)) (. fence line) (call flag-options words (. fence line)) title))
     (= (. made line-no-end) (. fence end))
     (+= cases made)
     (+= headings heading)
@@ -450,7 +441,7 @@
   (return-if (call (of List ParsedCase)) (if (== (. forms length) 0)))
   (let checked (call (. " " join) (in (str "(tuple " ([] each 0) " " (call brix-quoted ([] each 1)) ")") forms)))
   (let source (str "(import /lang/brix/inline)\n\n(main\n  (for (in (tuple line form) (list " checked "))\n    (if (not (call brix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"))
-  (return (list (call ParsedCase source true 1 (call (of Map String String)) "Inline forms")))
+  (return (list (call ParsedCase source 1 (call (of Map String String)) "Inline forms")))
 )
 
 (fn-do _ inline-forms (list (tuple Int String))
@@ -947,7 +938,7 @@
   (param test-case TestCase)
   (param result CaseResult)
   (let expected (?? (. test-case output) ""))
-  (call parse-compare (str "\n" (. test-case source)) (. test-case is-brix) expected result)
+  (call parse-compare (str "\n" (. test-case source)) expected result)
 )
 
 (fn-do + ubrix-case-body _
@@ -979,10 +970,9 @@
 
 (fn-do _ parse-compare _
   (param source String)
-  (param is-brix Bool)
   (param expected String)
   (param result CaseResult)
-  (let parsed (catch (call parsed-source source is-brix)))
+  (let parsed (catch (call parse-brix source)))
   (if (is parsed ASTBuilder)
     (let tree (as parsed ASTBuilder))
     (use tree)
@@ -1003,12 +993,6 @@
       (= (. result errors) (str parsed))
     )
   )
-)
-
-(fn-expr _ parsed-source ASTBuilder (?! YumiSyntaxError)
-  (param source String)
-  (param is-brix Bool)
-  (if-expr is-brix (call parse-brix source) (call parse-yumi source))
 )
 
 (fn-expr _ root-statement-count Size
@@ -1241,7 +1225,7 @@
     (let number (call leading-number piece))
     (let is-source
       (scope (and (> (. place length) 1) has-extension)
-        (lazy has-extension (or (call (. ([] place 0) ends-with) ".yumi") (call (. ([] place 0) ends-with) brix-extension)))
+        (lazy has-extension (call (. ([] place 0) ends-with) brix-extension))
       )
     )
     (if (and is-source (>= (call leading-number ([] place 1)) 0) (< number (as count Int)))
@@ -1523,7 +1507,7 @@
       (str "cd " (call shell-quoted directory) " && : >" (call shell-quoted errors-path) " && " (call shell-quoted (. context compiler)) " " source-switch " -o " (call shell-quoted executable) " " switches " " probing " 2>" (call shell-quoted warnings-path) " && " removing "BRIXTEST_BATCH_CONTINUE_AFTER_PANIC=1 " tracing " exec " (call shell-quoted executable) " 2>>" (call shell-quoted errors-path))
     )
   )
-  (lazy removing (if-expr (. test-case is-brix) (str "rm -f " (. test-case source-name) " && ") ""))
+  (lazy removing (str "rm -f " (. test-case source-name) " && "))
 )
 
 (fn-expr _ crash-reason (? String)
@@ -1556,7 +1540,7 @@
     (call without-case-directory warned directory)
   )
   (default
-    (call without-library-locations (. run errors) library (. test-case source-extension))
+    (call without-library-locations (. run errors) library brix-extension)
   )
   (where
     (lazy warned (call (. "\n" join) (in each (list (. run warnings) (. run ran)) (when (!= (. each length) 0)))))
@@ -1566,7 +1550,6 @@
 (fn-do _ source-switch String
   (param directory String)
   (param test-case TestCase)
-  (return-if (str "-c " (call shell-quoted (str "\n" (. test-case source)))) (if (not (. test-case is-brix))))
   (call write-case-file directory (. test-case source-name) (str "\n" (. test-case source)))
   (return (. test-case source-name))
 )

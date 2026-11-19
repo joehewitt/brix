@@ -7,9 +7,8 @@ visibility, the values a file holds, the order in which files start, and how a p
 
 ## What a module is
 
-- **One file.** A module is a `.bx` file, in Brix, or a `.yumi` file, in rows. The two kinds import
-  each other freely. A path names the file without its extension, so `(import ./lib.bx)`{.brix} is
-  a missing module. When `both.bx` and `both.yumi` sit side by side, `./both` is `both.bx`.
+- **One file.** A module is a `.bx` file. A path names the file without its extension, so
+  `(import ./lib.bx)`{.brix} is a missing module.
 - **Folder modules.** A folder is not a module, but it can hold one: a file with the folder's own
   name. `/tui` is the file `tui/tui.bx` under the standard library. When a folder has such a file
   and a file of the same name sits beside the folder, the one inside the folder is the module. A
@@ -20,8 +19,7 @@ visibility, the values a file holds, the order in which files start, and how a p
   suffix is an error, except in a file family. Platforms lists the platforms and the families of
   them.
 - **File families.** A file named after another beside it, then a dot and more name, as
-  `box.scroll.bx` is beside `box.bx`, belongs to the file family of that file, its base. `.bx` and
-  `.yumi` files count alike.
+  `box.scroll.bx` is beside `box.bx`, belongs to the file family of that file, its base.
   - **The name** after the base's may have several parts, and may end with a platform, as
     `box.touch.ios.bx` does, which makes the file part of that platform's builds only.
   - **Only the family imports them.** The base and the family's other files may import a

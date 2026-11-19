@@ -965,7 +965,7 @@
   (if (!= (. (call text-builder source tree function) length) 0)
     (return)
   )
-  (let place (call imperative-token-place source tree id))
+  (let place (call imperative-token-place tree id))
   (blank)
   (let dependencies (list SyntaxId))
   (let result (call single-result tree function dependencies))
@@ -1504,27 +1504,13 @@
   (return false)
 )
 
-(fn-do + imperative-token-place TokenLocation
-  (param source LintSource)
+(fn-expr + imperative-token-place TokenLocation
   (param tree AST)
   (param id SyntaxId)
-  ; Where a function is reported: at its `do`, or else where it begins, counted from one.
-  (let begin (. ([] (. tree nodes loc) id) begin))
-  (return-if (call TokenLocation (+ (. begin line) 1) (+ (. begin column) 1)) (if (. source is-brix)))
-  (let line (if-expr (< (. begin line) (. source lines length)) ([] (. source lines) (. begin line)) ""))
-  (for (in position (..< (. begin column) (. line length)))
-    (if (or (!= ([] line position) 'd') (>= (+ position 1) (. line length)) (!= ([] line (+ position 1)) 'o'))
-      (continue)
-    )
-    (if (and (> position (. begin column)) (call is-word-char ([] line (- position 1))))
-      (continue)
-    )
-    (if (and (< (+ position 2) (. line length)) (call is-word-char ([] line (+ position 2))))
-      (continue)
-    )
-    (return (call TokenLocation (+ (. begin line) 1) (as (+ position 1) U32)))
+  (call TokenLocation (+ (. begin line) 1) (+ (. begin column) 1))
+  (where
+    (lazy begin (. ([] (. tree nodes loc) id) begin))
   )
-  (return (call TokenLocation (+ (. begin line) 1) (+ (. begin column) 1)))
 )
 
 (fn-expr + is-word-char Bool

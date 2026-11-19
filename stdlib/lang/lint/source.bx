@@ -1,8 +1,3 @@
-(import /lang/ast/ast-builder)
-(import /lang/ast/brix)
-(import /lang/ast/error)
-(import /lang/ast/grammar)
-(import /lang/ast/preparse)
 (import /lang/target)
 (import /stream/aggregate)
 
@@ -29,9 +24,6 @@
         (+= utf16-line-starts utf16-index)
       )
     )
-  )
-  (fn-expr + is-brix Bool :get
-    (call is-brix-path path)
   )
   (fn-expr + offset-of Index
     (param line U32)
@@ -105,28 +97,9 @@
   )
 )
 
-(fn-expr + is-brix-path Bool
-  (param path String)
-  (call (. path ends-with) brix-extension)
-)
-
 (fn-expr + is-lint-path Bool
   (param path String)
-  (or (call (. path ends-with) yumi-extension) (call is-brix-path path))
-)
-
-(fn-do + parse-lint-text ASTBuilder (?! YumiSyntaxError)
-  (param text String)
-  (param path String)
-  (return-if (call parse-brix text path) (if (call is-brix-path path)))
-  (return (call parse-yumi text path))
-)
-
-(type + LineKind (is Union)
-  (variant line-blank)
-  (variant line-divider)
-  (variant line-comment)
-  (variant line-body)
+  (call (. path ends-with) brix-extension)
 )
 
 (fn-do + split-lines (list String)
@@ -154,85 +127,9 @@
   (if-expr (call (. line ends-with) "\r") ([] line (..< 0 (- (. line length) 1))) line)
 )
 
-(fn-expr + classify-line LineKind
-  (param line String)
-  (case? (== (. trimmed length) 0)
-    .line-blank
-  )
-  (case? (call is-divider-line trimmed)
-    .line-divider
-  )
-  (case? (call (. trimmed starts-with) "`")
-    .line-comment
-  )
-  (default
-    .line-body
-  )
-  (where
-    (lazy trimmed (call (. line trim)))
-  )
-)
-
-(fn-do + is-divider-line Bool
-  (param trimmed String)
-  (let all-glyphs true)
-  (for (in char trimmed)
-    (= all-glyphs (and all-glyphs (call is-divider-glyph char)))
-  )
-  (return all-glyphs)
-)
-
 (fn-expr + is-divider-glyph Bool
   (param char Char)
   (or (== char (char "━")) (== char (char "─")) (== char (char "═")))
-)
-
-(fn-do + template-text-lines (list Bool)
-  (param lines (list String))
-  (let text (list Bool))
-  (let is-expecting false)
-  (let is-next-text false)
-  (let is-text false)
-  (let block-indent -1)
-  (let previous "")
-  (for (in line lines)
-    (let trimmed (call (. line trim)))
-    (let is-continued (call (. previous ends-with) "\\"))
-    (= previous line)
-    (if (>= block-indent 0)
-      (if (or (== (. trimmed length) 0) (> (call indent-level line) block-indent))
-        (+= text true)
-        (continue)
-      )
-      (= block-indent -1)
-    )
-    (if is-text
-      (= is-text (not (call is-template-boundary trimmed)))
-      (+= text is-text)
-      (else-if is-next-text
-        (= is-next-text false)
-        (= is-text true)
-        (+= text true)
-      )
-      (else
-        (if (call is-text-body-header trimmed)
-          (= is-expecting true)
-          (else-if (and is-expecting (== (. trimmed length) 0))
-            (= is-expecting false)
-            (= is-next-text true)
-          )
-          (else-if (call is-divider-line trimmed)
-            (= is-expecting false)
-          )
-          (else-if (and (not is-continued) (call is-text-block-opener line))
-            (= block-indent (call indent-level line))
-          )
-        )
-        (+= text false)
-      )
-    )
-  )
-  (return text)
 )
 
 (fn-do _ indent-level Size
@@ -242,19 +139,6 @@
     (+= spaces 1)
   )
   (return (/ spaces 4))
-)
-
-(fn-do _ is-template-boundary Bool
-  (param trimmed String)
-  (return-if false (if (< (. trimmed length) 3)))
-  (let glyph ([] trimmed 0))
-  (return-if false (if (and (!= glyph (char "━")) (!= glyph (char "─")) (!= glyph (char "═")))))
-  (return (call all trimmed (:where (== each glyph))))
-)
-
-(fn-expr + visible-length Size
-  (param line String)
-  (. line length)
 )
 
 (fn-do + utf16-length Index

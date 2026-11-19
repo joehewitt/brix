@@ -5,6 +5,7 @@
 (import /lang/ast/ast)
 (import /lang/ast/ast-children)
 (import /lang/ast/ast-nodes)
+(import /lang/ast/brix)
 (import /lang/ast/error)
 (import /lang/ast/module-resolver)
 (import /lang/ast/row-range)
@@ -127,7 +128,7 @@
     (param path String)
     ; The name of the module a file is, as the reference's `moduleNameForPath` gives it: its path in
     ; the first search root that holds it, else in the project, else its file name, without
-    ; `.yumi`.
+    ; `.bx`.
     (for (in root search-paths)
       (let prefix (str root "/"))
       (return-if (call strip-extension ([] path (... (. prefix length)))) (if (call (. path starts-with) prefix)))
@@ -185,7 +186,7 @@
     ; Reads a file for whether it runs code and the files it imports, or the error that keeps it out
     ; of every root's reach.
     (if (not (call is-lint-path (. node path)))
-      (= (. node error) "Semantic roots must be .yumi or .bx files")
+      (= (. node error) "Semantic roots must be .bx files")
       (return)
     )
     (let text (catch (call source-text (. node path))))
@@ -194,7 +195,7 @@
       (return)
     )
     (let builder
-      (call parse-lint-text text (. node path)
+      (call parse-brix text (. node path)
         (block
           (on-error (: failure YumiSyntaxError)
             (= (. node error) (. failure message))
@@ -429,7 +430,7 @@
   )
   (where
     (lazy name (. (call Path path) name))
-    (lazy named-test (or (== name "test.yumi") (== name "tests.yumi")))
+    (lazy named-test (or (== name "test.bx") (== name "tests.bx")))
   )
 )
 
@@ -514,7 +515,7 @@
 
 (fn-expr _ strip-extension String
   (param path String)
-  (if-expr (call (. path ends-with) ".yumi") ([] path (..< 0 (- (. path length) 5))) path)
+  (if-expr (call (. path ends-with) ".bx") ([] path (..< 0 (- (. path length) 3))) path)
 )
 
 (fn-do _ file-text String (?! Error)

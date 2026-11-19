@@ -1,16 +1,14 @@
 # Source text
 
-A Brix program is text in files. A `.bx` file holds Brix forms, which are S-expressions. A `.yumi`
-file holds rows, which use indentation, dividers and operators. The two are views of one language:
-every form has a rows spelling, and every row a form. This chapter covers files, how forms are
-read, how rows are laid out, names, comments, and how the two views relate.
+A Brix program is text in `.bx` files, which hold Brix forms, S-expressions. Editors and this
+reference also show forms as rows, which use indentation, dividers and operators. The two are views
+of one language: every form has a rows spelling, and every row a form. This chapter covers files,
+how forms are read, how rows are laid out, names, comments, and how the two views relate.
 
 ## Files
 
-- **Two kinds.** The extension decides how a file is read: `.bx` as forms, and anything else as
-  rows. Each file is read on its own, so one program can mix the two, and when `x.bx` and `x.yumi`
-  sit side by side, an import of `x` reads `x.bx`. Modules covers how files find each other.
-- **One kind in a file.** A file holds forms or rows, never both.
+- **Forms only.** A file holds forms. Rows are only a view of them, and no file holds rows.
+  Modules covers how files find each other.
 - **UTF-8.** Source text is UTF-8, with no byte-order mark. Write lines ending in LF; forms also
   accept CRLF.
 - **Names.** A file may have any name. The repository's files use lowercase words joined by
@@ -120,7 +118,7 @@ Some atoms fill fixed places in a form:
 - **Flags** start with a colon, such as `:get` and `:static`, and **annotations** start with `@`,
   such as `@inline`. Both go in the header of a declaration, flags first.
 - **Constants.** `true`, `false` and `null`. `nil`, `#t` and `#f` are refused with a message that
-  gives the Yumi spelling.
+  gives the Brix spelling.
 
 ### What is not an atom
 
@@ -147,7 +145,7 @@ Exception: `println` is not a form. Write `(print value)`.
 ```
 
 - **Unknown heads.** A word that is not a form is refused. For a word some other language uses,
-  such as `lambda`, `defun`, `cond` or `try`, the message names the Yumi form. Otherwise it shows
+  such as `lambda`, `defun`, `cond` or `try`, the message names the Brix form. Otherwise it shows
   how to call a function of that name.
 - **A form in the wrong place.** The message names the place and what it takes, as with
   `(print …) cannot be a form at the top level of a file, which takes Top`.
@@ -380,5 +378,3 @@ two
 - **Layout is not carried over.** Number spellings such as `1'000` and `0xff` survive a trip from
   one view to the other and back. Several blank rows become one, several `(main …)` forms in a
   row become one, and a comment written after code moves to a row of its own.
-- **Converting.** `brix brix file.yumi` writes `file.bx` beside the rows file, replacing any that
-  is there.

@@ -34,7 +34,7 @@ print?". They are kept short to test one thing each, so take their constructs, n
   `runStreamMatch.test.md` or `runStateMachines.test.md`. To find cases that use a construct,
   search the files for it.
 - [The test format](style/agent-brix-test-format.md) explains a case's parts. Each is Markdown: its
-  program is a `yumi` or `brix` fence, and the `output` or `stderr` fences after it hold what it
+  program is a `brix` fence, and the `output` or `stderr` fences after it hold what it
   prints. Words on the program fence, such as `compile-error`, change what is expected.
 - Some cases import helpers from [`stdlib/core/tests/support`](../stdlib/core/tests/support).
 - To try a case, copy its program into a file and run it with `brix case.bx -o case`.
@@ -72,7 +72,7 @@ To try one from your project, run `brix <toolchain root>/examples/tui/timer.bx -
 ## The Standard Library
 
 [`stdlib`](../stdlib) is the standard library's source. A module's import path is its path under
-`stdlib` without `.yumi`, so `/os/path` is `stdlib/os/path.bx`. Declarations marked `+` are
+`stdlib` without `.bx`, so `/os/path` is `stdlib/os/path.bx`. Declarations marked `+` are
 public. The library has few comments, so read a declaration's signature and body to learn what it
 does.
 

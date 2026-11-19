@@ -20,7 +20,6 @@ import time
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-import brix_sweep
 import deps
 import launcher
 import runtime
@@ -104,6 +103,7 @@ SUITES = (
     ('core', 'stdlib/core/tests'),
     ('diagnostics', 'stdlib/lang/tests/diagnostics'),
     ('parse', 'stdlib/lang/tests/parse'),
+    ('ubrix', 'stdlib/lang/tests/parse'),
 )
 MODULE_SUITES = (('stdlib', 'stdlib'),)
 DENIED_SYSTEM_PATHS = ('/opt/homebrew', '/usr/local')
@@ -233,7 +233,6 @@ def assemble(version, source, seed, work, mtime, offline, suites=True):
     verification = hosts[BUILD_HOST]['verification']
     say('Checking the fixed point')
     verification['fixedPoint'] = check_fixed_point(built['stages'])
-    verification['brix'] = check_brix(built['stages'][2], work, logs)
     if suites:
         verification['suites'] = run_suites(built['stages'][2], built['tools'][BUILD_HOST]['test'], work, logs)
     else:
@@ -539,16 +538,6 @@ def check_fixed_point(stages):
         raise Failure('No fixed point: the objects of stage 2 (%s) and stage 3 (%s) differ' % (
             second, third))
     return {'object': second}
-
-
-def check_brix(stage, work, logs):
-    say('Building brix brix with stage 2')
-    environment = release_environment()
-    converter = os.path.join(work, 'brix', 'brix-brix')
-    os.makedirs(os.path.dirname(converter))
-    run([stage, '--compile', '-o', converter, TOOL_SOURCES['brix']], environment, logs, 'tool-brix')
-    require_outputs(converter, 'brix brix')
-    return brix_sweep.sweep(converter, stage, os.path.join(work, 'brix', 'sweep'), environment)
 
 
 def run_suites(compiler, test_tool, work, logs):

@@ -11,69 +11,57 @@ from testing import support
 LINTER = [os.path.join(ROOT, 'bin', 'brix'), 'lint']
 RULES = ('style/no-redundant-context-cast', 'style/prefer-constructor-initializer')
 LINT_SECONDS = 300
-DIVIDER = '━' * 20
-MEMBER = '─' * 20
 
-FIXTURE = f'''. values = ["a", "b"]
-. start U32 = values.length as U32
-. wide U64 = start as U64
-. small U8 = 5 as U8
--- start
--- wide
--- small
--- Holder'Byte(7).wide()
--- Holder'U32(9).item
--- Steps(2).first.value
+FIXTURE = '''(main
+  (let values (list "a" "b"))
+  (let start U32 (as (. values length) U32))
+  (let wide U64 (as start U64))
+  (let small U8 (as 5 U8))
+  (print start)
+  (print wide)
+  (print small)
+  (print (call (. (call (of Holder Byte) 7) wide)))
+  (print (. (call (of Holder U32) 9) item))
+  (print (. (call Steps 2) first value))
+)
 
-{DIVIDER}
-+ Holder'Item
+(type + (of Holder Item)
+  (prop + item Item)
+  (fn-do + This _
+    (param item _)
+  )
+  (fn-expr + wide U64
+    (as (call takes-byte (as item Byte)) U64)
+  )
+)
 
-+ item Item
+(fn-expr _ takes-byte Byte
+  (param value Byte)
+  value
+)
 
-{MEMBER}
-+ This
-    - item
+(type + Steps
+  (prop + first Text)
+  (prop + label Text)
+  (prop + count Int)
+  (fn-do + This _
+    (param size Int)
+    (= label (call Text (str size)))
+    (= first (call add-step "Check"))
+  )
+  (fn-do + add-step Text
+    (param title String)
+    (+= count 1)
+    (return (call Text title))
+  )
+)
 
-{MEMBER}
-+ wide U64
-
-takes-byte(item as Byte) as U64
-
-{DIVIDER}
-_ takes-byte Byte
-    - value Byte
-
-value
-
-{DIVIDER}
-+ Steps
-
-+ first Text
-+ label Text
-+ count Int
-
-{MEMBER}
-+ This
-    - size Int
-
-label = Text("$size")
-first = add-step("Check")
-
-{MEMBER}
-+ do add-step Text
-    - title String
-
-count += 1
-= Text(title)
-
-{DIVIDER}
-+ Text
-
-+ value String
-
-{MEMBER}
-+ This
-    - value
+(type + Text
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 '''
 
 
@@ -86,7 +74,7 @@ class SemanticRules(unittest.TestCase):
     def setUpClass(cls):
         directory = tempfile.mkdtemp(prefix='brix-test-')
         cls.addClassCleanup(shutil.rmtree, directory, True)
-        cls.source = os.path.join(directory, 'fixture.yumi')
+        cls.source = os.path.join(directory, 'fixture.bx')
         with open(cls.source, 'w', encoding='utf-8') as file:
             file.write(FIXTURE)
         cls.found = cls.lint(LINTER)
@@ -121,18 +109,18 @@ class SemanticRules(unittest.TestCase):
 
     def test_a_cast_that_narrows_is_not_redundant(self):
         rule = 'style/no-redundant-context-cast'
-        self.assertEqual(self.statuses(rule, '. start U32 = values.length as U32'), set())
-        self.assertEqual(self.statuses(rule, '. wide U64 = start as U64'), {'actionable'})
-        self.assertEqual(self.statuses(rule, '. small U8 = 5 as U8'), {'actionable'})
+        self.assertEqual(self.statuses(rule, '  (let start U32 (as (. values length) U32))'), set())
+        self.assertEqual(self.statuses(rule, '  (let wide U64 (as start U64))'), {'actionable'})
+        self.assertEqual(self.statuses(rule, '  (let small U8 (as 5 U8))'), {'actionable'})
 
     def test_a_cast_in_generic_code_is_for_review(self):
         rule = 'style/no-redundant-context-cast'
-        self.assertEqual(self.statuses(rule, 'takes-byte(item as Byte) as U64'), {'review'})
+        self.assertEqual(self.statuses(rule, '    (as (call takes-byte (as item Byte)) U64)'), {'review'})
 
     def test_a_constructor_value_that_calls_a_method_is_for_review(self):
         rule = 'style/prefer-constructor-initializer'
-        self.assertEqual(self.statuses(rule, 'label = Text("$size")'), {'actionable'})
-        self.assertEqual(self.statuses(rule, 'first = add-step("Check")'), {'review'})
+        self.assertEqual(self.statuses(rule, '    (= label (call Text (str size)))'), {'actionable'})
+        self.assertEqual(self.statuses(rule, '    (= first (call add-step "Check"))'), {'review'})
 
 
 if __name__ == '__main__':

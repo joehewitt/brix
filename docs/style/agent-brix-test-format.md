@@ -11,8 +11,10 @@ A case is a program fence and the fences of what it should print:
 ````markdown
 ### Printing a string
 
-```yumi
--- "hello"
+```brix
+(main
+  (print "hello")
+)
 ```
 
 ```output
@@ -24,7 +26,7 @@ A case has these parts, in this order and no other:
 
 1. An optional `##` or `###` heading.
 2. Optional prose.
-3. The program: a `yumi` or `brix` fence, whose other words are its flags.
+3. The program: a `brix` fence, whose other words are its flags.
 4. Any number of extra files, each a fence with `file=`.
 5. An optional `stderr` fence, then an optional `output` fence.
 
@@ -47,27 +49,27 @@ ignores prose.
 
 ## The Program
 
-The program is its fence's content, trimmed. A `yumi` fence holds Yumi and a `brix` fence holds
-Brix. The runner writes it to a file after one blank line, so its first line is line 2 in the
-diagnostics it gives:
+The program is its fence's content, trimmed. The runner writes it to a file after one blank line,
+so its first line is line 2 in the diagnostics it gives:
 
 ````markdown
-```yumi crash
--- area("a")
+```brix crash
+(main
+  (print (call area "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ area I32
-    - width I32
-    - height I32
-
-width * height
+(fn-expr + area I32
+  (param width I32)
+  (param height I32)
+  (* width height)
+)
 ```
 
 ```output
 Exception: No function "area" accepts (String); it is declared as "area(width I32, height I32)"
-<no file:2>
-    -- area("a")
-       ^^^^^^^^^
+<no file:3>
+      (print (call area "a"))
+             ^^^^^^^^^^^^^^^
 ```
 ````
 
@@ -110,19 +112,22 @@ but whitespace inside them and the order of their lines do.
 A case whose program crashes with a panic states it on stderr:
 
 ````markdown
-```yumi crash
-do new
-    ?! Panic("task boom")
+```brix crash
+(main
+  (do-new
+    (throw (call Panic "task boom"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: task boom
-<no file:3>
+<no file:4>
 
-Task 2, spawned by task 1 from no file:2:1
+Task 2, spawned by task 1 from no file:3:3
 
 Stack trace:
-  0  __source__:Fork no file:3:5
+  0  __source__:Fork no file:4:5
 ```
 ````
 
@@ -130,20 +135,21 @@ Stack trace:
 
 A fence with `file=path` writes an extra file before the program compiles, for imports or for
 the program to read. Its content is written exactly, without trimming. Its first word only sets
-the fence's highlighting, so any word works for a file that is not Yumi:
+the fence's highlighting, so any word works for a file that is not Brix:
 
 ````markdown
-```yumi
-./lib/foo
+```brix
+(import ./lib/foo)
 
--- foo()
+(main
+  (print (call foo))
+)
 ```
 
-```yumi file=lib/foo/foo.bx
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-24
+```brix file=lib/foo/foo.bx
+(fn-expr + foo Int
+  24
+)
 ```
 
 ```text file=data/input.txt
@@ -176,9 +182,9 @@ Cases are numbered from 1 in each file. `stdlib/core/tests/runArrays.test.md:340
 case that holds line 340, and `test:core:stdlib/core/tests/runArrays.test.md:12` the twelfth case,
 naming its suite.
 
-To run a case's program by itself, copy its program into `case.yumi`, or `case.bx` for a `brix`
-fence, write each extra file to its path beside it, and run it with `brix case.bx -o case`. Its
-stdout should match the `output` fence.
+To run a case's program by itself, copy its program into `case.bx`, write each extra file to its
+path beside it, and run it with `brix case.bx -o case`. Its stdout should match the `output`
+fence.
 
 ## Editing Tests
 

@@ -11,17 +11,21 @@ Put each benchmark in a suite folder inside a `bench` folder beside the code it 
 it, so `tokens` here, except `bench/fixtures`, which holds code and data the benchmarks share. Two
 suites cannot have the same name.
 
-```yumi
-`benchmark.meta description: Splits a fixed sentence into words.
-`benchmark.meta timing: recommended
-`benchmark.meta profiles: timing
+```brix
+; benchmark.meta description: Splits a fixed sentence into words.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
 
-. text = "the quick brown fox jumps over the lazy dog " * 200
-. total = 0
-for _ in 0 .. < 200
-    for word in text.split(" ")
-        total += word.length
--- "bench-result tokens/split-words checksum=$total"
+(main
+  (let text (* "the quick brown fox jumps over the lazy dog " 200))
+  (let total 0)
+  (for (in _ (..< 0 200))
+    (for (in word (call (. text split) " "))
+      (+= total (. word length))
+    )
+  )
+  (print (str "bench-result tokens/split-words checksum=" total))
+)
 ```
 
 - **The header.** `benchmark.meta description` is required. `timing` is `recommended`, or
@@ -128,7 +132,7 @@ optional:
 
 - `suites` lists the suites in place of the ones found in `bench` folders. Each has an `id`, a
   `path` from the project root, and optionally a `description` and `extensions`, which is
-  `[".yumi"]` by default.
+  `[".bx"]` by default.
 - `metrics` adds metrics. Each has an `id`, `title`, `description`, `format` (`duration` in
   milliseconds, `count`, `bytes`, `percent` or `rate`), `source` (`run`) and a `value`, which is a
   JSON pointer into what a launch measured. `sum` adds several pointers instead, and `ratio`

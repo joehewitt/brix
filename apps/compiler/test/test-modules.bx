@@ -60,13 +60,13 @@
 (fn-do _ module-suite ModuleSuite (?! Error)
   (param written (list String))
   ; A suite of the test modules its sources hold: a folder holds those in its `tests` folders, and a
-  ; module named by its path without `.yumi` is one.
+  ; module named by its path without `.bx` is one.
   (let name (?? (call env "OMETER_TESTOMETER_SUITE_NAME") default-suite-name))
   (let project (. (call Path (?? (call env "OMETER_TESTOMETER_PROJECT_ROOT") (call cwd))) normalized))
   (let sources (list String))
   (for (in source written)
     (let found (. (if-expr (call (. source starts-with) "/") (call Path source) (/ (call Path project) source)) normalized))
-    (throw (call Error (str "The " name " suite's " source " is neither a folder nor a module in " project)) (if (and (not (. (call Path found) is-dir)) (not (. (call Path (str found ".yumi")) is-file)) (not is-brix-file))))
+    (throw (call Error (str "The " name " suite's " source " is neither a folder nor a module in " project)) (if (and (not (. (call Path found) is-dir)) (not is-brix-file))))
     (lazy is-brix-file (. (call Path (str found brix-extension)) is-file))
     (+= sources found)
   )
@@ -115,7 +115,7 @@
     )
   )
   (where
-    (lazy source-path (if-expr (. (call Path (str root name brix-extension)) is-file) (str root name brix-extension) (str root name ".yumi")))
+    (lazy source-path (str root name brix-extension))
     (lazy relative-path (call project-relative (. suite project) source-path))
     (lazy display (call module-display name))
     (lazy label (if-expr display ([] display (- (. display length) 1)) name))
@@ -136,7 +136,7 @@
       (continue)
     )
     (for (in entry (. child contents))
-      (if (and (. entry is-file) (or (== (. entry ext) "yumi") (== (str "." (. entry ext)) brix-extension)))
+      (if (and (. entry is-file) (== (str "." (. entry ext)) brix-extension))
         (+= names (str prefix "/" base "/" (. entry base-name)))
       )
     )

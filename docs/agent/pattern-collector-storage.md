@@ -39,10 +39,3 @@ way; `JSONParser` delegates both capabilities to one, and JSON Lines readers pas
 Logical rollback restores accumulator sizes and clears discarded managed references.
 Growth is monotonic. Failed alternatives can leave old buffers and unused capacity
 behind until bulk cleanup; they do not create arena marks or rewind storage.
-
-The parser uses its prepared-source scratch arena for collectors.
-`parse-yumi` keeps scratch alive through matching, closure naming, and syntax
-finalization. AST child IDs and text are materialized into ASTBuilder's final arenas.
-The collector provider is restored to ASTBuilder's storage arena before parse scratch
-is reset. Existing syntax diagnostics retain copied source lines and paths across
-failure cleanup.

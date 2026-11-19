@@ -5,7 +5,6 @@
 (import /lang/ast/ast-children)
 (import /lang/ast/ast-nodes)
 (import /lang/ast/operator)
-(import /lang/ast/preparse)
 (import /lang/ast/row-range)
 
 (fn-do + lint-text-templates _
@@ -61,12 +60,12 @@
       )
     )
   )
-  (if (or (not statements) (and (not (. source is-brix)) (call is-template-header source (. function loc begin line))))
+  (if (not statements)
     (return "")
   )
   (let body statements)
   (let result (call result-expression tree body))
-  (if (or (== result 0) (and (. source is-brix) (call is-paragraph source tree result)))
+  (if (or (== result 0) (call is-paragraph source tree result))
     (return "")
   )
   (blank)
@@ -92,12 +91,6 @@
     (return "long-interpolation")
   )
   (return "")
-)
-
-(fn-expr + is-template-header Bool
-  (param source LintSource)
-  (param line U32)
-  (and (< (as line Index) (. source lines length)) (call is-text-body-header ([] (. source lines) line)))
 )
 
 (fn-do + result-expression SyntaxId
@@ -378,9 +371,7 @@
   (if (or (not has-text) (< (. names length) 2))
     (return false)
   )
-  (return-if (call is-long-brix-interpolation source tree parts) (if (. source is-brix)))
-  (let text (call node-text source tree id))
-  (return (or (>= (call utf16-length text) 80) (!= (call (. text find) "\\n") null)))
+  (return (call is-long-brix-interpolation source tree parts))
 )
 
 (fn-expr _ is-paragraph Bool

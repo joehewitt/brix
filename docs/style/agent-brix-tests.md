@@ -60,9 +60,9 @@ the format in `docs/style/agent-brix-test-format.md`, may import any module, and
 - Run it with `file:.tmp/scratch/path-offset.test.md`.
 - Delete the file when it passes. Do not move it into a library test module.
 - A case's prints are what it checks, not a way to look inside. To see what a program does, or why
-  a case fails, put the program in `.tmp/scratch/<task>.yumi`, which is git-ignored and is not a
+  a case fails, put the program in `.tmp/scratch/<task>.bx`, which is git-ignored and is not a
   test, add probes where the behavior is in doubt, and run it with
-  `bin/brix .tmp/scratch/<task>.yumi --probes`. `docs/style/agent-brix-probes.md` says how to
+  `bin/brix .tmp/scratch/<task>.bx --probes`. `docs/style/agent-brix-probes.md` says how to
   write and query them. Delete the program with the case.
 
 A scratch case costs what its imports cost to compile. Import the narrowest module that reaches the
@@ -96,7 +96,7 @@ holds without running it.
 | `suite:core` | A whole suite |
 
 A path followed by a bare number is a line number, not a case number. A native module is one test
-however many cases it holds. The `stdlib` suites run every `.yumi` file directly inside a `tests`
+however many cases it holds. The `stdlib` suites run every `.bx` file directly inside a `tests`
 folder, from a copy of its `tests/fixtures/<module name>/` folder. To run one case of a `.test.md`
 file, select it by its number or a line in it.
 
@@ -104,7 +104,7 @@ file, select it by its number or a line in it.
 
 - Run the file or single case for what you changed, and nothing broader.
 - After a compiler or runtime change, run `suite:core` once before handoff. After a change to the
-  Yumi or Brix grammar or the parser, also run `suite:parse` once. After a change to the UBrix
+  Brix reader, also run `suite:parse` once. After a change to the UBrix
   grammar or printer in `stdlib/lang/brix`, run `suite:ubrix` once.
 - Never run any other `suite:` selector, except `suite:scratch`, unless the user names it. This
   includes `suite:stdlib`, `suite:parity`, and `suite:other`, which holds the Python tests and the

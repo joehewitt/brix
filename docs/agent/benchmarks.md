@@ -8,13 +8,13 @@ that compile and run them, and `bin/brix bench` runs them. A folder can keep its
 `.brix/benchmarks.json` of its own, which joins this one. The configs list their suites, so
 `brix bench` does not look for `bench` folders here. The `runMs`, `runCpuMs`, `runInstructions` and
 `runCycles` metrics and the `timing` and `gc` profiles are built into `brix bench`, and the config
-defines the rest. Each benchmark is a normal `.yumi` program in a suite directory. Every source file
-starts with benchmark metadata using Yumi's backtick comment syntax:
+defines the rest. Each benchmark is a normal `.bx` program in a suite directory. Every source file
+starts with benchmark metadata in comments:
 
-```yumi
-`benchmark.meta description: Exercises simple named stream captures over repeated rows.
-`benchmark.meta timing: recommended
-`benchmark.meta profiles: stream,compile-timing
+```text
+; benchmark.meta description: Exercises simple named stream captures over repeated rows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
 ```
 
 Every benchmark declares `timing: recommended` or `timing: not-recommended`. The latter marks
@@ -217,14 +217,14 @@ comes from the runtime and is exact.
 
 ## Adding A Benchmark
 
-1. Add a `.yumi` file to an existing suite directory, or add a new suite directory to the `bench`
+1. Add a `.bx` file to an existing suite directory, or add a new suite directory to the `bench`
    directory beside the code it measures and declare it in the nearest `.brix/benchmarks.json`.
-2. Add `` `benchmark.meta description: ...``, a `timing` classification, and an advisory
-   `` `benchmark.meta profiles: ...`` list near the top of the source.
+2. Add `; benchmark.meta description: ...`, a `timing` classification, and an advisory
+   `; benchmark.meta profiles: ...` list near the top of the source.
 3. Keep the program deterministic, self-contained, and safe to launch repeatedly; every sample
    launches it more than once.
 4. Print exactly one `bench-result suite/case checksum=N` line, where `suite/case` matches the suite
-   directory and filename without `.yumi`.
+   directory and filename without `.bx`.
 5. Keep the initial scale modest so ordinary smoke evidence remains comfortable.
 6. Confirm the new case with `bin/brix bench list <suite> --benchmarks`, then run its focused
    selector.

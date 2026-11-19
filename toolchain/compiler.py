@@ -31,7 +31,6 @@ TOOL_SOURCES = {
     'test-suite': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-suite.bx'),
     'bench': os.path.join(ROOT, 'apps', 'compiler', 'bench', 'bench-cli.bx'),
     'lint': os.path.join(ROOT, 'apps', 'compiler', 'lint', 'lint-cli.bx'),
-    'brix': os.path.join(ROOT, 'apps', 'compiler', 'brix', 'brix-cli.bx'),
 }
 PROBED_COMPILER = os.path.join(TOOLS, 'brix-probed')
 SELECTOR_CHARACTERS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.*:,-_ ')

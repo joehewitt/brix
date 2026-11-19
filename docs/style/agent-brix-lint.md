@@ -1,9 +1,9 @@
 # Brix Lint Rules For Agents
 
 Use this guide when asked to lint Brix or perform a Brix style review. `brix lint` reads its
-configuration from the project's `.brix/lint.json`. It lints `.yumi` and `.bx` files alike: in a
-`.bx` file `syntax/parse-error` reports every form the Brix catalog rejects, and the layout rules
-measure the rows of its Yumi view.
+configuration from the project's `.brix/lint.json`. It lints `.bx` files: `syntax/parse-error`
+reports every form the Brix catalog rejects, and the layout rules measure the rows of a file's
+UBrix view.
 
 ## Core Lint Pass
 
@@ -13,7 +13,6 @@ Run `brix lint <targets> --semantic-rules --fix` with each rule of this set as `
 events/no-effectful-payload
 imports/sort
 layout/depth
-layout/divider-length
 layout/line-length
 names/case-owner-conflict
 names/import-conflicts
@@ -87,15 +86,9 @@ exception.
 
 ### `layout/depth`
 
-Brix only. A row nested more than five levels deep is reported once where the nesting starts. Move
+A row nested more than five levels deep is reported once where the nesting starts. Move
 the inner rows into a function of their own. The rows of a text block are text: they do not count,
 and they do not end the nesting around them.
-
-### `layout/divider-length`
-
-Brix only. Normalize dividers to 20 identical glyphs. Mixed-glyph dividers require a manual
-choice of the correct nesting level. Ignore only in parser or linter fixtures intentionally
-containing malformed dividers.
 
 ### `layout/line-length`
 
@@ -122,8 +115,8 @@ of statements, such as bodies, branches, arms and loops, hold it within the decl
 The fix leaves other assignments alone, such as those to a property, a setter, a member, an
 indexed element or a markup attribute, where a decision table or a value below can change how the
 value is typed. It also leaves a row holding `if … else null`, which
-`style/no-redundant-null-fallback` rewrites first, and in a `.bx` file, rows that would start a new
-run nested past the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
+`style/no-redundant-null-fallback` rewrites first, and rows that would start a new run nested past
+the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
 arithmetic or list with lazies, or move code into a function.
 
 Finding:

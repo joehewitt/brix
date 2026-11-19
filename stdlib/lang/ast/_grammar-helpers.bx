@@ -10,11 +10,8 @@
 (blank)
 (type-line + DoBody (is (tuple (: body SyntaxId) (: annotations (of ImmutableArray Atom)))))
 (type-line + DoAnnotationMasks (is (tuple (: effects CompilationEffect) (: features CompilerFeature))))
-(type-line + ContainerPartial (is (tuple (: container SyntaxId) (: is-subscriber Bool))))
 (type-line + StackBindingPartial (is (tuple (: name Atom) (: value SyntaxId))))
 (type-line + SectionsPartial (is (tuple (: without (of ImmutableArray Atom)) (: bindings (of ImmutableArray StackBindingPartial)))))
-(type-line + ProbeKeySelector (is (tuple (: object (? SyntaxId)) (: key Atom))))
-(type-line + AssociatedTypeMember (is (tuple (: name Atom) (: args (of ImmutableArray SyntaxId)))))
 
 (type + PropertyAssignmentKind (is U8)
   (variant property-assignment-getter)
@@ -22,20 +19,9 @@
   (variant property-assignment-immediate)
 )
 
-(type + ReturnOperator (is U8)
-  (variant return-operator-return)
-  (variant return-operator-yield)
-  (variant return-operator-yield-all)
-)
-
 (type + BlockStringComponent (is Union)
   (variant syntax (tuple (: id SyntaxId)))
   (variant literal (tuple (: text String)))
-)
-
-(type + ArgumentDeclarationParts (is Tuple)
-  (prop + type-id SyntaxId)
-  (prop + default-value (? SyntaxId))
 )
 
 (type + PropertyAssignmentParts (is Tuple)
@@ -75,36 +61,6 @@
   (prop + tags (? (of ImmutableArray Atom)))
 )
 
-(type + YumiPiece (is Tuple)
-  (prop + location MatchLocation)
-  (prop + items (of ImmutableArray SyntaxId))
-  (prop + header (? ClassHeader) (= null))
-)
-
-(fn-do + detached-piece YumiPiece
-  (param piece YumiPiece)
-  (return-if (call YumiPiece (. piece location) (call detached (. piece items))) (if (not (. piece header))))
-  (let header (. piece header))
-  (let aliases (only-if (call detached (. header aliases)) (if (. header aliases))))
-  (let inherits (only-if (call detached (. header inherits)) (if (. header inherits))))
-  (let variants (only-if (call detached (. header header)) (if (. header header))))
-  (let detached-header
-    (call ClassHeader
-      (block
-        (arg (. header location))
-        (arg (. header access))
-        (arg (. header name))
-        (arg (call detached (. header type-args)))
-        (arg aliases)
-        (arg inherits)
-        (arg variants)
-        (arg (. header facet-of))
-      )
-    )
-  )
-  (return (call YumiPiece (. piece location) (call detached (. piece items)) detached-header))
-)
-
 (fn-do _ (of detached Item) (of ImmutableArray Item)
   (param items (of ImmutableArray Item))
   (let copy (call (of ArrayBuilder Item)))
@@ -127,19 +83,6 @@
   (prop + is-own Bool)
 )
 
-(type + StateMachineHeader (is Tuple)
-  (prop + location MatchLocation)
-  (prop + access Access)
-  (prop + decorations (of ImmutableArray SyntaxId))
-  (prop + left SyntaxId)
-)
-
-(type + WheneverTrigger (is Tuple)
-  (prop + kind Atom)
-  (prop + target-type SyntaxId)
-  (prop + expr SyntaxId)
-)
-
 (type + ArgumentVariant (is Union)
   (variant param-constraint (tuple (: value SyntaxId)))
   (variant param-assignment (tuple (: value SyntaxId)))
@@ -148,12 +91,6 @@
   (variant using-declaration (tuple (: value SyntaxId)))
   (variant sees-declaration (tuple (: value SyntaxId)))
   (variant iterator-header (tuple (: location MatchLocation) (: loop SyntaxId)))
-)
-
-(type + StreamMatchRight (is Union)
-  (variant assignment (tuple (: value SyntaxId) (: body (? SyntaxId))))
-  (variant iterator (tuple (: loop SyntaxId) (: body (? SyntaxId))))
-  (variant expression (tuple (: body SyntaxId) (: rollback Bool)))
 )
 
 (type + AnonymousCaseTraversal (is Tuple)
@@ -165,48 +102,11 @@
   (prop + second-range (of RowRange SyntaxId))
 )
 
-(type + SyntaxPartial (is Union)
-  (variant assign-partial (tuple (: op Operator) (: is-optional Bool) (: right SyntaxId)))
-  (variant iterator-partial (tuple (: loop SyntaxId)))
-  (variant iterator-stream-partial (tuple (: loop SyntaxId) (: body (? SyntaxId))))
-  (variant range-to-partial (tuple (: right SyntaxId) (: increment (? SyntaxId))))
-  (variant range-partial (tuple (: op Operator) (: right SyntaxId) (: increment (? SyntaxId))))
-  (variant get-partial (tuple (: name Atom) (: is-tracked Bool) (: is-optional Bool) (: is-loop Bool)))
-  (variant style-read-partial (tuple (: name Atom) (: is-optional Bool)))
-  (variant markup-read-partial (tuple (: name Atom) (: is-optional Bool)))
-  (variant index-partial (tuple (: index SyntaxId) (: is-optional Bool) (: stop MatchLocation)))
-  (variant force-partial (tuple (: stop MatchLocation)))
-  (variant call-partial (tuple (: params (of ImmutableArray SyntaxId)) (: args (of ImmutableArray SyntaxId)) (: is-curried Bool) (: stop MatchLocation)))
-  (variant args-partial (tuple (: args (of ImmutableArray SyntaxId)) (: is-curried Bool)))
-  (variant assign-stream-partial (tuple (: right SyntaxId) (: body (? SyntaxId))))
-  (variant expr-partial (tuple (: body SyntaxId) (: rollback Bool)))
-  (variant structure-partial (tuple (: pattern SyntaxId)))
-  (variant stream-partial (tuple (: pattern SyntaxId)))
-  (variant iterator-structure-expr-partial (tuple (: loop SyntaxId)))
-  (variant iterator-stream-expr-partial (tuple (: loop SyntaxId)))
-  (variant property-partial (tuple (: kind PropertyAssignmentKind) (: expr SyntaxId)))
-)
-
 (type + TypeShorthandSuffix (is Union)
   (variant type-suffix-optional (tuple (: name Atom)))
   (variant type-suffix-optional-buffer (tuple (: optional-name Atom) (: buffer-name Atom)))
   (variant type-suffix-buffer (tuple (: name Atom)))
   (variant type-suffix-channel (tuple (: name Atom)))
-)
-
-(type + ComposeExpressionTail (is Tuple)
-  (prop + loc MatchLocation)
-  (prop + op Operator)
-  (prop + right SyntaxId)
-  (prop + is-optional Bool)
-  (prop + write-name (? Atom))
-  (fn-do + This _
-    (param loc _)
-    (param op Operator)
-    (param right SyntaxId)
-    (param is-optional Bool)
-    (param write-name (? String))
-  )
 )
 
 (fn-do + hex-integer-value String
@@ -442,18 +342,6 @@
     )
   )
   (return false)
-)
-
-(fn-do + relocated-get SyntaxId
-  (param tree ASTBuilder)
-  (param loc MatchLocation)
-  (param expr SyntaxId)
-  (match? ([] (. tree nodes) expr)
-    (case .node-get-expression
-      (= ([] (. tree nodes loc) expr) loc)
-    )
-  )
-  (return expr)
 )
 
 (fn-do + relocated-string SyntaxId
@@ -999,32 +887,6 @@
   (. (call (of Array Item) (. items data) size) immutable)
 )
 
-(fn-do + (of true-optionals Item) (of ImmutableArray Item)
-  (param tree ASTBuilder)
-  (param list (of ImmutableArray (? Item)))
-  (param head (? Item) (= null))
-  (let items
-    (call (of Array Item ArenaBacking)
-      (block
-        (arg (. tree pattern-collector-context))
-        (arg (+ (. list length) (if-expr head 1 0)))
-      )
-    )
-  )
-  (let size Size 0)
-  (if head
-    (= ([] items size) head)
-    (+= size 1)
-  )
-  (for (in item list)
-    (if item
-      (= ([] items size) item)
-      (+= size 1)
-    )
-  )
-  (return (. (call (of Array Item) (. items data) size) immutable))
-)
-
 (fn-do + store-stream-call-expressions (of RowRange SyntaxId)
   (param tree ASTBuilder)
   (param variants (of ImmutableArray SyntaxId))
@@ -1068,24 +930,6 @@
     (block
       (lazy variants (?? arguments (call (of ImmutableArray SyntaxId))))
     )
-  )
-)
-
-(fn-expr + markup-head-values (tuple SyntaxId SyntaxId)
-  (param tree ASTBuilder)
-  (param head (? SyntaxId))
-  (case? head
-    (match ([] (. tree nodes) head)
-      (case (call .node-markup-head row)
-        (tuple (. row id) (. row slot-binding))
-      )
-      (default
-        (tuple 0 0)
-      )
-    )
-  )
-  (default
-    (tuple 0 0)
   )
 )
 
@@ -1151,34 +995,6 @@
   )
 )
 
-(fn-expr + make-c-constant SyntaxId (?! YumiSyntaxError)
-  (param tree ASTBuilder)
-  (param loc MatchLocation)
-  (param access Access)
-  (param symbol Atom)
-  (param value SyntaxId)
-  ; A constant a C header defines, declared only by the module of the header and named by the C
-  ; name a module reads it by.
-  (call make-property-declaration tree loc access (call (of ImmutableArray SyntaxId)) left parts)
-  (where
-    (lazy left (call (. tree append) (call ASTTypeCapture loc (call (. tree append) (call ASTIdentifier loc ([] named 0) false)) 0)))
-    (lazy named (call c-declaration-name tree loc symbol))
-    (lazy parts (call PropertyAssignmentParts .property-assignment-immediate value false))
-  )
-)
-
-(fn-expr + make-state-machine-property SyntaxId
-  (param tree ASTBuilder)
-  (param header StateMachineHeader)
-  (param body (of ImmutableArray SyntaxId))
-  (call (. tree append) (call ASTProperty (. header location) (. header access) (. header left) machine (. stored decoration) false (. stored annotations))
-    (block
-      (lazy machine (call (. tree append) (call ASTStateMachine (. header location) (call (. tree store-children) body))))
-      (lazy stored (call (. tree store-property-decorations) (. header decorations)))
-    )
-  )
-)
-
 (fn-expr + reject-unmarked-state-machine SyntaxId (?! YumiSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
@@ -1208,71 +1024,6 @@
       false
     )
   )
-)
-
-(fn-expr + make-stream-match-block SyntaxId
-  (param tree ASTBuilder)
-  (param loc MatchLocation)
-  (param pattern SyntaxId)
-  (param right (? StreamMatchRight))
-  (match right
-    (case (: resolved StreamMatchRight)
-      (match resolved
-        (case (call .assignment value body)
-          (call (. tree append) (call ASTMatchExpression loc value stream-match false)
-            (block
-              (lazy transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc pattern body false)) pattern))
-              (lazy stream-match (call (. tree append) (call ASTStreamMatch loc transformed true)))
-            )
-          )
-        )
-        (case (call .iterator loop body)
-          (match ([] (. tree nodes) loop)
-            (case (call .node-loop-syntax partial-loop)
-              (call make-iterator-line tree loc (. partial-loop container) (. partial-loop is-subscriber) null stream-match (. partial-loop clause) null null
-                (block
-                  (lazy transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc pattern body false)) pattern))
-                  (lazy stream-match (call (. tree append) (call ASTStreamMatch loc transformed)))
-                )
-              )
-            )
-            (throw (call Panic "Expected partial loop syntax"))
-          )
-        )
-        (case (call .expression body rollback)
-          (call (. tree append) (call ASTStreamMatch loc transformed)
-            (block
-              (lazy transformed (call (. tree append) (call ASTStreamTransform loc pattern body rollback)))
-            )
-          )
-        )
-      )
-    )
-    (default
-      (call (. tree append) (call ASTStreamMatch loc pattern))
-    )
-  )
-)
-
-(fn-do + syntax-optionals (of ImmutableArray SyntaxId)
-  (param tree ASTBuilder)
-  (param first (of ImmutableArray (? SyntaxId)))
-  (param second (of ImmutableArray (? SyntaxId)))
-  (let present (call (of scratch-array SyntaxId) tree (+ (. first length) (. second length))))
-  (let size Size 0)
-  (for (in item first)
-    (if item
-      (= ([] present size) item)
-      (+= size 1)
-    )
-  )
-  (for (in item second)
-    (if item
-      (= ([] present size) item)
-      (+= size 1)
-    )
-  )
-  (return (call scratch-items present size))
 )
 
 (fn-do + (of sequence-singleton Item) (of ImmutableArray Item)
@@ -1487,18 +1238,6 @@
     (= ([] sequence index) ([] items index))
   )
   (= ([] sequence (. items length)) item)
-  (return (call scratch-items sequence (+ (. items length) 1)))
-)
-
-(fn-do + (of sequence-prepending Item) (of ImmutableArray Item)
-  (param tree ASTBuilder)
-  (param item Item)
-  (param items (of ImmutableArray Item))
-  (let sequence (call (of scratch-array Item) tree (+ (. items length) 1)))
-  (= ([] sequence 0) item)
-  (for (in index (..< 0 (. items length)))
-    (= ([] sequence (+ index 1)) ([] items index))
-  )
   (return (call scratch-items sequence (+ (. items length) 1)))
 )
 
@@ -1896,19 +1635,6 @@
     )
   )
   (return replacement)
-)
-
-(fn-do + (of with-tail Item) (of ImmutableArray Item)
-  (param tree ASTBuilder)
-  (param head Item)
-  (param tail (? (of ImmutableArray Item)))
-  (let following (?? tail (call (of ImmutableArray Item))))
-  (let sequence (call (of scratch-array Item) tree (+ (. following length) 1)))
-  (= ([] sequence 0) head)
-  (for (in index (..< 0 (. following length)))
-    (= ([] sequence (+ index 1)) ([] following index))
-  )
-  (return (call scratch-items sequence (+ (. following length) 1)))
 )
 
 (fn-expr + type-optional SyntaxId
@@ -2684,19 +2410,6 @@
   (return (call (. tree append) (call ASTAssign loc op left rhs)))
 )
 
-(fn-do + member-place SyntaxId
-  (param tree ASTBuilder)
-  (param loc MatchLocation)
-  (param head SyntaxId)
-  (param tail (? (of ImmutableArray Atom)))
-  (let names (?? tail (call (of ImmutableArray Atom))))
-  (let place head)
-  (for (in name names)
-    (= place (call optional-get tree place name false false false))
-  )
-  (return (call relocated-get tree loc place))
-)
-
 (fn-do + track-place _
   (param tree ASTBuilder)
   (param place SyntaxId)
@@ -2915,22 +2628,6 @@
   )
 )
 
-(fn-expr + reduce-user-binary-op SyntaxId
-  (param tree ASTBuilder)
-  (param loc _)
-  (param seed SyntaxId)
-  (param stream _)
-  (call reduce seed stream
-    (:using
-      (=> (accum pair)
-        (block
-          (call user-binary-op tree loc ([] pair 0) accum ([] pair 1))
-        )
-      )
-    )
-  )
-)
-
 (fn-expr + user-binary-op SyntaxId
   (param tree ASTBuilder)
   (param loc MatchLocation)
@@ -2980,23 +2677,6 @@
               )
             )
           )
-        )
-      )
-    )
-  )
-)
-
-(fn-expr + reduce-binary-op SyntaxId
-  (param tree ASTBuilder)
-  (param loc _)
-  (param seed SyntaxId)
-  (param stream _)
-  (param is-optional _ (= false))
-  (call reduce seed stream
-    (:using
-      (=> (accum pair)
-        (block
-          (call binary-op tree loc ([] pair 0) accum ([] pair 1) is-optional)
         )
       )
     )
@@ -3104,22 +2784,6 @@
   )
 )
 
-(fn-expr + reduce-compose-expression SyntaxId
-  (param tree ASTBuilder)
-  (param loc MatchLocation)
-  (param seed SyntaxId)
-  (param stream (of ImmutableArray ComposeExpressionTail))
-  (call reduce seed stream
-    (:using
-      (=> (accum tail)
-        (block
-          (call binary-op tree loc (. tail op) accum (. tail right) (. tail is-optional) (. tail write-name))
-        )
-      )
-    )
-  )
-)
-
 (fn-expr + binary-op SyntaxId
   (param tree ASTBuilder)
   (param loc MatchLocation)
@@ -3147,22 +2811,6 @@
     )
     (default
       (call (. tree append) (call ASTBinaryExpression loc op left right))
-    )
-  )
-)
-
-(fn-expr + reduce-unary-op SyntaxId @inline
-  (param tree ASTBuilder)
-  (param loc _)
-  (param seed SyntaxId)
-  (param stream _)
-  (call reduce seed stream
-    (:using
-      (=> (accum op)
-        (block
-          (call (. tree append) (call ASTUnaryExpression loc op accum))
-        )
-      )
     )
   )
 )
@@ -3200,25 +2848,6 @@
     (default
       num
     )
-  )
-)
-
-(fn-expr + negated-number SyntaxId
-  (param tree ASTBuilder)
-  (param num SyntaxId)
-  (match ([] (. tree nodes) num)
-    (case (call .node-integer-syntax number)
-      (call negative-number tree location num (call negated-number-text (. number value) 1))
-    )
-    (case (call .node-float-syntax number)
-      (call negative-number tree location num (call negated-number-text (. number value) 1))
-    )
-    (default
-      num
-    )
-  )
-  (where
-    (lazy location ([] (. tree nodes loc) num))
   )
 )
 
@@ -3957,20 +3586,6 @@
     (return? (?? body (call (. tree append) (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId))))))
   )
   (return body)
-)
-
-(fn-expr + declaration-body (? SyntaxId) (?! YumiSyntaxError)
-  (param tree ASTBuilder)
-  (param body (? SyntaxId))
-  (param same-line (? MatchLocation))
-  (before
-    (throw (call YumiSyntaxError same-line (str cause " " correction) (. tree source) (. tree source-path)) (if (and body same-line)))
-  )
-  body
-  (where
-    (lazy cause "A divider made this line a function header, and a function body cannot start on its header line.")
-    (lazy correction "Declare values before the first divider, or leave a blank line after a thick divider (━).")
-  )
 )
 
 (extend + ASTBuilder

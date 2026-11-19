@@ -417,7 +417,7 @@ received 1 foo
 ```
 
 ```output
-Exception: No C function "ctest13" accepts (Thing, String, String); it is declared as "ctest13(CPointer'I8, CPointer'Char8)"
+Exception: No C function "ctest13" accepts (Thing, String, String); it is declared as "ctest13((of CPointer I8), (of CPointer Char8))"
 <no file:6>
       (call C:ctest13 (call Thing) "foo" "bar")
       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1145,7 +1145,7 @@ Exception: Expected CPointer'I64 here, but this is Array'U8, which becomes CPoin
 ```
 
 ```output
-Exception: No C function "strlen" accepts (U64); it is declared as "strlen(CPointer'Char8)"
+Exception: No C function "strlen" accepts (U64); it is declared as "strlen((of CPointer Char8))"
 <no file:7>
       (print (call C:strlen address))
              ^^^^^^^^^^^^^^^^^^^^^^^
