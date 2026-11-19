@@ -63,6 +63,7 @@ function initializeExamples(document) {
     const fragments = new Map([[first, body.innerHTML]]);
     const kindOf = (name) => (name.endsWith('.md') ? 'text' : 'code');
     let current = first;
+    let shown = first;
     let request = 0;
 
     const reveal = (link) => {
@@ -102,7 +103,7 @@ function initializeExamples(document) {
 
     const select = async (name, isLanding = false) => {
         const link = links.get(name);
-        if (!link || name === current) return;
+        if (!link || (name === shown && !isLanding)) return;
         current = name;
         for (const other of links.values()) other.removeAttribute('aria-current');
         link.setAttribute('aria-current', 'page');
@@ -114,16 +115,21 @@ function initializeExamples(document) {
         reveal(link);
         label.textContent = name;
         browser.dataset.kind = kindOf(name);
+        if (name === shown) return;
+        shown = null;
         const ticket = ++request;
         body.setAttribute('aria-busy', 'true');
         let html;
+        let loaded = true;
         try {
             html = await fragment(name);
         } catch {
             html = '<p class="example-error">This example could not be loaded.</p>';
+            loaded = false;
         }
         if (ticket !== request) return;
         body.innerHTML = html;
+        shown = loaded ? name : null;
         body.removeAttribute('aria-busy');
         if (file.getBoundingClientRect().top < 0) file.scrollIntoView({ block: 'start' });
     };

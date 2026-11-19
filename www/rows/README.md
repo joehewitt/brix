@@ -12,6 +12,8 @@ forms. The home page and the reference both use it.
 - `rows-inline-lines` gives a document's rows as lines of spans, for code in a line of text.
 - `html-text` and `html-attribute` escape text for HTML.
 
-`rows.css` styles them: the spans by kind, and the boxes in the editor's dark colors from
-`stdlib/gui/source-editor`. A page puts it before its own style and gives `.ubrix` its frame.
-Inline rows read the `--s-` colors from the page, so a page sets them to match its theme.
+`rows.css` styles them: the spans by kind and the boxes, in the colors of the editor's light and
+dark themes from `stdlib/gui/source-editor` and `stdlib/gui/theme.bx`. A block takes the theme of
+its `color-scheme`, which it inherits from the page, and the page frames it. A page puts `rows.css`
+before its own style. Inline rows read the `--s-` colors from the page, so a page sets them to
+match its theme.

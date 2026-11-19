@@ -17,6 +17,7 @@ sorted by name. Names that start with a dot are left out. The right pane shows o
   Source button switches between the two and the browser remembers the choice, which the reference
   shares.
 - Each Markdown file is shown as rendered Markdown.
+- The pane takes the editor's light or dark colors to match the page.
 - The build writes every file's pane to `examples/<path>.html`, and the page loads one when its file
   is chosen. The page holds the pane of `home-first-example`, `basics/life.bx`, so it shows code
   before its script runs.
