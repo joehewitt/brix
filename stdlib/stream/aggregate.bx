@@ -175,32 +175,44 @@
   (return false)
 )
 
-(fn-expr + (of only-one Item) _ @inline
+(fn-do + (of only-one Item) _ @inline
   (param stream (stream Item))
   (param where (of Predicate Item))
-  (== count 1)
-  (where
-    (lazy count (call how-many stream (:where where)))
+  (let found false)
+  (for (in item stream)
+    (if (call where item)
+      (return-if false (if found))
+      (= found true)
+    )
   )
+  (return found)
 )
 
-(fn-expr + (of more-than-one Item) _ @inline
+(fn-do + (of more-than-one Item) _ @inline
   (param stream (stream Item))
   (param where (of Predicate Item))
-  (> count 1)
-  (where
-    (lazy count (call how-many stream (:where where)))
+  (let found false)
+  (for (in item stream)
+    (if (call where item)
+      (return-if true (if found))
+      (= found true)
+    )
   )
+  (return false)
 )
 
-(fn-expr + (of exactly Item) _ @inline
+(fn-do + (of exactly Item) _ @inline
   (param amount Int)
   (param stream (stream Item))
   (param where (of Predicate Item))
-  (== amount count)
-  (where
-    (lazy count (call how-many stream (:where where)))
+  (let count 0)
+  (for (in item stream)
+    (if (call where item)
+      (+= count 1)
+      (return-if false (if (> count amount)))
+    )
   )
+  (return (== count amount))
 )
 
 (fn-expr + (of how-many Item) _ @inline
