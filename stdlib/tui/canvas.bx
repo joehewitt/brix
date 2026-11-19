@@ -431,13 +431,13 @@
           (if (== changed-start width)
             (= changed-start x)
           )
-          (= changed-end width)
+          (= changed-end (+ x 1))
         )
       )
       (blank)
       (if (< changed-start changed-end)
-        (let start (call display-span-start changed-start y))
-        (let end (call display-span-end changed-end y))
+        (let start (call min (call display-span-start changed-start y) (call (. previous diff-span-start) changed-start y)))
+        (let end (call max (call display-span-end changed-end y) (call min (call (. previous diff-span-end) changed-end y) width)))
         (call dump-row-span-to out y start end scratch)
         (= did-write true)
       )
@@ -826,6 +826,26 @@
     )
     (default
       (call display-run-end x y)
+    )
+  )
+  (fn-expr _ diff-span-start Coord
+    (param x Coord)
+    (param y Coord)
+    (case? (or (>= y height) (>= x width))
+      x
+    )
+    (default
+      (call display-span-start x y)
+    )
+  )
+  (fn-expr _ diff-span-end Coord
+    (param x Coord)
+    (param y Coord)
+    (case? (or (>= y height) (>= x width))
+      x
+    )
+    (default
+      (call display-span-end x y)
     )
   )
   (fn-do _ display-run-start Coord
