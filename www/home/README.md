@@ -1,7 +1,7 @@
 # The home page
 
-`home/build.bx` writes the home page of brix-lang.com: the name, the byline, the install command,
-a prompt that asks an agent to install Brix and write an app, a link to the reference, and a
+`home/build.bx` writes the home page of brix-lang.com: the name, the byline, a link to the
+reference, the install command, a prompt that asks an agent to install Brix and write an app, and a
 browser of `examples`.
 
 Run it from the repository root with
