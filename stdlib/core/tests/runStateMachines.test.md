@@ -6179,6 +6179,64 @@ opened true busy 7
 closed false true left busy 7
 ```
 
+### A loop a subclass's refinement writes in a case runs while the case is active, after the value that entered the case, and ends as the case exits.
+
+```brix
+(main
+  (let door (call LoggedDoor))
+  (<- (. door ticks) 1)
+  (<- (. door opens) true)
+  (<- (. door ticks) 2)
+  (<- (. door closes) true)
+  (<- (. door ticks) 3)
+  (print (. door phase))
+)
+
+(type + Door
+  (event + ticks Int)
+  (event + opens Bool)
+  (event + closes Bool)
+  (prop + phase _
+    (machine
+      (state shut
+        (then open (trigger on opens))
+      )
+      (blank)
+      (state open
+        (then shut (trigger on closes))
+      )
+    )
+  )
+)
+
+(type + LoggedDoor (is Door)
+  (prop + phase _
+    (machine
+      (state shut
+        (for (on o opens)
+          (print (str "shut heard opens " o))
+        )
+      )
+      (blank)
+      (state open
+        (for (on n ticks)
+          (print (str "open heard " n))
+        )
+        (for (on o opens)
+          (print (str "open heard opens " o))
+        )
+      )
+    )
+  )
+)
+```
+
+```output
+shut heard opens true
+open heard 2
+shut
+```
+
 ### A refinement of an anonymous machine adds no case at its root.
 
 ```brix crash
