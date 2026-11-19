@@ -9,8 +9,21 @@
 (import /string.h)
 (import /unistd.h)
 (blank)
-(prop _ inherited-stream I32 (= -1))
-(prop _ discarded-stream I32 (= -2))
+(effect + process
+  (claim C:brixSpawn)
+  (claim C:brixSpawnPty)
+  (claim C:kill)
+  (claim C:brixSuspendActiveTaskUntilProcExit)
+  (claim C:brixCancelProcExitEventListener)
+  (claim C:brixReapProcess)
+  (claim C:brixChildProcesses)
+  (claim C:brixProcessGroupMembers)
+  (claim C:brixProcessDirectory)
+  (claim C:execv)
+)
+
+(prop + inherited-stream I32 (= -1))
+(prop + discarded-stream I32 (= -2))
 (prop _ signaled-status-base _ (= 128))
 
 (type + ProcessStderr (is Union)
@@ -157,20 +170,7 @@
     (for (in index (..< 0 (. passed length)))
       (= ([] passing index) ([] passed index))
     )
-    (let child
-      (call C:brixSpawn
-        (block
-          (arg name)
-          (arg argv)
-          (arg envp)
-          (arg (?? directory ""))
-          (arg streams)
-          (arg passing)
-          (arg (. passed length))
-          (arg (if-expr leads 1 0))
-        )
-      )
-    )
+    (let child (call spawn-process name argv envp (?? directory "") streams passing leads))
     (if (< child 0)
       (if pipes
         (call close-pipe input)
@@ -210,7 +210,7 @@
     (if sem
       (= semaphore-pointer (. sem native-pointer))
     )
-    (if (not (call C:brixSuspendActiveTaskUntilProcExit pid semaphore-pointer))
+    (if (not (call wait-for-process-exit pid semaphore-pointer))
       (call collect)
       (return status)
     )
@@ -221,7 +221,7 @@
     ; process was already waited for, it gives what that wait collected.
     (return-if reaped-usage (if is-reaped))
     (blank)
-    (if (call C:brixSuspendActiveTaskUntilProcExit pid null)
+    (if (call wait-for-process-exit pid (call Pointer))
       (call check-task-cancelation (. (call Task) is-cancel-in-force))
       (return null)
     )
@@ -233,7 +233,7 @@
     (return-if 0 (if is-reaped))
     (blank)
     (let usage ([] ProcessUsage 1))
-    (let error (call C:brixReapProcess pid usage))
+    (let error (call reap-process pid usage))
     (return-if error (if (!= error 0)))
     (blank)
     (let reaped ([] usage 0))
@@ -264,12 +264,12 @@
   (fn-do + terminate-group _
     (return-if (if (not leads-group)))
     (blank)
-    (call C:kill (- pid) C:SIGTERM)
+    (call signal-process (- pid) C:SIGTERM)
   )
   (fn-do + kill-tree _
     (let tree (list Int))
     (if leads-group
-      (call C:kill (- pid) C:SIGSTOP)
+      (call signal-process (- pid) C:SIGSTOP)
       (++= tree (call process-group-members pid))
     )
     (if (and (not is-reaped) (not (has tree pid)))
@@ -279,17 +279,17 @@
     (while (< index (. tree length))
       (for (in child (call process-children ([] tree index)))
         (if (not (has tree child))
-          (call C:kill child C:SIGSTOP)
+          (call signal-process child C:SIGSTOP)
           (+= tree child)
         )
       )
       (+= index 1)
     )
     (for (in member tree)
-      (call C:kill member C:SIGKILL)
+      (call signal-process member C:SIGKILL)
     )
     (if leads-group
-      (call C:kill (- pid) C:SIGKILL)
+      (call signal-process (- pid) C:SIGKILL)
     )
   )
   (fn-expr + group-members (list Int) :get
@@ -299,7 +299,7 @@
     (param number I32)
     (return-if (if is-reaped))
     (blank)
-    (call C:kill pid number)
+    (call signal-process pid number)
   )
   (fn-expr + begin-using _
     this
@@ -378,7 +378,7 @@
   (return (call listed-processes true group))
 )
 
-(fn-do + process-directory (? String)
+(fn-do + process-directory (? String) (door process)
   (param pid Int)
   (let buffer ([] Byte 4096))
   (let length (call C:brixProcessDirectory pid buffer (. buffer size)))
@@ -395,10 +395,10 @@
     (let count
       (block
         (case? by-group
-          (call C:brixProcessGroupMembers value pids capacity)
+          (call list-processes true value pids capacity)
         )
         (default
-          (call C:brixChildProcesses value pids capacity)
+          (call list-processes false value pids capacity)
         )
       )
     )
@@ -471,6 +471,67 @@
     )
   )
   (fn-do + end-using _
-    (call C:brixCancelProcExitEventListener (. process pid) (. lock native-pointer))
+    (call cancel-process-exit-listener (. process pid) (. lock native-pointer))
   )
+)
+
+(fn-do + spawn-process I32 (door process)
+  (param name String)
+  (param argv ([] String))
+  (param envp ([] String))
+  (param directory String)
+  (param streams ([] I32))
+  (param passed ([] I32))
+  (param leads-group Bool)
+  (return (call C:brixSpawn name argv envp directory streams passed (. passed length) (if-expr leads-group 1 0)))
+)
+
+(fn-do + spawn-pty I32 (door process)
+  (param executable String)
+  (param argv ([] String))
+  (param envp ([] String))
+  (param directory String)
+  (param columns Size)
+  (param rows Size)
+  (param terminal ([] I32))
+  (return (call C:brixSpawnPty executable argv envp directory columns rows terminal))
+)
+
+(fn-do + signal-process I32 (door process)
+  (param pid Int)
+  (param signal I32)
+  (return (call C:kill (as pid I32) signal))
+)
+
+(fn-do + wait-for-process-exit Bool (door process)
+  (param pid Int)
+  (param listener Pointer)
+  (return (call C:brixSuspendActiveTaskUntilProcExit pid listener))
+)
+
+(fn-do + cancel-process-exit-listener _ (door process)
+  (param pid Int)
+  (param listener Pointer)
+  (call C:brixCancelProcExitEventListener pid listener)
+)
+
+(fn-do + reap-process I32 (door process)
+  (param pid Int)
+  (param usage ([] ProcessUsage))
+  (return (call C:brixReapProcess pid usage))
+)
+
+(fn-do + list-processes Int (door process)
+  (param by-group Bool)
+  (param value Int)
+  (param pids ([] I32))
+  (param capacity Size)
+  (return-if (call C:brixProcessGroupMembers value pids capacity) (if by-group))
+  (return (call C:brixChildProcesses value pids capacity))
+)
+
+(fn-do + replace-process I32 (door process)
+  (param path String)
+  (param argv ([] String))
+  (return (call C:execv path argv))
 )

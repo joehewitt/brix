@@ -162,7 +162,7 @@
     (= forwarded sig)
     (let running child)
     (if running
-      (call C:kill (. running pid) sig)
+      (call signal-process (. running pid) (as sig I32))
     )
   )
   (fn-do _ watch-deadline _
@@ -180,7 +180,7 @@
     (call C:brixSetSignalIgnored C:SIGPIPE 0)
     (let argv ([] String 2))
     (= ([] argv 0) executable)
-    (call C:execv executable argv)
+    (call replace-process executable argv)
     (throw (call Error (str "Unable to run " executable)))
   )
 )
@@ -196,7 +196,7 @@
 (fn-do _ exit-by-signal Int
   (param sig Signal)
   (call C:brixSetSignalIgnored sig 0)
-  (call C:kill (call C:getpid) sig)
+  (call C:raise sig)
   (return (+ bench-launch-signaled-status-base sig))
 )
 

@@ -170,7 +170,9 @@ Files, processes and the environment. There is no `/os` module; import each one.
   (command lines: `CommandLine`, subcommands, flags, options and arguments), `/os/shell` (the
   login shell's environment), `/os/bundle` and `/os/app-support` (an app's bundle and its
   application support folder).
-- **Processes:** `/os/process` (`Process`, and pipes to and from processes), `/os/pty`,
+- **Processes:** `/os/process` (`Process`, pipes to and from processes, and the `process`
+  effect), `/os/fake-process` (`FakeProcess`, a fake for `process` that runs a Brix script for each
+  program started under it), `/os/pty`,
   `/os/signal`, `/os/memory-pressure` (`memory-pressure`, which sends a warning or critical level
   when macOS or iOS runs short of memory), `/os/tty`, `/os/shared-memory`, `/os/message-channel`,
   `/os/outbox` and `/os/mach-port`.

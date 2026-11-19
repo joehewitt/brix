@@ -1127,3 +1127,43 @@ climb above it:
   (call remove-tree root)
 )
 ```
+
+```output
+kept
+```
+
+`process`, in `/os/process`, has as its doors starting and ending other programs:
+`spawn-process`, which `Process(...)` calls, `spawn-pty`, which `Pty(...)` calls,
+`signal-process`, `wait-for-process-exit`, `cancel-process-exit-listener`, `reap-process`,
+`list-processes`, `process-directory`, and `replace-process`, which runs a program in place of
+this one. Pipes are not doors. `FakeProcess`, in `/os/fake-process`, is a fake for `process` that
+runs a script written in Brix as a task for each program started under it. The script is given a
+`FakeProcessRun`, which holds the program, its arguments, folder and variables and its three
+streams, and gives the exit status. A signal cancels the task, so the process ends as by the
+signal, and `replace-process` records what it was given and fails:
+
+```brix
+(import /os/fake-process)
+(import /os/process)
+
+(main
+  (do-with process (call FakeProcess greet)
+    (let child (call Process "greeter" (list "Ada")))
+    (call (. child close-input))
+    (print (as child String))
+    (print (?? (call (. child wait) null) -1))
+  )
+)
+
+(fn-do + greet Int
+  (param run FakeProcessRun)
+  (call (. run say) (str "hello " ([] (. run arguments) 0)))
+  (return 0)
+)
+```
+
+```output
+hello Ada
+
+0
+```

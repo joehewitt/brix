@@ -1,0 +1,87 @@
+(import /os/fake-process)
+(import /os/file)
+(import /os/process)
+(import /test)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Process Runs"))
+  (call (. cases run) run-tests)
+  (= cases (call (. cases then) "Fake Process Failures" failure-tests))
+  (= cases (call (. cases then) "Fake Process Signals" signal-tests))
+  (= cases (call (. cases then) "Fake Process Replacing" replace-tests))
+  (return cases)
+)
+
+(fn-do + echo Int
+  (param run FakeProcessRun)
+  (let text (as (. run input) String))
+  (call (. run say) (str (. run program) " " (call (. " " join) (. run arguments)) " in " (. run directory) " with " (?? ([] (. run variables) "NAME") "none") ": " text))
+  (return 0)
+)
+
+(fn-do + grumble Int
+  (param run FakeProcessRun)
+  (call (. run complain) "bad input")
+  (return 3)
+)
+
+(fn-do + linger Int
+  (param run FakeProcessRun)
+  (let text (as (. run input) String))
+  (return 0)
+)
+
+(fn-do + run-tests TestCase
+  (param t TestCase)
+  (let variables (call (of Map String String)))
+  (= ([] variables "NAME") "fake")
+  (do-with process (call FakeProcess echo)
+    (let child (call Process "tool" (list "a" "b") "/work" variables))
+    (call (. t check) "a fake process has a pid no real process has" (> (. child pid) 99999))
+    (call (. child write) "hello")
+    (call (. child close-input))
+    (call (. t expect) "the script reads what was written and answers" "tool a b in /work with fake: hello\n" (as child String))
+    (call (. t expect) "the script's status is the process's" 0 (?? (call (. child wait) null) -1))
+    (call (. child close))
+  )
+  (return t)
+)
+
+(fn-do + failure-tests TestCase
+  (param t TestCase)
+  (do-with process (call FakeProcess grumble)
+    (let child (call Process "tool" (. ProcessStderr capture) (call (of List String))))
+    (call (. t expect) "the error output is captured" "bad input\n" (as (!! (. child stderr)) String))
+    (call (. t expect) "a failing script gives its status" 3 (?? (call (. child wait) null) -1))
+    (call (. child close))
+  )
+  (return t)
+)
+
+(fn-do + signal-tests TestCase
+  (param t TestCase)
+  (do-with process (call FakeProcess linger)
+    (let child (call Process "tool" (call (of List String))))
+    (call (. child terminate))
+    (call (. t expect) "a terminated script ends as by the signal" 143 (?? (call (. child wait) null) -1))
+    (call (. child close))
+  )
+  (return t)
+)
+
+(fn-do + replace-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeProcess echo))
+  (do-with process fake
+    (let argv ([] String 3))
+    (= ([] argv 0) "/bin/tool")
+    (= ([] argv 1) "--flag")
+    (call (. t expect) "replacing the process fails as a failed exec does" -1 (call replace-process "/bin/tool" argv))
+  )
+  (call (. t expect) "the fake records what it was asked to run" "/bin/tool --flag" (call (. " " join) ([] (. fake replaced) 0)))
+  (return t)
+)
