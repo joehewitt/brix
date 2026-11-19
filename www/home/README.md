@@ -82,5 +82,4 @@ while the file scrolls under them. Without JavaScript the page shows the tree an
 - `features`: one program for each feature.
 - `style.css`: the page's style, after `rows/rows.css` in `home.css`.
 - `script.js`: the copy buttons, the Source buttons, the feature cloud and the examples browser.
-- `icon.png` and `robots.txt`: copied as they are. `robots.txt` lets search engines read every
-  page.
+- `robots.txt`: copied as it is. It lets search engines read every page.
