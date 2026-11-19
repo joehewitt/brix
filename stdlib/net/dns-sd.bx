@@ -1,5 +1,6 @@
 (import ./cnet)
 (import ./dns)
+(import ./network)
 (import /BxCore/BxCore.h)
 (import /BxEvents/BxEvents.h)
 (import /core/intrinsics)
@@ -30,7 +31,7 @@
   )
 )
 
-(fn-do + resolve-service ServiceAddress (?! Error)
+(fn-do + resolve-service ServiceAddress (?! Error) (door network)
   (param name String)
   (param type String)
   (param domain _ (= "local."))
@@ -157,22 +158,7 @@
     (param domain String)
   )
   (fn-do + begin-using _
-    (let browsing (of CPointer I8) null)
-    (let started
-      (call C:DNSServiceBrowse
-        (block
-          (arg &browsing)
-          (arg 0)
-          (arg 0)
-          (arg type)
-          (arg domain)
-          (arg (as service-browsed ServiceBrowseReply))
-          (arg (as this Pointer))
-        )
-      )
-    )
-    (throw (call ServiceDiscoveryError (str "Unable to browse " type " (" started ")")) (if (!= started 0)))
-    (blank)
+    (let browsing (call start-service-browse type domain (as this Pointer)))
     (= service browsing)
     (let fd (call C:DNSServiceRefSockFD browsing))
     (do-new
@@ -227,4 +213,26 @@
   (let stream (call (of gc-object-from-pointer ServiceBrowseStream) context))
   (let is-added (!= (/and/ flags C:kDNSServiceFlagsAdd) 0))
   (call (. stream found) (call ServiceBrowseEvent (as name String) (as type String) (as domain String) is-added))
+)
+
+(fn-do + start-service-browse (of CPointer I8) (?! Error) (door network)
+  (param type String)
+  (param domain String)
+  (param context Pointer)
+  (let browsing (of CPointer I8) null)
+  (let started
+    (call C:DNSServiceBrowse
+      (block
+        (arg &browsing)
+        (arg 0)
+        (arg 0)
+        (arg type)
+        (arg domain)
+        (arg (as service-browsed ServiceBrowseReply))
+        (arg context)
+      )
+    )
+  )
+  (throw (call ServiceDiscoveryError (str "Unable to browse " type " (" started ")")) (if (!= started 0)))
+  (return browsing)
 )

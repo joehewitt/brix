@@ -188,6 +188,8 @@ Networking. There is no `/net` module; import each one.
 | `/net/sse` | Server-sent events. |
 | `/net/websocket` | `WebSocket`, either end of a WebSocket connection. |
 | `/net/dns-sd` | Finding services on the local network. |
+| `/net/network` | The `network` effect, whose doors are connecting, listening, accepting, resolving and finding services. |
+| `/net/fake-network` | `FakeNetwork`, a switchboard that is a fake for `network`: a listener and a client in one program meet through it with no port, and a secure connection is a plain one. |
 
 ### git
 

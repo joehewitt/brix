@@ -1,0 +1,59 @@
+(import /net/fake-network)
+(import /net/network)
+(import /net/socket)
+(import /test)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Network Connections"))
+  (call (. cases run) connection-tests)
+  (= cases (call (. cases then) "Fake Network Listeners" listener-tests))
+  (return cases)
+)
+
+(fn-do + connection-tests TestCase
+  (param t TestCase)
+  (do-with network (call FakeNetwork)
+    (let refused (catch? (call (of TCP Byte) "nowhere.example.com" 80)))
+    (call (. t expect) "a connection to an address no fake server listens on fails" true (== refused null))
+    (let listener (call TCPListener 7000 "localhost"))
+    (let server
+      (do-new
+        (let connection (!! (call (. listener accept))))
+        (let buffer ([] Byte 2))
+        (let got (call (. connection read) 2 buffer))
+        (call (. connection write) buffer got)
+        (call (. connection close))
+      )
+    )
+    (let client (call (of TCP Byte) "127.0.0.1" 7000))
+    (call (. client write) (as "hi" ([] Byte)) 2)
+    (let reply ([] Byte 2))
+    (call (. t expect) "localhost and 127.0.0.1 reach the same fake server" 2 (call (. client read) 2 reply))
+    (call (. client close))
+    (call (. server wait))
+    (call (. listener close))
+  )
+  (return t)
+)
+
+(fn-do + listener-tests TestCase
+  (param t TestCase)
+  (do-with network (call FakeNetwork)
+    (let first (call TCPListener))
+    (let second (call TCPListener))
+    (call (. t expect) "a listener on port 0 is given a port of its own" true (!= (. first port) 0))
+    (call (. t expect) "each listener on port 0 is given another port" true (!= (. first port) (. second port)))
+    (let accepted (channel Bool))
+    (do-new
+      (<- accepted (== (call (. first accept)) null))
+    )
+    (call (. first close))
+    (call (. t expect) "closing a listener ends an accept that waits" true (<- accepted))
+    (call (. second close))
+  )
+  (return t)
+)

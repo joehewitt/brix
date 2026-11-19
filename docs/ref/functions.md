@@ -1091,3 +1091,12 @@ and `random-bytes` in `/crypto`. A `Random` made from a seed draws without them.
 `set-env` and `environment`, and `executable-path` in `/os/path`. Probes read their own settings
 outside it. `FakeEnvironment`, in `/os/fake-environment`, starts with no variables unless it is
 given some, and keeps what is set under it.
+
+`network`, in `/net/network`, has as its doors `connect-to`, which `Socket(...)` calls,
+`connect-to-host`, which `TCP(host, port)` calls, `listen-on` and `accept-from`, which
+`TCPListener` calls, `get-addr-info`, and `resolve-service` and `start-service-browse` in
+`/net/dns-sd`. Reads and writes on a connection are not doors. `FakeNetwork`, in
+`/net/fake-network`, is a switchboard: a listener made under it and a client that connects to its
+host and port meet through a socket pair, so a server and its client run in one program with no
+port, and it answers a secure connection with a plain one. It answers no resolving or finding
+door, so code that reaches one under it is refused.
