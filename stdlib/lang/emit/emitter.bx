@@ -261,9 +261,12 @@
   ; out, and `cleaning-top` those open where they began to run, above which are those opened in it;
   ; `unwinding-from` is the body of the one a panic made the way out through. While a rule of a
   ; class is emitted, `rule-leaving` is where a return in its body goes, with `rule-cleanups` the
-  ; cleanups open as the body began.
+  ; cleanups open as the body began. While the expression that gives a block written as a value
+  ; its value is emitted, `giving` says so, with `giving-lazies` the lazy locals then open.
   (blank)
   (prop + block-base Size (= 0))
+  (prop + giving Bool)
+  (prop + giving-lazies Size (= 0))
   (prop + cleaning Bool)
   (prop + cleaning-open Size (= 0))
   (prop + cleaning-top Size (= 0))
@@ -423,12 +426,14 @@
 
 (type _ OpenCleanup (is Tuple)
   ; A cleanup open where code is emitted: its body, how many were open where the block that opened
-  ; it began, what the cleanup of a `use` reads, and what the `do` blocks around it keep it from.
+  ; it began, what the cleanup of a `use` reads, what the `do` blocks around it keep it from, and
+  ; whether it was opened by the expression that gives a block written as a value its value.
   (blank)
   (prop + body SyntaxId)
   (prop + base Size)
   (prop + cell UseCell)
   (prop + effects U32)
+  (prop + gives Bool)
 )
 
 (type _ SiteGate (is Tuple)
@@ -19620,23 +19625,31 @@
   (fn-do _ emit-block-value Typed
     (param id SyntaxId)
     (param type TypeId)
-    ; A block written as a value: the assertions under it run, then its expression gives the
-    ; value. It is a block of its own: the cleanups opened while its value is evaluated run where
-    ; it ends, after a struct is copied out of what they may change.
+    ; A block written as a value: the assertions and declarations under it run, then its
+    ; expression gives the value. It is a block of its own: the cleanups its declarations open run
+    ; where it ends, after a struct is copied out of what they may change. A `use` its expression
+    ; opens gives the value, and is handed to the block around, with what was opened before it, to
+    ; end where that block ends, as it would without this one.
     (let mark (. open-cleanups length))
     (let own-scoping scoping)
     (= scoping (= (. scoping block-base) mark))
+    (= scoping (= (. scoping giving) false))
     (call clear-turn-lazies id)
     (call raise-elements id)
     (let only (call checked-expression id))
     (if (== only 0)
       (call refuse .refused-expression id)
     )
+    (= scoping (= (. scoping giving) true))
+    (= scoping (= (. scoping giving-lazies) (. lazy-open length)))
     (let emitted (call emit-expression only))
     (if (and (!= type no-type) (!= (. emitted type) type))
       (call refuse .refused-conversion id)
     )
-    (return (call close-value emitted mark own-scoping id))
+    (let kept (call given-top mark))
+    (let value (call close-value emitted kept own-scoping id))
+    (call hand-on-cleanups mark kept)
+    (return value)
   )
   (fn-do _ close-value Typed
     (param value Typed)

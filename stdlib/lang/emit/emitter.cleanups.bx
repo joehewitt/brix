@@ -61,8 +61,29 @@
     ; Opens a cleanup in the block being emitted, which runs where the block is left: a body, a
     ; loop's streams or a `use`, with what a `use` reads. A panic raised from here on runs it
     ; too, so the checks that follow land on a pad of their own.
-    (+= open-cleanups (call OpenCleanup item (. scoping block-base) cell block-effects))
+    (+= open-cleanups (call OpenCleanup item (. scoping block-base) cell block-effects (call is-giving)))
     (= landing no-block)
+  )
+  (fn-expr + is-giving Bool
+    (and (. scoping giving) (== (. lazy-open length) (. scoping giving-lazies)))
+  )
+  (fn-do + given-top Size
+    (param mark Size)
+    (let position (. open-cleanups length))
+    (while (> position mark)
+      (return-if position (if (. ([] open-cleanups (- position 1)) gives)))
+      (-= position 1)
+    )
+    (return mark)
+  )
+  (fn-do + hand-on-cleanups _
+    (param mark Size)
+    (param kept Size)
+    (let gives (call is-giving))
+    (for (in position (..< mark kept))
+      (let opened ([] open-cleanups position))
+      (= ([] open-cleanups position) (call OpenCleanup (. opened body) (. scoping block-base) (. opened cell) (. opened effects) gives))
+    )
   )
   (fn-expr _ ending-call FactId
     (param begins FactId)

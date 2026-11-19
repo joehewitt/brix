@@ -1013,6 +1013,51 @@ end
 bye 2
 ```
 
+### A use that gives a block's value lasts as long as the local the block gives it to, and one a local of the block holds ends with the block.
+
+```brix
+(main
+  (let a
+    (block
+      (use (call Thing 1))
+    )
+  )
+  (print (str "after a " (. a n)))
+  (let b
+    (block
+      (let t (use (call Thing 2)))
+      (. t n)
+    )
+  )
+  (print (str "after b " b))
+  (print "end")
+)
+
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
+```
+
+```output
+hello 1
+after a 1
+hello 2
+bye 2
+after b 2
+end
+bye 1
+```
+
 ### A return ends the uses open, newest first.
 
 ```brix

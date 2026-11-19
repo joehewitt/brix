@@ -584,6 +584,11 @@ the block's cleanups.
   implements `Closable`, whose `close` is then called at the end.
 - **Forms.** `(let file (use (call open path)))`{.brix} binds the resource.
   A `do-use` form uses a resource for the rows of its own block.
+- **Values written as blocks.** A `block` written as a value does not end the use that gives its
+  value. In `(let file (block (use (call open path))))`{.brix} the resource lasts as long as
+  `file`, until the block that declares it ends, as it does without the `block`. A use that a
+  local declared in the `block` holds ends where the `block` ends, unless the use that gives the
+  value began after it; then it lasts as long as that one.
 - **Null.** `use?` and `do-use?` skip a `null` resource.
 
 ## Panics
