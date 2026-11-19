@@ -51,9 +51,10 @@ BX_REGEX_API int32_t brixRegexFindAll(
     uint32_t flags,
     const char* text,
     uint32_t textLength,
-    uint32_t* state,
+    const uint32_t* previous,
+    uint32_t previousSize,
     uint32_t* ranges,
-    uint32_t capacity
+    uint32_t size
 );
 
 BX_REGEX_API int32_t brixRegexGroupNumber(

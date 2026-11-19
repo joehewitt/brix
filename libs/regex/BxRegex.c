@@ -293,10 +293,14 @@ int32_t brixRegexFindAll(
     uint32_t flags,
     const char* text,
     uint32_t textLength,
-    uint32_t* state,
+    const uint32_t* previous,
+    uint32_t previousSize,
     uint32_t* ranges,
-    uint32_t capacity
+    uint32_t size
 ) {
+    if (size < BX_REGEX_STATE_SIZE || (previous && previousSize < BX_REGEX_STATE_SIZE)) {
+        return PCRE2_ERROR_BADDATA;
+    }
     int32_t error = 0;
     uint32_t errorOffset = 0;
     BxRegexCode* code = brixRegexAcquire(pattern, patternLength, flags, &error, &errorOffset);
@@ -309,15 +313,23 @@ int32_t brixRegexFindAll(
         return PCRE2_ERROR_NOMEMORY;
     }
 
-    BxRegexCursor cursor = {text, textLength, state[BX_REGEX_STATE_CURSOR_OFFSET],
-        state[BX_REGEX_STATE_CURSOR_INDEX]};
-    PCRE2_SIZE offset = state[BX_REGEX_STATE_OFFSET];
-    uint32_t options = state[BX_REGEX_STATE_OPTIONS];
+    uint32_t capacity = size - BX_REGEX_STATE_SIZE;
+    uint32_t* state = ranges + capacity;
+    BxRegexCursor cursor = {text, textLength, 0, 0};
+    PCRE2_SIZE offset = 0;
+    uint32_t options = 0;
+    if (previous) {
+        const uint32_t* resume = previous + previousSize - BX_REGEX_STATE_SIZE;
+        cursor.offset = resume[BX_REGEX_STATE_CURSOR_OFFSET];
+        cursor.index = resume[BX_REGEX_STATE_CURSOR_INDEX];
+        offset = resume[BX_REGEX_STATE_OFFSET];
+        options = resume[BX_REGEX_STATE_OPTIONS];
+    }
     uint32_t stride = (code->groupCount + 1) * 2;
     uint32_t count = 0;
     int32_t result = 0;
     bool finished = true;
-    while ((uint64_t)(count + 1) * stride <= capacity) {
+    while (true) {
         int status = pcre2_match(
             code->code, (PCRE2_SPTR)text, textLength, offset, options, data, brixRegexContext());
         if (status == PCRE2_ERROR_NOMATCH) {
@@ -327,13 +339,14 @@ int32_t brixRegexFindAll(
             result = status;
             break;
         }
+        if ((uint64_t)(count + 1) * stride > capacity) {
+            finished = false;
+            break;
+        }
         brixRegexRecord(&cursor, data, code->groupCount, ranges + count * stride);
         count++;
         if (!pcre2_next_match(data, &offset, &options)) {
             break;
-        }
-        if ((uint64_t)(count + 1) * stride > capacity) {
-            finished = false;
         }
     }
     state[BX_REGEX_STATE_OFFSET] = (uint32_t)offset;

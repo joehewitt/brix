@@ -1,0 +1,25 @@
+; benchmark.meta description: Calls find and matches on short texts many times.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /regex)
+(blank)
+
+(main
+  (let regex (call Regex "(\\w)(\\d+)"))
+  (let text "alpha béta g42 délta e7")
+  (let checksum Size 0)
+  (for (in _ (..< 0 100000))
+    (let found (call (. regex find) text 8))
+    (if found
+      (+= checksum (. found end))
+    )
+    (if (call (. regex matches) text)
+      (+= checksum 1)
+    )
+    (if (call (. regex matches) "no digits here")
+      (+= checksum 1)
+    )
+  )
+  (print (str "bench-result regex/find-first checksum=" checksum))
+)
