@@ -41,5 +41,5 @@ shows the tree and the first file.
 - `build.bx`: the builder, and the page's text.
 - `style.css`: the page's style, after `rows/rows.css` in `home.css`.
 - `script.js`: the copy buttons, the Source button and the examples browser.
-- `icon.png` and `robots.txt`: copied as they are. Until launch, `robots.txt` and the page's
-  `noindex` keep search engines out.
+- `icon.png` and `robots.txt`: copied as they are. `robots.txt` lets search engines read every
+  page.
