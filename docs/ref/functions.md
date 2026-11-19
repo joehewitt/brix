@@ -1044,11 +1044,11 @@ gives:
   that import its file, and a private one only in its own. A program can ban or bind at most 32
   effects.
 
-The standard library declares `time` in `/time/clock`. Every read of the clock, the wall clock, the
+The standard library declares `clock` in `/time/clock`, beside the function of the same name. Every read of the clock, the wall clock, the
 monotonic clock and the local time zone alike, goes through its doors, and so do the waits that
 end at a time: `wait`, `freeze`, the timers, and a wait for a file or a socket with a deadline. A
 wait for a handle with no deadline, as every blocking read and write makes, is not a door, so
-`(without time)` lets code read files. `FakeClock`, in `/time/fake-clock`, is a fake for `time`
+`(without clock)` lets code read files. `FakeClock`, in `/time/fake-clock`, is a fake for `clock`
 whose clock starts at the start of 2026 in UTC and moves only when `advance` moves it:
 
 ```brix
@@ -1057,7 +1057,7 @@ whose clock starts at the start of 2026 in UTC and moves only when `advance` mov
 
 (main
   (let fake (call FakeClock))
-  (do-with time fake
+  (do-with clock fake
     (let reminder (do-new
       (call (. 5minutes wait))
       (print "ring")

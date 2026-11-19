@@ -28,7 +28,7 @@
 (fn-do + read-tests TestCase
   (param t TestCase)
   (let fake (call FakeClock))
-  (do-with time fake
+  (do-with clock fake
     (call (. t expect) "the wall clock starts at the fake's start" start (. (call clock) s))
     (call (. t expect) "a date reads the fake's time" "2026-01-01T00:00:00+00:00" (as (call DateTime) ISO8601))
     (call (. t expect) "the local zone is the fake's" "UTC" (. local name))
@@ -45,7 +45,7 @@
   (param t TestCase)
   (let fake (call FakeClock))
   (let heard (list String))
-  (do-with time fake
+  (do-with clock fake
     (let reminder
       (do-new
         (call (. 5minutes wait))
@@ -65,7 +65,7 @@
   (param t TestCase)
   (let fake (call FakeClock))
   (let heard (list String))
-  (do-with time fake
+  (do-with clock fake
     (let third
       (do-new
         (call (. 3s wait))
@@ -99,7 +99,7 @@
   (param t TestCase)
   (let fake (call FakeClock))
   (let ticks 0)
-  (do-with time fake
+  (do-with clock fake
     (let loop (call (. 100ms loop) (=> () :do (+= ticks 1))))
     (call (. fake advance) 1s)
     (call (. t expect) "a timer loop ticks once for each interval passed" 10 ticks)
@@ -117,7 +117,7 @@
   (let fake (call FakeClock))
   (let ticks (list Milliseconds))
   (let counter (of Subscriber Milliseconds) (=> (elapsed source) :do (+= ticks elapsed)))
-  (do-with time fake
+  (do-with clock fake
     (let timer (call Timer 100ms))
     (call (. timer subscribe) counter)
     (call (. fake advance) 1s)
@@ -135,7 +135,7 @@
   (let fake (call FakeClock))
   (let heard (list String))
   (let calls 0)
-  (do-with time fake
+  (do-with clock fake
     (let waiting
       (do-new
         (call (. 10s wait))
@@ -163,7 +163,7 @@
   (param t TestCase)
   (let fake (call FakeClock))
   (let heard (list String))
-  (do-with time fake
+  (do-with clock fake
     (let waiting
       (do-new
         (call (. 1s wait))
@@ -184,7 +184,7 @@
   (let heard (list String))
   (let idle (call process-pipe))
   (let busy (call process-pipe))
-  (do-with time fake
+  (do-with clock fake
     (let timing-out
       (do-new
         (let waited (catch (call wait-until-readable (. idle reader fd) (call Deadline 1s))))
