@@ -45,7 +45,7 @@ print?". They are kept short to test one thing each, so take their constructs, n
 ships. Unlike the core tests, they show how complete programs are written.
 
 - [`examples/basics`](../examples/basics): programs that print, named for what they do, such
-  as `lisp.bx`, `vending.bx`, `json-parser.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
+  as `lisp.bx`, `vending.bx`, `search-query.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
 - [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
   browsers with a client that joins it, and an MCP server. `chatgpt-mock-server.bx` stands in for
   the OpenAI API that `chatgpt.bx` talks to.

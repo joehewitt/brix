@@ -1,0 +1,176 @@
+; A search language: grammar rules that call each other read a query into a
+; union. `alternatives` joins with `or` what `requirements` reads, and that
+; joins with `and` what `condition` reads, so `and` binds tighter. A union holds
+; itself through a list, so `not` gives a `none-of` that holds one query.
+; A match walks the tree twice: to show how a query was read, and to search.
+(import /stream/aggregate)
+(blank)
+
+(main
+  (let recipes (call cookbook))
+  (for (in text (call queries))
+    (print text)
+    (let q (~ \query (of: text)))
+    (if q
+      (let found (in (. each name) recipes (when (call matches q each))))
+      (print (str "  read as  " (call shown q)))
+      (print (str "  found    " (call (. ", " join) found)))
+      (else
+        (print "  not a query")
+      )
+    )
+  )
+)
+
+(fn-expr + queries (list String)
+  (item "vegan and minutes < 30")
+  (item "not vegan or dessert")
+  (item "serves >= 4 and dinner")
+  (item "vegan or quick and serves < 2")
+  (item "(minutes < 20 or quick) and not vegan")
+  (item "minutes <")
+)
+
+(fn-expr + cookbook (list Recipe)
+  (item (call Recipe "Pancakes" 25 4 (list "vegan" "breakfast")))
+  (item (call Recipe "Salad" 10 2 (list "vegan" "lunch" "quick")))
+  (item (call Recipe "Omelette" 15 1 (list "breakfast" "quick")))
+  (item (call Recipe "Lasagna" 90 6 (list "dinner")))
+  (item (call Recipe "Brownies" 45 8 (list "dessert")))
+  (item (call Recipe "Curry" 40 4 (list "vegan" "dinner")))
+)
+
+(type + Recipe (is Tuple)
+  (prop + name String)
+  (prop + minutes Int)
+  (prop + serves Int)
+  (prop + tags (list String))
+)
+
+(type + Query (is Union)
+  (variant any-of (list Query))
+  (variant all-of (list Query))
+  (variant none-of (list Query))
+  (variant tagged String)
+  (variant compared (tuple (: field String) (: op String) (: amount Int)))
+)
+
+(fn-expr + query Query (over: Char)
+  (~ (seq / (: found \alternatives) /)
+    found
+  )
+)
+
+(fn-expr + alternatives Query (over: Char)
+  (~ (seq (: first \requirements) (: rest (* (seq // "or" // \requirements))))
+    (if-expr (== (. rest length) 0) first (call (. Query any-of) (++ (list first) rest)))
+  )
+)
+
+(fn-expr + requirements Query (over: Char)
+  (~ (seq (: first \condition) (: rest (* (seq // "and" // \condition))))
+    (if-expr (== (. rest length) 0) first (call (. Query all-of) (++ (list first) rest)))
+  )
+)
+
+(fn-expr + condition Query (over: Char)
+  (~ (seq "not" // (: inner \condition))
+    (call (. Query none-of) (list inner))
+  )
+  (~ (seq "(" / (: inner \alternatives) / ")")
+    inner
+  )
+  (~ (seq (: field \measure) / (: op \comparison) / (: amount (of \num Int)))
+    (call (. Query compared) field op amount)
+  )
+  (~ (: tag (+ (chars "a-z")))
+    (call (. Query tagged) tag)
+  )
+  (where
+    (lazy measure String
+      (pattern
+        (~ (| "minutes" "serves"))
+      )
+    )
+    (lazy comparison String
+      (pattern
+        (~ (| "<=" ">=" "<" ">" "="))
+      )
+    )
+  )
+)
+
+(fn-expr + matches Bool
+  (param query Query)
+  (param recipe Recipe)
+  (match query
+    (case (call .any-of parts)
+      (call some parts (:where (call matches each recipe)))
+    )
+    (case (call .all-of parts)
+      (call all parts (:where (call matches each recipe)))
+    )
+    (case (call .none-of parts)
+      (not (call some parts (:where (call matches each recipe))))
+    )
+    (case (call .tagged tag)
+      (has (. recipe tags) tag)
+    )
+    (case (call .compared field op amount)
+      (call holds measured op amount)
+      (lazy measured (if-expr (== field "minutes") (. recipe minutes) (. recipe serves)))
+    )
+  )
+)
+
+(fn-expr + holds Bool
+  (param value Int)
+  (param op String)
+  (param amount Int)
+  (match op
+    (case= "<"
+      (< value amount)
+    )
+    (case= "<="
+      (<= value amount)
+    )
+    (case= ">"
+      (> value amount)
+    )
+    (case= ">="
+      (>= value amount)
+    )
+    (default
+      (== value amount)
+    )
+  )
+)
+
+(fn-expr + shown String
+  (param query Query)
+  (match query
+    (case (call .any-of parts)
+      (call (. " or " join) (in (call grouped each) parts))
+    )
+    (case (call .all-of parts)
+      (call (. " and " join) (in (call grouped each) parts))
+    )
+    (case (call .none-of parts)
+      (str "not " (call (. " or " join) (in (call grouped each) parts)))
+    )
+    (case (call .tagged tag)
+      tag
+    )
+    (case (call .compared field op amount)
+      (str field " " op " " amount)
+    )
+  )
+)
+
+(fn-expr + grouped String
+  (param query Query)
+  (if-expr (or (is query .tagged) (is query .compared)) text (str "(" text ")"))
+  (where
+    (lazy text (call shown query))
+  )
+)
