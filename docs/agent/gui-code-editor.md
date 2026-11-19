@@ -11,7 +11,8 @@ The code editor is split across two libraries. Brix has an editor of its own, wh
 | View | `stdlib/gui/code-editor` | `CodeEditor`, `CodeGutter`, `CodeOverview`, `CodeLinkCard`, `CodeSyntaxStyle` |
 | Find bar | `stdlib/gui/code-editor/code-find-bar.bx` | `FindBar` runs a `CodeFind` over its `target`; `FindOptions` keeps the case, word and regex toggles in an `AppState` |
 | Brix rows | `stdlib/gui/source-editor` | `SourceEditor` shows a `SourceSession` as rows, `SourceListingPane` shows the forms beside it, and `SourceSurface` paints the boxes behind them |
-| Row styles | `stdlib/gui/source-editor/source-style.bx` | `SourceStructureTheme`, the divider heights, and `source-span-color`, `source-preamble-color` and `source-is-bold`, which style a span by its kind on any element that uses the theme; the editor's rows and Markdown's code spans share them |
+| Row styles | `stdlib/gui/source-editor/source-style.bx` | `SourceStructureTheme`, the row pitch and divider heights, `paint-source-double-rule`, and `source-span-color`, `source-preamble-color`, `source-is-bold` and `source-surface-palette`, which read the theme on any element that uses it; the editor, `SourceBlockView` and Markdown's code spans share them |
+| Read-only rows | `stdlib/gui/source-editor/source-block.bx` | `source-block` copies a document's rows and box slices, without the blank rows outside boxes at either end, so they outlive the document; `SourceBlockView` paints them as the editor does, on the editor's background, one line per row with text clipped short of the box edge. A `MarkdownCodeRenderer`'s rendering can make one as a fence's view |
 | Soft wrap | `stdlib/gui/source-editor/source-wrap.bx` | `source-wrap` breaks a row into visual lines, `SourceWrap` maps columns to and from them, and `SourceWrapRows` gives each shown row its height |
 
 `CodeEditor.show(session, scroll)` displays a `CodeSession`; several editors may show one session.

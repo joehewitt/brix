@@ -1,0 +1,141 @@
+(import /code/structure/document)
+(import /code/structure/rows)
+(import /graphics/primitives)
+(import /gui)
+(import /gui/markdown)
+(import /gui/source-editor)
+(import /lang/ubrix/ubrix)
+(import /stream/aggregate)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Markdown Code Rendering"))
+  (call (. cases run) block-tests)
+  (call (. cases run) view-tests)
+  (return cases)
+)
+
+(fn-expr _ block-sample String
+  (paragraph
+    "(import /gui)"
+    "(blank)"
+    "(fn-do + run _"
+    "  (header \"Setup\")"
+    "  (print \"a\")"
+    ")"
+  )
+)
+
+(fn-do _ block-tests _
+  (param t TestCase)
+  (let document (as (call brix-document-read (call block-sample)) SourceDocument))
+  (let block (call source-block document))
+  (call (. document release))
+  (let rows (. block rows))
+  (let slices (. block slices))
+  (call (. t expect) "a slice for every row" (. rows length) (. slices length))
+  (call (. t expect) "the rows start at the first import" "/gui" (. ([] rows 0) content))
+  (let last ([] slices (- (. slices length) 1)))
+  (call (. t expect) "the rows end where the last box closes" true (and (!= (. last outer) null) (!= (. (. last outer) bottom) null)))
+  (let head (? Size) null)
+  (for (in index (..< 0 (. rows length)))
+    (if (and (== head null) (!= (call (. (. ([] rows index) content) find) "run") null))
+      (= head index)
+    )
+  )
+  (call (. t expect) "the function's head row is in a box" true (and (!= head null) (!= (. ([] slices head) surface) (. SourceSurface none))))
+  (call (. t expect) "a header gives a double divider" true (call some rows (:where (== (. each divider) source-divider-double))))
+  (return t)
+)
+
+(fn-do _ view-tests _
+  (param t TestCase)
+  (let window (call RenderingWindow))
+  (call (. window open))
+  (call settle window)
+  (let views (list SourceBlockView))
+  (call collect (. window page) views)
+  (call (. t expect) "the fence shows the renderer's view" 1 (. views length))
+  (if (== (. views length) 1)
+    (let view ([] views 0))
+    (let shown (. view block rows length))
+    (call (. t expect) "a row box for every row" shown (call count (. view children)))
+    (call (. t expect) "rows take the editor's pitch" (+ (* (as shown Length) source-row-length) 18) (. view bounds height))
+  )
+  (call (. window close))
+  (return t)
+)
+
+(fn-do _ collect _
+  (param box Box)
+  (param views (list SourceBlockView))
+  (if (is box SourceBlockView)
+    (+= views (as box SourceBlockView))
+  )
+  (for (in child (. box children))
+    (if (is child Box)
+      (call collect (as child Box) views)
+    )
+  )
+)
+
+(fn-do _ settle _
+  (param window Window)
+  (let root (. window markup-batch-root))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+)
+
+(type _ BlockRendering (implements MarkdownCodeRendering)
+  (prop + block SourceBlock)
+  (fn-do + This _
+    (param block _)
+  )
+  (fn-do + view Box
+    (let view (call SourceBlockView))
+    (= (. view block) block)
+    (return view)
+  )
+)
+
+(type _ BlockRenderer (is MarkdownCodeRenderer)
+  (fn-expr + renders Bool
+    (param language String)
+    (== language "brix")
+  )
+  (fn-do + render MarkdownCodeRendering (?! Error)
+    (param code String)
+    (param language String)
+    (let document (as (call brix-document-read code) SourceDocument))
+    (finally
+      (inline (call (. document release)))
+    )
+    (return (call BlockRendering (call source-block document)))
+  )
+)
+
+(type _ RenderingWindow (is Window)
+  (using GUIDefaultTheme)
+  (prop _ renderer _ (= (call BlockRenderer)))
+  (content
+    (<> This (• flex-col)
+      (= size (call Dimensions 500 400))
+      (<> MarkdownView (id: page) (• flex 1)
+        (= text (str "```brix\n" (call block-sample) "\n```\n"))
+        (= base "")
+        (= code-renderer renderer)
+      )
+    )
+  )
+)

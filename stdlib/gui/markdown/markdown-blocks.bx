@@ -3,6 +3,7 @@
 (import /code/syntax)
 (import /data/markdown)
 (import /graphics/text)
+(import /gui/box)
 (import /stream/aggregate)
 
 (type + MarkdownBlock
@@ -19,7 +20,7 @@
   (prop + line Size)
   (prop + anchor _ (= ""))
   (prop + shows-source _ (= false))
-  (prop + rendering (? (list MarkdownCodeLine)) (= null))
+  (prop + rendering (? MarkdownCodeRendering) (= null))
   (prop + render-error (? String) (= null))
   (prop + renders-runs _ (= false))
   (fn-do + This _
@@ -34,25 +35,15 @@
   )
 )
 
-(type + MarkdownCodeRule (is Union)
-  (variant none)
-  (variant thick)
-  (variant thin)
-  (variant double)
-)
-
 (type + MarkdownCodeRun (is Tuple)
   (prop + text String)
   (prop + role SyntaxRole (= (. SyntaxRole plain)))
   (prop + kind (? SourceSpanKind) (= null))
   (prop + is-optional _ (= false))
-  (prop + is-preamble _ (= false))
 )
 
-(type + MarkdownCodeLine (is Tuple)
-  (prop + index Index)
-  (prop + runs (list MarkdownCodeRun))
-  (prop + rule MarkdownCodeRule)
+(type + MarkdownCodeRendering (is Interface)
+  (fn-do + view Box)
 )
 
 (type + MarkdownSourceRequest (is Tuple)
@@ -73,7 +64,7 @@
     (param language String)
     "Source"
   )
-  (fn-do + render (list MarkdownCodeLine) (?! Error)
+  (fn-do + render MarkdownCodeRendering (?! Error)
     (param code String)
     (param language String)
     (throw (call Error (str "No rendering for " language)))
@@ -103,13 +94,13 @@
     (return)
   )
   (return-if (if (or (. block shows-source) (!= (. block rendering) null) (not (call (. renderer renders) (. block language))))))
-  (let lines (catch (call (. renderer render) (. block code) (. block language))))
-  (if (is lines Error)
-    (= (. block render-error) (str lines))
+  (let rendering (catch (call (. renderer render) (. block code) (. block language))))
+  (if (is rendering Error)
+    (= (. block render-error) (str rendering))
     (= (. block shows-source) true)
     (return)
   )
-  (= (. block rendering) (as lines (list MarkdownCodeLine)))
+  (= (. block rendering) (as rendering MarkdownCodeRendering))
 )
 
 (fn-do _ markdown-render-runs _
