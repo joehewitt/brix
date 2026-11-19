@@ -1,6 +1,7 @@
 
 #include "BxCore/BxCore.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cstdio>
@@ -656,6 +657,30 @@ struct ArrayViewOwner {
 std::mutex arrayViewMutex;
 std::vector<size_t> arrayViewOwners;
 std::atomic<size_t> arrayViewOwnerCount {0};
+size_t arrayViewPruneThreshold = 64;
+
+void
+arrayViewsCompactLocked(char* data, size_t byteSize) {
+    const uintptr_t start = reinterpret_cast<uintptr_t>(data);
+    size_t kept = 0;
+    for (size_t handle : arrayViewOwners) {
+        ArrayViewOwner* owner = reinterpret_cast<ArrayViewOwner*>(brixGCOwnerWeakLoad(handle));
+        if (!owner) {
+            brixGCReleaseOwnerWeak(handle);
+            continue;
+        }
+        if (byteSize) {
+            const uintptr_t address = reinterpret_cast<uintptr_t>(owner->data);
+            if (address >= start ? address - start < byteSize : start - address < owner->byteSize) {
+                owner->valid = false;
+            }
+        }
+        arrayViewOwners[kept++] = handle;
+    }
+    arrayViewOwners.resize(kept);
+    arrayViewPruneThreshold = std::max<size_t>(64, kept * 2);
+    arrayViewOwnerCount.store(kept, std::memory_order_release);
+}
 }
 
 extern "C" char*
@@ -671,13 +696,8 @@ brixArrayViewCreate(char* data, size_t byteSize) {
     size_t handle = brixGCRegisterOwnerWeak(allocation, allocation);
     {
         std::lock_guard<std::mutex> lock(arrayViewMutex);
-        for (auto it = arrayViewOwners.begin(); it != arrayViewOwners.end();) {
-            if (!brixGCOwnerWeakLoad(*it)) {
-                brixGCReleaseOwnerWeak(*it);
-                it = arrayViewOwners.erase(it);
-            } else {
-                ++it;
-            }
+        if (arrayViewOwners.size() >= arrayViewPruneThreshold) {
+            arrayViewsCompactLocked(NULL, 0);
         }
         arrayViewOwners.push_back(handle);
         arrayViewOwnerCount.store(arrayViewOwners.size(), std::memory_order_release);
@@ -700,22 +720,8 @@ brixArrayViewsInvalidate(char* data, size_t byteSize) {
     if (!byteSize || !arrayViewOwnerCount.load(std::memory_order_acquire)) {
         return;
     }
-    const uintptr_t start = reinterpret_cast<uintptr_t>(data);
     std::lock_guard<std::mutex> lock(arrayViewMutex);
-    for (auto it = arrayViewOwners.begin(); it != arrayViewOwners.end();) {
-        ArrayViewOwner* owner = reinterpret_cast<ArrayViewOwner*>(brixGCOwnerWeakLoad(*it));
-        if (!owner) {
-            brixGCReleaseOwnerWeak(*it);
-            it = arrayViewOwners.erase(it);
-            continue;
-        }
-        const uintptr_t address = reinterpret_cast<uintptr_t>(owner->data);
-        if (address >= start ? address - start < byteSize : start - address < owner->byteSize) {
-            owner->valid = false;
-        }
-        ++it;
-    }
-    arrayViewOwnerCount.store(arrayViewOwners.size(), std::memory_order_release);
+    arrayViewsCompactLocked(data, byteSize);
 }
 
 extern "C" void
