@@ -396,11 +396,11 @@
     (param items (list SyntaxId))
     (param store MachineStore)
     ; Whether a machine is one the reference builds: no case is written twice, each fallback
-    ; follows a group of transitions, each handler is on one source with at most a `when`, no
-    ; decision made on entry enters a case again (`entries-settle`), and one a local, a global or a
-    ; property names starts in a case. Each is the reference's error. A
-    ; fallback that names values, and a case of a machine of a class's markup whose name the class
-    ; declares otherwise, have no shape here yet.
+    ; follows a group of transitions, each case's rows but its lazies come before its cases and
+    ; transitions (`statements-lead`), no decision made on entry enters a case again
+    ; (`entries-settle`), and one a local, a global or a property names starts in a case. Each is
+    ; the reference's error. A fallback that names values, and a case of a machine of a class's
+    ; markup whose name the class declares otherwise, have no shape here yet.
     (let redefined (call (. tree redefined-case) items))
     (if (!= redefined 0)
       (let name (!! (call (. tree state-name) redefined)))
@@ -418,7 +418,7 @@
       (call (. frame diagnose) misplaced .stated (call (. program store-atom) "State fallback has no transition group"))
       (return false)
     )
-    (if (or (not (call handlers-shaped items)) (not (call entries-settle items)))
+    (if (or (not (call statements-lead items)) (not (call entries-settle items)))
       (return false)
     )
     (if (and stored-machine (== (call (. tree initial-case) items) 0) (!= (. items length) 0))
@@ -524,37 +524,36 @@
     )
     (return settled)
   )
-  (fn-do _ handlers-shaped Bool
+  (fn-do _ statements-lead Bool
     (param items (list SyntaxId))
-    ; Whether each handler of a machine's bodies is one the reference builds: on a single source,
-    ; with no clause but one `when`. Each other is the reference's error.
     (for (in item items)
-      (if (and (call (. tree is-transition) item) (not (call handlers-shaped (call (. tree state-items) (call (. tree state-body) item)))))
-        (return false)
-      )
-      (if (not (call (. tree is-state-handler) item))
+      (if (not (call (. tree is-transition) item))
         (continue)
       )
-      (match? ([] (. tree nodes) item)
-        (case (call .node-for-block row)
-          (match? ([] (. tree nodes) (. row loop))
-            (case (call .node-loop-syntax loop)
-              (if (or (!= (. loop next) 0) (!= (. row next) 0))
-                (let message "A state handler subscribes to a single source")
-                (call (. frame diagnose) item .stated (call (. program store-atom) message))
-                (return false)
-              )
-              (match? ([] (. tree nodes) (. loop clause))
-                (case (call .node-clause clause)
-                  (if (or (not (is (. clause op) .when-clause)) (!= (. clause next) 0))
-                    (let message "A state handler accepts only a when clause")
-                    (call (. frame diagnose) (. loop clause) .stated (call (. program store-atom) message))
-                    (return false)
-                  )
-                )
-              )
+      (let body (call (. tree state-items) (call (. tree state-body) item)))
+      (if (not (call statements-lead body))
+        (return false)
+      )
+      (if (not (is ([] (. tree nodes) item) .node-state-case))
+        (continue)
+      )
+      (let declared false)
+      (for (in row body)
+        (if (or (call (. tree is-transition) row) (is ([] (. tree nodes) row) .node-state-fallback))
+          (= declared true)
+          (continue)
+        )
+        (match? ([] (. tree nodes) row)
+          (case (call .node-declare declare)
+            (if (. declare is-lazy)
+              (continue)
             )
           )
+        )
+        (if declared
+          (let message "A case's statements come before its cases and transitions, since they run first as it is entered; move this row above the first \"state\", \"then\" or \"else-state\"")
+          (call (. frame diagnose) row .stated (call (. program store-atom) message))
+          (return false)
         )
       )
     )
@@ -1279,7 +1278,7 @@
     ; at the transition. One on an event of an object is typed so too (`type-event-group`), and one
     ; on a stream that is iterable and implements no `Broadcastable` itself, though it may convert
     ; to one, as `type-iterated-group` says, as the reference tries them in that order.
-    (let trigger (call (. tree group-trigger) head))
+    (let trigger (call (. tree state-trigger) head))
     (let written (call (. tree group-stream) head))
     (if (== (call (. tree trigger-kind) trigger) (. StateTriggerKind state-trigger-whenever))
       (let watched (call watched-stream trigger written))
@@ -1858,8 +1857,7 @@
     (param owner SyntaxId)
     (param items (list SyntaxId))
     ; The function each group of a body's event transitions runs for an item: `each` and `it` are
-    ; the item, and each transition matches its pattern, tests its guard and gives its targets; a
-    ; handler runs its loop (`type-state-handler`).
+    ; the item, and each transition matches its pattern, tests its guard and gives its targets.
     (for (in head (call (. tree group-heads) items))
       (let item (call group-item head))
       (if (== item no-type)
@@ -1873,10 +1871,6 @@
       (if (!= it no-slot)
         (call (. frame assign) it item)
       )
-      (if (call (. tree is-state-handler) head)
-        (call type-state-handler head item)
-        (continue)
-      )
       (for (in transition (call (. tree group-transitions) items head))
         (let trigger (call (. tree state-trigger) transition))
         (call type-trigger-pattern trigger item)
@@ -1885,34 +1879,6 @@
           (call note-truthiness guard guard (call infer guard))
         )
         (call type-targets transition)
-      )
-    )
-  )
-  (fn-do _ type-state-handler _
-    (param head SyntaxId)
-    (param item TypeId)
-    ; A handler's loop where an item of its stream arrives, as the reference runs it: its pattern
-    ; binds the item, its `when` is tested, and then its body runs, as the handler `handling` names.
-    (match? ([] (. tree nodes) head)
-      (case (call .node-for-block row)
-        (match? ([] (. tree nodes) (. row loop))
-          (case (call .node-loop-syntax loop)
-            (if (!= (. loop pattern) 0)
-              (call check-pattern (. loop pattern) item)
-            )
-            (match? ([] (. tree nodes) (. loop clause))
-              (case (call .node-clause clause)
-                (call note-truthiness (. clause expr) (. clause expr) (call infer (. clause expr)))
-              )
-            )
-            (let outer handling)
-            (= handling head)
-            (do
-              (inline (call check-statement (. row body)))
-            )
-            (= handling outer)
-          )
-        )
       )
     )
   )

@@ -493,7 +493,9 @@
     )
     (let owned (call (. tables owned-subscription-of) (. unit reading) clause))
     (let made (call call-at clause .call-constructor))
-    (if (or (== slot no-slot) (== code no-function) (and (not owned) (== made no-fact)) (and owned (not (. unit has-self))))
+    (let activation (if-expr owned (call activation-owner id) (call make-operand .operand-void 0)))
+    (let by-case (!= (call operand-kind activation) .operand-void))
+    (if (or (== slot no-slot) (== code no-function) (and (not owned) (== made no-fact)) (and owned (not by-case) (not (. unit has-self))))
       (call refuse .refused-statement clause)
       (return)
     )
@@ -531,9 +533,13 @@
     (call (. ir start-block) done)
     (call keep-hidden lone (+ slot 2) stream broadcaster clause)
     (let environment (if-expr (!= lone no-local) (call load-local lone clause) (call written-environment clause)))
-    (if owned
-      (do
-        (inline (call own-action (call load-local trackers clause) code environment clause))
+    (if by-case
+      (let action (call make-action (call load-local trackers clause) (call (. tables live-adapter-of) code) environment clause))
+      (call attach-action activation (. action operand) clause)
+      (else-if owned
+        (do
+          (inline (call own-action (call load-local trackers clause) code environment clause))
+        )
       )
       (else
         (do
@@ -603,6 +609,12 @@
     (let given (call convert id .reason-argument tracker))
     (let trackers (call open-trackers id))
     (call add-tracker (call load-local trackers id) (. given operand) id)
+    (let activation (call activation-owner id))
+    (if (!= (call operand-kind activation) .operand-void)
+      (let action (call make-action (call load-local trackers id) (. tables idle-action) (call integer .machine-managed-pointer 0) id))
+      (call attach-action activation (. action operand) id)
+      (return)
+    )
     (do
       (inline
         (call own-callback (call load-local trackers id) idle (call integer .machine-managed-pointer 0) id
@@ -612,6 +624,19 @@
         )
       )
     )
+  )
+  (fn-do _ activation-owner Operand
+    (param site SyntaxId)
+    (let nothing (call make-operand .operand-void 0))
+    (if (!= (. content-hosts length) 0)
+      (return nothing)
+    )
+    (let binding (. ([] (. instances rows) (. unit reading)) binding))
+    (let tasks (call (. bindings activation-tasks) binding site (call (. program store-atom) "(tasks)")))
+    (if (== tasks no-slot)
+      (return nothing)
+    )
+    (return (. (call read-captured tasks site (. (call find-captured tasks site) type)) operand))
   )
   (fn-do _ own-tracker Typed
     (param id SyntaxId)

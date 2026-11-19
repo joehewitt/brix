@@ -464,32 +464,24 @@ false hello 3
   (prop + phase _
     (machine
       (state stopped
-        (do
-          (print "enter stopped")
-        )
+        (print "enter stopped")
         (finally
           (print "exit stopped")
         )
       )
       (state (call playing track) (trigger for track plays)
-        (do
-          (print (str "enter playing " track))
-        )
+        (print (str "enter playing " track))
         (finally
           (print (str "exit playing " track))
         )
         (state buffering
-          (do
-            (print "enter buffering")
-          )
+          (print "enter buffering")
           (finally
             (print "exit buffering")
           )
         )
         (then stopped (trigger on stops)
-          (do
-            (print (str "stopping " track))
-          )
+          (print (str "stopping " track))
         )
       )
     )
@@ -516,10 +508,15 @@ enter stopped
 stopped
 ```
 
-- **Entry and exit.** A case's `do` rows, as in `(do (print "enter"))`{.brix}, run when it is
-  entered, and its `finally` rows, as in `(finally (print "exit"))`{.brix}, when it is left.
-- **Order.** A move leaves the active cases from the innermost out, runs the transition's own `do`
-  rows, and then enters the target from the outermost in.
+- **Entry and exit.** A case's statements, such as `(print "enter")`{.brix}, run in order when it
+  is entered, and its `finally` rows, as in `(finally (print "exit"))`{.brix}, when it is left.
+- **Statements first.** A case's statements, its `let`s and its `finally` rows come before its
+  nested cases, transitions and fallbacks, since they run before any of them as it is entered. A
+  row written after one is an error: `A case's statements come before its cases and transitions,
+  since they run first as it is entered; move this row above the first "state", "then" or
+  "else-state"`. A `lazy` may follow them, as it is worked out where it is first read.
+- **Order.** A move leaves the active cases from the innermost out, runs the rows of the
+  transition's body, and then enters the target from the outermost in.
 - **Again.** `playing` has a trigger of its own, so a second track leaves it and enters it again.
 
 ### Values that live in a case
@@ -554,18 +551,14 @@ stopped
       (state off)
       (state (call heating rate) (trigger for rate switches)
         (let run (call next-run))
-        (do
-          (print (str "run " run " at " rate))
-        )
+        (print (str "run " run " at " rate))
         (for (on dt ticks)
           (+= heat (* dt rate))
         )
         (then whistling (trigger on (call delayed ticks 2)))
       )
       (state whistling
-        (do
-          (print "whistling")
-        )
+        (print "whistling")
       )
     )
   )
@@ -590,32 +583,33 @@ whistling
 whistling 90
 ```
 
-- **Locals.** A `let` or `lazy` in a case is made each time the case is entered. The case's entry
-  rows and its transitions' sources read it.
-- **Handlers.** `(for (on dt ticks) (+= heat dt))`{.brix} in a case runs for each value while the
-  case is active. It subscribes as the case is entered and ends as it is left. It takes one source
-  and only a `when` clause: `A state handler subscribes to a single source`, `A state handler
-  accepts only a when clause`. It gives no value: `A state machine's handler gives no value, so it
-  cannot return one with "(return …)"; end it early with "(return)"`.
-- **Order.** The handlers and transitions of a case take a value in the order they are written, so
-  a transition written first may leave before a handler sees the value.
+- **Locals.** A `let` or `lazy` in a case is made each time the case is entered. The case's
+  statements and its transitions' sources read it.
+- **Loops.** `(for (on dt ticks) (+= heat (* dt rate)))`{.brix} in a case is a loop on a stream like
+  any other: it subscribes where it runs, and its clauses, `continue` and `break` work as in
+  [Subscriptions](concurrency.md#subscriptions). It belongs to that time the case is entered,
+  and ends as the case is left, as does a loop a case's statements start at any depth, or the body
+  of a transition into the case. A loop the `finally` rows start does not belong to the case.
+- **Order.** A loop on an event hears each value before the case's transitions move on it, as the
+  event's other subscribers do; see [Timing](#timing). A loop that should not hear a value a
+  transition takes says so in its `when`.
 - **Timers.** `/stream/timing` makes timers from a stream of `F64` ticks, each the time since the
   last. `(call delayed ticks 2)`{.brix} passes ticks on once they add up to 2, `totaled` gives each
   tick with the total so far, and `driven` passes on the ticks a function accepts. A source is
   worked out each time its case is entered, so entering `heating` again starts its timer again.
-  A timer belongs to the case whose transition or handler names it, so a timer on an enclosing
+  A timer belongs to the case whose transition or loop names it, so a timer on an enclosing
   case keeps counting while the cases nested in it change. Once `delayed` passes ticks on, its
   transition's guard is tested on each tick, so a guard that fails holds the move until a later
   tick passes it.
 - **Nested machines** start when the case that holds them is entered and stop when it is left;
   see [Machines side by side](#machines-side-by-side).
-- **Tasks.** A task that a case's `do` rows or handlers start, or the `do` rows of a transition
-  into it, belongs to that time the case is entered, as does one started in a nested body there,
-  such as a function value's. The case's `finally` rows can still use it, and leaving the case
-  cancels it once they end, without waiting for it. A task that leaves its own case, by sending
-  what moves the machine, is not cancelled as it leaves; the case's next exit cancels it, or its
-  object's `close`. A task the `finally` rows start, or one marked `@detached`, does not belong to
-  the case; see [Owned tasks](concurrency.md#owned-tasks).
+- **Tasks.** A task that a case's statements start, or the body of a transition into it, belongs
+  to that time the case is entered, as does one started in a nested body there, such as a function
+  value's. The case's `finally` rows can still use it, and leaving the case cancels it once they
+  end, without waiting for it. A task that leaves its own case, by sending what moves the machine,
+  is not cancelled as it leaves; the case's next exit cancels it, or its object's `close`. A task
+  the `finally` rows start, or one marked `@detached`, does not belong to the case; see
+  [Owned tasks](concurrency.md#owned-tasks).
 - **Closing.** Calling an object's `close` leaves every machine its properties hold, and the one its
   class's `content` writes, before the body of `close` runs, so their exit rows see the object as
   it was. The object's events and the live actions it owns close with them, and no transition
@@ -695,14 +689,10 @@ two machines in one case, not a case for each combination.
         (prop + who _
           (machine
             (state guest
-              (do
-                (print "guest")
-              )
+              (print "guest")
             )
             (state member (trigger on sign-ins)
-              (do
-                (print "member")
-              )
+              (print "member")
               (finally
                 (print "member ends")
               )
@@ -712,14 +702,10 @@ two machines in one case, not a case for each combination.
         (prop + link _
           (machine
             (state offline
-              (do
-                (print (str "offline, " who))
-              )
+              (print (str "offline, " who))
             )
             (state online (trigger on connects)
-              (do
-                (print (str "online, " who))
-              )
+              (print (str "online, " who))
               (finally
                 (print "online ends")
               )
@@ -762,7 +748,7 @@ ended
 ## Refining a machine in a subclass
 
 A subclass can declare a machine property of its base class again. Its cases name cases of the
-base machine, and add nested cases, entry and exit rows, handlers and transitions to them; the two
+base machine, and add nested cases, statements, `finally` rows and transitions to them; the two
 make one machine.
 
 - A refinement adds no case at the top: `Refinement cannot add top-level state case 'extra'`.

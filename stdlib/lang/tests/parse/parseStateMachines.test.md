@@ -481,9 +481,7 @@ State machines
 (prop + auth _
   (machine
     (state authenticating (trigger on login-validated)
-      (do
-        (call (. spinner start))
-      )
+      (call (. spinner start))
       (blank)
       (finally
         (call (. spinner stop))
@@ -506,15 +504,11 @@ State machines
             <StateTrigger kind="on">
                 <Id name="login-validated"/>
             </StateTrigger>
-            <Do>
-                <Block>
-                    <CallExpression>
-                        <Get name="start">
-                            <Id name="spinner"/>
-                        </Get>
-                    </CallExpression>
-                </Block>
-            </Do>
+            <CallExpression>
+                <Get name="start">
+                    <Id name="spinner"/>
+                </Get>
+            </CallExpression>
             <Defer>
                 <Block>
                     <CallExpression>

@@ -2342,9 +2342,7 @@ note 2
     )
     (blank)
     (state ready
-      (do
-        (= initialized (!= first null))
-      )
+      (= initialized (!= first null))
     )
   )
 )

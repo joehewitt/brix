@@ -147,8 +147,8 @@ methods:
 A task started in a method of a class belongs to the object the method runs for, and one started
 while markup builds an element belongs to that element. A task started in a nested body of the
 method, such as the body of another task or a function value, belongs to the same object. One
-started in a state machine's case, by its `do` rows or handlers or the `do` rows of a transition
-into it, belongs instead to that time the case is entered, and leaving the case cancels it; see
+started in a state machine's case, by its statements or the body of a transition into it, belongs
+instead to that time the case is entered, and leaving the case cancels it; see
 [Entering and leaving](state-machines.md#entering-and-leaving). When the object's `close` leaves,
 after its body, it cancels the tasks the object owns and does not wait for them. The body of
 `close` can still use them, and a task that calls `close` on its own object goes on running. A task

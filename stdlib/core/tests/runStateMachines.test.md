@@ -71,9 +71,7 @@ false
     (machine
       (state idle)
       (state active (trigger on enter)
-        (do
-          (+= entries 1)
-        )
+        (+= entries 1)
         (blank)
         (then idle (trigger on leave))
       )
@@ -174,9 +172,7 @@ false
 (prop + auth _
   (machine
     (state editing
-      (do
-        (print "enter editing")
-      )
+      (print "enter editing")
       (blank)
       (finally
         (print "exit editing")
@@ -184,9 +180,7 @@ false
     )
     (blank)
     (state authenticated (trigger if has-token)
-      (do
-        (print "enter authenticated")
-      )
+      (print "enter authenticated")
     )
   )
 )
@@ -261,9 +255,7 @@ false
 
 (main
   (state loading
-    (do
-      (print "enter loading")
-    )
+    (print "enter loading")
     (blank)
     (finally
       (print "exit loading")
@@ -614,25 +606,21 @@ false
   (machine
     (state idle)
     (state (call authenticating email password) (trigger for (tuple email password) submitted)
+      (finally
+        (print "left authenticating")
+      )
+      (blank)
       (then (call authenticated token) (trigger for (call .authentic token) auth-result)
-        (do
-          (print (str "continued " token))
-        )
+        (print (str "continued " token))
       )
       (blank)
       (then rejected (trigger for .incorrect-password auth-result))
       (blank)
       (lazy auth-result auth-results)
-      (blank)
-      (finally
-        (print "left authenticating")
-      )
     )
     (blank)
     (state (call authenticated value) (trigger for value direct-results)
-      (do
-        (print (str "entered " value))
-      )
+      (print (str "entered " value))
     )
   )
 )
@@ -681,14 +669,12 @@ token-123
   (machine
     (state idle)
     (state authenticating (trigger for (call .valid email password) submitted)
+      (= selected pair)
+      (blank)
       (then (call authenticated email password token) (trigger for (call .authentic token) auth-result))
       (blank)
       (lazy pair (str email "/" password))
       (lazy auth-result results)
-      (blank)
-      (do
-        (= selected pair)
-      )
     )
   )
 )
@@ -1002,9 +988,7 @@ true
   (machine
     (state idle)
     (state authenticating (trigger on submitted)
-      (do
-        (print "enter authenticating")
-      )
+      (print "enter authenticating")
       (blank)
       (finally
         (print "exit authenticating")
@@ -1055,9 +1039,7 @@ done
     )
     (blank)
     (state second
-      (do
-        (print "entered second")
-      )
+      (print "entered second")
       (blank)
       (then first (trigger on toggles))
     )
@@ -1095,18 +1077,14 @@ true
   (machine
     (state idle)
     (state (call editing count) (trigger for count submitted)
-      (do
-        (print (str "enter editing " count))
-      )
+      (print (str "enter editing " count))
       (blank)
       (finally
         (print (str "exit editing " count))
       )
       (blank)
       (state child (trigger on child-events)
-        (do
-          (print "enter child")
-        )
+        (print "enter child")
         (blank)
         (finally
           (print "exit child")
@@ -1162,10 +1140,8 @@ editing 2
       (let started-at (call next-counter))
       (lazy memoized (call next-counter))
       (blank)
-      (do
-        (print (str "enter seed=" seed " started=" started-at " memo=" memoized))
-        (print (str "memo again " memoized))
-      )
+      (print (str "enter seed=" seed " started=" started-at " memo=" memoized))
+      (print (str "memo again " memoized))
     )
   )
 )
@@ -1206,18 +1182,14 @@ true
   (machine
     (state idle)
     (state submitted (trigger on submit)
-      (do
-        (print "enter submitted")
-      )
+      (print "enter submitted")
       (blank)
       (finally
         (print "exit submitted")
       )
       (blank)
       (state validating (trigger on begin-child)
-        (do
-          (print "enter validating")
-        )
+        (print "enter validating")
         (blank)
         (finally
           (print "exit validating")
@@ -1361,9 +1333,7 @@ true
         (machine
           (state editing)
           (state authenticated (trigger on auth-events)
-            (do
-              (print "auth authenticated")
-            )
+            (print "auth authenticated")
           )
         )
       )
@@ -1371,15 +1341,11 @@ true
       (prop + network _
         (machine
           (state offline
-            (do
-              (print "network offline")
-            )
+            (print "network offline")
           )
           (blank)
           (state online (trigger on network-events)
-            (do
-              (print "network online")
-            )
+            (print "network online")
           )
         )
       )
@@ -1430,9 +1396,7 @@ true
           )
           (blank)
           (state authenticated (trigger on auth-events)
-            (do
-              (print "enter authenticated")
-            )
+            (print "enter authenticated")
             (blank)
             (finally
               (print "exit authenticated")
@@ -1478,9 +1442,7 @@ true
 (prop + view _
   (machine
     (state showing
-      (do
-        (print "enter showing")
-      )
+      (print "enter showing")
       (blank)
       (finally
         (print "exit showing")
@@ -1517,18 +1479,14 @@ true
 (prop + flow _
   (machine
     (state editing
-      (do
-        (print "enter editing")
-      )
+      (print "enter editing")
       (blank)
       (finally
         (print "exit editing")
       )
       (blank)
       (state focused (trigger on begin-child)
-        (do
-          (print "enter focused")
-        )
+        (print "enter focused")
         (blank)
         (finally
           (print "exit focused")
@@ -1676,9 +1634,7 @@ joe@example.com
     (machine
       (state idle)
       (state active (trigger on advance)
-        (do
-          (print "observed active")
-        )
+        (print "observed active")
       )
     )
   )
@@ -1739,9 +1695,7 @@ true
     (machine
       (state idle)
       (state ready (trigger if true)
-        (do
-          (print (str label " ready"))
-        )
+        (print (str label " ready"))
       )
     )
   )
@@ -1865,9 +1819,7 @@ false
   (content
     (state idle)
     (state active (trigger on activate)
-      (do
-        (print (str name " active"))
-      )
+      (print (str name " active"))
     )
   )
 )
@@ -2000,9 +1952,7 @@ true
   )
   (content
     (state active (trigger on activate)
-      (do
-        (print (str name " active"))
-      )
+      (print (str name " active"))
     )
   )
 )
@@ -2226,9 +2176,7 @@ true
             )
             (blank)
             (state authenticated (trigger on login)
-              (do
-                (print (str name " authenticated"))
-              )
+              (print (str name " authenticated"))
               (blank)
               (finally
                 (print (str name " auth authenticated exit"))
@@ -2495,9 +2443,7 @@ true
     (machine
       (state idle)
       (state on (trigger on go)
-        (do
-          (call (. gate wait))
-        )
+        (call (. gate wait))
       )
     )
   )
@@ -2578,10 +2524,8 @@ true
     (machine
       (state idle)
       (state delivered (trigger on deliveries)
-        (do
-          (<- ([] (. mailbox messages) (. receiver id)) true)
-          (call (. receiver close))
-        )
+        (<- ([] (. mailbox messages) (. receiver id)) true)
+        (call (. receiver close))
       )
     )
   )
@@ -2646,10 +2590,8 @@ true
     (machine
       (state idle)
       (state delivered (trigger on deliveries)
-        (do
-          (<- ([] (. mailbox messages) (. receiver id)) true)
-          (call (. receiver change-key) 9)
-        )
+        (<- ([] (. mailbox messages) (. receiver id)) true)
+        (call (. receiver change-key) 9)
       )
     )
   )
@@ -2956,28 +2898,16 @@ got 5
     )
     (blank)
     (state running
-      (state is-closed
-        (then is-open (trigger on open-requests))
-      )
-      (blank)
-      (state is-open
-        (then is-closed (trigger on close-requests))
-      )
-      (blank)
       (prop + view-mode _
         (machine
           (state view-list
-            (do
-              (= is-grid (is view-mode .view-grid))
-            )
+            (= is-grid (is view-mode .view-grid))
             (blank)
             (then view-grid (trigger on view-toggles))
           )
           (blank)
           (state view-grid
-            (do
-              (= is-grid (is view-mode .view-grid))
-            )
+            (= is-grid (is view-mode .view-grid))
             (blank)
             (then view-list (trigger on view-toggles))
           )
@@ -2991,11 +2921,17 @@ got 5
           )
           (blank)
           (state event-received
-            (do
-              (= was-received (is event-mode .event-received))
-            )
+            (= was-received (is event-mode .event-received))
           )
         )
+      )
+      (blank)
+      (state is-closed
+        (then is-open (trigger on open-requests))
+      )
+      (blank)
+      (state is-open
+        (then is-closed (trigger on close-requests))
       )
     )
   )
@@ -3108,11 +3044,9 @@ node TextStyle seg=owned gen=3 mask=1 ink=9
     (machine
       (state idle)
       (state active (trigger on enter)
-        (do
-          (print "enter active")
-          (call fail)
-          (print "not reached")
-        )
+        (print "enter active")
+        (call fail)
+        (print "not reached")
       )
     )
   )
@@ -3148,9 +3082,7 @@ enter active
       )
       (blank)
       (state walking
-        (do
-          (print (str "enter walking at " count))
-        )
+        (print (str "enter walking at " count))
         (blank)
         (then resting (trigger on ticks (>= count 4)))
       )
@@ -3194,13 +3126,11 @@ enter walking at 2
     (machine
       (state idle)
       (state lit (trigger on pokes)
-        (do
-          (print (str name " enter"))
-          (if next
-            (call (. next poke))
-          )
-          (print (str name " entered"))
+        (print (str name " enter"))
+        (if next
+          (call (. next poke))
         )
+        (print (str name " entered"))
       )
     )
   )
@@ -3242,9 +3172,7 @@ true
     )
     (state is-open
       (then is-closed (trigger for reason close-requests)
-        (do
-          (<- closed reason)
-        )
+        (<- closed reason)
       )
     )
   )
@@ -3280,9 +3208,7 @@ true
           )
           (blank)
           (state calling
-            (do
-              (print "calling")
-            )
+            (print "calling")
           )
         )
       )
@@ -3321,9 +3247,7 @@ end
         (machine
           (state quiet)
           (state calling (trigger on ticks)
-            (do
-              (print "calling")
-            )
+            (print "calling")
           )
         )
       )
@@ -3375,20 +3299,14 @@ end
       )
       (blank)
       (state ashore
-        (do
-          (print "enter ashore")
-        )
+        (print "enter ashore")
         (blank)
         (state resting
-          (do
-            (print "enter resting")
-          )
+          (print "enter resting")
         )
         (blank)
         (state crawling
-          (do
-            (print "enter crawling")
-          )
+          (print "enter crawling")
         )
       )
     )
@@ -3414,15 +3332,11 @@ true
 (prop + phase _
   (machine
     (state parent
-      (do
-        (print "enter parent")
-      )
+      (print "enter parent")
       (blank)
       (state waiting)
       (state going (trigger if ready)
-        (do
-          (print "enter going")
-        )
+        (print "enter going")
       )
     )
   )
@@ -3479,7 +3393,7 @@ false
 true
 ```
 
-### A state handler runs only while its state is active.
+### A loop on a stream written in a case runs only while the case is active.
 
 ```brix
 (main
@@ -3524,14 +3438,14 @@ true
 5 false 1.5
 ```
 
-### A transition listed before a handler can leave the state before the handler sees the event.
+### A loop in a case hears a value before the case's transitions move on it, and ends as the case exits.
 
 ```brix
 (main
   (let gate (call Gate))
   (<- (. gate ticks) 1)
   (<- (. gate ticks) 1)
-  (print (. gate seen))
+  (print (str (. gate seen) " " (. gate phase)))
 )
 
 (type + Gate
@@ -3540,11 +3454,11 @@ true
   (prop + phase _
     (machine
       (state open
-        (then closed (trigger on ticks (>= seen 1)))
-        (blank)
-        (for (on dt ticks (when (> dt 0)))
+        (for (on dt ticks)
           (+= seen dt)
         )
+        (blank)
+        (then closed (trigger on ticks))
       )
       (blank)
       (state closed)
@@ -3554,7 +3468,204 @@ true
 ```
 
 ```output
-1
+1 closed
+```
+
+### A loop in a case is an ordinary loop: `continue` skips a value, `break` and `until` end it for the rest of the activation, and entering the case again starts it anew.
+
+```brix
+(main
+  (let counter (call Counter))
+  (for (in n (.. 1 5))
+    (<- (. counter ticks) n)
+  )
+  (<- (. counter pauses) true)
+  (<- (. counter resumes) true)
+  (for (in n (.. 6 8))
+    (<- (. counter ticks) n)
+  )
+)
+
+(type + Counter
+  (event + ticks Int)
+  (event + pauses Bool)
+  (event + resumes Bool)
+  (prop + phase _
+    (machine
+      (state counting
+        (for (on n ticks (until (== n 7)))
+          (if (== n 2)
+            (continue)
+          )
+          (print (str "heard " n))
+          (if (== n 4)
+            (break)
+          )
+        )
+        (blank)
+        (then paused (trigger on pauses))
+      )
+      (blank)
+      (state paused
+        (then counting (trigger on resumes))
+      )
+    )
+  )
+)
+```
+
+```output
+heard 1
+heard 3
+heard 4
+heard 6
+```
+
+### A loop on a stream started anywhere in a case's entry statements, or in the body of a transition into the case, belongs to the case's activation and ends as the case exits.
+
+```brix
+(main
+  (let watcher (call Watcher))
+  (<- (. watcher ticks) 1)
+  (<- (. watcher moves) true)
+  (<- (. watcher ticks) 2)
+  (<- (. watcher moves) true)
+  (<- (. watcher ticks) 3)
+  (print (. watcher phase))
+)
+
+(type + Watcher
+  (event + ticks Int)
+  (event + moves Bool)
+  (prop + verbose _ (= true))
+  (prop + phase _
+    (machine
+      (state first
+        (if verbose
+          (for (on n ticks)
+            (print (str "first heard " n))
+          )
+        )
+        (blank)
+        (then second (trigger on moves)
+          (for (on n ticks)
+            (print (str "second heard " n))
+          )
+        )
+      )
+      (blank)
+      (state second
+        (then third (trigger on moves))
+      )
+      (blank)
+      (state third)
+    )
+  )
+)
+```
+
+```output
+first heard 1
+second heard 2
+third
+```
+
+### A loop on a channel with a `whenever` clause in a case listens while the clause holds, and ends as the case exits.
+
+```brix
+(fn-do + settle _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
+
+(main
+  (let radio (call Radio))
+  (<- (. radio values) 1)
+  (call settle)
+  (= (. radio enabled) false)
+  (<- (. radio values) 2)
+  (call settle)
+  (= (. radio enabled) true)
+  (<- (. radio values) 3)
+  (call settle)
+  (<- (. radio stops) true)
+  (call settle)
+  (print (. radio phase))
+  (<- (. radio values) 4)
+  (call settle)
+)
+
+(type + Radio
+  (prop + values (of AsyncChannel Int))
+  (prop + stops (of AsyncChannel Bool))
+  (prop + enabled _ (= true))
+  (prop + phase _
+    (machine
+      (state listening
+        (for (on v values (whenever #enabled))
+          (print (str "heard " v))
+        )
+        (blank)
+        (then stopped (trigger on stops))
+      )
+      (blank)
+      (state stopped)
+    )
+  )
+)
+```
+
+```output
+heard 1
+heard 3
+stopped
+```
+
+### A loop in a case of an anonymous machine in `main`, where no object owns it, ends as the case exits, even from its own body.
+
+```brix
+(prop + values (of AsyncChannel Int))
+(prop + stops (of AsyncChannel Bool))
+(blank)
+(fn-do + settle _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
+(blank)
+(main
+  (state listening
+    (for (on v values)
+      (print (str "heard " v))
+      (if (== v 2)
+        (<- stops true)
+      )
+    )
+    (blank)
+    (then stopped (trigger on stops))
+  )
+  (state stopped)
+  (<- values 1)
+  (call settle)
+  (<- values 2)
+  (call settle)
+  (call settle)
+  (print (str listening " " stopped))
+  (<- values 3)
+  (call settle)
+  (call settle)
+)
+```
+
+```output
+heard 1
+heard 2
+false true
 ```
 
 ### A class machine's continuation payload can call the owner's methods and read its properties.
@@ -3657,10 +3768,8 @@ holding 7
       )
       (blank)
       (state (call hunting person)
-        (do
-          (print (str "hunting " person))
-          (= quarry (+ (!! quarry) 1))
-        )
+        (print (str "hunting " person))
+        (= quarry (+ (!! quarry) 1))
         (blank)
         (then searching (trigger on ticks))
       )
@@ -3700,9 +3809,7 @@ hunting 5
       )
       (blank)
       (state (call waiting spot)
-        (do
-          (print (str "waiting at " (. spot x)))
-        )
+        (print (str "waiting at " (. spot x)))
       )
     )
   )
@@ -3733,17 +3840,13 @@ true
       )
       (blank)
       (state (call counting total)
-        (do
-          (print total)
-        )
+        (print total)
         (blank)
         (then (call doubled (* total 2)) (trigger on next))
       )
       (blank)
       (state (call doubled value)
-        (do
-          (print value)
-        )
+        (print value)
       )
     )
   )
@@ -3776,9 +3879,7 @@ true
       )
       (blank)
       (state (call chasing goal)
-        (do
-          (print (str "chasing " goal))
-        )
+        (print (str "chasing " goal))
         (blank)
         (then (call resting (+ goal 1)) (trigger on rest)
           (then (call chasing goal) (trigger on go))
@@ -3786,9 +3887,7 @@ true
       )
       (blank)
       (state (call resting goal)
-        (do
-          (print (str "resting " goal))
-        )
+        (print (str "resting " goal))
       )
     )
   )
@@ -3999,9 +4098,7 @@ false
   (prop + phase _
     (machine
       (state chasing
-        (do
-          (print "chasing")
-        )
+        (print "chasing")
         (blank)
         (then resting (trigger on rest)
           (then chasing (trigger on go))
@@ -4011,17 +4108,13 @@ false
       )
       (blank)
       (state resting
-        (do
-          (print "resting")
-        )
+        (print "resting")
         (blank)
         (then idle (trigger on go))
       )
       (blank)
       (state idle
-        (do
-          (print "idle")
-        )
+        (print "idle")
       )
     )
   )
@@ -4214,9 +4307,7 @@ true
         (then free (trigger on again))
         (blank)
         (state planning
-          (do
-            (+= count 1)
-          )
+          (+= count 1)
           (blank)
           (then (call moving (* count 10)) (trigger if (> count 1)))
           (then (call moving 5))
@@ -4359,9 +4450,7 @@ free
   (prop + body _
     (machine
       (state free
-        (do
-          (print "enter free")
-        )
+        (print "enter free")
         (finally
           (print "exit free")
         )
@@ -4383,9 +4472,7 @@ free
         )
         (blank)
         (state routine
-          (do
-            (print "enter routine")
-          )
+          (print "enter routine")
           (finally
             (print "exit routine")
           )
@@ -4411,9 +4498,7 @@ free
       )
       (blank)
       (state falling
-        (do
-          (print "fisher falling")
-        )
+        (print "fisher falling")
         (then held)
       )
     )
@@ -4474,9 +4559,7 @@ false true
         (then dashing (trigger on ticks (> each 1)))
         (blank)
         (state dashing
-          (do
-            (print "dash")
-          )
+          (print "dash")
         )
       )
     )
@@ -4811,10 +4894,8 @@ focused
     (machine
       (state idle)
       (state working (trigger on go)
-        (do
-          (call work "x")
-          (call (. this work) "y")
-        )
+        (call work "x")
+        (call (. this work) "y")
       )
     )
   )
@@ -4851,9 +4932,7 @@ xy
       (state idle)
       (state active (trigger on advance)
         (lazy shown (. inner text))
-        (do
-          (print (str "active " shown))
-        )
+        (print (str "active " shown))
       )
     )
   )
@@ -4914,9 +4993,7 @@ true
     (state is-closed)
     (blank)
     (state is-open (trigger for n open-requests)
-      (do
-        (= log (+ log (str "[open" n "]")))
-      )
+      (= log (+ log (str "[open" n "]")))
       (blank)
       (finally
         (= log (+ log "[unload]"))
@@ -4958,9 +5035,7 @@ open:[open1][refresh2][unload][open3]
     (machine
       (state idle)
       (state poked (trigger for n pokes)
-        (do
-          (+= log (str "[enter " n "]"))
-        )
+        (+= log (str "[enter " n "]"))
       )
     )
   )
@@ -5001,9 +5076,7 @@ true [poke 1][enter 1][poke 2][enter 2]
     (state is-idle)
     (state is-dragging (trigger for down downs)
       (then is-idle (trigger for up ups)
-        (do
-          (+= log (str "[" (. down id) " to " (. up id) "]"))
-        )
+        (+= log (str "[" (. down id) " to " (. up id) "]"))
       )
     )
   )
@@ -5027,14 +5100,10 @@ true [1 to 2]
   (blank)
   (state idle)
   (state one (trigger for n source)
-    (do
-      (print (str "one " n " " label))
-    )
+    (print (str "one " n " " label))
   )
   (state two (trigger for n b)
-    (do
-      (print (str "two " n " " label))
-    )
+    (print (str "two " n " " label))
   )
   (blank)
   (print "start")
@@ -5101,9 +5170,7 @@ end
     (blank)
     (state is-idle)
     (state is-busy (trigger for (call .valid n) checked)
-      (do
-        (= (. shown text) (str "busy " n))
-      )
+      (= (. shown text) (str "busy " n))
     )
     (blank)
     (lazy checked
@@ -5152,15 +5219,11 @@ busy 3:true
       (prop + inner _
         (machine
           (state idle
-            (do
-              (= log (str log " i"))
-            )
+            (= log (str log " i"))
           )
           (blank)
           (state busy (trigger on keys)
-            (do
-              (= log (str log " b"))
-            )
+            (= log (str log " b"))
           )
         )
       )
@@ -5202,26 +5265,20 @@ busy 3:true
   )
   (content
     (state idle
-      (do
-        (= label "idle")
-      )
+      (= label "idle")
       (blank)
       (then busy (trigger on other))
     )
     (blank)
     (state busy
-      (do
-        (= label "busy")
-      )
+      (= label "busy")
       (blank)
       (then idle (trigger on go))
       (then done (trigger on other))
     )
     (blank)
     (state done
-      (do
-        (= label "done")
-      )
+      (= label "done")
       (blank)
       (then busy (trigger on go))
     )
@@ -5651,16 +5708,12 @@ late at 14
     (machine
       (state idle)
       (state dragging (trigger on downs (not (is gesture .dragging)))
-        (do
-          (inline (+= log "[drag]"))
-        )
+        (+= log "[drag]")
         (then (call held 7) (trigger on blurs))
       )
       (blank)
       (state (call held id)
-        (do
-          (inline (+= log (str "[held " id "]")))
-        )
+        (+= log (str "[held " id "]"))
       )
     )
   )
@@ -5690,16 +5743,12 @@ late at 14
     (machine
       (state idle)
       (state (call dragging n) (trigger for n downs (not (is gesture .dragging)))
-        (do
-          (inline (+= log (str "[drag " n "]")))
-        )
+        (+= log (str "[drag " n "]"))
         (then (call held (+ n 1)) (trigger on blurs))
       )
       (blank)
       (state (call held id)
-        (do
-          (inline (+= log (str "[held " id "]")))
-        )
+        (+= log (str "[held " id "]"))
       )
     )
   )
@@ -5741,16 +5790,12 @@ late at 14
       )
       (blank)
       (state (call dragging id)
-        (do
-          (inline (+= log (str "[drag " id "]")))
-        )
+        (+= log (str "[drag " id "]"))
         (then (call held id) (trigger on blurs))
       )
       (blank)
       (state (call held id)
-        (do
-          (inline (+= log (str "[held " id "]")))
-        )
+        (+= log (str "[held " id "]"))
         (then idle (trigger for up ups))
       )
     )
@@ -5833,9 +5878,7 @@ true
       )
       (blank)
       (state done
-        (do
-          (inline (+= log "[done]"))
-        )
+        (+= log "[done]")
       )
     )
   )
@@ -5887,9 +5930,7 @@ after false false false [left waiting]
     )
     (blank)
     (state done
-      (do
-        (inline (+= log "[done]"))
-      )
+      (+= log "[done]")
     )
   )
 )
@@ -6000,18 +6041,14 @@ after false [unload]
       (state idle)
       (blank)
       (state open (trigger on opens)
-        (do
-          (inline (+= log "[open]"))
-        )
+        (+= log "[open]")
         (finally
           (+= log "[left open]")
         )
       )
       (blank)
       (state shut (trigger on ended)
-        (do
-          (inline (+= log "[shut]"))
-        )
+        (+= log "[shut]")
       )
     )
   )
@@ -6069,9 +6106,7 @@ after false [unload]
             (state idle)
             (blank)
             (state (call busy n) (trigger for n pokes)
-              (do
-                (= label (str "busy " n))
-              )
+              (= label (str "busy " n))
               (blank)
               (finally
                 (= label (str "left busy " n))
@@ -6126,9 +6161,7 @@ left busy 7
           (state idle)
           (blank)
           (state (call busy n) (trigger for n pokes)
-            (do
-              (= label (str "busy " n))
-            )
+            (= label (str "busy " n))
             (blank)
             (finally
               (= label (str "left busy " n))
@@ -6168,9 +6201,7 @@ closed false true left busy 7
 (type + Sub (is Base)
   (content
     (state is-open
-      (do
-        (print "open")
-      )
+      (print "open")
     )
     (blank)
     (state is-marked)
@@ -6180,7 +6211,7 @@ closed false true left busy 7
 
 ```output
 Exception: Refinement cannot add top-level state case 'is-marked'
-<no file:26>
+<no file:24>
         (state is-marked)
         ^^^^^^^^^^^^^^^^^
 ```
@@ -6237,9 +6268,7 @@ Exception: Refined state case 'busy' cannot change its trigger or payload
         (state idle)
         (blank)
         (state (call answering who)
-          (do
-            (print (str "answering " who))
-          )
+          (print (str "answering " who))
         )
       )
     )
@@ -6254,9 +6283,7 @@ Exception: Refined state case 'busy' cannot change its trigger or payload
         (then (call chasing quarry) (trigger for quarry chases))
         (blank)
         (state (call chasing quarry)
-          (do
-            (print (str "chasing " quarry))
-          )
+          (print (str "chasing " quarry))
         )
       )
     )
@@ -6433,9 +6460,7 @@ true
       (<> Item)
     )
     (state is-open
-      (do
-        (= label "entered")
-      )
+      (= label "entered")
     )
   )
 )
@@ -6509,9 +6534,7 @@ opened true entered
     (state is-idle)
     (state is-renaming (trigger on requested)
       (then is-idle (trigger for commit committed)
-        (do
-          (+= log (str "[" (. commit name) "]"))
-        )
+        (+= log (str "[" (. commit name) "]"))
       )
     )
   )
@@ -6586,15 +6609,11 @@ opened true entered
   (content
     (state is-idle)
     (state is-held (trigger for press changed (not is-held))
-      (do
-        (print (str "held " (. press value) " " (. press current-name)))
-      )
+      (print (str "held " (. press value) " " (. press current-name)))
       (blank)
       (then is-idle (trigger for release changed)
-        (do
-          (print (str "released " (. release value) " " (. release current-name)))
-          (call (. release cancel))
-        )
+        (print (str "released " (. release value) " " (. release current-name)))
+        (call (. release cancel))
       )
     )
   )
@@ -6644,10 +6663,8 @@ canceled true
   (content
     (state is-idle)
     (state is-waiting (trigger on requested)
-      (do
-        (let ignored (<- done))
-        (print "resumed")
-      )
+      (let ignored (<- done))
+      (print "resumed")
     )
   )
 )
@@ -6883,7 +6900,7 @@ Exception: State machine "phase" moves only by its transitions, so it cannot be 
 [open][open]
 ```
 
-### A state machine's handler that returns a value with "=" is rejected, as it gives none.
+### A row of a case written after one of its transitions is rejected, as a case's statements run first as it is entered.
 
 ```brix crash
 (prop + a (of AsyncChannel Int))
@@ -6891,19 +6908,20 @@ Exception: State machine "phase" moves only by its transitions, so it cannot be 
 (prop + phase _
   (machine
     (state idle
-      (for (on x a)
-        (return 3)
-      )
+      (then busy (trigger on a))
+      (print "idle")
     )
+    (blank)
+    (state busy)
   )
 )
 ```
 
 ```output
-Exception: A state machine's handler gives no value, so it cannot return one with "(return …)"; end it early with "(return)"
+Exception: A case's statements come before its cases and transitions, since they run first as it is entered; move this row above the first "state", "then" or "else-state"
 <no file:8>
-            (return 3)
-            ^^^^^^^^^^
+          (print "idle")
+          ^^^^^^^^^^^^^^
 ```
 
 ### A transition that gives a case fewer values than the case names is rejected.
@@ -7193,9 +7211,7 @@ again true
         (then done (trigger whenever (. box #feed)))
       )
       (state done
-        (do
-          (print "done")
-        )
+        (print "done")
       )
     )
   )

@@ -491,6 +491,8 @@ log saw 3
   before the body runs.
 - **Closing the event's owner** ends every subscription to its events.
 - **Closing the subscriber** ends the subscriptions in its class's body.
+- **Leaving a state machine's case** ends the loops written in it; see
+  [Values that live in a case](state-machines.md#values-that-live-in-a-case).
 - **`close`** must be declared for either: `Ticker has no method "close"`.
 
 ### Keyed and routed events

@@ -200,11 +200,8 @@
   (fn-expr + is-entry-item Bool
     (param item SyntaxId)
     ; Whether an item of a case's body runs as the case is entered: any but its cases,
-    ; continuations, fallbacks, handlers and `do finally` blocks.
+    ; continuations, fallbacks and `do finally` blocks.
     (match ([] nodes item)
-      (case .node-for-block
-        (not (call is-state-handler item))
-      )
       (case .node-state-case
         false
       )
@@ -222,89 +219,58 @@
       )
     )
   )
-  (fn-do + spawns-in-case Bool
+  (fn-do + owns-in-case Bool
     (param items (list SyntaxId))
     (param case SyntaxId)
     ; Whether the activation of a case, among the cases of the machine whose body is `items`, owns a
-    ; task spawned for it: one spawned in the body of the case, or of a continuation that enters it
-    ; (`spawns-in-body`).
+    ; task or a loop on a stream started for it: one started in the body of the case, or of a
+    ; continuation that enters it (`owns-in-body`).
     (let name (call state-name case))
     (return-if false (if (not name)))
-    (if (and (is ([] nodes case) .node-state-case) (call spawns-in-body case))
+    (if (and (is ([] nodes case) .node-state-case) (call owns-in-body case))
       (return true)
     )
     (for (in continuation (call continuations-named items name))
-      (return-if true (if (call spawns-in-body continuation)))
+      (return-if true (if (call owns-in-body continuation)))
     )
     (return false)
   )
-  (fn-do + spawns-in-body Bool
+  (fn-do + owns-in-body Bool
     (param node SyntaxId)
-    ; Whether a task not marked `@detached` is spawned in an entry statement or a handler of the body
-    ; of a case or a continuation. One spawned in a `do finally` block, or in a case or machine
-    ; written in the body, is not.
+    ; Whether a task not marked `@detached`, or a loop on a stream, is started in an entry statement
+    ; of the body of a case or a continuation. One started in a `do finally` block, or in a case or
+    ; machine written in the body, is not.
     (for (in item (call state-items (call state-body node)))
-      (if (and (or (call is-entry-item item) (call is-state-handler item)) (== (call nested-machine item) 0))
-        (return-if true (if (call spawns-owned item)))
+      (if (and (call is-entry-item item) (== (call nested-machine item) 0))
+        (return-if true (if (call starts-owned item)))
       )
     )
     (return false)
   )
-  (fn-do + spawns-owned Bool
+  (fn-do + starts-owned Bool
     (param item SyntaxId)
-    ; Whether a task not marked `@detached` is spawned in a node, or in a node inside it.
+    ; Whether a task not marked `@detached`, or a loop on a stream, is started in a node, or in a
+    ; node inside it.
     (for (in node (.. (call subtree-start item) item))
       (match? ([] nodes node)
         (case (call .node-do-task-block row)
           (return-if true (if (not (. row detached))))
         )
-      )
-    )
-    (return false)
-  )
-  (fn-do + is-state-handler Bool
-    (param item SyntaxId)
-    ; Whether an item of a machine's body is a handler: a `for ... on` loop, which the case it is
-    ; written in runs for each item of the loop's stream while the case is active.
-    (match? ([] nodes item)
-      (case (call .node-for-block row)
-        (match? ([] nodes (. row loop))
-          (case (call .node-loop-syntax loop)
-            (return (. loop is-subscriber))
+        (case (call .node-for-block row)
+          (match? ([] nodes (. row loop))
+            (case (call .node-loop-syntax loop)
+              (return-if true (if (. loop is-subscriber)))
+            )
           )
         )
       )
     )
     (return false)
   )
-  (fn-do + handler-loop SyntaxId
-    (param item SyntaxId)
-    ; The loop a handler runs by.
-    (match? ([] nodes item)
-      (case (call .node-for-block row)
-        (return (. row loop))
-      )
-    )
-    (return 0)
-  )
-  (fn-expr + group-trigger SyntaxId
+  (fn-expr + group-stream SyntaxId
     (param head SyntaxId)
-    ; Where a group of a body's event transitions keeps how its stream is read: its first
-    ; transition's trigger, or a handler's loop.
-    (if-expr (call is-state-handler head) (call handler-loop head) (call state-trigger head))
-  )
-  (fn-do + group-stream SyntaxId
-    (param head SyntaxId)
-    ; The stream a group of a body's event transitions, or a handler, is on.
-    (if (not (call is-state-handler head))
-      (return (call trigger-stream (call state-trigger head)))
-    )
-    (match? ([] nodes (call handler-loop head))
-      (case (call .node-loop-syntax loop)
-        (return (. loop container))
-      )
-    )
-    (return 0)
+    ; The stream a group of a body's event transitions is on.
+    (call trigger-stream (call state-trigger head))
   )
   (fn-do + trigger-kind (? StateTriggerKind)
     (param trigger SyntaxId)
@@ -747,15 +713,10 @@
   )
   (fn-do + group-heads (list SyntaxId)
     (param items (list SyntaxId))
-    ; The first transition of each group of a body's event transitions, and each handler, in
-    ; order. A group is the transitions whose triggers are on one stream; a handler is a group of
-    ; its own.
+    ; The first transition of each group of a body's event transitions, in order. A group is the
+    ; transitions whose triggers are on one stream.
     (let heads (list SyntaxId))
     (for (in item items)
-      (if (call is-state-handler item)
-        (+= heads item)
-        (continue)
-      )
       (if (not (call is-transition item))
         (continue)
       )

@@ -167,7 +167,6 @@
   (prop _ ordered-literals (list SyntaxId))
   (prop _ lazy-slots (list SlotId))
   (prop _ initializing DeclId (= 0))
-  (prop _ handling SyntaxId (= 0))
   (prop _ row-cursors (list RowCursor))
   (prop _ checked-rows (list SlotId))
   (prop _ forwarded-row TypeId (= no-type))
@@ -7974,20 +7973,11 @@
     (param id SyntaxId)
     (param expr SyntaxId)
     ; Where an explicit return may be written. A cleanup and the body of `main` or of a loop on a
-    ; stream have none, a task's body and a state machine's handler return no value, and a
-    ; function that is not imperative states it needs `do`. In the body of a rule of a class one
-    ; with no value leaves the body, and one with a value is reported, as a rule gives none.
+    ; stream have none, a task's body returns no value, and a function that is not imperative
+    ; states it needs `do`. In the body of a rule of a class one with no value leaves the body, and
+    ; one with a value is reported, as a rule gives none.
     (if (. finally cleaning-up)
       (call (. frame diagnose) id .stated (call (. program store-atom) "Illegal deferred statement"))
-      (return)
-    )
-    (if (and (!= handling 0) (!= expr 0))
-      (let text
-        (paragraph
-          "A state machine's handler gives no value, so it cannot return one with \"(return …)\"; end it early with \"(return)\""
-        )
-      )
-      (call (. frame diagnose) id .stated (call (. program store-atom) text))
       (return)
     )
     (if (call is-rule-unit)
@@ -12700,6 +12690,14 @@
     (default
       (and (!= (. frame self-type) no-type) (!= (. frame self-type) invalid-type) (not (call lacks-self)))
     )
+  )
+  (fn-expr _ activation-owns Bool
+    (param id SyntaxId)
+    (!= (call (. bindings activation-tasks) (. frame binding) id (call (. program store-atom) "(tasks)")) no-slot)
+  )
+  (fn-expr _ owns-subscription Bool
+    (param id SyntaxId)
+    (or (call is-owner) (call activation-owns id))
   )
   (fn-do _ closure-of-self TypeId
     ; The closure type of the nested function being typed, as the instance that writes it made it.

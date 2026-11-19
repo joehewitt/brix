@@ -4208,46 +4208,44 @@ the element's task cancelled
     (machine
       (state idle)
       (state active (trigger on enter)
-        (do
-          (= worker
+        (= worker
+          (do-new
+            (finally
+              (print "worker cleanup")
+            )
+            (call (. entered post))
+            (while true
+              (call (. asked wait))
+              (call (. answered post))
+            )
+          )
+        )
+        (do-new @detached
+          (= nested
             (do-new
-              (finally
-                (print "worker cleanup")
-              )
               (call (. entered post))
-              (while true
-                (call (. asked wait))
-                (call (. answered post))
-              )
+              (call (. (call Semaphore) wait))
             )
           )
-          (do-new @detached
-            (= nested
-              (do-new
-                (call (. entered post))
-                (call (. (call Semaphore) wait))
-              )
-            )
-          )
-          (let start
-            (=> () :do
-              (block
-                (= closure
-                  (do-new
-                    (call (. entered post))
-                    (call (. (call Semaphore) wait))
-                  )
+        )
+        (let start
+          (=> () :do
+            (block
+              (= closure
+                (do-new
+                  (call (. entered post))
+                  (call (. (call Semaphore) wait))
                 )
-                (return true)
               )
+              (return true)
             )
           )
-          (let started (call start))
-          (= loose
-            (do-new @detached
-              (call (. gate wait))
-              (print "detached ran after exit")
-            )
+        )
+        (let started (call start))
+        (= loose
+          (do-new @detached
+            (call (. gate wait))
+            (print "detached ran after exit")
           )
         )
         (for (on tick ticks)
@@ -4258,18 +4256,6 @@ the element's task cancelled
             )
           )
         )
-        (state waiting)
-        (state busy (trigger on inner)
-          (do
-            (= inner-task
-              (do-new
-                (call (. entered post))
-                (call (. (call Semaphore) wait))
-              )
-            )
-          )
-          (then waiting (trigger on outer))
-        )
         (finally
           (call (. asked post))
           (call (. answered wait))
@@ -4279,6 +4265,17 @@ the element's task cancelled
               (call (. (call Semaphore) wait))
             )
           )
+        )
+        (blank)
+        (state waiting)
+        (state busy (trigger on inner)
+          (= inner-task
+            (do-new
+              (call (. entered post))
+              (call (. (call Semaphore) wait))
+            )
+          )
+          (then waiting (trigger on outer))
         )
         (then idle (trigger on leave))
       )
@@ -4321,27 +4318,23 @@ detached ran after exit
 (main
   (state idle)
   (state active (trigger on enters)
-    (do
-      (= worker
-        (do-new
-          (finally
-            (print "worker cleanup")
-          )
-          (call (. entered post))
-          (call (. (call Semaphore) wait))
+    (= worker
+      (do-new
+        (finally
+          (print "worker cleanup")
         )
+        (call (. entered post))
+        (call (. (call Semaphore) wait))
       )
     )
     (then stopped (trigger on stops)
-      (do
-        (= stopper
-          (do-new
-            (finally
-              (print "stopper cleanup")
-            )
-            (call (. entered post))
-            (call (. (call Semaphore) wait))
+      (= stopper
+        (do-new
+          (finally
+            (print "stopper cleanup")
           )
+          (call (. entered post))
+          (call (. (call Semaphore) wait))
         )
       )
     )
@@ -4403,15 +4396,13 @@ stopper cancelled as stopped exits: true
   (prop + body _
     (machine
       (state free
-        (do
-          (= base-task
-            (do-new
-              (finally
-                (print "base cleanup")
-              )
-              (call (. entered post))
-              (call (. (call Semaphore) wait))
+        (= base-task
+          (do-new
+            (finally
+              (print "base cleanup")
             )
+            (call (. entered post))
+            (call (. (call Semaphore) wait))
           )
         )
         (then away (trigger on leaves))
@@ -4431,15 +4422,13 @@ stopper cancelled as stopped exits: true
   (prop + body _
     (machine
       (state free
-        (do
-          (= sub-task
-            (do-new
-              (finally
-                (print "sub cleanup")
-              )
-              (call (. entered post))
-              (call (. (call Semaphore) wait))
+        (= sub-task
+          (do-new
+            (finally
+              (print "sub cleanup")
             )
+            (call (. entered post))
+            (call (. (call Semaphore) wait))
           )
         )
       )
@@ -4504,24 +4493,22 @@ sub handler task cancelled: true
     (machine
       (state idle)
       (state active (trigger on enter)
-        (do
-          (+= entries 1)
-          (let leaves (!= entries 2))
-          (let task
-            (do-new
-              (if leaves
-                (<- leave true)
-                (print "left its own case")
-              )
-              (call (. entered post))
-              (call (. (call Semaphore) wait))
+        (+= entries 1)
+        (let leaves (!= entries 2))
+        (let task
+          (do-new
+            (if leaves
+              (<- leave true)
+              (print "left its own case")
             )
+            (call (. entered post))
+            (call (. (call Semaphore) wait))
           )
-          (if (== entries 1)
-            (= first task)
-            (else-if (== entries 3)
-              (= third task)
-            )
+        )
+        (if (== entries 1)
+          (= first task)
+          (else-if (== entries 3)
+            (= third task)
           )
         )
         (then idle (trigger on leave))
@@ -4539,14 +4526,12 @@ sub handler task cancelled: true
     (machine
       (state idle)
       (state active (trigger on enter)
-        (do
-          (= worker
-            (do-new
-              (call close)
-              (print "closed its own object")
-              (call (. entered post))
-              (call (. (call Semaphore) wait))
-            )
+        (= worker
+          (do-new
+            (call close)
+            (print "closed its own object")
+            (call (. entered post))
+            (call (. (call Semaphore) wait))
           )
         )
       )

@@ -57,35 +57,28 @@
   (prop + room _
     (machine
       (state hall
-        (do
-          (inline (print "A dusty hall. Stairs lead down. A lamp sits on a shelf."))
-        )
+        (print "A dusty hall. Stairs lead down. A lamp sits on a shelf.")
         (blank)
-        ; A handler hears commands only while its room is the active one.
-        (for (on (call .take "lamp") commands)
+        ; A loop in a case hears commands only while its room is the active one.
+        (for (on (| (call .take "lamp")) commands)
           (= has-lamp true)
           (print "You take the lamp.")
         )
-        (blank)
-        ; This move is written before the handler below, so with the lamp the player
-        ; has left the hall before `too dark` is reached.
-        (then cellar (trigger for (call .go "down") commands has-lamp))
-        (for (on (call .go "down") commands)
+        (for (on (| (call .go "down")) commands (when (not has-lamp)))
           (print "It is too dark to go down.")
         )
+        (blank)
+        (then cellar (trigger for (call .go "down") commands has-lamp))
       )
       (blank)
       (state cellar
-        (do
-          (inline (print "The lamp shows a cellar and a heap of gold."))
-        )
+        (print "The lamp shows a cellar and a heap of gold.")
+        (blank)
         (then rich (trigger for (call .take "gold") commands))
       )
       (blank)
       (state rich
-        (do
-          (inline (print "You are rich. The end."))
-        )
+        (print "You are rich. The end.")
       )
     )
   )

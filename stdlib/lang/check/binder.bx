@@ -3256,7 +3256,7 @@
         (call walk-case item)
       )
     )
-    (call walk-handlers items)
+    (call walk-groups items)
     (-= state-depth 1)
     (call (. owning-cases pop))
     (call (. machine-cases pop))
@@ -3314,7 +3314,7 @@
         (call walk-case item)
       )
     )
-    (call walk-handlers items)
+    (call walk-groups items)
     (call (. owning-cases pop))
     (call (. machine-cases pop))
     (call (. machine-kept pop))
@@ -3337,7 +3337,7 @@
         (call hide active-name node)
       )
       (call hide generation-name node)
-      (if (call (. tree spawns-in-case) items node)
+      (if (call (. tree owns-in-case) items node)
         (+= tasks-cases node)
         (+= tasks-slots (as (. bindings slots length) SlotId))
         (call hide tasks-name node)
@@ -3404,7 +3404,7 @@
     )
     (for (in head (call (. tree group-heads) items))
       (call walk (call (. tree group-stream) head))
-      (call declare-loop-state (call (. tree group-trigger) head))
+      (call declare-loop-state (call (. tree state-trigger) head))
     )
   )
   (fn-do _ walk-targets Void
@@ -3443,8 +3443,8 @@
     ; their own, with what runs once they have; then come its cases, the functions its groups run,
     ; and the `do finally` blocks of its exit in a scope of their own, beyond the entry's locals. A
     ; named machine among its entry statements is part of the machine (`walk-nested-machine`).
-    ; Tasks its entry statements and handlers spawn are the activation's of the case it enters, where
-    ; that case owns tasks (`owning-case`); those its `do finally` blocks spawn are not.
+    ; Tasks and loops on a stream its entry statements start are the activation's of the case it
+    ; enters, where that case owns them (`owning-case`); those its `do finally` blocks start are not.
     (let items (call (. tree state-items) (call (. tree state-body) node)))
     (+= owning-cases (call owning-case node))
     (call push-scope .scope-activation node)
@@ -3466,7 +3466,7 @@
         (call walk-case item)
       )
     )
-    (call walk-handlers items)
+    (call walk-groups items)
     (+= owning-cases 0)
     (call push-scope .scope-block node)
     (for (in item items)
@@ -3498,20 +3498,15 @@
       (call declare name .slot-local node (. SlotFlag slot-constant) 0)
     )
   )
-  (fn-do _ walk-handlers Void
+  (fn-do _ walk-groups Void
     (param items (list SyntaxId))
     ; The function each group of a body's event transitions runs for an item: `each` and `it` are
     ; the item, and each transition tests its pattern and guard and gives its targets in an arm
-    ; of its own; a handler's loop binds its pattern, tests its `when` and runs its body there.
+    ; of its own.
     (for (in head (call (. tree group-heads) items))
       (call push-scope .scope-block head)
       (call declare each-name .slot-each head (. SlotFlag slot-constant) 0)
       (call declare it-name .slot-it head (. SlotFlag slot-constant) 0)
-      (if (call (. tree is-state-handler) head)
-        (call walk-state-handler head)
-        (call pop-scope)
-        (continue)
-      )
       (for (in transition (call (. tree group-transitions) items head))
         (let trigger (call (. tree state-trigger) transition))
         (call push-scope .scope-arm transition)
@@ -3521,26 +3516,6 @@
         (call pop-scope)
       )
       (call pop-scope)
-    )
-  )
-  (fn-do _ walk-state-handler Void
-    (param head SyntaxId)
-    (match? ([] (. tree nodes) head)
-      (case (call .node-for-block row)
-        (match? ([] (. tree nodes) (. row loop))
-          (case (call .node-loop-syntax loop)
-            (call push-scope .scope-arm (. row loop))
-            (call declare-pattern (. loop pattern) .slot-pattern (. SlotFlag slot-constant) 0)
-            (match? ([] (. tree nodes) (. loop clause))
-              (case (call .node-clause clause)
-                (call walk (. clause expr))
-              )
-            )
-            (call walk (. row body))
-            (call pop-scope)
-          )
-        )
-      )
     )
   )
   (fn-do _ open-nested _
@@ -3961,14 +3936,21 @@
     (param id SyntaxId)
     ; A task spawned where a case's activation owns it is given the slot the machine keeps the
     ; activation's record of its tasks in, which the functions around it capture, as the task
-    ; block's resolution; any other is given the receiver, where there is one, for its object to own.
+    ; block's resolution (`own-loop`); any other is given the receiver, where there is one, for its
+    ; object to own.
+    (if (not (call own-loop id))
+      (call capture-self true)
+    )
+  )
+  (fn-do _ own-loop Bool
+    (param id SyntaxId)
     (let tasks (call activation-tasks))
     (if (== tasks no-slot)
-      (call capture-self true)
-      (return)
+      (return false)
     )
     (call use-slot tasks (call slot-depth tasks) 0)
     (call (. bindings set-resolution) binding id (call Resolution .resolve-slot 0 tasks 0 0))
+    (return true)
   )
   (fn-do _ activation-tasks SlotId
     ; The slot of the record of the tasks of the case whose activation owns what is spawned here, or
@@ -3984,7 +3966,7 @@
   (fn-do _ owning-case SyntaxId
     (param node SyntaxId)
     ; The case among the machine's cases that a case or continuation enters, where its activation
-    ; owns tasks, or none.
+    ; owns tasks or loops on a stream, or none.
     (let name (call (. tree state-name) node))
     (return-if 0 (if (or (not name) (== (. machine-cases length) 0))))
     (let cases ([] machine-cases (- (. machine-cases length) 1)))
@@ -4024,6 +4006,11 @@
       )
     )
     (call walk-whenever loop)
+    (if (call is-broadcaster id)
+      (do
+        (inline (call own-loop id))
+      )
+    )
     (call push-scope .scope-nested id)
     (+= function-depth 1)
     (call open-nested id)

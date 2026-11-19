@@ -675,7 +675,7 @@
         (continue)
       )
       (for (in head (call (. source group-heads) (call (. source state-items) (call (. source state-body) named))))
-        (if (or (call (. source is-state-handler) head) other-first)
+        (if other-first
           (continue)
         )
         (lazy other-first (!= (call first-alike (!! (. machining composite)) case source head) piece))
@@ -730,9 +730,6 @@
         (continue)
       )
       (for (in head (call (. source group-heads) (call (. source state-items) (call (. source state-body) named))))
-        (if (call (. source is-state-handler) head)
-          (continue)
-        )
         (if (or alike-head (call below-joins case source head))
           (return true)
         )
@@ -923,12 +920,6 @@
     (if (!= (. group owner) 0)
       (call bind-path (. group owner))
     )
-    (if (call (. tree is-state-handler) head)
-      (call run-state-handler head group item done)
-      (call (. ir start-block) done)
-      (call return-value (call load-local answer head) head)
-      (return)
-    )
     (let items
       (block
         (case? (!= (. group owner) 0)
@@ -970,36 +961,6 @@
     (call jump done)
     (call (. ir start-block) done)
     (call return-value (call load-local answer head) head)
-  )
-  (fn-do _ run-state-handler _
-    (param head SyntaxId)
-    (param group MachineGroup)
-    (param item Operand)
-    (param done U32)
-    ; A handler's loop for an item of its stream, as the reference runs it: its pattern binds the
-    ; item, or the item passes by where it fails; its `when` is tested; and its body runs.
-    (match? ([] (. tree nodes) head)
-      (case (call .node-for-block row)
-        (match? ([] (. tree nodes) (. row loop))
-          (case (call .node-loop-syntax loop)
-            (if (!= (. loop pattern) 0)
-              (do
-                (inline (call emit-pattern (. loop pattern) (call Typed item (. group item)) done))
-              )
-            )
-            (match? ([] (. tree nodes) (. loop clause))
-              (case (call .node-clause clause)
-                (let passed (call (. ir reserve-block)))
-                (call branch-on (. clause expr) passed done)
-                (call (. ir start-block) passed)
-              )
-            )
-            (call emit-statement (. row body))
-          )
-        )
-      )
-    )
-    (call jump done)
   )
   (fn-do _ parent-flag Operand
     (param site SyntaxId)
@@ -1435,13 +1396,17 @@
   (fn-do _ close-tasks _
     (param node SyntaxId)
     (param site SyntaxId)
-    ; Cancels the tasks the activation of a case owns as it exits, without waiting for them or
-    ; yielding to them. A task that exits its own case, by sending what moves the machine, is not
-    ; cancelled: the case's `TaskOwner` keeps it, for the case's next exit or the machine's stop to
-    ; cancel (`sweep-tasks`). Where the object's `close` stops the machine, the task that runs the
-    ; `close` is not cancelled either, and the object keeps it instead, as it keeps its own.
+    ; Ends the loops on a stream the activation of a case owns as it exits, closing the live action
+    ; each subscribes by, and cancels the tasks it owns, without waiting for them or yielding to
+    ; them. A task that exits its own case, by sending what moves the machine, is not cancelled: the
+    ; case's `TaskOwner` keeps it, for the case's next exit or the machine's stop to cancel
+    ; (`sweep-tasks`). Where the object's `close` stops the machine, the task that runs the `close`
+    ; is not cancelled either, and the object keeps it instead, as it keeps its own.
     (if (or (not (call keeps-tasks node)) (not (call makes-task-owners)))
       (return)
+    )
+    (if (!= (. instances live pop) no-instance)
+      (call close-actions site (. (call read-kept node "(tasks)" site) operand))
     )
     (let mark (. pending length))
     (+= pending (call num-cast site (. (call read-kept node "(tasks)" site) operand) managed-layout pointer-layout))
@@ -1507,7 +1472,7 @@
     (let owner-tree (. ([] (. program modules) (. fact module)) tree))
     (let whole (call (. owner-tree state-items) (call (. owner-tree state-body) (. fact syntax))))
     (let unsettled (and settles (not (call (. owner-tree enters-initial) whole written))))
-    (let spawns (and (!= via 0) (call (. tree spawns-in-body) via)))
+    (let spawns (and (!= via 0) (call (. tree owns-in-body) via)))
     (if (or (not (call markable owner written)) (!= (. (call (. tree group-heads) items) length) 0) unsettled spawns)
       (call refuse .refused-statement site)
       (return)
@@ -1796,7 +1761,7 @@
     )
     (let owner (. ([] (. program modules) (. ([] (. composite pieces) piece) module)) tree))
     (for (in given (call (. owner group-heads) (call (. owner state-items) (call (. owner state-body) named))))
-      (if (and (not (call (. owner is-state-handler) given)) keyed-alike)
+      (if keyed-alike
         (return given)
       )
       (lazy keyed-alike (call (. source alike-key) owner (call (. source state-trigger) head) (call (. owner state-trigger) given)))
@@ -1839,7 +1804,7 @@
     ; of a case's merged body: that piece's handler tries it (`try-joined`), and it is not subscribed.
     (let place (call machine-group-of head))
     (let owner (if-expr (!= place (. U32 max)) (. ([] (. facts machine-groups) place) owner) 0))
-    (if (or (not (. machining composite)) (== owner 0) (call (. tree is-state-handler) head))
+    (if (or (not (. machining composite)) (== owner 0))
       (return false)
     )
     (let case (call composite-case owner))
@@ -1851,10 +1816,8 @@
       (let other (. ([] (. program modules) (. ([] (. (!! (. machining composite)) pieces) piece) module)) tree))
       (if (!= named 0)
         (for (in given (call (. other group-heads) (call (. other state-items) (call (. other state-body) named))))
-          (if (not (call (. other is-state-handler) given))
-            (if (call (. tree alike-key) other (call (. tree state-trigger) head) (call (. other state-trigger) given))
-              (return true)
-            )
+          (if (call (. tree alike-key) other (call (. tree state-trigger) head) (call (. other state-trigger) given))
+            (return true)
           )
         )
       )
@@ -1872,7 +1835,7 @@
     ; of the one below it (`relay-part`), which is given where the item and the broadcaster lie and
     ; the place among the facts' groups of the group of the first piece that writes one there; one
     ; whose transition passes leaves to `done`.
-    (if (or (not (. machining composite)) (== (. group owner) 0) (call (. tree is-state-handler) head))
+    (if (or (not (. machining composite)) (== (. group owner) 0))
       (return)
     )
     (let case (call composite-case (. group owner)))
@@ -2752,7 +2715,7 @@
         (return)
       )
       (let group ([] (. facts machine-groups) place))
-      (let trigger (call (. tree group-trigger) head))
+      (let trigger (call (. tree state-trigger) head))
       (if (. group iterated)
         (call iterate-group head group handler)
         (continue)
@@ -2819,7 +2782,7 @@
     ; event runtime keeps for the event, as the reference does where the group's owner enters: the
     ; port is made the first time, with the subscriber the group's activation runs with the
     ; machine's environment, and kept for the next time.
-    (let stream (call event-stream (call (. tree group-trigger) head) ([] (. facts event-uses) (. group event))))
+    (let stream (call event-stream (call (. tree state-trigger) head) ([] (. facts event-uses) (. group event))))
     (let ports (call kept-type head "(subscriber)" head))
     (let mark (. pending length))
     (+= pending (. (call read-kept head "(subscriber)" head) operand))
@@ -2836,7 +2799,7 @@
     ; loops over it: the container is evaluated once and begun, and each item it gives is given to
     ; the group's handler with the machine's environment and the container, in a loop that does
     ; not poll; a stream is told after that the loop has ended.
-    (let trigger (call (. tree group-trigger) head))
+    (let trigger (call (. tree state-trigger) head))
     (let written (call (. tree group-stream) head))
     (let slot (call loop-slots trigger))
     (let kind (call hold-container trigger written slot))
