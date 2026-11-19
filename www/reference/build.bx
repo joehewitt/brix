@@ -1,5 +1,6 @@
 (import ./../markdown-site/site)
 (import ./forms)
+(import ./../rows/rows)
 (import /BxCore/BxCore.h)
 (import /data/markdown)
 (import /os/cli)
@@ -75,7 +76,8 @@
     (+= content (str " tabindex=\"-1\" aria-labelledby=\"" heading "\">" rendered "</section>\n"))
   )
   (let navigation (call reference-navigation (. site documents)))
-  (let stylesheet (call read-file-text (call Path "www/reference/style.css")))
+  (let rows-stylesheet (call read-file-text (call Path "www/rows/rows.css")))
+  (let stylesheet (++ rows-stylesheet (call read-file-text (call Path "www/reference/style.css"))))
   (let module-javascript (call read-file-text (call Path "www/reference/script.js")))
   (let javascript (call reference-classic-javascript module-javascript))
   (let asset-version (as (call hash-for (++ stylesheet javascript)) Hex))
@@ -190,7 +192,7 @@
     (let chapter ([] chapters index))
     (let current (if-expr (== index 0) " aria-current=\"location\"" ""))
     (let id (. chapter id))
-    (let title (call reference-html (. chapter title)))
+    (let title (call html-text (. chapter title)))
     (+= ticks (str "<a class=\"chapter-tick\" href=\"#" id "\" data-chapter-link=\"" id "\""))
     (+= ticks (str " aria-label=\"" title "\"" current "><span></span></a>"))
     (let label (if-expr (== index 0) "•" (str (call (. index pad) 2))))
@@ -244,7 +246,7 @@
     "<meta charset=\"utf-8\">"
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
     "<meta name=\"color-scheme\" content=\"light dark\">"
-    (str "<title>" (call reference-html title) "</title>")
+    (str "<title>" (call html-text title) "</title>")
     (str "<link rel=\"stylesheet\" href=\"reference.css?v=" asset-version "\">")
     (str "<script defer src=\"reference.js?v=" asset-version "\"></script>")
     "</head>"

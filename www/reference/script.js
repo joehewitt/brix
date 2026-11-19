@@ -98,7 +98,7 @@ export function initializeChapterNavigation(document) {
 export function initializeCodeView(document) {
     const root = document.documentElement;
     const view = document.defaultView;
-    const key = 'reference-code-view';
+    const key = 'brix-code-view';
     const buttons = [...document.querySelectorAll('[data-brix-code]')].map((block) => {
         const button = document.createElement('button');
         button.type = 'button';

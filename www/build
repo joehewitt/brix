@@ -8,26 +8,26 @@ from pathlib import Path
 WWW = Path(__file__).resolve().parent
 ROOT = WWW.parent
 SITE = ROOT / '.tmp' / 'site'
-HOME = WWW / 'prelaunch'
-REFERENCE_SOURCE = Path('www/reference/build.bx')
-REFERENCE_PROGRAM = Path('.tmp/build/build-reference')
+BUILDERS = [
+    ('the home page', Path('www/home/build.bx'), Path('.tmp/build/build-home'), SITE),
+    ('the reference', Path('www/reference/build.bx'), Path('.tmp/build/build-reference'), SITE / 'ref'),
+]
 
 
 def main(arguments):
     parser = argparse.ArgumentParser(
         prog='www/build',
-        description=f'Build the website into {SITE.relative_to(ROOT)}: the home page and the language reference.')
+        description=f'Build the website into {SITE.relative_to(ROOT)}: the home page, the examples and the language reference.')
     parser.parse_args(arguments)
     if SITE.exists():
         shutil.rmtree(SITE)
-    shutil.copytree(HOME, SITE)
-    built = subprocess.run(
-        [str(ROOT / 'bin' / 'brix'), str(REFERENCE_SOURCE), '-o', str(REFERENCE_PROGRAM),
-         '--', '--output', str(SITE / 'ref')],
-        cwd=ROOT)
-    if built.returncode != 0:
-        print('www/build: the reference did not build', file=sys.stderr)
-        return built.returncode
+    for name, source, program, output in BUILDERS:
+        built = subprocess.run(
+            [str(ROOT / 'bin' / 'brix'), str(source), '-o', str(program), '--', '--output', str(output)],
+            cwd=ROOT)
+        if built.returncode != 0:
+            print(f'www/build: {name} did not build', file=sys.stderr)
+            return built.returncode
     print(f'Built {SITE.relative_to(ROOT)}')
     return 0
 

@@ -1,0 +1,199 @@
+(import ./../rows/rows)
+(import /data/markdown)
+(import /os/cli)
+(import /os/file)
+(import /os/path)
+(import /stream/sort)
+(blank)
+
+(main
+  (call build-home (call home-build-options (call cmdline-args)))
+)
+
+(prop _ home-first-example String (= "basics/life.bx"))
+
+(prop _ home-install-command String (= "curl -fsSL https://brix-lang.com/install.py | python3 -"))
+
+(prop _ home-platforms String (= "The compiler runs on macOS (Apple Silicon) and Linux (aarch64 only, x86 support planned)."))
+
+(prop _ home-agent-prompt String
+  (=
+    (str
+      "Install the Brix compiler with `curl -fsSL https://brix-lang.com/install.py | python3 - --yes`. "
+      "It runs only on macOS (Apple Silicon) and Linux (aarch64); if this machine is neither, stop and tell me. "
+      "The installer puts `brix` in `~/.brix/bin`. Run `brix --help` and read the guides it points to before "
+      "writing any Brix. Then write a small sample app in Brix, build it and run it."
+    )
+  )
+)
+
+(type _ HomeBuildOptions (is Tuple)
+  (prop + examples Path)
+  (prop + output Path)
+)
+
+(fn-do _ build-home _
+  (param options HomeBuildOptions)
+  (let names (list String))
+  (let tree (call home-tree-html (. options examples) "" names))
+  (throw (call Error (str "No example " home-first-example)) (if (not (call (. names find) home-first-example))))
+  (let first "")
+  (for (in name names)
+    (let fragment (call home-example-html (/ (. options examples) name) name))
+    (let path (call Path (str (/ (. options output) "examples" name) ".html")))
+    (call (. path dir make-directories))
+    (call write-file-atomically path fragment)
+    (if (== name home-first-example)
+      (= first fragment)
+    )
+  )
+  (let rows-stylesheet (call read-file-text (call Path "www/rows/rows.css")))
+  (let stylesheet (++ rows-stylesheet (call read-file-text (call Path "www/home/style.css"))))
+  (let javascript (call read-file-text (call Path "www/home/script.js")))
+  (let asset-version (as (call hash-for (++ stylesheet javascript)) Hex))
+  (call write-file-atomically (/ (. options output) "home.css") stylesheet)
+  (call write-file-atomically (/ (. options output) "home.js") javascript)
+  (call write-file-atomically (/ (. options output) "index.html") (call home-page (str asset-version) tree first))
+  (for (in asset (list "icon.png" "robots.txt"))
+    (call (. (call Path (str "www/home/" asset)) copy) (/ (. options output) asset))
+  )
+  (print (str "Built " (/ (. options output) "index.html") " and " (. names length) " examples"))
+)
+
+(fn-do _ home-build-options HomeBuildOptions
+  (param command (list String))
+  (let examples (call Path "examples"))
+  (let output (call Path ".tmp/site"))
+  (let index Index 1)
+  (while (< index (. command length))
+    (let argument ([] command index))
+    (let is-known (or (== argument "--examples") (== argument "--output")))
+    (throw (call Error (str "Unknown option " argument ". Usage: build-home [--examples directory] [--output directory]")) (if (not is-known)))
+    (+= index 1)
+    (throw (call Error (str argument " needs a directory")) (if (>= index (. command length))))
+    (if (== argument "--examples")
+      (= examples (call Path ([] command index)))
+      (else
+        (= output (call Path ([] command index)))
+      )
+    )
+    (+= index 1)
+  )
+  (return (call HomeBuildOptions examples output))
+)
+
+(fn-do _ home-tree-html String (?! Error)
+  (param folder Path)
+  (param prefix String)
+  (param names (list String))
+  (let folders "")
+  (let files "")
+  (for (in path-text (call sort (in (str each) (. folder contents))))
+    (let path (call Path path-text))
+    (let name (. path name))
+    (let relative (str prefix name))
+    (if (call (. name starts-with) ".")
+      (continue)
+    )
+    (if (. path is-dir)
+      (let inner (call home-tree-html path (str relative "/") names))
+      (+= folders (call home-tree-folder-html relative name inner))
+      (else-if (and (. path is-file) (or (== (. path ext) "bx") (== (. path ext) "md")))
+        (+= names relative)
+        (+= files (call home-tree-file-html relative name))
+      )
+    )
+  )
+  (return (str "<ul>" folders files "</ul>"))
+)
+
+(fn-expr _ home-tree-folder-html String
+  (param relative String)
+  (param name String)
+  (param inner String)
+  (str "<li><details" open "><summary>" (call html-text name) "</summary>" inner "</details></li>")
+  (where
+    (lazy open (if-expr (call (. home-first-example starts-with) (str relative "/")) " open" ""))
+  )
+)
+
+(fn-expr _ home-tree-file-html String
+  (param relative String)
+  (param name String)
+  (str "<li><a href=\"#" link "\" data-example=\"" link "\"" current ">" (call html-text name) "</a></li>")
+  (where
+    (lazy link (call html-attribute relative))
+    (lazy current (if-expr (== relative home-first-example) " aria-current=\"page\"" ""))
+  )
+)
+
+(fn-do _ home-example-html String
+  (param path Path)
+  (param name String)
+  (let text (call read-file-text path))
+  (return-if (str "<div class=\"example-readme\">" (call markdown-to-html (call Markdown text)) "</div>") (if (== (. path ext) "md")))
+  (let source (use (call rows-document text name)))
+  (return (call home-code-html (call rows-html source) (call html-text text)))
+)
+
+(fn-expr _ home-code-html String
+  (param rows String)
+  (param forms String)
+  (str "<div class=\"brix-rows\">" rows "</div><div class=\"brix-forms\"><pre><code class=\"language-brix\">" forms "</code></pre></div>")
+)
+
+(fn-expr _ home-page String
+  (param asset-version String)
+  (param tree String)
+  (param first String)
+  (paragraph
+    "<!doctype html>"
+    "<html lang=\"en\">"
+    "<head>"
+    "<meta charset=\"utf-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    "<meta name=\"color-scheme\" content=\"light dark\">"
+    "<meta name=\"robots\" content=\"noindex\">"
+    "<title>Brix</title>"
+    "<meta name=\"description\" content=\"An experimental programming language by Joe Hewitt.\">"
+    "<link rel=\"icon\" href=\"icon.png\">"
+    "<link rel=\"apple-touch-icon\" href=\"icon.png\">"
+    (str "<link rel=\"stylesheet\" href=\"home.css?v=" asset-version "\">")
+    (str "<script defer src=\"home.js?v=" asset-version "\"></script>")
+    "</head>"
+    "<body>"
+    "<header class=\"intro\">"
+    "<h1>BRIX</h1>"
+    "<p class=\"byline\">An experimental programming language by <a href=\"https://x.com/joehewitt\">Joe Hewitt</a></p>"
+    "</header>"
+    "<section class=\"start\">"
+    "<div class=\"start-item\">"
+    "<h2>Install</h2>"
+    (str "<div class=\"copyable\"><code data-copy-text>" (call html-text home-install-command) "</code>" copy-button "</div>")
+    (str "<p class=\"note\">" home-platforms "</p>")
+    "</div>"
+    "<div class=\"start-item\">"
+    "<h2>Or ask an agent</h2>"
+    (str "<div class=\"copyable prompt\"><p data-copy-text>" (call html-text home-agent-prompt) "</p>" copy-button "</div>")
+    "</div>"
+    "</section>"
+    "<p class=\"reference\"><a href=\"ref/\">Language reference</a></p>"
+    "<h2 class=\"examples-heading\" id=\"examples\">Examples</h2>"
+    (str "<main class=\"examples\" data-examples data-current=\"" (call html-attribute home-first-example) "\" aria-labelledby=\"examples\">")
+    (str "<nav class=\"example-tree\" id=\"example-tree\" aria-label=\"Example files\">" tree "</nav>")
+    "<article class=\"example-file\">"
+    "<div class=\"file-bar\">"
+    "<button type=\"button\" class=\"files-toggle\" data-files-toggle aria-controls=\"example-tree\" aria-expanded=\"false\" hidden>Files</button>"
+    (str "<span class=\"file-path\" data-example-path>" (call html-text home-first-example) "</span>")
+    "<button type=\"button\" class=\"source-toggle\" data-source-toggle aria-pressed=\"false\" hidden>Source</button>"
+    "</div>"
+    (str "<div class=\"file-body\" data-example-body>" first "</div>")
+    "</article>"
+    "</main>"
+    "</body>"
+    "</html>"
+  )
+  (where
+    (lazy copy-button "<button type=\"button\" class=\"copy\" data-copy hidden>Copy</button>")
+  )
+)
