@@ -1601,6 +1601,24 @@ b
 8.5
 ```
 
+### Feeds written as the value of a local of a list type with no item type give it their item type.
+
+```brix
+(main
+  (let menu List
+    (block
+      (item "soup")
+      (item "pie")
+    )
+  )
+  (print (call (. ", " join) menu))
+)
+```
+
+```output
+soup, pie
+```
+
 ### Feeds of numbers written with no suffix made a list by `List` are given where a list of another number type is wanted, as a list written so is.
 
 ```brix
