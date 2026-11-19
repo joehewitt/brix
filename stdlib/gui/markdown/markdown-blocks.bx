@@ -1,4 +1,5 @@
 (import ./markdown-references)
+(import /code/structure/rows)
 (import /code/syntax)
 (import /data/markdown)
 (import /graphics/text)
@@ -40,9 +41,17 @@
   (variant double)
 )
 
+(type + MarkdownCodeRun (is Tuple)
+  (prop + text String)
+  (prop + role SyntaxRole (= (. SyntaxRole plain)))
+  (prop + kind (? SourceSpanKind) (= null))
+  (prop + is-optional _ (= false))
+  (prop + is-preamble _ (= false))
+)
+
 (type + MarkdownCodeLine (is Tuple)
   (prop + index Index)
-  (prop + runs (list SyntaxStyledRun))
+  (prop + runs (list MarkdownCodeRun))
   (prop + rule MarkdownCodeRule)
 )
 
@@ -73,7 +82,7 @@
     (param language String)
     false
   )
-  (fn-do + render-inline (list SyntaxStyledRun) (?! Error)
+  (fn-do + render-inline (list MarkdownCodeRun) (?! Error)
     (param code String)
     (param language String)
     (throw (call Error (str "No inline rendering for " language)))
@@ -151,7 +160,7 @@
   (return-if null (if (or (not (. run is-code)) (not (. run language size)) (!= (. run rendering) null) (not (call (. renderer renders-inline) (. run language))))))
   (let pieces (catch (call (. renderer render-inline) (. run text) (. run language))))
   (return-if null (if (is pieces Error)))
-  (let rendering (as pieces (list SyntaxStyledRun)))
+  (let rendering (as pieces (list MarkdownCodeRun)))
   (let text (call (. "" join) (in (. each text) rendering)))
   (return-if null (if (not (. text size))))
   (return
@@ -216,7 +225,7 @@
   (prop + is-image _ (= false))
   (prop + language _ (= ""))
   (prop + source (? String) (= null))
-  (prop + rendering (? (list SyntaxStyledRun)) (= null))
+  (prop + rendering (? (list MarkdownCodeRun)) (= null))
   (fn-expr + is-rendered _ :get
     (!= rendering null)
   )
