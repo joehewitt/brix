@@ -14,7 +14,7 @@
 
 ```brix
 (main
-  (?. foo bar baz)
+  (?. (?. foo bar) baz)
 )
 ```
 

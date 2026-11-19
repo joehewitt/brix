@@ -138,7 +138,6 @@
 (type + (of Headered Item)
   (constraint is Item Printable)
   (implements Proto)
-  (blank)
   (using Helpers)
 )
 ```

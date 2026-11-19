@@ -2448,7 +2448,14 @@
         (= is-stream outer)
       )
       (case (list (call .atom _ "~") _ _ ...)
-        (call alternative node items is-tail)
+        (let is-wrapped (> minimum brix-level-closure))
+        (if is-wrapped
+          (call put "(")
+        )
+        (call alternative node items (and is-tail (not is-wrapped)))
+        (if is-wrapped
+          (call put ")")
+        )
       )
       (case (list (call .atom _ (: op ({} (or (== it "|") (== it "<*"))))) operand)
         (call prefix (str op " ") operand brix-level-select minimum is-tail)
@@ -2657,7 +2664,7 @@
         )
         (call expression source brix-level-pipe false)
         (call put " ")
-        (call expression choice brix-level-select false)
+        (call expression choice (if-expr (call is-stream-match choice) 0 brix-level-select) false)
         (if is-wrapped
           (call put ")")
         )

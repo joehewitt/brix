@@ -394,7 +394,22 @@ Exception: (without …) cannot be a `row` of (do …), which takes Step. This b
 
 ```brix
 (main
-  (call run (=> () (match n (case= 0 "zero") (default "some"))))
+  (call run
+    (block
+      (arg
+        (=> ()
+          (match n
+            (case= 0
+              "zero"
+            )
+            (default
+              "some"
+            )
+          )
+        )
+      )
+    )
+  )
 )
 ```
 
@@ -456,7 +471,22 @@ Exception: (id: …) is out of order. An element's attributes follow its type in
 
 ```brix
 (main
-  (call run (=> () (match flag (case true "yes") (case false "no"))))
+  (call run
+    (block
+      (arg
+        (=> ()
+          (match flag
+            (case true
+              "yes"
+            )
+            (case false
+              "no"
+            )
+          )
+        )
+      )
+    )
+  )
 )
 ```
 

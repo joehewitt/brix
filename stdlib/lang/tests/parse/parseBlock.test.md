@@ -618,7 +618,6 @@ ends ≥"/>
 (fn-do + work _
   (param a Int)
   (param b Int (= 1))
-  (blank)
   (let r (+ a b))
 )
 ```

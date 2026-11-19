@@ -25,13 +25,12 @@ A case has these parts, in this order and no other:
 1. An optional `##` or `###` heading.
 2. Optional prose.
 3. The program: a `yumi` or `brix` fence, whose other words are its flags.
-4. In the parse suite only, an optional twin: the same program in the other language.
-5. Any number of extra files, each a fence with `file=`.
-6. An optional `stderr` fence, then an optional `output` fence.
+4. Any number of extra files, each a fence with `file=`.
+5. An optional `stderr` fence, then an optional `output` fence.
 
-Prose may sit between a case's fences. A case ends at the next program fence that is not its twin,
-at the next heading, or at the end of the file. Any fence out of order, or an unknown word on a
-program, file or expected fence, is an error that names its line.
+Prose may sit between a case's fences. A case ends at the next program fence, at the next heading,
+or at the end of the file. Any fence out of order, or an unknown word on a program, file or
+expected fence, is an error that names its line.
 
 ## A File
 
@@ -159,33 +158,12 @@ first line
 Paths are relative to the case's temporary folder, and the program's relative imports resolve
 against it.
 
-## Twins
+## The UBrix Suite
 
-In the parse suite, a case may give its program in both languages. A program fence followed by one
-in the other language, with only prose between them, is one program and its twin. The runner
-checks that each reads as the AST in `output`:
-
-````markdown
-```yumi
-foo = bar
-```
-
-```brix
-(main
-  (= foo bar)
-)
-```
-
-```output
-<AssignmentExpression op="=">
-    <Id name="foo"/>
-    <Id name="bar"/>
-</AssignmentExpression>
-```
-````
-
-Two program fences in the same language are two cases. Outside the parse suite a twin is an
-error, so a program with no expected output must not be followed by a case in the other language.
+The `ubrix` suite reads the parse suite's files and ignores their expected output. It checks that
+each case's Brix converts to UBrix, the text the editor shows, and back to the same text. A case
+whose Brix the compiler rejects is skipped. A case passes only when its Brix is written as the
+converter writes it.
 
 ## Fences
 

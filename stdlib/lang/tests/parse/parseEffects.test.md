@@ -26,8 +26,7 @@
 ### A door names its effect.
 
 ```brix
-(fn-do + connect-to I32 @inline
-  (door network)
+(fn-do + connect-to I32 @inline (door network)
   (param port I32)
   (return (call C:connect port))
 )
@@ -58,7 +57,9 @@
 ### A name after without that is no restriction bans the effect of that name.
 
 ```brix
-(fn-expr + parse-document Int (without network heap) 1)
+(fn-expr + parse-document Int (without network heap)
+  1
+)
 ```
 
 ```output

@@ -58,7 +58,10 @@
 ```
 
 ```brix
-(extend + (of Box ''T) (where (constraint is T Printable))
+(extend + (of Box ''T)
+  (where
+    (constraint is T Printable)
+  )
   (fn-expr + describe String
     "box"
   )
@@ -85,7 +88,10 @@
 ```
 
 ```brix
-(extend + (of Box ''T) (as ImmutableArray) (where (constraint is T Printable))
+(extend + (of Box ''T) (as ImmutableArray)
+  (where
+    (constraint is T Printable)
+  )
   (fn-expr + label String :get
     "label"
   )

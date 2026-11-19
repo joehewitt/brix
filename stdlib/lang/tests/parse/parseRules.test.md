@@ -655,9 +655,7 @@
 ### Parses a style sheet derived from another for tags, with a slot of its base it overrides.
 
 ```brix
-(style DarkTheme
-  (is Theme)
-  (for dark high-contrast)
+(style DarkTheme (is Theme) (for dark high-contrast)
   (prop + accent _ (= 4))
 )
 ```

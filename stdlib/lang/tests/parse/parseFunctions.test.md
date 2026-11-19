@@ -1092,7 +1092,6 @@ Exception: Write 'without heap' in place of '@no-heap'
 ```brix
 (fn-do + func Int (?! Error) @inline (without heap suspend) (with depth 2) (with request depth)
   (param value Int)
-  (blank)
   (return value)
 )
 ```

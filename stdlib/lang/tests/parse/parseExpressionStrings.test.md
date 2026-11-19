@@ -291,7 +291,7 @@ Basic strings
 
 ```brix
 (main
-  (str "" 1 "")
+  (str 1)
 )
 ```
 

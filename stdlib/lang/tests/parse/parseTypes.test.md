@@ -104,7 +104,7 @@
 
 ```brix
 (main
-  (of Foo (tuple (of Bar Baz)))
+  (of Foo (of Bar Baz))
 )
 ```
 
@@ -197,7 +197,7 @@
 ## Function types
 
 ```brix
-(type-line + Foo (is (fn-type Baz (param foo Foo))))
+(type + Foo (is (fn-type Baz (param foo Foo))))
 ```
 
 ```output
