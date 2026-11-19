@@ -67,6 +67,7 @@
   (fn-do + captures (list String) :get
     (let cached capture-list)
     (return-if cached (if cached))
+    (blank)
     (let loaded (list String))
     (for (in index (..< 0 (call C:brixSyntaxCaptureCount id)))
       (+= loaded (call C:brixSyntaxCaptureName id index))
@@ -77,6 +78,7 @@
   (fn-do + roles (list SyntaxRole) :get
     (let cached role-list)
     (return-if cached (if cached))
+    (blank)
     (let made (call (of List SyntaxRole) (in (call syntax-role each) captures)))
     (= role-list made)
     (return made)
@@ -121,6 +123,7 @@
   (param file-name String)
   (let dot (call (. file-name find-reverse) "."))
   (return-if null (if (or (not dot) (== dot 0))))
+  (blank)
   (let extension (. ([] file-name (... (+ dot 1))) lowercased))
   (for (in language syntax-language-table)
     (for (in candidate (. language extensions))
@@ -159,6 +162,7 @@
     (param old-end-point SyntaxPoint)
     (param new-end-point SyntaxPoint)
     (return-if (if (not native)))
+    (blank)
     (call C:brixSyntaxDocumentEdit
       (block
         (arg native)
@@ -187,6 +191,7 @@
   )
   (fn-do + finish-parse Bool
     (return-if false (if (not native)))
+    (blank)
     (let edited (call C:brixSyntaxDocumentFinishParse native))
     (if is-closing
       (call release)
@@ -226,6 +231,7 @@
     (param last Size (= (. U32 max)))
     (let found (list SyntaxFold))
     (return-if found (if (not native)))
+    (blank)
     (let capacity (/ (. fold-buffer size) 2))
     (let count (call C:brixSyntaxDocumentFolds native text length first last fold-buffer capacity))
     (if (> count capacity)
@@ -239,6 +245,7 @@
   )
   (fn-do + close _
     (return-if (if (or (not native) is-closing)))
+    (blank)
     (if is-parsing
       (call C:brixSyntaxDocumentCancelParse (!! native))
       (= is-closing true)
@@ -252,6 +259,7 @@
     (param start Size)
     (param end Size)
     (return-if 0 (if (not native)))
+    (blank)
     (let capacity (/ (. span-buffer size) 3))
     (let count (call C:brixSyntaxDocumentHighlight native text length start end span-buffer capacity))
     (if (> count capacity)
@@ -315,6 +323,7 @@
   (param text ([] Byte))
   (param ranges (list (of Range Index)))
   (return-if (call SyntaxHighlights (call (. (call (of ArrayBuilder U32)) finish-immutable))) (if (== (. ranges length) 0)))
+  (blank)
   (let document (use (call SyntaxDocument language)))
   (return-if (call SyntaxHighlights (call (. (call (of ArrayBuilder U32)) finish-immutable))) (if (not (call (. document parse) text (. text length) 0))))
   (return (call SyntaxHighlights (call (. document highlight-ranges) text ranges)))
@@ -326,8 +335,10 @@
   (while true
     (let role (call syntax-role-named current))
     (return-if role (if role))
+    (blank)
     (let dot (call (. current find-reverse) "."))
     (return-if (. SyntaxRole plain) (if (not dot)))
+    (blank)
     (= current ([] current (..< 0 dot)))
   )
   (return (. SyntaxRole plain))

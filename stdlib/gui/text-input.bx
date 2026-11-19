@@ -117,10 +117,12 @@
     (call (. super mounted))
     (let host-box window)
     (return-if (if (not host-box)))
+    (blank)
     (let host-window (as host-box Window))
     (blank)
     (call (. host-window ensure-native))
     (return-if (if (not (. host-window native))))
+    (blank)
     (= native (call C:brixGuiTextInputCreate (. host-window native) 0 0 0 0 text placeholder))
     (call set-native-peer-artifact-required true)
     (call C:brixGuiTextInputSetEventCallback
@@ -175,6 +177,7 @@
     (param native-parent (? Pointer))
     (param transform (? Matrix))
     (return-if (if (not native)))
+    (blank)
     (call sync-native-font)
     (call sync-native-text-alignment)
     (let zoom native-zoom)
@@ -301,12 +304,14 @@
     (param top Length)
     (param bottom Length)
     (return-if (if (and (< (call abs (- native-text-inset top)) 0.001) (< (call abs (- native-text-bottom-inset bottom)) 0.001))))
+    (blank)
     (= native-text-inset top)
     (= native-text-bottom-inset bottom)
     (call C:brixGuiTextInputSetTextInsets (!! native) top bottom)
   )
   (fn-do + sync-native-cursor _
     (return-if (if (not native)))
+    (blank)
     (call C:brixGuiTextInputSetCursorStyle
       (block
         (arg native)
@@ -333,6 +338,7 @@
   (fn-do _ native-line-fitting-height Length
     (let cached native-fitting-height)
     (return-if cached (if cached))
+    (blank)
     (let height Length (/ (call C:brixGuiTextInputGetFittingHeight (!! native)) native-zoom))
     (= native-fitting-height height)
     (return height)
@@ -357,6 +363,7 @@
     (let height (call measure-wrapped width))
     (let lines (if-expr (== (. query block mode) (. AxisMeasureMode min-content)) 1 max-lines))
     (return-if (call Dimensions width height) (if (== lines null)))
+    (blank)
     (let count (as (call max lines 1) Length))
     (return (call Dimensions width (call min height (+ (* count wrapped-line-height) (* (- count 1) $line-spacing)))))
   )
@@ -430,6 +437,7 @@
   )
   (fn-do _ sync-native-selection _
     (return-if (if (or (not native) (not has-selection-request))))
+    (blank)
     (call C:brixGuiTextInputSetSelection
       (block
         (arg native)
@@ -466,6 +474,7 @@
   )
   (fn-do _ native-passed-keys-changed _
     (return-if (if (not native)))
+    (blank)
     (let mask U32)
     (for (in key passes-keys)
       (= mask (/or/ mask (call text-input-passed-key-bit key)))
@@ -474,8 +483,10 @@
   )
   (fn-do _ sync-native-text-color _
     (return-if (if (not native)))
+    (blank)
     (let color $color)
     (return-if (if (== native-text-color color)))
+    (blank)
     (call C:brixGuiTextInputSetTextColor
       (block
         (arg (!! native))
@@ -489,8 +500,10 @@
   )
   (fn-do _ sync-native-text-alignment _
     (return-if (if (not native)))
+    (blank)
     (let alignment $text-alignment)
     (return-if (if (== native-text-alignment alignment)))
+    (blank)
     (let code I32
       (block
         (case? (== alignment (. TextAlignment center))
@@ -514,9 +527,11 @@
   )
   (fn-do _ apply-native-font Bool
     (return-if false (if (not native)))
+    (blank)
     (let font (call Font $font-family $font-size $font-weight))
     (let zoom native-zoom)
     (return-if false (if (and (== native-font font) (== native-font-zoom zoom))))
+    (blank)
     (call C:brixGuiTextInputSetFont (!! native) (. font family) (* (. font size) zoom) (. font weight trait))
     (= native-font font)
     (= native-font-zoom zoom)
@@ -529,6 +544,7 @@
   )
   (fn-do _ programmatic-text-changed _
     (return-if (if (or accepting-native-text (and is-native-editing is-dirty))))
+    (blank)
     (= committed-text text)
     (if native
       (call C:brixGuiTextInputSyncText native text)
@@ -544,6 +560,7 @@
     (= selection-start caret)
     (= selection-end (call min (call max (?? end selection-end) caret) (. next-text length)))
     (return-if (if (== next-text text)))
+    (blank)
     (= accepting-native-text true)
     (= text next-text)
     (= accepting-native-text false)
@@ -554,6 +571,7 @@
     (let pasting (call PasteEvent))
     (<- paste pasting)
     (return-if (if (. pasting is-canceled)))
+    (blank)
     (if native
       (call C:brixGuiTextInputPasteText native)
     )
@@ -566,9 +584,11 @@
     (param start Size)
     (param end Size)
     (return-if (call accept-native-input next-text start end) (if (!= next-text text)))
+    (blank)
     (let caret (call min start (. text length)))
     (let last (call min (call max end caret) (. text length)))
     (return-if (if (and (== caret selection-start) (== last selection-end))))
+    (blank)
     (= selection-start caret)
     (= selection-end last)
     (<- text-selected (call TextSelectionEvent caret last))
@@ -596,6 +616,7 @@
   (fn-do _ schedule-live-edit _
     (let delay live-edit-delay)
     (return-if (if (not delay)))
+    (blank)
     (call (?. pending-live-edit cancel-later))
     (= pending-live-edit
       (do-new

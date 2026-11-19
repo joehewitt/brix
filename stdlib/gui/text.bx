@@ -137,6 +137,7 @@
     (param offset Size)
     (let layout paragraph)
     (return-if null (if (not layout)))
+    (blank)
     (let content content-bounds)
     (let local (call (. layout caret-rect) offset))
     (let shift (call (. layout line-offset) (call (. layout line-at) offset) (. content width) $text-alignment))
@@ -146,6 +147,7 @@
     (param row Index)
     (let layout paragraph)
     (return-if null (if (or (not layout) (>= row (. layout line-count)))))
+    (blank)
     (let content content-bounds)
     (let line (. ([] (. layout snapshot lines) row) typographic-bounds))
     (let shift (call (. layout line-offset) row (. content width) $text-alignment))
@@ -251,8 +253,10 @@
     (param maximum-height (? Length))
     (let painted paragraph)
     (return-if painted (if (and painted (call painted-serves segments maximum-width maximum-height))))
+    (blank)
     (let current measured)
     (return-if current (if (and current (call measured-serves segments maximum-width maximum-height))))
+    (blank)
     (call release-measured)
     (let owned (call List segments))
     (let tight (only-if (call tight-paragraph owned maximum-width maximum-height) (if is-tight)))
@@ -269,6 +273,7 @@
     (param repaint Bool)
     (let current paragraph)
     (return-if current (if (and current (call painted-serves segments maximum-width maximum-height))))
+    (blank)
     (let replacement measured)
     (if (and replacement (call measured-serves segments maximum-width maximum-height))
       (= measured null)
@@ -486,6 +491,7 @@
     (param width Length)
     (param trailing Bool)
     (return-if (if (or (not (call is-finite width)) (<= width 0))))
+    (blank)
     (+= result
       (call TextSegment
         (block
@@ -679,6 +685,7 @@
     (call (. super markup-style-domains-changed) mask)
     (let paint-domain (call style-domain-named "paint"))
     (return-if (if (< paint-domain 0)))
+    (blank)
     (if (!= (/and/ mask (/lshift/ 1u32 (as paint-domain Size))) 0)
       (call (?. (call (of ancestor Text)) invalidate-paint))
     )
@@ -686,6 +693,7 @@
   (fn-do + paint-box-background _
     (param canvas Canvas)
     (return-if (if (and (not $background-color) (not $background) (not $background-image))))
+    (blank)
     (for (in fragment fragments)
       (let rect (call decoration-bounds fragment))
       (let radius (call min computed-corner-radius (/ (call min (. rect width) (. rect height)) 2)))
@@ -701,6 +709,7 @@
     (param canvas Canvas)
     (let decoration $text-decoration)
     (return-if (if (or (== decoration (. TextDecorationLine none)) (not (. fragments length)))))
+    (blank)
     (let thickness (call max 0.5 (call gui-safe-span $text-decoration-thickness)))
     (let offset
       (scope (if-expr underlined (* $font-size 0.14) (* $font-size -0.3))
@@ -723,6 +732,7 @@
   (fn-do + paint-box-border _
     (param canvas Canvas)
     (return-if (if (<= computed-border-width 0)))
+    (blank)
     (for (in fragment fragments)
       (call paint-gui-box-border this (call decoration-bounds fragment) canvas)
     )
@@ -740,6 +750,7 @@
     (param y Length)
     (param thickness Length)
     (return-if (if (<= finish start)))
+    (blank)
     (if (== $text-decoration-style (. TextDecorationStyle solid))
       (call (. canvas rect) (call Rect start y (- finish start) thickness))
       (return)

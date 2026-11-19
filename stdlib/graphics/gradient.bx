@@ -16,6 +16,7 @@
   (fn-do + validate _
     (throw (call Panic "Linear gradient coordinates must be finite") (if (or (not (call gradient-point-is-finite start)) (not (call gradient-point-is-finite end)))))
     (throw (call Panic "Linear gradient endpoints must be distinct") (if (== start end)))
+    (blank)
     (call validate-gradient-stops stops)
   )
 )
@@ -30,6 +31,7 @@
     (throw (call Panic "Radial gradient coordinates must be finite") (if (or (not (call gradient-point-is-finite start-center)) (not (call gradient-point-is-finite end-center)))))
     (throw (call Panic "Radial gradient radii must be finite and not negative") (if (or (not (call is-finite start-radius)) (not (call is-finite end-radius)) (< start-radius 0) (< end-radius 0))))
     (throw (call Panic "Radial gradient circles must be distinct") (if (and (== start-center end-center) (== start-radius end-radius))))
+    (blank)
     (call validate-gradient-stops stops)
   )
 )
@@ -40,6 +42,7 @@
   (prop + stops (list GradientStop))
   (fn-do + validate _
     (throw (call Panic "Conic gradient center and angle must be finite") (if (or (not (call gradient-point-is-finite center)) (not (call is-finite angle)))))
+    (blank)
     (call validate-gradient-stops stops)
   )
 )
@@ -103,12 +106,14 @@
 (fn-do _ validate-gradient-stops _
   (param stops (list GradientStop))
   (throw (call Panic "Gradients require at least two stops") (if (< (. stops length) 2)))
+  (blank)
   (let previous 0%%)
   (for (in index (..< 0 (. stops length)))
     (let stop ([] stops index))
     (throw (call Panic "Gradient stop offsets must be finite and between zero and one") (if (or (not (call is-finite (. stop offset))) (< (. stop offset) 0%%) (> (. stop offset) 1%%))))
     (throw (call Panic "Gradient stop offsets must be ordered") (if (and (> index 0) (< (. stop offset) previous))))
     (throw (call Panic "Gradient stop colors must be finite") (if (not (call gradient-color-is-finite (. stop color)))))
+    (blank)
     (= previous (. stop offset))
   )
 )

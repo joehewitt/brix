@@ -52,6 +52,7 @@
     )
   )
   (throw (call ServiceDiscoveryError (str "Unable to look up " name " (" started ")")) (if (!= started 0)))
+  (blank)
   (finally
     (inline (call C:DNSServiceRefDeallocate service))
   )
@@ -171,6 +172,7 @@
       )
     )
     (throw (call ServiceDiscoveryError (str "Unable to browse " type " (" started ")")) (if (!= started 0)))
+    (blank)
     (= service browsing)
     (let fd (call C:DNSServiceRefSockFD browsing))
     (do-new
@@ -190,6 +192,7 @@
   (fn-do + end-using _
     (let browsing service)
     (return-if (if (not browsing)))
+    (blank)
     (= service null)
     (= presence (call (of Map String Int)))
     (call C:brixReleaseEventDescriptor (call C:DNSServiceRefSockFD browsing))
@@ -200,6 +203,7 @@
     (let before (?? ([] presence key) 0))
     (let after (if-expr (. event is-added) (+ before 1) (- before 1)))
     (return-if (if (< after 0)))
+    (blank)
     (= ([] presence key) after)
     (if (!= (== before 0) (== after 0))
       (<- channel event)
@@ -219,6 +223,7 @@
   (param domain (of CPointer Char8))
   (param context Pointer)
   (return-if (if (!= error 0)))
+  (blank)
   (let stream (call (of gc-object-from-pointer ServiceBrowseStream) context))
   (let is-added (!= (/and/ flags C:kDNSServiceFlagsAdd) 0))
   (call (. stream found) (call ServiceBrowseEvent (as name String) (as type String) (as domain String) is-added))

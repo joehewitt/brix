@@ -64,6 +64,7 @@
   (prop _ viewer (? WebView))
   (fn-do + close _
     (return-if (if (not native)))
+    (blank)
     (call (?. viewer forget-native))
     (= viewer null)
     (call C:brixWebViewRelease native)
@@ -72,6 +73,7 @@
   (fn-do _ take (? Pointer)
     (param view WebView)
     (return-if null (if (not native)))
+    (blank)
     (let previous viewer)
     (if (and previous (!= (as previous Pointer) (as view Pointer)))
       (call (. previous forget-native))
@@ -88,6 +90,7 @@
   (fn-do _ leave Bool
     (param view WebView)
     (return-if false (if (or (not viewer) (!= (as viewer Pointer) (as view Pointer)))))
+    (blank)
     (= viewer null)
     (return true)
   )
@@ -161,8 +164,10 @@
     (param native-parent (? Pointer))
     (param transform (? Matrix))
     (return-if (if (not native)))
+    (blank)
     (let host window)
     (return-if (if (not host)))
+    (blank)
     (let content content-bounds)
     (let zoom native-zoom)
     (call C:brixGuiPeerSetContainer (?? (. (as host Window) native) (call Pointer)) (!! native) (?? native-parent (call Pointer)))
@@ -218,6 +223,7 @@
   (fn-do + evaluate JSON
     (param script String)
     (throw (call WebScriptError "The web view is not mounted") (if (not native)))
+    (blank)
     (let completion (call (of Completion WebScriptOutcome)))
     (call C:brixWebViewEvaluate
       (block
@@ -233,6 +239,7 @@
   )
   (fn-do + accept-native-state _
     (return-if (if (not native)))
+    (blank)
     (let current (as (call C:brixWebViewGetURL native) String))
     (= is-accepting-native-state true)
     (if (and (. current length) (!= current url))
@@ -286,9 +293,11 @@
   (fn-do _ create-native _
     (let host-box window)
     (return-if (if (not host-box)))
+    (blank)
     (let host-window (as host-box Window))
     (call (. host-window ensure-native))
     (return-if (if (not (. host-window native))))
+    (blank)
     (let kept (call (?. session take) this))
     (= native (?? kept (call C:brixWebViewCreate is-ephemeral)))
     (= held session)
@@ -320,6 +329,7 @@
   )
   (fn-do _ release-native _
     (return-if (if (not native)))
+    (blank)
     (let owner held)
     (= held null)
     (if (not owner)
@@ -337,15 +347,18 @@
   )
   (fn-do _ requested-url-changed _
     (return-if (if (or is-accepting-native-state (not native))))
+    (blank)
     (= html null)
     (call load-requested-url)
   )
   (fn-do _ requested-html-changed _
     (return-if (if (or (not native) (not html))))
+    (blank)
     (call C:brixWebViewLoadHTML native html base-url)
   )
   (fn-do _ load-requested-content _
     (return-if (if (not native)))
+    (blank)
     (if html
       (call C:brixWebViewLoadHTML native html base-url)
       (else
@@ -355,8 +368,10 @@
   )
   (fn-do _ load-requested-url _
     (return-if (if (not native)))
+    (blank)
     (let target url)
     (return-if (if (not target)))
+    (blank)
     (if (not (call C:brixWebViewLoadURL native target))
       (<- load-failed (call WebLoadEvent target "Invalid URL"))
     )
@@ -368,6 +383,7 @@
   )
   (fn-do _ native-message-names-changed _
     (return-if (if (not native)))
+    (blank)
     (call C:brixWebViewClearMessageHandlers native)
     (for (in name message-names)
       (call C:brixWebViewAddMessageHandler (!! native) name)
@@ -390,6 +406,7 @@
   )
   (fn-do _ native-ephemeral-changed _
     (return-if (if (not native)))
+    (blank)
     (let owner held)
     (call release-native)
     (call (?. owner close))
@@ -398,12 +415,14 @@
   )
   (fn-do _ native-session-changed _
     (return-if (if (not native)))
+    (blank)
     (call release-native)
     (call create-native)
     (call invalidate-paint)
   )
   (fn-do _ native-style-changed _
     (return-if (if (not native)))
+    (blank)
     (let css (if-expr inherits-style (str (call inherited-style-css) user-style) user-style))
     (call C:brixWebViewSetUserStyle (!! native) css)
   )

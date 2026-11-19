@@ -61,6 +61,7 @@
 (fn-do _ rendered-text String
   (param row TraceRow)
   (return-if (. row label) (if (not (. row site))))
+  (blank)
   (let site (. row site))
   (let types (?? (. row types) (call (of Map U16 String))))
   (let texts (list String))
@@ -73,6 +74,7 @@
     (return (str prefix (. row label) ": " (call (. ", " join) texts)))
   )
   (return-if (call (. " " join) texts) (if (== (. site template) "")))
+  (blank)
   (let parts (list String) (call (. site template split) "%%"))
   (let text ([] parts 0))
   (for (in index (..< 1 (. parts length)))
@@ -141,6 +143,7 @@
   (fn-do _ read-batch Bool
     (param reader TraceReader)
     (return-if false (if (. reader is-done)))
+    (blank)
     (let items
       (call (. reader read-available)
         (block
@@ -158,6 +161,7 @@
   )
   (fn-do + read-catalog _ (?! Error)
     (return-if (if (or (== (. source catalog) "") (not (. (call Path (. source catalog)) is-file)))))
+    (blank)
     (let root (call (. (call JSONReader (. source catalog) (call parse-json (call read-file-text (call Path (. source catalog))))) object)))
     (for (in selector (call (. ([] root "unmatched") items)))
       (+= unmatched (call (. selector string)))
@@ -333,6 +337,7 @@
     (= (. row kind) .end)
     (let group (call first-group record))
     (return-if (if (not group)))
+    (blank)
     (= (. row span) group)
     (let text ([] end-texts group))
     (-= ([] end-texts group))
@@ -371,6 +376,7 @@
     (param site TraceSite)
     (let found ([] infos (. site id)))
     (return-if found (if found))
+    (blank)
     (let holds
       (scope (and (!= (. site slots length) 0) (== (. ([] (. site slots) 0) type) (. TraceSlotType object)) group-slot)
         (lazy group-slot (== (. ([] (. site slots) 0) class-type) group-type))

@@ -15,9 +15,11 @@
   (param marks (list ClaudeMark))
   (param home (? Path) (= null))
   (throw (call claude-history-error) (if (not (. marks length))))
+  (blank)
   (let root (?? home (call claude-history-home)))
   (let directory (call claude-history-directory root (. ([] marks (- (. marks length) 1)) point session)))
   (throw (call claude-history-error) (if (not directory)))
+  (blank)
   (let histories (call (of Map String ClaudeHistory)))
   (let merged (call (of List (map String JSON))))
   (let seen (call (of Map String Bool)))
@@ -59,6 +61,7 @@
   (param path Path)
   (param lines (list String))
   (throw (call AIError (. AIErrorKind unknown) (str "Claude Code's history could not be written: " failure)) (on-error (: failure Error)))
+  (blank)
   (call write-file-atomically path (str (call (. "\n" join) lines) "\n"))
 )
 
@@ -71,6 +74,7 @@
   (param session String)
   (let projects (/ home "projects"))
   (return-if (if (not (. projects is-dir))))
+  (blank)
   (for (in folder (. projects contents))
     (let candidate (/ folder (str session ".jsonl")))
     (return-if folder (if (. candidate is-file)))
@@ -129,6 +133,7 @@
   (param directory (? Path))
   (throw (call claude-history-error) (on-error Error))
   (throw (call claude-history-error) (if (not directory)))
+  (blank)
   (let text (call read-file-text (/ directory (str session ".jsonl"))))
   (let rows (call (of Map String (map String JSON))))
   (let tip (? String))
@@ -159,6 +164,7 @@
   (while current
     (let row ([] (. history rows) current))
     (throw (call claude-history-error) (if (or (not row) (> (. chain length) (. history rows length)))))
+    (blank)
     (+= chain row)
     (= current
       (match? ([] row "parentUuid")

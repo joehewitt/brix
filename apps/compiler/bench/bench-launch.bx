@@ -55,6 +55,7 @@
   )
   (fn-do + run Int (?! Error)
     (return-if (call pass-through) (if (call bench-launch-passes-through)))
+    (blank)
     (let failure (call launch-all))
     (if is-timed-out
       (scope (<- stderr (str "The benchmark launches passed their " limit " deadline\n"))
@@ -63,6 +64,7 @@
       (return bench-launch-timed-out-status)
     )
     (return-if (call exit-by-signal forwarded) (if (!= forwarded 0)))
+    (blank)
     (if failure
       (let usage (. failure usage))
       (return-if (call exit-by-signal (. usage signal)) (if (!= (. usage signal) 0)))
@@ -87,6 +89,7 @@
     )
     (let discarded (call launch (call launch-variables scratch "discarded") null))
     (return-if discarded (if (or is-interrupted (not (. discarded is-success)))))
+    (blank)
     (let output (/ scratch "output"))
     (let budget (as (as bench-launch-budget Nanoseconds) U64))
     (let measured U64)
@@ -107,6 +110,7 @@
       (let launched (call launch variables log))
       (call (. log close))
       (return-if launched (if is-interrupted))
+      (blank)
       (if (not (. launched is-success))
         (scope (<- stderr (str "Measured launch " ordinal " failed with " status " after the discarded launch passed\n"))
           (lazy ordinal (+ (. launches length) 1))
@@ -164,6 +168,7 @@
   (fn-do _ watch-deadline _
     (call (. deadline wait))
     (return-if (if (not is-running)))
+    (blank)
     (= is-timed-out true)
     (call (?. child kill))
   )

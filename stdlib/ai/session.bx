@@ -115,6 +115,7 @@
   (fn-do + choose _ (?! AIError)
     (param chosen AIChatService)
     (throw (call AIError (. AIErrorKind invalid-request) "A chat keeps the service it began with") (if (not is-empty)))
+    (blank)
     (= service chosen)
   )
   (fn-do + session AIChatSession (?! AIError)
@@ -129,6 +130,7 @@
     (param branch-id String)
     (param message-id String)
     (throw (call AIError (. AIErrorKind invalid-request) "A side chat cannot start before the chat was compacted") (if (not (call chat-can-branch-at chat branch-id message-id))))
+    (blank)
     (let child (call chat-next-branch-id chat))
     (call change (call branch-chat-at chat branch-id message-id child))
     (return (call session child))
@@ -137,6 +139,7 @@
     (param branch-id String)
     (param message-id String)
     (throw (call AIError (. AIErrorKind invalid-request) "A reply is in progress") (if (call is-running branch-id)))
+    (blank)
     (if (not (call chat-can-collapse-at chat branch-id message-id))
       (throw
         (call AIError
@@ -157,6 +160,7 @@
     (let parent-id (?. (call chat-branch chat branch-id) parent-branch-id))
     (throw (call AIError (. AIErrorKind invalid-request) "The root chat branch cannot be unfolded") (if (not parent-id)))
     (throw (call AIError (. AIErrorKind invalid-request) "A reply is in progress") (if (or (call is-running branch-id) (call is-running parent-id))))
+    (blank)
     (if (not (call chat-can-unfold chat branch-id))
       (throw
         (call AIError
@@ -197,6 +201,7 @@
   (fn-do _ entitle _
     (param prompt String)
     (return-if (if (or (. chat title) (not (. prompt length)))))
+    (blank)
     (= (. chat title) (call chat-title prompt))
     (= title (. chat title))
   )
@@ -204,6 +209,7 @@
     (param wanted String)
     (let found (call (. wanted trim)))
     (return-if (if (or (not (. found length)) (== found title))))
+    (blank)
     (= (. chat title) found)
     (= title found)
     (+= revision 1)
@@ -215,12 +221,15 @@
     (let namer (. service namer))
     (let provisional (call chat-title prompt))
     (return-if (if (or (not namer) (!= branch-id (. chat root-branch-id)) (not (. prompt length)) (!= (. chat title) provisional))))
+    (blank)
     (let branch (call chat-branch chat branch-id))
     (return-if (if (not branch)))
+    (blank)
     (let asked false)
     (for (in message (. branch messages))
       (if (== (. message role) (. AIMessageRole user))
         (return-if (if asked))
+        (blank)
         (= asked true)
       )
     )
@@ -235,8 +244,10 @@
     (param provisional String)
     (let response (catch (call complete (. namer provider) request)))
     (return-if (if (or (is response AIError) (!= (. chat title) provisional))))
+    (blank)
     (let found (call chat-named-title (call ai-response-text response)))
     (return-if (if (not (. found length))))
+    (blank)
     (= (. chat title) found)
     (= title found)
     (+= revision 1)
@@ -244,6 +255,7 @@
   )
   (fn-do + keep _
     (return-if (if (. chat is-kept)))
+    (blank)
     (= (. chat is-kept) true)
     (= is-empty false)
     (+= revision 1)
@@ -252,6 +264,7 @@
   (fn-do _ settle-forks _ (?! AIError)
     (param branch-id String)
     (return-if (if (not (?. (call chat-branch chat branch-id) forks))))
+    (blank)
     (= chat (call set-chat-branch-forks chat branch-id false))
   )
   (fn-do _ commit _
@@ -438,8 +451,10 @@
   )
   (fn-do + catch-up _
     (return-if (if (or is-busy (not (. messages length)))))
+    (blank)
     (let last ([] messages (- (. messages length) 1)))
     (return-if (if (or (!= (. last role) (. AIMessageRole assistant)) (== (. last finish-reason) null))))
+    (blank)
     (let merged
       (call (. service provider caught-up) (. last parts)
         (block
@@ -450,6 +465,7 @@
       )
     )
     (return-if (if (not merged)))
+    (blank)
     (let revised (call revised-chat-message last merged))
     (= ([] messages (- (. messages length) 1)) revised)
     (call (. document revise) revised)
@@ -461,6 +477,7 @@
     (param event AIEvent)
     (let assembled folded)
     (return-if (if (or (not reply) (not assembled))))
+    (blank)
     (call (. assembled apply) event)
     (<- streamed event)
     (call report event)
@@ -469,6 +486,7 @@
     (param reason (? AIFinishReason) (= null))
     (let pending reply)
     (return-if (if (not pending)))
+    (blank)
     (let assembled folded)
     (call settle)
     (finally
@@ -495,6 +513,7 @@
     (param failure AIError)
     (let pending reply)
     (return-if (if (not pending)))
+    (blank)
     (call settle)
     (finally
       (inline (call go-idle))
@@ -533,17 +552,20 @@
     (param turn U64)
     (for (in event (call (. service provider stream) request))
       (return-if (if (not (call accepts turn))))
+      (blank)
       (call apply-event event)
     )
     (return-if (if (not (call accepts turn))))
     (blank)
     (throw (call AIError (. AIErrorKind invalid-response) "AI stream ended without a done event") (if (not (?. folded finish-reason))))
+    (blank)
     (call finish-reply)
   )
   (fn-do _ steer _ (?! AIError)
     (param prompt String)
     (param context (? String))
     (throw (call AIError (. AIErrorKind invalid-request) "No reply is in progress to steer") (if (not reply)))
+    (blank)
     (let text (if-expr context (str context "\n\n" prompt) prompt))
     (call (. service provider steer) (call List (call flat-map (*> messages (. each parts)))) text)
     (+= steered 1)
@@ -578,6 +600,7 @@
   (fn-do _ follow _
     (+= follows 1)
     (return-if (if is-following))
+    (blank)
     (= is-following true)
     (= listener
       (do-new
@@ -596,6 +619,7 @@
   )
   (fn-do _ hear _
     (return-if (if (or is-busy (not (. messages length)))))
+    (blank)
     (= hearing 0)
     (call stream-follow-up (call List (call flat-map (*> messages (. each parts))))
       (block
@@ -616,6 +640,7 @@
       )
       (if hearing
         (return-if (if (not (call accepts hearing))))
+        (blank)
         (call apply-event event)
         (else-if (is-not event AIDoneEvent)
           (catch (call apply-event event))
@@ -625,10 +650,12 @@
     (return-if (if (or (not hearing) (not (call accepts hearing)))))
     (blank)
     (throw (call AIError (. AIErrorKind invalid-response) "AI stream ended without a done event") (if (not (?. folded finish-reason))))
+    (blank)
     (call finish-reply)
   )
   (fn-do _ begin-follow-up U64
     (return-if 0 (if is-busy))
+    (blank)
     (= task listener)
     (call open-reply)
     (return generation)
@@ -647,6 +674,7 @@
     (param event AIEvent)
     (let pending (call kept-reply))
     (return-if (if (not pending)))
+    (blank)
     (let id
       (match? event
         (case (: begin AIPartBeginEvent)
@@ -661,8 +689,10 @@
       )
     )
     (return-if (if (not id)))
+    (blank)
     (let index (call ai-part-index (. pending parts) id))
     (return-if (if (== index null)))
+    (blank)
     (call (. document progress) pending index)
   )
   (fn-expr _ is-worth-keeping _
@@ -752,6 +782,7 @@
     (param index Index)
     (let moving (call first (in each items (when (== (. each id) id)))))
     (return-if (if (not moving)))
+    (blank)
     (let rest (call (of List AIQueuedPrompt) (in each items (when (!= (. each id) id)))))
     (let split (if-expr (< index (. rest length)) index (. rest length)))
     (= items (++ (call (of List AIQueuedPrompt) ([] rest (..< 0 split))) (list moving) ([] rest (..< split (. rest length)))))
@@ -779,6 +810,7 @@
   )
   (fn-do _ drain _
     (return-if (if (or (. session is-busy) (not (. items length)) (== editing (. ([] items 0) id)))))
+    (blank)
     (let head ([] items 0))
     (= items (call (of List AIQueuedPrompt) ([] items (..< 1 (. items length)))))
     (= error null)

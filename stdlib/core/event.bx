@@ -41,6 +41,7 @@
   (param event-id Size)
   (let sidecar (call event-sidecar owner))
   (throw (call Panic "Illegal to access a closed event") (if (. sidecar is-closed)))
+  (blank)
   (let existing (call (. sidecar find) event-id))
   (if existing
     (return (as existing (of EventEndpoint Payload)))
@@ -153,8 +154,10 @@
   (param receiver-identity U64)
   (let sidecar (call (of gc-object-side-payload EventSidecar) owner (call events-lane)))
   (throw (call Error "Keyed event address is not claimed") (if (or (not sidecar) (. sidecar is-closed))))
+  (blank)
   (let entry (call (. sidecar find) event-id))
   (throw (call Error "Keyed event address is not claimed") (if (not entry)))
+  (blank)
   (let index (as entry KeyedEventIndex))
   (let address (call (. index find-live) old-key-low old-key-high))
   (throw (call Error "Keyed event address is not claimed by this receiver") (if (or (not address) (!= (. address receiver-identity) receiver-identity))))
@@ -182,11 +185,14 @@
   (param receiver-identity U64)
   (let sidecar (call (of gc-object-side-payload EventSidecar) owner (call events-lane)))
   (return-if (if (or (not sidecar) (. sidecar is-closed))))
+  (blank)
   (let entry (call (. sidecar find) event-id))
   (return-if (if (not entry)))
+  (blank)
   (let index (as entry KeyedEventIndex))
   (let address (call (. index find-live) key-low key-high))
   (return-if (if (or (not address) (!= (. address receiver-identity) receiver-identity))))
+  (blank)
   (call (. address endpoint close))
 )
 
@@ -318,8 +324,10 @@
   ; events stay open for the body of `close` to publish (`event-close-stopped`).
   (let sidecar (call (of gc-object-side-payload EventSidecar) owner (call events-lane)))
   (return-if (if (not sidecar)))
+  (blank)
   (let stops (. sidecar machine-stops))
   (return-if (if (not stops)))
+  (blank)
   (= (. sidecar machine-stops) null)
   (while (!= (. stops length) 0)
     (let stop (call (. stops pop)))
@@ -332,6 +340,7 @@
   (param owner Pointer)
   (let sidecar (call (of gc-object-side-payload EventSidecar) owner (call events-lane)))
   (return-if (if (or (not sidecar) (not (. sidecar machines-stopped)))))
+  (blank)
   (call (. sidecar close))
 )
 
@@ -456,6 +465,7 @@
       (= next 0)
     )
     (return-if (if (and address (not (call (. address is-generation-live) address-generation)))))
+    (blank)
     (call handler payload broadcaster)
   )
   (fn-expr + event-is-machine Bool :get
@@ -487,6 +497,7 @@
   )
   (fn-do _ drop-pending _
     (return-if (if (not payloads)))
+    (blank)
     (+= stale (- (. payloads length) next))
     (call (. payloads clear))
     (= next 0)
@@ -613,11 +624,13 @@
     (param key-low U64)
     (param key-high U64)
     (return-if (if (not buckets)))
+    (blank)
     (let capacity (. buckets length))
     (let slot (call keyed-event-bucket key-low key-high capacity))
     (for (in attempt (..< 0 capacity))
       (let address ([] buckets slot))
       (return-if (if (not address)))
+      (blank)
       (if (and (. address live) (== (. address key-low) key-low) (== (. address key-high) key-high))
         (return address)
       )
@@ -671,6 +684,7 @@
   (fn-do _ release _
     (param address KeyedEventAddress)
     (return-if (if (not (. address live))))
+    (blank)
     (= (. address live) false)
     (= (. address generation) (call allocate-generation))
     (-= live-address-count 1)
@@ -678,6 +692,7 @@
   )
   (fn-do _ close _
     (return-if (if is-closed))
+    (blank)
     (= is-closed true)
     (for (in address addresses)
       (if (. address live)
@@ -710,6 +725,7 @@
   )
   (fn-do + close _
     (return-if (if is-closed))
+    (blank)
     (call release-keyed-address)
     (= is-closed true)
     (blank)
@@ -878,6 +894,7 @@
   )
   (fn-do _ release-keyed-address _
     (return-if (if (not keyed-address)))
+    (blank)
     (let address keyed-address)
     (if (call (. address is-generation-live) keyed-generation)
       (call (. address index release) address)
@@ -994,6 +1011,7 @@
   )
   (fn-do _ close _
     (return-if (if is-closed))
+    (blank)
     (= is-closed true)
     (for (in entry entries)
       (call (. entry close))
@@ -1080,6 +1098,7 @@
 
 (fn-do _ event-machine-settle-route _
   (return-if (if (or (!= event-machine-publishing 1) event-machine-is-draining (not event-machine-lanes))))
+  (blank)
   (call event-machine-drain)
 )
 
@@ -1205,6 +1224,7 @@
   (param event-id Size)
   (param delta Size)
   (return-if (if (not delta)))
+  (blank)
   (while (<= (. event-bubbling-counts length) event-id)
     (+= event-bubbling-counts 0)
   )
@@ -1283,6 +1303,7 @@
   (param event-id Size)
   (let sidecar (call event-sidecar owner))
   (throw (call Panic "Illegal to access a closed event") (if (. sidecar is-closed)))
+  (blank)
   (let existing (call (. sidecar find) event-id))
   (if existing
     (return (as existing KeyedEventIndex))
@@ -1305,13 +1326,17 @@
   (param machines _ (= true))
   (let sidecar (call (of gc-object-side-payload EventSidecar) owner (call events-lane)))
   (return-if (if (or (not sidecar) (. sidecar is-closed))))
+  (blank)
   (let entry (call (. sidecar find) event-id))
   (return-if (if (not entry)))
+  (blank)
   (let index (as entry KeyedEventIndex))
   (let address (call (. index find-live) key-low key-high))
   (return-if (if (or (not address) (not (call (. address is-generation-live) expected-generation)))))
+  (blank)
   (let endpoint (as (. address endpoint) (of EventEndpoint Payload)))
   (return-if (if (!= (call (. endpoint event-address-generation)) expected-generation)))
+  (blank)
   (call (. endpoint dispatch) payload handlers (and machines (not (. sidecar machines-stopped))))
 )
 
@@ -1444,6 +1469,7 @@
   (constraint is Route RoutedEvent)
   (probe-count event.publish.attempts)
   (return-if (if (. routed is-canceled)))
+  (blank)
   (let interested false)
   (let current (? Pointer) target)
   (let walker node)

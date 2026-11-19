@@ -73,6 +73,7 @@
     (if (== (. call tool-name) ai-view-tool-name)
       (let id (call ai-argument (. call arguments) "image"))
       (throw (call AIError (. AIErrorKind invalid-request) (str ai-view-tool-name " needs the ID of an image")) (if (not id)))
+      (blank)
       (let shown
         (call (of Map String JSON)
           (block
@@ -104,6 +105,7 @@
   (fn-do + note (? String)
     (let chosen defaults)
     (return-if null (if (not chosen)))
+    (blank)
     (let parts (call (of List String)))
     (let shape (call (. chosen default-shape)))
     (if (and shape (== aspect-ratio (. AIAspectRatio automatic)))
@@ -126,6 +128,7 @@
     (param request AIRequest)
     (param call AIToolCallPart)
     (throw (call AIError (. AIErrorKind invalid-request) (str "There is no tool named " (. call tool-name))) (if (!= (. call tool-name) ai-image-tool-name)))
+    (blank)
     (call ai-image-unlock access)
     (let fields
       (match (. call arguments)
@@ -215,8 +218,10 @@
     (call ai-image-unlock access)
     (let draft (call ai-argument (. call arguments) "image"))
     (throw (call AIError (. AIErrorKind invalid-request) (str ai-full-size-tool-name " needs the ID of a draft")) (if (not draft)))
+    (blank)
     (let origin (call ai-draft-origin (. request messages) draft))
     (throw (call AIError (. AIErrorKind invalid-request) (str draft " is not a quick draft")) (if (not origin)))
+    (blank)
     (let references (call (of List AIImage)))
     (+= references (call (. images input) draft))
     (for (in id (. origin sources))
@@ -307,11 +312,14 @@
     (param sources (list String))
     (let chosen defaults)
     (return-if null (if (not chosen)))
+    (blank)
     (let named (call ai-image-text ([] fields "style")))
     (return-if (call (. chosen default-style) request sources) (if (or (not (. named length)) (== named ai-image-default))))
     (return-if null (if (== named ai-image-unstyled)))
+    (blank)
     (let saved (call (. chosen saved-style) named))
     (return-if saved (if saved))
+    (blank)
     (let look (call ai-image-text ([] fields "style_description")))
     (if (not (. look length))
       (throw
@@ -385,6 +393,7 @@
       )
       (blank)
       (throw (call AIError (. AIErrorKind invalid-response) "The chat stream ended without a done event") (if (not done)))
+      (blank)
       (if (not calls)
         (yield done)
         (return)
@@ -409,6 +418,7 @@
     )
     (let ran (catch (call (. owner run) request call)))
     (throw (call AIError (. AIErrorKind cancellation) "The tool call was canceled") (if (. (call Task) is-canceled)))
+    (blank)
     (if (= (| (: failure Error)) ran)
       (yield (call AIPartEndEvent (call ai-toolkit-failure call (. failure message))))
       (return)
@@ -460,6 +470,7 @@
   (param access (? AIAccess))
   (let needed access)
   (return-if (if (or (not needed) (. needed is-granted))))
+  (blank)
   (if (not (call (. needed ask) (str "Generating images needs an " (. needed name) " API key.") ai-image-key-patience))
     (throw
       (call AIError
@@ -811,6 +822,7 @@
   (param levels (list AIImageLevel))
   (param name (? String))
   (return-if null (if (not name)))
+  (blank)
   (for (in level levels)
     (return-if level (if (== (. level name) name)))
   )
@@ -967,6 +979,7 @@
     )
   )
   (return-if null (if (or (not fields) (not (call ai-image-flag ([] fields "quick"))))))
+  (blank)
   (let listed
     (match? ([] fields "images")
       (case (list JSON))
@@ -991,12 +1004,14 @@
     )
   )
   (return-if null (if (not fields)))
+  (blank)
   (let prompt
     (match? ([] fields "prompt")
       (case String)
     )
   )
   (return-if null (if (not prompt)))
+  (blank)
   (let directions (call ai-image-directions ([] fields "directions")))
   (let sources (call (of List String)))
   (let listed
@@ -1089,6 +1104,7 @@
   )
   (return-if false (if (not fields)))
   (return-if true (if (== (call ai-image-text ([] fields "image")) id)))
+  (blank)
   (let listed
     (match? ([] fields "images")
       (case (list JSON))
@@ -1248,6 +1264,7 @@
     )
   )
   (return-if message (if (and (not (. ids length)) (not is-pruned))))
+  (blank)
   (if (. ids length)
     (+= parts
       (call AITextPart
@@ -1306,6 +1323,7 @@
   (param transcript (list AIMessage))
   (param seen (list AIMessagePart))
   (return-if (if (not seen)))
+  (blank)
   (let parts (call (of List AIMessagePart)))
   (+= parts (call AITextPart "tool-images" "Images returned by the tools above:"))
   (++= parts seen)

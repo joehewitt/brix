@@ -204,10 +204,12 @@
     ; Restores what ranking this call chose before, where the call was ranked as it is now.
     (= consulted false)
     (return-if false (if (not (call rememberable))))
+    (blank)
     (call open-ranking-key)
     (let cache (. scratch rankings))
     (let found (. cache found))
     (return-if false (if (not found)))
+    (blank)
     (let row ([] (. cache rankings) found))
     (= best (call cached-hit (. row best)))
     (= partial (call cached-hit (. row partial)))
@@ -222,6 +224,7 @@
   (fn-do _ remember _
     ; Keeps what ranking this call chose, where ranking it asked nothing of the checker.
     (return-if (if (or consulted (not (call rememberable)))))
+    (blank)
     (call open-ranking-key)
     (let row
       (call CachedRanking
@@ -247,6 +250,7 @@
       (return-if false (if (or (. shape symbol) (!= (. shape literal) 0))))
     )
     (return-if false (if (or (not (call plain-type request-receiver)) (not (call plain-type row-case)))))
+    (blank)
     (for (in type args)
       (return-if false (if (not (call plain-type type))))
     )
@@ -344,6 +348,7 @@
   (fn-do _ kept-hit U32
     (param hit (? Hit))
     (return-if (. U32 max) (if (not hit)))
+    (blank)
     (let kept hit)
     (let cache (. scratch rankings))
     (let params U32 (as (. cache types length) U32))
@@ -641,6 +646,7 @@
     (param name Atom)
     (call note-request .request-function receiver name)
     (return-if best (if (call recall)))
+    (blank)
     (call open-symbols)
     (call rank-functions receiver name)
     (while (call next-symbols)
@@ -716,6 +722,7 @@
     (param name Atom)
     (call note-request .request-method receiver name)
     (return-if best (if (call recall)))
+    (blank)
     (call open-symbols)
     (call rank-methods receiver name .function-decl)
     (while (call next-symbols)
@@ -729,6 +736,7 @@
     (param name Atom)
     (call note-request .request-getter receiver name)
     (return-if best (if (call recall)))
+    (blank)
     (call rank-methods receiver name .getter-decl)
     (call remember)
     (return best)
@@ -738,6 +746,7 @@
     (param name Atom)
     (call note-request .request-setter receiver name)
     (return-if best (if (call recall)))
+    (blank)
     (call rank-methods receiver name .setter-decl)
     (call remember)
     (return best)
@@ -746,6 +755,7 @@
     (param name Atom)
     (call note-request .request-module-getter no-type name)
     (return-if best (if (call recall)))
+    (blank)
     (call rank-module-functions name .getter-decl)
     (call remember)
     (return best)
@@ -754,6 +764,7 @@
     (param name Atom)
     (call note-request .request-module-setter no-type name)
     (return-if best (if (call recall)))
+    (blank)
     (call rank-module-functions name .setter-decl)
     (call remember)
     (return best)
@@ -764,6 +775,7 @@
     (call note-request .request-static owner name)
     (= kind .rank-static)
     (return-if best (if (call recall)))
+    (blank)
     (call (. types complete) owner)
     (let ref (call DeclRef (. U32 max) (. U32 max)))
     (match? ([] (. types rows) owner)
@@ -800,6 +812,7 @@
     (= kind .rank-constructor)
     (= pattern-self by-name)
     (return-if best (if (call recall)))
+    (blank)
     (let first (if-expr (!= (. args length) 0) ([] args 0) no-type))
     (call constructor-candidates relations receiver calls candidates caller first (call sole-field receiver))
     (let written false)
@@ -1224,6 +1237,7 @@
     ; to override it, as it would a member of the class, and which answers an interface's function as
     ; the class's own member would.
     (return-if false (if (or (not (. hit is-extension)) (== (. program facets count) 0))))
+    (blank)
     (match? ([] (. ([] (. program modules) (. hit module)) decls) (. hit decl))
       (case (call .decl-function fn)
         (return (!= (call (. program facets index-of) (. hit module) (. fn owner)) null))
@@ -2924,6 +2938,7 @@
     ; by: each such item's place has the type expected there, so only the other items bind them.
     (let literal (call literal-fill fills position))
     (return-if no-type (if (or (== literal 0) (== conversions null))))
+    (blank)
     (let fields (call (of RowRange TypeId)))
     (let names (call (of RowRange Atom)))
     (match? ([] (. types rows) given)
@@ -2933,6 +2948,7 @@
       )
     )
     (return-if no-type (if (== (. fields count) 0)))
+    (blank)
     (call (. types complete) expected)
     (let wanted-mark (. types scratch types mark))
     (call push-fields types expected)
@@ -3804,6 +3820,7 @@
               (else
                 (let places (call (. relations joined-places) joined given))
                 (return-if invalid-type (if (or (== places no-type) misplaced)))
+                (blank)
                 (lazy misplaced (or (not (or written (== places joined))) (not (or literal (== places given)))))
                 (= joined places)
               )

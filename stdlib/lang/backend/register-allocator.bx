@@ -897,6 +897,7 @@
     (let destination no-operand)
     (if (call is-direct-return call)
       (throw (call Panic "Direct struct return destination must be a VReg") (if (or (<= last first) (== (call view-of ([] operands (- last 1))) no-id))))
+      (blank)
       (-= last 1)
       (= destination ([] operands last))
     )
@@ -1089,6 +1090,7 @@
       (let view ([] (. function group-vregs) (+ (. members start) index)))
       (let reg-class (. ([] (. function vregs) view) reg-class))
       (throw (call Panic "Group arg unexpectedly overflowed") (if (!= (call is-general-class reg-class) (call is-general-class (call register-class ([] parents index))))))
+      (blank)
       (call plan-single-argument
         (block
           (arg view)
@@ -1531,6 +1533,7 @@
   (fn-do _ emit-call _
     (param call InstructionId)
     (throw (call Panic "Missing plan for CALL") (if (or (>= call plan-capacity) (== ([] plan-of call) 0))))
+    (blank)
     (let plan ([] plans (- ([] plan-of call) 1)))
     (let roots (call roots-for-call call (. plan safepoint)))
     (for (in entry (..< (. plan overflow-entries start) (. plan overflow-entries end)))
@@ -1753,6 +1756,7 @@
   (fn-do _ mark-object-seen Bool
     (param object FrameObjectId)
     (throw (call Panic (str "Frame object " object " is outside the " seen-capacity " objects the allocator tracks")) (if (>= object seen-capacity)))
+    (blank)
     (if (== ([] seen-objects object) seen-stamp)
       (return false)
     )
@@ -2288,6 +2292,7 @@
         (= hfa-offsets (call IdList (. hfa-offsets data) 0 (. hfa-offsets capacity)))
         (call collect-hfa-fields return-type 0)
         (throw (call Panic "An HFA return has no floating fields") (if (== (. hfa-types length) 0)))
+        (blank)
         (let field-type ([] hfa-types 0))
         (let field-class (call (. builder type-reg-class) field-type))
         (for (in index (..< 0 (. hfa-types length)))
@@ -2386,6 +2391,7 @@
       (return)
     )
     (throw (call Panic "HFA contains a non-floating field") (if (not is-struct)))
+    (blank)
     (for (in index (..< (. fields start) (. fields end)))
       (call collect-hfa-fields
         (block

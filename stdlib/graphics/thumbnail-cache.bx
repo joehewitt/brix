@@ -109,6 +109,7 @@
   (fn-do + cancel _
     (param ticket ThumbnailTicket)
     (return-if (if (not (. ticket is-active))))
+    (blank)
     (= (. ticket is-active) false)
     (let entry (. ticket entry))
     (let tickets (. entry tickets))
@@ -148,6 +149,7 @@
   )
   (fn-do + close _
     (return-if (if is-closed))
+    (blank)
     (= is-closed true)
     (call (. queue clear))
     (for (in entry (. entries values))
@@ -161,6 +163,7 @@
     (let key (str bucket ":" path))
     (let existing ([] entries key))
     (return-if existing (if existing))
+    (blank)
     (let entry (call ThumbnailEntry key path bucket))
     (= ([] entries key) entry)
     (return entry)
@@ -184,6 +187,7 @@
   )
   (fn-do _ schedule-pump _
     (return-if (if (or is-pump-scheduled is-closed)))
+    (blank)
     (= is-pump-scheduled true)
     (do-new
       (inline (call run-scheduled-pump))
@@ -272,6 +276,7 @@
   )
   (fn-do _ trim _
     (return-if (if (<= byte-total budget-bytes)))
+    (blank)
     (let candidates (call (of List ThumbnailEntry)))
     (for (in entry (. entries values))
       (if (and (== (. entry tickets length) 0) (== (. entry state) (. ThumbnailState ready)))
@@ -282,6 +287,7 @@
     (let floor (- budget-bytes (/ budget-bytes 10)))
     (for (in entry ordered)
       (return-if (if (<= byte-total floor)))
+      (blank)
       (-= ([] entries (. entry key)))
       (call discard entry)
     )

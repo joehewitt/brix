@@ -53,6 +53,7 @@
   (fn-do _ report-bans _
     (let table (. session program effects))
     (return-if (if (== (. table count) 0)))
+    (blank)
     (let instances (. session instances))
     (for (in position (..< 0 (. instances length)))
       (let id (as position InstanceId))
@@ -108,6 +109,7 @@
     ; Reports a door a fake cannot answer where the edge reaches it, with the chain from the `do with`
     ; that binds the fake: at a call, or at each call of the interface member it answers.
     (return-if false (if (> depth 8)))
+    (blank)
     (let instances (. session instances))
     (if (== (. edge syntax) 0)
       (let reported false)
@@ -217,6 +219,7 @@
     (let caller ([] (. instances rows) (. edge caller)))
     (return-if true (if (== (call (. table door-of) (. caller module) (. caller decl)) effect)))
     (return-if false (if (> depth 8)))
+    (blank)
     (if (== (. edge syntax) 0)
       (let reported false)
       (for (in outer (call (. paths edges-into) (. edge caller)))
@@ -256,6 +259,7 @@
       (else
         (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need))))
         (return-if "" (if (or (not found) (== (. found length) 0))))
+        (blank)
         (+= parts (call placed (. ([] found 0) caller) (. ([] found 0) syntax)))
         (++= parts (call (. paths names) found))
       )
@@ -324,6 +328,7 @@
     ; What the innermost `do` block of an instance that restricts code writes, among those around a
     ; node.
     (return-if 0 (if (== at 0)))
+    (blank)
     (let row ([] (. session instances rows) instance))
     (let tree (. ([] (. session program modules) (. row module)) tree))
     (let found EffectMask 0)
@@ -349,16 +354,19 @@
     ; The code that breaks a restriction as written, where it is short and on one line, or the first
     ; line of a block that does, closed with an ellipsis where it opens a form.
     (return-if "" (if (== site 0)))
+    (blank)
     (let tree (. ([] (. session program modules) module) tree))
     (let loc ([] (. tree nodes loc) site))
     (let line (call source-line (. tree source) (. loc begin line)))
     (let first (as (. loc begin column) Size))
     (if (and (!= (. loc begin line) (. loc end line)) (call is-block ([] (. tree nodes) site)))
       (return-if "" (if (> (- (. line length) first) 40)))
+      (blank)
       (let opening (call (. ([] line (... first)) trim)))
       (return (if-expr (call (. opening starts-with) "(") (str opening " …)") opening))
     )
     (return-if "" (if (or (!= (. loc begin line) (. loc end line)) (< (. loc end column) (. loc begin column)))))
+    (blank)
     (let last (+ (as (. loc end column) Size) 1))
     (return-if "" (if (or (> last (. line length)) (> (- last first) 40))))
     (return ([] line (..< first last)))

@@ -76,6 +76,7 @@
   (let lines (list String) (call (. (as file String) split) "\n"))
   (let files (list String) (call (. ([] lines 0) split) "\t"))
   (throw (call Error "A batch manifest begins with its control, output and error files") (if (!= (. files length) 3)))
+  (blank)
   (let manifest (call BatchManifest))
   (= (. manifest control) ([] files 0))
   (= (. manifest output) ([] files 1))
@@ -86,6 +87,7 @@
     )
     (let fields (list String) (call (. ([] lines position) split) "\t"))
     (throw (call Error "A case of a batch manifest names its id, its directory and its source") (if (!= (. fields length) 3)))
+    (blank)
     (+= (. manifest ids) ([] fields 0))
     (+= (. manifest directories) ([] fields 1))
     (+= (. manifest roots) (tuple ([] fields 2) (str "__test__/t" (call (. (as (. manifest roots length) Int) pad) 6) "/__source__")))
@@ -387,6 +389,7 @@
     (throw (call UsageError "--trace and --quiet-probes need --probes" this) (if (and (not (. probes is-given)) (or (. trace-path value) (. quiet-probes value)))))
     (throw (call UsageError "--compile needs -o PATH for the executable" this) (if (and (. compiles value) (not (. executable value)) (not (. batch-path value)))))
     (throw (call UsageError "--object-only needs -o PATH for the object" this) (if (and (. stops-at-object value) (not (. executable value)))))
+    (blank)
     (if (and is-served runs-program)
       (throw
         (call UsageError
@@ -470,6 +473,7 @@
     (blank)
     (let target (!! (call target-named (!! (. target-name value)))))
     (throw (call UsageError "--probes and --timeout need a target that runs on this machine" this) (if (and (or (. probes is-given) (. time-limit value)) (not (. target runs-on-host)))))
+    (blank)
     (= (. brix target) target)
     (let recording
       (call chosen-c-headers brix target
@@ -746,9 +750,11 @@
     ; Points `brix` at the snapshot --c-headers names, or at the target's headers with a recording for
     ; --record-c-headers, which it gives back to be written once the program is read.
     (throw (call UsageError "--c-headers and --record-c-headers cannot be given together" this) (if (and (. c-header-snapshot value) (. c-header-recording value))))
+    (blank)
     (if (. c-header-snapshot value)
       (let snapshot (call read-c-header-snapshot (call Path (. c-header-snapshot value))))
       (throw (call Error (str snapshot-path " is a snapshot of " snapshot-target " headers, not " (. target name))) (if (!= (. snapshot target-name) (. target name))))
+      (blank)
       (lazy snapshot-path (. c-header-snapshot value))
       (lazy snapshot-target (. snapshot target-name))
       (= (. brix c-headers) (call CHeaders (. target name) (. snapshot c-root) (call (of List String)) snapshot))
@@ -785,6 +791,7 @@
       (call (?. (. (call Path given) parent) make-directories))
     )
     (return-if given (if (or given (not (. probes is-given)) inspects (. batch-path value))))
+    (blank)
     (let directory brix-probes-path)
     (call (. (/ directory "bin") make-directories))
     (let base (if-expr source-path (. (call Path (!! source-path)) base-name) "program"))
@@ -864,6 +871,7 @@
   (param argv (list String))
   (let name (if-expr (> (. argv length) 1) ([] argv 1) ""))
   (return-if null (if (not (call some tool-names (:where (== each name))))))
+  (blank)
   (let tool (as (/ toolchain-root "bin" (str "brix-" name)) String))
   (let arguments ([] String (. argv length)))
   (= ([] arguments 0) tool)
@@ -884,6 +892,7 @@
 (fn-do _ is-selector-list Bool
   (param text String)
   (return-if false (if (or (== (. text length) 0) (call (. text starts-with) "-") (!= (call source-stem text) null))))
+  (blank)
   (for (in char text)
     (let allowed
       (block

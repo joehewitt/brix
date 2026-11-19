@@ -126,6 +126,7 @@
     )
     (let report (call SurfaceSetReport generation (as surface-ring-size U32) pixel-width pixel-height scale))
     (throw (call IOError "Unable to send surfaces to the host") (if (not (call (. host send) ports &report (. SurfaceSetReport size)))))
+    (blank)
     (call (. channel send-record) (. SurfaceMessageKind surfaces) report)
   )
   (fn-do + acquire (? SharedSurface)
@@ -144,6 +145,7 @@
     (param rendered U64)
     (let slot drawing)
     (return-if (if (== slot null)))
+    (blank)
     (= drawing null)
     (let report
       (call SurfaceFrameReport
@@ -163,6 +165,7 @@
   (fn-do + abandon _
     (let slot drawing)
     (return-if (if (== slot null)))
+    (blank)
     (= ([] held slot) false)
     (= drawing null)
   )
@@ -297,8 +300,10 @@
   (fn-do + request-size _
     (let open channel)
     (return-if (if (not open)))
+    (blank)
     (let content content-bounds)
     (return-if (if (or (<= (. content width) 0) (<= (. content height) 0))))
+    (blank)
     (let wanted (call SurfaceSizeRequest (. content width) (. content height) backing-scale))
     (let last requested)
     (if last
@@ -348,9 +353,11 @@
   (fn-do _ collect-surfaces _
     (let listening rendezvous)
     (return-if (if (not listening)))
+    (blank)
     (while true
       (let parcel (call (. listening receive)))
       (return-if (if (not parcel)))
+      (blank)
       (if (or (!= (. parcel sender) sender) (< (. parcel bytes size) (. SurfaceSetReport size)))
         (for (in right (. parcel ports))
           (call release-mach-right right)
@@ -416,6 +423,7 @@
     (param slot U32)
     (let open channel)
     (return-if (if (not open)))
+    (blank)
     (call (. open send-record) (. SurfaceMessageKind release) (call SurfaceSlot generation slot))
   )
   (fn-do _ release-retired _
@@ -435,6 +443,7 @@
   )
   (fn-do _ prune-sets _
     (return-if (if (< (. sets length) 2)))
+    (blank)
     (let newest (. ([] sets (- (. sets length) 1)) generation))
     (let index Size 0)
     (while (< index (. sets length))
@@ -458,6 +467,7 @@
   (fn-do _ advance _
     (let next pending)
     (return-if (if (not next)))
+    (blank)
     (= pending null)
     (let previous shown)
     (if previous
@@ -555,6 +565,7 @@
   )
   (fn-do _ hover-changed _
     (return-if (if is-hovered))
+    (blank)
     (call (?. channel send-record) (. SurfaceMessageKind pointer) (call PointerRecord (. PointerRecordKind exit) (call Point 0 0)))
   )
   (fn-do _ focus-changed _
@@ -604,6 +615,7 @@
     (param momentum-phase _ (= (. ScrollPhase none)))
     (let open channel)
     (return-if (if (not open)))
+    (blank)
     (let record
       (call PointerRecord
         (block
@@ -639,8 +651,10 @@
     (call release-retired)
     (let current shown)
     (return-if (if (not current)))
+    (blank)
     (let image (call canvas-for (. current generation) (. current slot)))
     (return-if (if (not image)))
+    (blank)
     (call (. canvas draw-image) image content-bounds)
   )
   (fn-do + close _

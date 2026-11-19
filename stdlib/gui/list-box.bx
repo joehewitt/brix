@@ -209,6 +209,7 @@
   (fn-do + is-key-selected Bool
     (param key (? String))
     (return-if false (if (== key null)))
+    (blank)
     (if is-selected-set-stale
       (call (. selected-set clear))
       (for (in selected selected-keys)
@@ -254,15 +255,18 @@
   )
   (fn-do + select-all _
     (return-if (if (!= selection-mode (. SelectionMode multiple))))
+    (blank)
     (call change-selection (call selection-order))
   )
   (fn-do + change-selection _
     (param keys (list String))
     (let old selected-keys)
     (return-if (if (== old keys)))
+    (blank)
     (let change (call (of SelectionEvent (list String)) old keys))
     (<- selection-changing change)
     (return-if (if (. change is-canceled)))
+    (blank)
     (= selected-keys keys)
     (<- selection-changed (call (of SelectionEvent (list String)) old keys))
   )
@@ -293,11 +297,13 @@
     (param last Bool)
     (let order (call selection-order))
     (return-if (if (not (. order length))))
+    (blank)
     (call select-key (if-expr last ([] order (- (. order length) 1)) ([] order 0)))
   )
   (fn-do + activate-selection _
     (call ensure-selection)
     (return-if (if (not selected-key)))
+    (blank)
     (<- item-activated (call ActivateEvent))
   )
   (fn-do + commit-selection _
@@ -310,6 +316,7 @@
   (fn-do + choose-key _
     (param key String)
     (return-if (if (not (call can-choose key))))
+    (blank)
     (<- chosen (call ChooseEvent key))
   )
   (fn-expr + can-choose Bool
@@ -322,6 +329,7 @@
   )
   (fn-do + ensure-selection _
     (return-if (if (and selected-key (!= (call (. (call selection-order) find) (!! selected-key)) null))))
+    (blank)
     (call select-edge false)
   )
   (fn-expr + selection-order (list String)
@@ -408,8 +416,10 @@
     (= pending-key null)
     (let row (call row-at event))
     (return-if (if (or (not row) (!= (. event button) (. PointerButton primary)) (. event modifiers control) (call press-lands-in-control event row))))
+    (blank)
     (let key (call key-of-row row))
     (return-if (if (not key)))
+    (blank)
     (if (and (== (. event click-count) 2) (call press-activates row))
       (if chooses-on-press
         (call activate-selection)
@@ -419,6 +429,7 @@
       )
     )
     (return-if (if (> (. event click-count) 1)))
+    (blank)
     (if (call press-waits-for-release key (. event modifiers))
       (= pending-key key)
       (else
@@ -447,6 +458,7 @@
       (let box cursor)
       (return-if false (if (or (== (as box Pointer) (as row Pointer)) (== (as box Pointer) (as this Pointer)))))
       (return-if true (if (or (is box Button) (call focus-mode-can-focus (. box $focus-mode)))))
+      (blank)
       (= cursor (. box material-parent))
     )
     (return false)
@@ -455,6 +467,7 @@
     (param event KeyPressEvent)
     (let text (. event typed-text))
     (return-if (if (or (not text) (and (== text " ") (not (. type-select is-active))))))
+    (blank)
     (let order (call selection-order))
     (let titles
       (call (of List String)
@@ -466,6 +479,7 @@
     )
     (let found (call (. type-select find) text titles (only-if (call (. order find) selected-key) (if selected-key))))
     (return-if (if (== found null)))
+    (blank)
     (call select-key ([] order found))
     (call (. event cancel))
   )

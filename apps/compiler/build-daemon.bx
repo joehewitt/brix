@@ -115,6 +115,7 @@
       (let waiter (call (of Semaphore Void)))
       (let ticket (call enlist key arguments waiter joined))
       (return-if (!! (. ticket job record)) (if (. ticket is-answered)))
+      (blank)
       (call (. waiter wait))
       (= joined (. ticket job))
     )
@@ -167,6 +168,7 @@
     (let arguments (catch (call build-arguments (. request params))))
     (return-if (call (. request error-response) arguments) (if (is arguments JSONRPCError)))
     (return-if (call (. request error-response) (call JSONRPCError .invalid-params (. arguments message))) (if (is arguments Error)))
+    (blank)
     (call unwatch arguments)
     (return (call (. request response) true))
   )
@@ -194,6 +196,7 @@
     (param key String)
     (call wake key)
     (return-if (if ([] watching key)))
+    (blank)
     (+= resting key)
     (while (> (. resting length) resting-limit)
       (-= ([] finished ([] resting 0)))
@@ -250,6 +253,7 @@
     (param line String)
     (use reply-lock)
     (return-if (if has-departed))
+    (blank)
     (scope (<- replies line)
       (on-error IOError
         (= has-departed true)
@@ -278,6 +282,7 @@
   (fn-do _ speculate _
     (use lock)
     (return-if (if is-closing))
+    (blank)
     (let last latest)
     (let wanted (if-expr last (+ watching (call (of Map String (of List String)) (tuple (call (. "\n" join) last) last))) watching))
     (for (in (tuple key arguments) wanted (when (or (not ([] finished key)) (not (call is-current (!! (. (!! ([] finished key)) record)))))))
@@ -292,6 +297,7 @@
     )
     (let active running)
     (return-if active (if (and active (== (. active key) key) (== (. active generation) generation))))
+    (blank)
     (let job (call BuildJob key arguments))
     (+= queued job)
     (if (not is-working)
@@ -369,6 +375,7 @@
     (use lock)
     (return-if (if (or is-closing (not rest))))
     (return-if (if (and (not is-working) (== rested completed))))
+    (blank)
     (= is-pressed true)
     (if (not is-working)
       (= is-working true)
@@ -398,6 +405,7 @@
   (fn-do _ is-current Bool
     (param record BuildRecord)
     (return-if false (if (!= (. record generation) generation)))
+    (blank)
     (let product (. record result product))
     (if product
       (return-if false (if (!= (call file-stamp product) (. record product-stamp))))
@@ -422,11 +430,14 @@
     (let now (call file-stamp path))
     (return-if (not now) (if (not (. stamp is-file))))
     (return-if true (if (== now stamp)))
+    (blank)
     (let kept ([] digests path))
     (return-if false (if (or (not now) (not kept) (!= (. kept stamp) stamp) (!= (. now size) (. stamp size)))))
     (return-if true (if (== (. kept alike) now)))
+    (blank)
     (let bytes (catch? (call read-file-bytes (call Path path))))
     (return-if false (if (or (not bytes) (!= (call fnv-hash bytes (. bytes size)) (. kept digest)) (!= (call file-stamp path) now))))
+    (blank)
     (= (. kept alike) now)
     (return true)
   )
@@ -489,8 +500,10 @@
   (fn-do _ note _
     (param event PathWatchEvent)
     (return-if (if is-ending))
+    (blank)
     (let path (as (. event path) String))
     (return-if (if (and (not (. event must-rescan)) (not (call source-stem path)))))
+    (blank)
     (if (. event must-rescan)
       (call advance)
       (= must-rescan true)
@@ -506,6 +519,7 @@
   )
   (fn-do _ schedule _
     (return-if (if is-pending))
+    (blank)
     (= is-pending true)
     (do-new
       (call (. settling wait))
@@ -515,6 +529,7 @@
   )
   (fn-do _ flush _
     (return-if (if is-ending))
+    (blank)
     (for (in (tuple path _) changes)
       (let params
         (call (of Map String JSON)

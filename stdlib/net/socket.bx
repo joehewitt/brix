@@ -171,6 +171,7 @@
     (let total-size size)
     (while true
       (throw (call IOError "Socket is closed") (if (< fd 0)))
+      (blank)
       (let wrote-size (call C:send fd buffer size 0))
       (if (== wrote-size size)
         (return total-size)
@@ -250,6 +251,7 @@
     (let wrote Size 0)
     (while (< wrote size)
       (throw (call IOError "Socket is closed") (if (not ssl)))
+      (blank)
       (let remaining (- size wrote))
       (let amount (if-expr (> remaining ssl-write-chunk-size) ssl-write-chunk-size remaining))
       (let write-size (call C:SSL_write ssl (+ buffer wrote) amount))
@@ -356,6 +358,7 @@
   (fn-do _ flush-writes _
     (use write-lock)
     (throw (call IOError "Socket is closed") (if (not write-bio)))
+    (blank)
     (= is-flushing true)
     (finally
       (inline (= is-flushing false))
@@ -383,6 +386,7 @@
     (blank)
     (let err (as (call C:SSL_get_error ssl read-size) SSLErrorCode))
     (return-if (if (== err .want-read)))
+    (blank)
     (if (== err .want-write)
       (if (not is-flushing)
         (call flush-writes)

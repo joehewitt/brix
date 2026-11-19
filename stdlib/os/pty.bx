@@ -51,6 +51,7 @@
     (let executable (call executable-path path entries))
     (let pid (call C:brixSpawnPty executable argv envp (?? directory "") columns rows master))
     (throw (call IOError (str "Unable to run " path ": " (call C:strerror (- pid)))) (if (< pid 0)))
+    (blank)
     (let duplicate (call C:dup ([] master 0)))
     (if (< duplicate 0)
       (call C:kill pid C:SIGHUP)
@@ -81,6 +82,7 @@
     (param pixel-width Size (= 0))
     (param pixel-height Size (= 0))
     (return-if (if is-closed))
+    (blank)
     (= (. this columns) columns)
     (= (. this rows) rows)
     (let size ([] Winsize 1))
@@ -91,12 +93,15 @@
     (param size Size)
     (param buffer ([] Byte))
     (return-if 0 (if (or (== size 0) is-closed)))
+    (blank)
     (while true
       (let count (call C:read (. output fd) buffer size))
       (return-if count (if (> count 0)))
       (return-if 0 (if (== count 0)))
+      (blank)
       (let error (call C:brixGetErrNo))
       (return-if 0 (if (and (!= error C:EWOULDBLOCK) (!= error C:EINTR))))
+      (blank)
       (call wait-until-readable (. output fd))
     )
     (return 0)
@@ -105,9 +110,11 @@
     (param size Size)
     (param buffer ([] Byte))
     (return-if 0 (if (or (== size 0) is-closed)))
+    (blank)
     (while true
       (let count (call C:read (. output fd) buffer size))
       (return-if count (if (>= count 0)))
+      (blank)
       (let error (call C:brixGetErrNo))
       (return-if null (if (== error C:EWOULDBLOCK)))
       (return-if 0 (if (!= error C:EINTR)))
@@ -137,11 +144,13 @@
   (fn-do _ signal _
     (param number I32)
     (return-if (if (and is-closed has-exited)))
+    (blank)
     (call C:kill (- (as (. process pid) I32)) number)
   )
   (fn-do + escalate _
     (param grace Seconds)
     (return-if (if (or has-exited escalation)))
+    (blank)
     (= escalation
       (do-new @detached
         (call (. grace wait))
@@ -153,6 +162,7 @@
   )
   (fn-do + close _
     (return-if (if is-closed))
+    (blank)
     (call hang-up)
     (= is-closed true)
     (call (. process close))
@@ -174,6 +184,7 @@
   (param name String)
   (param variables (map String String))
   (return-if (only-if name (if (== (call C:access name C:X_OK) 0))) (if (!= (call (. name find) "/") null)))
+  (blank)
   (for (in directory (call (. (?? ([] variables "PATH") default-search-path) split) ":"))
     (let candidate (if-expr (> (. directory length) 0) (str directory "/" name) (str "./" name)))
     (return-if candidate (if (== (call C:access candidate C:X_OK) 0)))

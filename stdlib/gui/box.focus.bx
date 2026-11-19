@@ -60,10 +60,12 @@
   (fn-do + focus-candidate-at-edge _
     (param going-backward _ (= false))
     (return-if (if (not is-input-visible)))
+    (blank)
     (let cursor (? Box) (if-expr going-backward (call focus-walk-last-visible) this))
     (while cursor
       (let candidate cursor)
       (return-if candidate (if (call (. candidate is-focus-walk-candidate))))
+      (blank)
       (if going-backward
         (= cursor (call focus-walk-previous this candidate))
         (else
@@ -76,6 +78,7 @@
     (param current Box)
     (param going-backward _ (= false))
     (return-if (if (not (call (. current is-within) this))))
+    (blank)
     (let cursor (? Box))
     (if going-backward
       (= cursor (call focus-walk-previous this current))
@@ -86,6 +89,7 @@
     (while cursor
       (let candidate cursor)
       (return-if candidate (if (call (. candidate is-focus-walk-candidate))))
+      (blank)
       (if going-backward
         (= cursor (call focus-walk-previous this candidate))
         (else
@@ -100,16 +104,19 @@
       (let box cursor)
       (return-if box (if (and (. box $focus-group) (not (. box is-markup-shadow)))))
       (return-if null (if (. box is-presentation-layer)))
+      (blank)
       (= cursor (. box material-parent))
     )
     (return null)
   )
   (fn-do + focus-group-target (? Box)
     (return-if null (if (not is-input-visible)))
+    (blank)
     (let kept remembered-focus)
     (if kept
       (let usable (or (. kept accepts-focus) (. kept holds-group-focus)))
       (return-if kept (if (and (not (. kept is-markup-shadow)) usable (call (. kept is-within) this))))
+      (blank)
       (= remembered-focus null)
     )
     (return (?? (call seek-group-focus true) (call seek-group-focus false) (call seek-group-holder)))
@@ -133,11 +140,13 @@
   )
   (fn-do + is-focus-traversal-reachable _
     (return-if true (if is-presentation-layer))
+    (blank)
     (let rect bounds)
     (let cursor (. this material-parent))
     (while cursor
       (let ancestor cursor)
       (return-if false (if (not (. ancestor admits-focus-traversal))))
+      (blank)
       (if (not (. ancestor is-markup-shadow))
         (if (. ancestor clips-content)
           (let outside-x (<= (. rect right) (. ancestor content-bounds left)))
@@ -153,6 +162,7 @@
         (= rect (call Rect (- (. rect x) (. offset x)) (- (. rect y) (. offset y)) (. rect width) (. rect height)))
       )
       (return-if true (if (. ancestor is-presentation-layer)))
+      (blank)
       (= cursor (. ancestor material-parent))
     )
     (return true)
@@ -163,6 +173,7 @@
   )
   (fn-do + reveal-focus _
     (return-if (if (not (call has-scroll-container-ancestor))))
+    (blank)
     (call (. root ensure-visible)
       (block
         (arg this)
@@ -187,6 +198,7 @@
     (param canvas Canvas)
     (let ring $focus-ring)
     (return-if (if (or (not ring) (<= (. ring width) 0) (<= width 0) (<= height 0))))
+    (blank)
     (let extent (+ (call max 0 (. ring offset)) (/ (. ring width) 2)))
     (let outline (call (. bounds pad) (- extent)))
     (do-use (. canvas saved-state)
@@ -207,8 +219,10 @@
   (fn-do ^ sync-focus-home _
     (let is-home $focus-home)
     (return-if (if (== is-home is-focus-home)))
+    (blank)
     (let host window-host)
     (return-if (if (not host)))
+    (blank)
     (= is-focus-home is-home)
     (if is-home
       (call (. host register-focus-home) this)
@@ -219,12 +233,14 @@
   )
   (fn-do ^ release-focus-home _
     (return-if (if (not is-focus-home)))
+    (blank)
     (= is-focus-home false)
     (call (?. window-host unregister-focus-home) this)
   )
   (fn-do _ collect-focus-candidates _
     (param candidates (list Box))
     (return-if (if (not is-input-visible)))
+    (blank)
     (if (and (not is-markup-shadow) accepts-focus (call is-focus-traversal-reachable))
       (+= candidates this)
     )
@@ -252,8 +268,10 @@
     (while (!= (as cursor Pointer) (as boundary Pointer))
       (let parent (. cursor material-parent))
       (return-if (if (not parent)))
+      (blank)
       (let sibling (call (. cursor focus-walk-next-visible-sibling) parent))
       (return-if sibling (if sibling))
+      (blank)
       (= cursor parent)
     )
   )
@@ -261,8 +279,10 @@
     (param boundary Box)
     (param node Box)
     (return-if (if (== (as node Pointer) (as boundary Pointer))))
+    (blank)
     (let parent (. node material-parent))
     (return-if (if (not parent)))
+    (blank)
     (let sibling (call (. node focus-walk-previous-visible-sibling) parent))
     (return (if-expr sibling (call (. sibling focus-walk-last-visible)) parent))
   )
@@ -270,6 +290,7 @@
     (let candidate (call gui-rendered-resolve this %first-child))
     (while candidate
       (return-if candidate (if (call gui-focus-edge-visible this candidate)))
+      (blank)
       (= candidate (call gui-rendered-resolve this (call gui-rendered-climb candidate this)))
     )
   )
@@ -277,6 +298,7 @@
     (let candidate (call gui-rendered-reverse-resolve this %last-child))
     (while candidate
       (return-if candidate (if (call gui-focus-edge-visible this candidate)))
+      (blank)
       (= candidate
         (call gui-rendered-reverse-resolve
           (block
@@ -292,6 +314,7 @@
     (let candidate (call gui-rendered-resolve owner (call gui-rendered-climb this owner)))
     (while candidate
       (return-if candidate (if (call gui-focus-edge-visible owner candidate)))
+      (blank)
       (= candidate (call gui-rendered-resolve owner (call gui-rendered-climb candidate owner)))
     )
   )
@@ -300,6 +323,7 @@
     (let candidate (call gui-rendered-reverse-resolve owner (call gui-rendered-reverse-climb this owner)))
     (while candidate
       (return-if candidate (if (call gui-focus-edge-visible owner candidate)))
+      (blank)
       (= candidate
         (call gui-rendered-reverse-resolve
           (block
@@ -315,6 +339,7 @@
     (while true
       (let child (call (. cursor focus-walk-last-visible-child)))
       (return-if cursor (if (not child)))
+      (blank)
       (= cursor child)
     )
   )
@@ -325,6 +350,7 @@
     (while (and cursor (!= (as cursor Pointer) (as owner Pointer)))
       (let node cursor)
       (return-if false (if (and (is node Box) (not (. (as node Box) is-display-visible)))))
+      (blank)
       (= cursor (. node %parent))
     )
     (return true)
@@ -358,9 +384,11 @@
   (fn-do _ seek-focus-from (? Box)
     (param prefers Bool)
     (return-if null (if (not is-input-visible)))
+    (blank)
     (if (not is-markup-shadow)
       (let delegates (or $focus-group (and $focus-default (not (call focus-mode-can-focus $focus-mode)))))
       (return-if (call focus-group-target) (if (and prefers delegates)))
+      (blank)
       (let wanted (if-expr prefers $focus-default (call focus-mode-takes-keys $focus-mode)))
       (return-if this (if (and wanted accepts-focus)))
     )

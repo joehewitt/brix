@@ -273,9 +273,11 @@
   (fn-do + effective-cache-policy GraphicsCachePolicy :get
     (let policy cache-policy)
     (return-if .no-cache (if (== policy .no-cache)))
+    (blank)
     (for (in item vector-items)
       (let child-policy (. item effective-cache-policy))
       (return-if .no-cache (if (== child-policy .no-cache)))
+      (blank)
       (if (== child-policy .frame-cache)
         (= policy .frame-cache)
       )
@@ -310,6 +312,7 @@
     (param anchor (? GraphicNode))
     (return-if (if (and anchor (== (as child Pointer) (as anchor Pointer)))))
     (return-if (if (and anchor (or (not (. anchor parent)) (!= (as (. anchor parent) Pointer) (as this Pointer))))))
+    (blank)
     (let old-parent (. child parent))
     (if old-parent
       (call (. old-parent graphic-remove) child)
@@ -319,12 +322,14 @@
   (fn-do + remove-graphic _
     (param child GraphicNode)
     (return-if (if (or (not (. child parent)) (!= (as (. child parent) Pointer) (as this Pointer)))))
+    (blank)
     (call markup-remove this child)
   )
   (fn-do + insert-group _
     (param child VectorGroup)
     (param anchor (? VectorGroup))
     (return-if (if (and anchor (== (as child Pointer) (as anchor Pointer)))))
+    (blank)
     (let old-parent (. child vector-parent-node))
     (if old-parent
       (call (. old-parent remove-group) child)
@@ -339,6 +344,7 @@
   (fn-do + remove-group _
     (param child VectorGroup)
     (return-if (if (or (not (. child vector-parent-node)) (!= (as (. child vector-parent-node) Pointer) (as this Pointer)))))
+    (blank)
     (if (. child host)
       (call detach-item child)
       (else
@@ -418,6 +424,7 @@
     )
     (let frame (. (call vector-root) frame-version))
     (return-if (if (and computed-paths (call (. current-stamp reuses) effective-cache-policy computed-stamp))))
+    (blank)
     (lazy current-stamp (call GraphicsCacheStamp output-version bounds frame))
     (let source (list Path))
     (for (in path (call draw bounds))
@@ -473,6 +480,7 @@
     (param area (? Rect) (= null))
     (call ensure-vector-style-root)
     (return-if (if (not $visible)))
+    (blank)
     (let appearance
       (call vector-appearance-over
         (block
@@ -537,6 +545,7 @@
     (param content Rect)
     (param color (? RGBA))
     (return-if false (if (not (call can-paint-vector-geometry viewport))))
+    (blank)
     (= (. canvas fill-color) color)
     (= (. canvas stroke-color) color)
     (let table (!! vector-geometry-table))
@@ -710,6 +719,7 @@
     (let kinds pending-published-kinds)
     (= pending-published-kinds 0)
     (return-if (if (not kinds)))
+    (blank)
     (if invalidation-listener
       (call invalidation-listener kinds)
     )
@@ -738,8 +748,10 @@
   (fn-do _ geometry-source VectorGeometrySource
     (let owner host)
     (return-if this (if (not owner)))
+    (blank)
     (let existing hosted-source)
     (return-if existing (if existing))
+    (blank)
     (let source (call VectorHostedSource this owner this))
     (= hosted-source source)
     (return source)
@@ -817,6 +829,7 @@
     (param child VectorNode)
     (let index (call vector-item-index child))
     (return-if (if (== index (. vector-items length))))
+    (blank)
     (call (. vector-items remove) index)
     (match? child
       (case (: graphic GraphicNode)
@@ -834,6 +847,7 @@
     (param viewport Rect)
     (let root markup-batch-root)
     (return-if (if (not root)))
+    (blank)
     (let table (call vector-geometry-table-for root))
     (if (!= vector-geometry-table table)
       (call release-vector-geometry)
@@ -855,6 +869,7 @@
   )
   (fn-do _ release-vector-geometry _
     (return-if (if (not vector-geometry-table)))
+    (blank)
     (call release-vector-geometry-chunks vector-geometry-table)
     (= vector-geometry-table null)
     (= vector-geometry-item-indices null)
@@ -907,6 +922,7 @@
     (param viewport Rect)
     (param index Size)
     (return-if (if (>= index (. vector-geometry-chunks length))))
+    (blank)
     (let chunk ([] vector-geometry-chunks index))
     (call (. table release) (. chunk handle))
     (let acquisition (call (. table intern) (. chunk source) viewport))
@@ -916,6 +932,7 @@
   (fn-do _ queue-vector-geometry-node _
     (param node GraphicNode)
     (return-if (if vector-geometry-full-dirty))
+    (blank)
     (let indices vector-geometry-item-indices)
     (if (not indices)
       (= vector-geometry-full-dirty true)
@@ -940,11 +957,13 @@
   (fn-do _ can-paint-vector-geometry Bool
     (param viewport Rect)
     (return-if (call release-and-reject-vector-geometry) (if (or (. $effects length) paints-generated-result)))
+    (blank)
     (if (not vector-geometry-support-checked)
       (= vector-geometry-supported (call vector-geometry-supports-source (call geometry-source)))
       (= vector-geometry-support-checked true)
     )
     (return-if (call release-and-reject-vector-geometry) (if (not vector-geometry-supported)))
+    (blank)
     (if (!= vector-geometry-source-revision revision)
       (call resolve-vector-geometry viewport)
     )
@@ -982,6 +1001,7 @@
     (while cursor
       (let group cursor)
       (return-if true (if (== (as group Pointer) target)))
+      (blank)
       (let owner (. group host))
       (if owner
         (return-if true (if (== (as owner Pointer) target)))

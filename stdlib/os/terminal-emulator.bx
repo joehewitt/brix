@@ -125,6 +125,7 @@
     (= (. this rows) rows)
     (let native (call C:brixTerminalCreate columns rows scrollback-lines))
     (throw (call Error "Unable to create terminal emulator") (if (== native (call Pointer))))
+    (blank)
     (= handle native)
     (= cleanup (call on-reclaim this native release-terminal-emulator))
   )
@@ -140,6 +141,7 @@
   )
   (fn-do + reset _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalReset handle)
   )
   (fn-do + resize _
@@ -148,6 +150,7 @@
     (param cell-width Size)
     (param cell-height Size)
     (return-if (if (not handle)))
+    (blank)
     (= (. this columns) columns)
     (= (. this rows) rows)
     (call C:brixTerminalResize (!! handle) columns rows cell-width cell-height)
@@ -156,13 +159,16 @@
     (param bytes ([] Byte))
     (param length Size)
     (return-if null (if (not handle)))
+    (blank)
     (call C:brixTerminalWrite handle bytes length)
     (return (call take-replies))
   )
   (fn-do + take-replies (? ([] Byte))
     (return-if null (if (not handle)))
+    (blank)
     (let length (as (call C:brixTerminalReplyLength handle) Size))
     (return-if null (if (== length 0)))
+    (blank)
     (let replies ([] Byte length))
     (call C:brixTerminalTakeReplies (!! handle) replies length)
     (return replies)
@@ -173,8 +179,10 @@
   )
   (fn-do + title String :get
     (return-if "" (if (not handle)))
+    (blank)
     (let length (as (call C:brixTerminalCopyTitle handle byte-buffer (. byte-buffer length)) Size))
     (return-if "" (if (== length 0)))
+    (blank)
     (if (> length (. byte-buffer length))
       (= byte-buffer ([] Byte length))
       (call C:brixTerminalCopyTitle (!! handle) byte-buffer length)
@@ -183,8 +191,10 @@
   )
   (fn-do + pwd String :get
     (return-if "" (if (not handle)))
+    (blank)
     (let length (as (call C:brixTerminalCopyPwd (!! handle) byte-buffer (. byte-buffer length)) Size))
     (return-if "" (if (== length 0)))
+    (blank)
     (if (> length (. byte-buffer length))
       (= byte-buffer ([] Byte length))
       (call C:brixTerminalCopyPwd (!! handle) byte-buffer length)
@@ -197,11 +207,13 @@
     (param cursor U32)
     (param palette ([] U32))
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSetColors handle foreground background cursor palette (. palette length))
   )
   (fn-do + set-dark _
     (param is-dark Bool)
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSetDark handle is-dark)
   )
   (fn-expr + mode-enabled Bool
@@ -227,23 +239,28 @@
   (fn-do + scroll-by _
     (param rows Int)
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalScrollDelta handle rows)
   )
   (fn-do + scroll-to-top _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalScrollTop handle)
   )
   (fn-do + scroll-to-bottom _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalScrollBottom handle)
   )
   (fn-do + scroll-to-row _
     (param row Size)
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalScrollRow handle row)
   )
   (fn-do + scrollbar TerminalScrollbar :get
     (return-if (call TerminalScrollbar 0 0 0) (if (not handle)))
+    (blank)
     (call C:brixTerminalScrollbar handle word-buffer)
     (return (call TerminalScrollbar ([] word-buffer 0) ([] word-buffer 1) ([] word-buffer 2)))
   )
@@ -253,6 +270,7 @@
   )
   (fn-do + cursor TerminalCursor :get
     (return-if (call TerminalCursor false 0 0 terminal-cursor-block false) (if (not handle)))
+    (blank)
     (call C:brixTerminalRenderCursor handle int-buffer)
     (return
       (call TerminalCursor
@@ -268,6 +286,7 @@
   )
   (fn-do + colors TerminalColors :get
     (return-if (call TerminalColors 0 0 0) (if (not handle)))
+    (blank)
     (call C:brixTerminalRenderColors handle word-buffer)
     (return (call TerminalColors ([] word-buffer 0) ([] word-buffer 1) ([] word-buffer 2)))
   )
@@ -275,16 +294,19 @@
     (param dirty-only Bool)
     (let rendered (list TerminalRow))
     (return-if rendered (if (not handle)))
+    (blank)
     (call C:brixTerminalRenderBeginRows handle dirty-only)
     (while true
       (let y (call C:brixTerminalRenderNextRow (!! handle)))
       (return-if rendered (if (< y 0)))
+      (blank)
       (+= rendered (call read-row y))
     )
     (return rendered)
   )
   (fn-do + render-clean _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalRenderClean handle)
   )
   (fn-do + encode-key (? ([] Byte))
@@ -294,6 +316,7 @@
     (param text (? String))
     (param unshifted U32 (= 0))
     (return-if null (if (not handle)))
+    (blank)
     (let input (?? text ""))
     (let length
       (call C:brixTerminalEncodeKey
@@ -319,6 +342,7 @@
     (param x F32)
     (param y F32)
     (return-if null (if (not handle)))
+    (blank)
     (let length
       (call C:brixTerminalEncodeMouse
         (block
@@ -338,6 +362,7 @@
   (fn-do + encode-paste (? ([] Byte))
     (param text String)
     (return-if null (if (or (not handle) (== (. text size) 0))))
+    (blank)
     (let length
       (block
         (as (call C:brixTerminalEncodePaste handle text (. text size) byte-buffer (. byte-buffer length)) Size)
@@ -352,6 +377,7 @@
   (fn-do + encode-focus (? ([] Byte))
     (param is-focused Bool)
     (return-if null (if (not handle)))
+    (blank)
     (let length (call C:brixTerminalEncodeFocus handle is-focused byte-buffer (. byte-buffer length)))
     (return (call encoded length))
   )
@@ -361,6 +387,7 @@
     (param x F64)
     (param y F64)
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSelectPress handle column row x y)
   )
   (fn-do + select-drag _
@@ -370,20 +397,24 @@
     (param y F64)
     (param is-rectangle _ (= false))
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSelectDrag handle column row x y is-rectangle)
   )
   (fn-do + select-release _
     (param column Size)
     (param row Size)
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSelectRelease handle column row)
   )
   (fn-do + select-all _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSelectAll handle)
   )
   (fn-do + clear-selection _
     (return-if (if (not handle)))
+    (blank)
     (call C:brixTerminalSelectClear handle)
   )
   (fn-expr + has-selection Bool :get
@@ -391,8 +422,10 @@
   )
   (fn-do + selection-text (? String)
     (return-if null (if (not handle)))
+    (blank)
     (let length (as (call C:brixTerminalCopySelection handle byte-buffer (. byte-buffer length)) Size))
     (return-if null (if (== length 0)))
+    (blank)
     (if (> length (. byte-buffer length))
       (= byte-buffer ([] Byte length))
       (call C:brixTerminalCopySelection (!! handle) byte-buffer length)
@@ -401,9 +434,11 @@
   )
   (fn-do + all-text (? String)
     (return-if null (if (not handle)))
+    (blank)
     (let length (as (call C:brixTerminalCopyAll handle byte-buffer (. byte-buffer length)) Size))
     (return-if null (if (== length 0)))
     (return-if (call (. byte-buffer slice-string) (..< 0 length)) (if (<= length (. byte-buffer length))))
+    (blank)
     (let bytes ([] Byte length))
     (call C:brixTerminalCopyAll (!! handle) bytes length)
     (return (call (. bytes slice-string) (..< 0 length)))
@@ -411,6 +446,7 @@
   (fn-do _ encoded (? ([] Byte))
     (param length Size)
     (return-if null (if (or (== length 0) (> length (. byte-buffer length)))))
+    (blank)
     (let bytes ([] Byte length))
     (for (in index (..< 0 length))
       (= ([] bytes index) ([] byte-buffer index))

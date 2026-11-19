@@ -43,9 +43,11 @@
   )
   (fn-do + account (? AIAccount) (?! AIError)
     (throw (call AIError (. AIErrorKind unknown) (str "Codex did not report its account: " failure)) (on-error (: failure Error)))
+    (blank)
     (let base (only-if (call variables) (if variables)))
     (let program (?? executable (call codex-executable (call codex-search-directories base))))
     (return-if (call AIAccount (. AIAccountStatus missing)) (if (not program)))
+    (blank)
     (let process
       (call Process
         (block
@@ -78,6 +80,7 @@
     (param parts (list AIMessagePart))
     (let link (call linked (call codex-parts-thread parts)))
     (return-if (if (not link)))
+    (blank)
     (call (. link halt))
   )
   (fn-do + stream (stream AIEvent)
@@ -93,6 +96,7 @@
     (param prompt String)
     (let link (call linked (call codex-parts-thread parts)))
     (throw (call AIError (. AIErrorKind invalid-request) "Codex has no running turn to steer") (if (or (not link) (. link is-closing))))
+    (blank)
     (call (. link steer) prompt)
   )
   (fn-do _ begin-turn CodexTurn (?! AIError)
@@ -124,9 +128,11 @@
     (let turning (call codex-turn-settings effort reasoning-summary (. request response-schema)))
     (let live (call reusable plan key))
     (return-if (call (. live ask) input turning request) (if live))
+    (blank)
     (let base (only-if (call variables) (if variables)))
     (let program (?? executable (call codex-executable (call codex-search-directories base))))
     (throw (call AIError (. AIErrorKind unknown) "Codex is not installed") (if (not program)))
+    (blank)
     (let process (call codex-process program working-directory base))
     (let link
       (call CodexLink
@@ -148,6 +154,7 @@
     (param key String)
     (let point (. plan point))
     (return-if null (if (or (not point) (. plan forks))))
+    (blank)
     (for (in link links)
       (return-if link (if (and (== (. link thread) (. point thread)) (== (. link settings) key) (not (. link is-closing)))))
     )
@@ -260,6 +267,7 @@
     (let thread (. decoder thread))
     (let id (. decoder turn))
     (throw (call AIError (. AIErrorKind invalid-request) "Codex has no running turn to steer") (if (or (not turn) (not thread) (not id))))
+    (blank)
     (call request "turn/steer" (call codex-steer-params thread id prompt))
   )
   (fn-do + halt _
@@ -318,6 +326,7 @@
       )
     )
     (return-if (if (or (not turn) (!= (as turn Pointer) (as next Pointer)))))
+    (blank)
     (= (. decoder turn) (?? (. decoder turn) (call codex-result-turn result)))
     (if is-interrupting
       (call interrupt)
@@ -326,12 +335,14 @@
   (fn-do _ open-thread _ (?! AIError)
     (let opened opening)
     (return-if (if (not opened)))
+    (blank)
     (= opening null)
     (let account (call json-object (call request "account/read" (call (of Map String JSON)))))
     (call codex-check-account (call json-object (?[] account "account")))
     (let result (call json-object (call request (. opened method) (. opened params))))
     (let id (call json-string (?[] (call json-object (?[] result "thread")) "id")))
     (throw (call AIError (. AIErrorKind invalid-response) "Codex did not open a thread") (if (not id)))
+    (blank)
     (for (in event (call (. decoder open) id (?? (call json-string (?[] result "model")) "")))
       (do
         (inline (call (?. turn deliver) event))
@@ -342,6 +353,7 @@
     (param method String)
     (param params JSON)
     (throw (call AIError (. AIErrorKind unknown) (str "Codex stopped before it could " method)) (if has-exited))
+    (blank)
     (let id (call request-id))
     (let waiting (call (of SyncBufferedChannel JSONRPCOutcome)))
     (= ([] answers id) waiting)
@@ -349,6 +361,7 @@
     (let outcome (<- waiting))
     (-= ([] answers id))
     (throw (call AIError (. AIErrorKind unknown) (str "Codex stopped before it answered " method)) (if (not outcome)))
+    (blank)
     (match outcome
       (case (call .result value)
         (return value)
@@ -431,6 +444,7 @@
     (param line JSON)
     (let message (catch? (call json-rpc-message line false)))
     (return-if (if (not message)))
+    (blank)
     (match message
       (case (: response JSONRPCResponse)
         (call answer response)
@@ -448,6 +462,7 @@
     (let key (call codex-response-key response))
     (let waiting (only-if ([] answers key) (if key)))
     (return-if (if (not waiting)))
+    (blank)
     (<- waiting (. response outcome))
     (call (. waiting close))
   )
@@ -500,6 +515,7 @@
     (let kit (call ai-toolkit-for (. provider toolkits) (. call tool-name)))
     (let current turn)
     (throw (call AIError (. AIErrorKind invalid-request) (str "Brix has no tool named " (. call tool-name))) (if (or (not kit) (not current))))
+    (blank)
     (let result (call (. kit run) (. current request) call))
     (let content (call codex-tool-content result))
     (let events (call (of List AIPartEndEvent)))
@@ -551,6 +567,7 @@
   )
   (fn-do _ release _
     (return-if (if (or is-closing turn (. queued length))))
+    (blank)
     (= is-closing true)
     (catch (call (. process close-input)))
   )
@@ -588,17 +605,20 @@
   )
   (fn-do + abandon _
     (return-if (if is-settled))
+    (blank)
     (= is-abandoned true)
     (call (. link leave) this)
   )
   (fn-do + deliver _
     (param event AIEvent)
     (return-if (if (or is-abandoned is-settled)))
+    (blank)
     (<- events event)
   )
   (fn-do + settle _
     (param problem (? AIError))
     (return-if (if is-settled))
+    (blank)
     (= is-settled true)
     (= failure problem)
     (if (not is-abandoned)

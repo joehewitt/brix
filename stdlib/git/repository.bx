@@ -32,6 +32,7 @@
   (let found (call git-find-directories folder))
   (let listed (only-if (call git-read-worktrees (. found common-dir)) (if found)))
   (return-if (call GitRepository (. (!! found) top) (. (!! found) common-dir) listed) (if (!= listed null)))
+  (blank)
   (let output
     (call git-text
       (block
@@ -66,8 +67,10 @@
   (param common-dir String)
   (let common (call Path common-dir 0))
   (return-if (if (or (!= (. common name) ".git") (. (/ common "reftable") exists))))
+  (blank)
   (let top (. common parent))
   (return-if (if (not top)))
+  (blank)
   (let admins (/ common "worktrees"))
   (let entries (catch? (call (of List PathEntry) (. admins entries))))
   (let linked (call (of List GitWorktree)))
@@ -178,6 +181,7 @@
   (param top Path)
   (param git-dir Path)
   (return-if (if (not (. (/ git-dir "HEAD") exists))))
+  (blank)
   (let shared (call git-read-file (/ git-dir "commondir")))
   (let common (if-expr shared (?? (call git-relative-path git-dir (call (. shared trim))) git-dir) git-dir))
   (return-if (if (not common)))
@@ -197,6 +201,7 @@
   (param admin Path)
   (let target (call git-read-file (/ admin "gitdir")))
   (return-if (if (not target)))
+  (blank)
   (let text (call (. target trim)))
   (let marker (call Path text 0))
   (if (not (call (. text starts-with) "/"))
@@ -216,6 +221,7 @@
   (param is-prunable _ (= false))
   (let head (call (. (?? (call git-read-file (/ admin "HEAD")) "") trim)))
   (return-if (call GitWorktree path head null false true is-locked is-prunable) (if (not (call (. head starts-with) "ref: "))))
+  (blank)
   (let ref ([] head (... 5)))
   (return
     (call GitWorktree
@@ -237,8 +243,10 @@
   (param ref String)
   (let loose (call git-read-file (/ common ref)))
   (return-if (call (. loose trim)) (if loose))
+  (blank)
   (let packed (call git-read-file (/ common "packed-refs")))
   (return-if "" (if (not packed)))
+  (blank)
   (let suffix (str " " ref))
   (for (in line (call (. packed split) "\n"))
     (return-if ([] line (..< 0 (- (. line length) (. suffix length)))) (if (call (. line ends-with) suffix)))
@@ -256,6 +264,7 @@
   (param location Path)
   (let input (catch? (call (of File Byte) location)))
   (return-if (if (not input)))
+  (blank)
   (use input)
   (let bytes (as input ([] Byte)))
   (return (call (. bytes slice-string) (..< 0 (. bytes size))))

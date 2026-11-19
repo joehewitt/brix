@@ -265,6 +265,7 @@
     (param program Program)
     (param scratch TypingScratch)
     (throw (call Panic "Types must intern the invalid type at id zero") (if (!= (call intern-invalid) invalid-type)))
+    (blank)
     (= void-type invalid-type)
     (= bool-type invalid-type)
     (= null-type invalid-type)
@@ -934,6 +935,7 @@
     (param decl DeclId)
     (param mark ScratchMark)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (call ensure-scratch (+ 3 count))
     (= ([] key-scratch 0) (. TypeTag class))
@@ -966,6 +968,7 @@
     ; the errors above `errors-mark`, in the order `order-errors` gives them. With no errors it
     ; is the class itself.
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (if (== (. scratch types length) errors-mark)
       (return (call intern-class module decl mark))
     )
@@ -998,6 +1001,7 @@
     (param index U32)
     (param name Atom)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (call ensure-scratch 4)
     (= ([] key-scratch 0) (. TypeTag variable))
     (= ([] key-scratch 1) module)
@@ -1019,6 +1023,7 @@
     ; `enclosing` is the instance the closure is written in, and `enclosing-key` that instance's
     ; stable key.
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (call ensure-scratch 4)
     (= ([] key-scratch 0) (. TypeTag closure))
     (= ([] key-scratch 1) module)
@@ -1062,6 +1067,7 @@
     (param param-count U32 (= 0))
     (param mark (? ScratchMark) (= null))
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let start (?? mark (. scratch types length)))
     (let count (- (. scratch types length) start))
     (call ensure-scratch (+ 7 count))
@@ -1098,6 +1104,7 @@
     (param scope U32)
     (param ordinal U32)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (call ensure-scratch 3)
     (= ([] key-scratch 0) (. TypeTag inference))
     (= ([] key-scratch 1) scope)
@@ -1123,6 +1130,7 @@
   (fn-do + intern-union TypeId
     (param mark ScratchMark)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (call ensure-scratch (+ 1 count))
     (= ([] key-scratch 0) (. TypeTag union))
@@ -1151,6 +1159,7 @@
     ; module and the place in it that make it where they are given: another made elsewhere is another
     ; type.
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (throw (call Panic "Types union case names and types are misaligned") (if (!= (- (. scratch names length) names-mark) count)))
     (blank)
@@ -1191,6 +1200,7 @@
     (param mark ScratchMark)
     (param errors-mark ScratchMark)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (let arg-count (- errors-mark mark))
     (call ensure-scratch (+ 4 count))
@@ -1222,6 +1232,7 @@
     (param mark ScratchMark)
     ; The errors above the mark are already in the order `order-errors` gives them.
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (if (== count 0)
       (return value)
@@ -1252,6 +1263,7 @@
     (param name Atom)
     (param mark ScratchMark)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (call ensure-scratch (+ 6 count))
     (let address (. name address))
@@ -1326,6 +1338,7 @@
       (case (call .node-type-iterable row)
         (let item (call evaluate-type caller ast (. row pattern) env))
         (return-if invalid-type (if (== item invalid-type)))
+        (blank)
         (let mark (. scratch types mark))
         (call (. scratch types push) item)
         (return (call class-named-with-args caller (!! stream-atom) mark))
@@ -1389,6 +1402,7 @@
     ; The type a name gives where a module writes it. `(char)`, the unit the parser gives a character
     ; literal, which no source can write, is `Char` itself, whatever names a module declares.
     (return-if (call type-row .char) (if (and char-literal-atom (== name char-literal-atom))))
+    (blank)
     (let bound (call env-lookup env name))
     (if bound
       (return bound)
@@ -1514,6 +1528,7 @@
     (param named Bool)
     ; Whether a declaration a name finds is a facet bound to a class that the caller sees.
     (return-if false (if (or (not named) (== (. program facets count) 0))))
+    (blank)
     (let facet (call (. program facets index-of) (. candidate module) (. candidate decl)))
     (return-if false (if (not facet)))
     (return (and (== ([] (. program facets states) facet) .facet-bound) (call (. program sees-facet) caller facet)))
@@ -1522,6 +1537,7 @@
     (param id TypeId)
     ; The facet a type is, where it is the type of a facet's name.
     (return-if null (if (== (. program facets count) 0)))
+    (blank)
     (match? ([] rows id)
       (case (call .type-class row)
         (return (call (. program facets index-of) (. row module) (. row decl)))
@@ -1541,6 +1557,7 @@
     (let module ([] (. program facets owner-modules) facet))
     (let decl ([] (. program facets owner-decls) facet))
     (return-if (call plain-class module decl) (if (not sealed)))
+    (blank)
     (call ensure-scratch 3)
     (= ([] key-scratch 0) (. TypeTag class))
     (= ([] key-scratch 1) module)
@@ -1992,6 +2009,7 @@
     )
     (let found (call property-named id name))
     (return-if found (if (or (not found) (== (. ([] properties found) facet) (. U32 max)))))
+    (blank)
     (let facets (. program facets))
     (let range (. ([] completions id) properties))
     (let open (? Index) null)
@@ -2001,6 +2019,7 @@
       (let fact ([] properties position))
       (if (== (. fact name) name)
         (return-if position (if (or (== (. fact facet) (. U32 max)) (== ([] (. facets modules) (. fact facet)) module))))
+        (blank)
         (if (call (. program sees-facet) module (. fact facet))
           (if (not (call is-facet-private (. fact facet) name))
             (= open (?? open position))
@@ -2026,6 +2045,7 @@
     (while (and (!= current (. U32 max)) (<= steps (. facets count)))
       (let found (call property-declared id name current))
       (return-if found (if found))
+      (blank)
       (= current ([] (. facets parents) current))
       (+= steps 1)
     )
@@ -2037,6 +2057,7 @@
     (param facet U32)
     ; The place of the property of a type by a name and the facet that declares it, or none.
     (return-if (call property-named id name) (if (== facet (. U32 max))))
+    (blank)
     (let range (. ([] completions id) properties))
     (for (in offset (..< 0 (. range count)))
       (let position (as (+ (. range start) offset) Index))
@@ -2344,6 +2365,7 @@
     (param mark ScratchMark)
     (param names-mark ScratchMark)
     (throw (call Panic "Types are sealed and cannot intern a type") (if sealed))
+    (blank)
     (let count (- (. scratch types length) mark))
     (throw (call Panic "Types tuple field names and types are misaligned") (if (!= (- (. scratch names length) names-mark) count)))
     (blank)
@@ -2566,6 +2588,7 @@
     (blank)
     (let inner (call evaluate-type-fields caller ast field-types env))
     (return-if invalid-type (if (== inner invalid-type)))
+    (blank)
     (let mark (. scratch types mark))
     (call (. scratch types push) inner)
     (return (call intern-class (. owner module) (. owner decl) mark))
@@ -2674,6 +2697,7 @@
     (param env TypeEnv)
     (let owner (call evaluate-type caller ast owner-syntax env))
     (return-if invalid-type (if (== owner invalid-type)))
+    (blank)
     (let mark (. scratch types mark))
     (for (in child ([] (. ast children) args))
       (call (. scratch types push) (call evaluate-type caller ast child env))
@@ -2786,6 +2810,7 @@
       )
     )
     (return-if null (if (not ref)))
+    (blank)
     (let declaring ref)
     (blank)
     (let member (call find-associated-member (. declaring module) (. declaring decl) name count))
@@ -2985,6 +3010,7 @@
   (fn-do _ complete-slow _
     (param id TypeId)
     (throw (call Panic "Types are sealed and cannot complete a type") (if sealed))
+    (blank)
     (let state (. ([] completions id) completion))
     (if (or (== state .completion-done) (== state .completion-failed))
       (return)
@@ -3514,6 +3540,7 @@
     ; A facet's getters and setters are found as an extension's are.
     (let facets (. program facets))
     (return-if (if (== (. facets count) 0)))
+    (blank)
     (let (tuple start end) (call (. facets class-range) module decl))
     (for (in position (..< start end))
       (let facet ([] (. facets class-facets) position))
@@ -3538,6 +3565,7 @@
     ; read in its facet's module.
     (let facets (. program facets))
     (return-if (if (== (. facets count) 0)))
+    (blank)
     (let (tuple start end) (call (. facets class-range) module decl))
     (for (in position (..< start end))
       (let facet ([] (. facets class-facets) position))
@@ -4233,6 +4261,7 @@
   )
   (fn-do _ scan-subclasses _
     (return-if (if subclass-scan-done))
+    (blank)
     (= subclass-scan-done true)
     (let module 0u32)
     (for (in owner (. program modules))

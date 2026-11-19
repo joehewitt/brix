@@ -347,6 +347,7 @@
   )
   (fn-do + close _
     (return-if (if is-finished))
+    (blank)
     (= is-finished true)
     (if is-closed
       (call (?. app remove-window) this)
@@ -378,6 +379,7 @@
   )
   (fn-do + hush-until-layout _
     (return-if (if is-layout-hushed))
+    (blank)
     (= is-layout-hushed true)
     (call hush-entering true)
     (call schedule-layout)
@@ -385,6 +387,7 @@
   (fn-do + accept-focus-request _
     (param box (? Box))
     (return-if false (if is-closed))
+    (blank)
     (if (not box)
       (= pending-focus-box null)
       (return (call apply-focus null true))
@@ -392,6 +395,7 @@
     (blank)
     (let target box)
     (return-if false (if (not (call is-in-focus-scope target))))
+    (blank)
     (if (not (. target can-focus))
       (= pending-focus-box target)
       (return true)
@@ -408,12 +412,14 @@
   )
   (fn-do + invalidate-popup-placement _
     (return-if (if (or (== (. popups length) 0) is-closed)))
+    (blank)
     (= is-popup-placement-invalid true)
     (call schedule-render)
   )
   (fn-do + watch-clip _
     (param watcher ClipWatcher)
     (return-if (if (!= (call clip-watcher-index watcher) null)))
+    (blank)
     (+= clip-watchers watcher)
   )
   (fn-do + unwatch-clip _
@@ -426,6 +432,7 @@
   (fn-do + notify-clip-watchers _
     (param scrolled (? Box))
     (return-if (if is-closed))
+    (blank)
     (let index Index)
     (while (< index (. clip-watchers length))
       (let watcher ([] clip-watchers index))
@@ -448,6 +455,7 @@
   (fn-do + release-input-inside _
     (param subtree Box)
     (return-if (if is-closed))
+    (blank)
     (if (and focused-box (call (. focused-box is-within) subtree))
       (call request-native-focus null)
       (call clear-focus-state false)
@@ -543,6 +551,7 @@
     (= native-geometry-dirty false)
     (= window-material-count 0)
     (return-if (if (== (. native-artifacts length) 0)))
+    (blank)
     (probe-count gui.native.registered-artifacts (as (. native-artifacts length) U64))
     (let native-window (?? native-window-handle (call Pointer)))
     (+= native-sync-pass 1)
@@ -665,6 +674,7 @@
   )
   (fn-do + open _
     (throw (call Panic "A closed window cannot be opened again") (if is-finished))
+    (blank)
     (= is-closed false)
     (call restore-frame)
     (call ensure-native)
@@ -684,17 +694,20 @@
   (fn-do + request-close _
     (return-if true (if is-closed))
     (return-if false (if (or is-closing (not (call confirm-close)))))
+    (blank)
     (call close)
     (return true)
   )
   (fn-do + accept-native-close-request _
     (return-if (if (call request-close)))
+    (blank)
     (if native
       (call C:brixGuiWindowRejectDeferredClose native)
     )
   )
   (fn-do + render _
     (return-if false (if is-closed))
+    (blank)
     (call ensure-native)
     (return-if false (if (not native)))
     (blank)
@@ -717,15 +730,18 @@
   )
   (fn-do + prepare-frame _
     (return-if (if (or is-closed (not native))))
+    (blank)
     (call settle-for-paint)
     (let renderer metal-renderer)
     (let scene retained-scene)
     (return-if (if (or (not renderer) (not scene))))
+    (blank)
     (call (. scene maintain) this (. renderer scale) window-background)
   )
   (fn-do + system-changed _
     (param restyles Bool)
     (return-if (if is-closed))
+    (blank)
     (call sync-appearance-tags)
     (if restyles
       (call restyle-themes)
@@ -869,6 +885,7 @@
     (param box (? Box))
     (return-if (if is-closed))
     (return-if (if (and is-requesting-native-focus (not box) (not requested-native-focus-box))))
+    (blank)
     (if (and is-requesting-native-focus box requested-native-focus-box)
       (return-if (if (== (as box Pointer) (as requested-native-focus-box Pointer))))
     )
@@ -885,6 +902,7 @@
   (fn-do + move-focus _
     (param going-backward _ (= false))
     (return-if false (if is-closed))
+    (blank)
     (call settle-pointer-dispatch)
     (let boundary Box this)
     (if modal-popup
@@ -921,6 +939,7 @@
     )
     (let resolved (if-expr (. target delegates-focus) (call group-focus-target target) target))
     (return-if (if (or (not resolved) (not (. resolved can-hold-focus)))))
+    (blank)
     (= pending-focus-box null)
     (call apply-focus resolved true)
   )
@@ -928,6 +947,7 @@
     (param event KeyPressEvent)
     (= key-press-handled true)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (if (call is-focus-key event)
       (call set-key-focus true)
     )
@@ -990,6 +1010,7 @@
     (param redoes _ (= false))
     (let target (call undo-target-for redoes))
     (return-if false (if (not target)))
+    (blank)
     (if redoes
       (call (. target redo))
       (else
@@ -1023,6 +1044,7 @@
   (fn-do + dispatch-key-release _
     (param event KeyReleaseEvent)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (if (or (== (. event key) (. Key enter)) (== (. event key) (. Key space)))
       (call release-key-press)
     )
@@ -1036,6 +1058,7 @@
   (fn-do + dispatch-key-input _
     (param event KeyInputEvent)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (if (and focused-box (== (. focused-box $focus-mode) (. FocusMode input)))
       (call (. (call (. focused-box event-path)) publish) event)
     )
@@ -1045,6 +1068,7 @@
   (fn-do + dispatch-text-command _
     (param event TextCommandEvent)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (if (and focused-box (== (. focused-box $focus-mode) (. FocusMode input)))
       (call (. (call (. focused-box event-path)) publish) event)
     )
@@ -1054,6 +1078,7 @@
   (fn-do + dispatch-text-composition _
     (param event TextCompositionEvent)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (if (and focused-box (== (. focused-box $focus-mode) (. FocusMode input)))
       (call (. (call (. focused-box event-path)) publish) event)
     )
@@ -1067,6 +1092,7 @@
     (param length U32)
     (param keyed Bool)
     (return-if (if (and keyed key-press-handled)))
+    (blank)
     (match kind
       (case= (. NativeTextActionKind input)
         (call dispatch-key-input (call KeyInputEvent text start length))
@@ -1090,6 +1116,7 @@
   (fn-do + dispatch-modifiers-changed _
     (param modifiers PointerModifiers)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (let active (call active-key-bindings))
     (call update-key-binding-modifiers key-binding-nodes active modifiers)
     (if drag-session
@@ -1315,18 +1342,22 @@
   )
   (fn-do + cancel-drag _
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (call finish-drag false)
     (call settle-pointer-dispatch)
   )
   (fn-do + step-drag-scroll _
     (let session drag-session)
     (return-if false (if (not session)))
+    (blank)
     (let delta (call drag-scroll-delta session))
     (let scroller (. session scroller))
     (return-if false (if (or (== delta 0) (not scroller))))
+    (blank)
     (let resting (. scroller scroll-y))
     (call (. scroller scroll-by) (call Point 0 delta))
     (return-if false (if (== (. scroller scroll-y) resting)))
+    (blank)
     (call advance-drag (. session point) (. session modifiers))
     (call settle-pointer-dispatch)
     (return true)
@@ -1335,6 +1366,7 @@
     (param payload ClipboardDrag)
     (param data PointerEventData)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (let session drag-session)
     (if (and session (. session source))
       (call settle-pointer-dispatch)
@@ -1372,6 +1404,7 @@
     (param data PointerEventData)
     (param dropped Bool)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (let session drag-session)
     (probe-log gui.drop (text: "finish external dropped " dropped " session " (!= session null) " at " (. data root-point)))
     (if (and session (not (. session source)))
@@ -1418,6 +1451,7 @@
   (fn-do + dispatch-pointer-event _
     (param event MagnifyEvent)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (call accept-pointer-location (. event root-point))
     (let held magnify-gesture-path)
     (let continues (and (!= (. event phase) (. ScrollPhase began)) (!= (. event phase) (. ScrollPhase none))))
@@ -1495,6 +1529,7 @@
     (param tap-count U32)
     (param native-radius F64)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (let zoom effective-zoom)
     (let point (call Point (/ (. native-data root-point x) zoom) (/ (. native-data root-point y) zoom)))
     (let data (= (. native-data root-point) point))
@@ -1526,6 +1561,7 @@
   )
   (fn-do + dispatch-pointer-exit _
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (= has-pointer-location false)
     (= cursor-resolution-invalid true)
     (call clear-hover)
@@ -1536,6 +1572,7 @@
   )
   (fn-do + accept-window-activated _
     (return-if (if (or is-closed is-active)))
+    (blank)
     (call settle-pointer-dispatch)
     (= is-active true)
     (call show-activity true)
@@ -1552,10 +1589,12 @@
   )
   (fn-do + accept-window-unoccluded _
     (return-if (if (or is-closed (not is-metal-rendering))))
+    (blank)
     (call schedule-render)
   )
   (fn-do + accept-window-deactivated _
     (return-if (if is-closed))
+    (blank)
     (call settle-pointer-dispatch)
     (call release-key-bindings key-binding-nodes)
     (call dismiss-popups-for-deactivation)
@@ -1608,6 +1647,7 @@
     (param reason _ (= (. DismissReason programmatic)))
     (let index (call popup-index popup))
     (return-if (if (not index)))
+    (blank)
     (for (in other (call (of List Popup) popups))
       (if (and (!= (as other Pointer) (as popup Pointer)) (call (. other is-within) popup))
         (call (. other dismiss) (. DismissReason ancestor-closed))
@@ -1639,12 +1679,14 @@
   (fn-do + settle-popup-focus _
     (let popup pending-popup-focus)
     (return-if (if (not popup)))
+    (blank)
     (if (or (not (. popup is-open)) (!= (as (. popup root) Pointer) (as this Pointer)))
       (= pending-popup-focus null)
       (return)
     )
     (let first (call (. popup focus-candidate-at-edge)))
     (return-if (if (not first)))
+    (blank)
     (= pending-popup-focus null)
     (if (and focused-box (not (call (. focused-box is-within) popup)))
       (call (. popup remember-return-focus-if-empty) focused-box)
@@ -1669,6 +1711,7 @@
     (= native-geometry-dirty true)
     (= is-popup-placement-invalid false)
     (return-if (if (== (. popups length) 0)))
+    (blank)
     (let boundary popup-boundary)
     (for (in popup (call (of List Popup) popups))
       (if (. popup is-open)
@@ -1683,6 +1726,7 @@
   )
   (fn-do + accept-native-position _
     (return-if (if (not native)))
+    (blank)
     (let actual (call Point (call C:brixGuiWindowGetPosition native 0) (call C:brixGuiWindowGetPosition (!! native) 1)))
     (= requested-native-position actual)
     (if (!= position actual)
@@ -1769,26 +1813,32 @@
   )
   (fn-do _ sync-native-geometry-if-registry-changed _
     (return-if (if (not native-artifact-registry-changed)))
+    (blank)
     (call sync-native-geometry)
   )
   (fn-do _ sync-native-geometry-if-changed _
     (return-if (if (and (not native-geometry-dirty) (not native-artifact-registry-changed))))
+    (blank)
     (call sync-native-geometry)
   )
   (fn-do _ restore-frame _
     (let key state-key)
     (let store (?. app state))
     (return-if (if (or (not key) (not store))))
+    (blank)
     (let saved (call (. store read) (str "window:" key) 1))
     (return-if (if (not saved)))
+    (blank)
     (let frame (catch? (call (. (call JSONReader "window" saved) object))))
     (return-if (if (not frame)))
+    (blank)
     (let x (catch? (call (. ([] frame "x") number))))
     (let y (catch? (call (. ([] frame "y") number))))
     (let width (catch? (call (. ([] frame "width") number))))
     (let height (catch? (call (. ([] frame "height") number))))
     (return-if (if (or (== x null) (== y null) (== width null) (== height null))))
     (return-if (if (or (< width 1) (< height 1))))
+    (blank)
     (= size (call Dimensions width height))
     (= position (call Point x y))
     (let saved-zoom (catch? (call (. ([] frame "zoom") number))))
@@ -1800,11 +1850,13 @@
     (let key state-key)
     (let store (?. app state))
     (return-if (if (or (not key) (not store) is-closed)))
+    (blank)
     (if (not position)
       (call accept-native-position)
     )
     (let placed position)
     (return-if (if (not placed)))
+    (blank)
     (let frame
       (call (of Map String JSON)
         (block
@@ -1912,6 +1964,7 @@
     (let transparent has-transparent-background)
     (let clear has-clear-background)
     (return-if (if (and native-transparency-known (== transparent native-transparent) (== clear native-clear))))
+    (blank)
     (= native-transparent transparent)
     (= native-clear clear)
     (= native-transparency-known true)
@@ -1929,6 +1982,7 @@
   (fn-do _ render-metal _
     (param popup-fills LiveFillState)
     (return-if false (if (not (call ensure-metal-window-renderer))))
+    (blank)
     (let renderer (!! metal-renderer))
     (blank)
     (probe gui.frame.gc-objects (let frame-objects0 (call C:brixGCAllocatedObjectCount)))
@@ -2179,6 +2233,7 @@
   )
   (fn-do _ sync-appearance-tags _
     (return-if (if (or is-closed (not (call style-live-attachment this)))))
+    (blank)
     (let outer (call swap-markup-cause markup-cause-none))
     (finally
       (call swap-markup-cause outer)
@@ -2196,10 +2251,12 @@
   )
   (fn-do _ window-title-changed _
     (return-if (if (not native)))
+    (blank)
     (call C:brixGuiWindowSetTitle native title)
   )
   (fn-do _ sync-native-chrome _
     (return-if (if (not native)))
+    (blank)
     (call C:brixGuiWindowSetKind native kind)
     (let offset (?? stoplight-offset (call Point 0 0)))
     (call C:brixGuiWindowSetChrome
@@ -2225,6 +2282,7 @@
     )
     (call rest-live-fills null)
     (return-if (if (and (call (. window-clock is-animating) live-fills) (== live-fill-rate (. state frame-rate)))))
+    (blank)
     (= live-fill-rate (. state frame-rate))
     (call (. window-clock start) this live-fills (. state frame-rate))
   )
@@ -2233,6 +2291,7 @@
     (if (== wake-at null)
       (= live-fill-rest-at null)
       (return-if (if (== live-fill-wake-at null)))
+      (blank)
       (= live-fill-wake-at null)
       (call (?. live-fill-waker cancel-later))
       (= live-fill-waker null)
@@ -2240,6 +2299,7 @@
     )
     (= live-fill-rest-at (?? live-fill-rest-at (call monotonic-time-nanoseconds)))
     (return-if (if (== live-fill-wake-at wake-at)))
+    (blank)
     (= live-fill-wake-at wake-at)
     (call (?. live-fill-waker cancel-later))
     (let delay (/ (call max (- wake-at (. live-fills seconds)) 0.001) (call max (. window-clock time-scale) 0.000001)))
@@ -2257,6 +2317,7 @@
   (fn-do _ catch-up-live-fills _
     (let rested live-fill-rest-at)
     (return-if (if (== rested null)))
+    (blank)
     (let now (call monotonic-time-nanoseconds))
     (+= (. live-fills seconds)
       (scope (* elapsed (. window-clock time-scale))
@@ -2267,6 +2328,7 @@
   )
   (fn-do _ resolve-landings _
     (return-if (if (== (. landings length) 0)))
+    (blank)
     (let ready landings)
     (= landings (call (of List BoxLanding)))
     (for (in landing ready)
@@ -2277,6 +2339,7 @@
     (let home attached-focus-home)
     (return-if (if (or (not home) focused-box pending-popup-focus is-focus-suspended)))
     (return-if (if (not (call is-valid-focus-box home))))
+    (blank)
     (for (in popup popups)
       (return-if (if (!= (. popup $popup-focus) (. PopupFocus none))))
     )
@@ -2288,6 +2351,7 @@
     (param reveals _ (= true))
     (return-if true (if (== (as box (? Pointer)) (as focused-box (? Pointer)))))
     (return-if false (if (and box (not (call is-valid-focus-box box)))))
+    (blank)
     (if (and reveals box)
       (call (. box reveal-focus))
     )
@@ -2333,6 +2397,7 @@
     (param remember _ (= false))
     (let previous focused-box)
     (return-if (if (not previous)))
+    (blank)
     (if (and remember (call is-valid-focus-box previous))
       (= remembered-focus-box previous)
     )
@@ -2368,6 +2433,7 @@
   (fn-do _ set-key-focus _
     (param value Bool)
     (return-if (if (== is-key-focus value)))
+    (blank)
     (= is-key-focus value)
     (let box focused-box)
     (if box
@@ -2378,6 +2444,7 @@
     (param box (? Box))
     (= focused-groups (call (of List Box)))
     (return-if (if (not box)))
+    (blank)
     (let cursor (. box material-parent))
     (while cursor
       (let current cursor)
@@ -2386,6 +2453,7 @@
         (+= focused-groups current)
       )
       (return-if (if (. current is-presentation-layer)))
+      (blank)
       (= cursor (. current material-parent))
     )
   )
@@ -2467,6 +2535,7 @@
   (fn-do _ settle-held-group _
     (let held focused-box)
     (return-if (if (or (not held) (not (. held delegates-focus)))))
+    (blank)
     (let inner (call (. held focus-group-target)))
     (if (and inner (. inner can-focus))
       (call apply-focus inner true)
@@ -2497,11 +2566,13 @@
   )
   (fn-do _ sync-undo-state _
     (return-if (if (not native)))
+    (blank)
     (let undoing (call undo-target-for))
     (let redoing (call undo-target-for true))
     (let undo-title (only-if (. undoing undo-title) (if undoing)))
     (let redo-title (only-if (. redoing redo-title) (if redoing)))
     (return-if (if (and (== undo-title native-undo-title) (== redo-title native-redo-title))))
+    (blank)
     (= native-undo-title undo-title)
     (= native-redo-title redo-title)
     (call C:brixGuiWindowSetUndoState
@@ -2534,6 +2605,7 @@
     (let previous applied-zoom)
     (let next effective-zoom)
     (return-if (if (== previous next)))
+    (blank)
     (= applied-zoom next)
     (if has-pointer-location
       (= pointer-location
@@ -2587,6 +2659,7 @@
   )
   (fn-do _ sync-text-input _
     (return-if (if (not native)))
+    (blank)
     (let box focused-box)
     (let active (and box (== (. box $focus-mode) (. FocusMode input)) (not (. box native-focus-handle))))
     (if (!= active native-text-input-active)
@@ -2594,8 +2667,10 @@
       (call C:brixGuiWindowSetTextInputActive (!! native) active)
     )
     (return-if (if (not active)))
+    (blank)
     (let context (. (!! box) text-input-context))
     (return-if (if (not context)))
+    (blank)
     (let caret (. context caret))
     (let zoom effective-zoom)
     (call C:brixGuiWindowSetTextInputContext
@@ -2613,6 +2688,7 @@
   (fn-do _ dispatch-peer-press _
     (param point Point)
     (return-if (if (not (call prepare-pointer-dispatch))))
+    (blank)
     (call accept-pointer-location point)
     (if (call dismiss-popups-for-press point (call pointer-hit-path point))
       (call clear-hover)
@@ -2623,6 +2699,7 @@
     (param event PointerDownEvent)
     (return-if (call begin-window-drag event) (if (!= (. event click-count) 2)))
     (return-if false (if (not native)))
+    (blank)
     (call C:brixGuiWindowPerformTitlebarDoubleClick native)
     (return true)
   )
@@ -2631,6 +2708,7 @@
     (param event PointerDragEvent)
     (return-if false (if (or is-drag-offered (!= (. capture button) (. PointerButton primary)))))
     (return-if false (if (< (call (. press-origin distance) (. event root-point)) drag-start-distance)))
+    (blank)
     (= is-drag-offered true)
     (let data
       (call PointerEventData
@@ -2648,8 +2726,10 @@
     (call (. (call (. capture path at-point) press-origin) publish-drag-start) offer)
     (let exported (. offer exported))
     (return-if (call begin-export-drag exported) (if exported))
+    (blank)
     (let session (. offer session))
     (return-if false (if (not session)))
+    (blank)
     (call (. session sample) (. event root-point) (. event ordering-time))
     (call begin-drag session)
     (return true)
@@ -2657,6 +2737,7 @@
   (fn-do _ begin-export-drag Bool
     (param exported DragExport)
     (return-if false (if (not native)))
+    (blank)
     (let frame (. exported frame))
     (let wide (call max 1.0 (call ceil (* (. frame width) backing-scale))))
     (let tall (call max 1.0 (call ceil (* (. frame height) backing-scale))))
@@ -2664,12 +2745,14 @@
     (call (. exported image draw) picture (call Rect 0 0 wide tall))
     (let writer (call clipboard-writer (. exported items)))
     (return-if false (if (== writer (call Pointer))))
+    (blank)
     (finally
       (inline (call C:brixGuiClipboardWriterRelease writer))
     )
     (let zoom effective-zoom)
     (let dragged (call Rect (* (. frame x) zoom) (* (. frame y) zoom) (* (. frame width) zoom) (* (. frame height) zoom)))
     (return-if false (if (not (call C:brixGuiWindowBeginExportDrag native writer (. picture native) (. dragged x) (. dragged y) (. dragged width) (. dragged height)))))
+    (blank)
     (call clear-pointer-capture)
     (call clear-scroll-gesture)
     (call clear-hover)
@@ -2679,6 +2762,7 @@
     (param data PointerEventData)
     (let name (only-if (call C:brixGuiWindowDropPasteboardName native) (if native)))
     (return-if (if (not name)))
+    (blank)
     (call dispatch-external-drag (call ClipboardDrag (call Clipboard name) (. data pointer-id)) data)
   )
   (fn-do _ begin-drag _
@@ -2722,6 +2806,7 @@
     (let box (. session pending-snapshot))
     (= (. session pending-snapshot) null)
     (return-if (if (not box)))
+    (blank)
     (let frame (. box ink-frame))
     (let shown (call (. box presentation-rect) frame))
     (let size (call Dimensions (call max 1 (call ceil (. frame width))) (call max 1 (call ceil (. frame height)))))
@@ -2742,6 +2827,7 @@
     (param modifiers PointerModifiers)
     (let session drag-session)
     (return-if (if (not session)))
+    (blank)
     (= (. session point) point)
     (= (. session modifiers) modifiers)
     (call (?. (. session ghost) follow) point)
@@ -2771,6 +2857,7 @@
   (fn-do _ follow-carried _
     (param session DragSession)
     (return-if (if (== (. session carried length) 0)))
+    (blank)
     (let grab (?? (. session grab) (call Point 0 0)))
     (let at (call Point (- (. session point x) (. grab x)) (- (. session point y) (. grab y))))
     (let pace (. session pace))
@@ -2803,6 +2890,7 @@
     (param dropped Bool)
     (let session drag-session)
     (return-if (if (not session)))
+    (blank)
     (= drag-session null)
     (let target (. session target))
     (= (. session target) null)
@@ -2832,6 +2920,7 @@
   (fn-do _ settle-drag-ghost _
     (let session drag-session)
     (return-if (if (not session)))
+    (blank)
     (if (. session pending-snapshot)
       (call capture-drag-ghost session)
     )
@@ -2866,6 +2955,7 @@
     (let session drag-session)
     (return-if (if (or (not session) is-drag-scrolling (not native))))
     (return-if (if (== (call drag-scroll-delta session) 0)))
+    (blank)
     (= is-drag-scrolling true)
     (do-new
       (while (call step-drag-scroll)
@@ -2876,6 +2966,7 @@
   )
   (fn-do _ dispatch-scroll-samples _
     (return-if (if (or (. scroll-resampler is-idle) (not native))))
+    (blank)
     (for (in event (call (. scroll-resampler take) (call C:brixGuiWindowGetLastFrameEventTime (!! native))))
       (let ignored (call dispatch-pointer-event event))
     )
@@ -2886,6 +2977,7 @@
   (fn-do _ show-activity _
     (param active Bool)
     (return-if (if (== shows-inactive (not active))))
+    (blank)
     (= shows-inactive (not active))
     (if (and (not is-closed) (call style-live-attachment this))
       (call set-theme-tag "inactive" shows-inactive)
@@ -2904,6 +2996,7 @@
   )
   (fn-do _ settle-cursor-resolution _
     (return-if (if (or (not cursor-resolution-invalid) (and scroll-hover-owner (not drag-session)))))
+    (blank)
     (= cursor-resolution-invalid false)
     (let next (. CursorStyle automatic))
     (let captured false)
@@ -2926,6 +3019,7 @@
       (= captured true)
     )
     (return-if (if (and (== next resolved-cursor-style) (== captured resolved-cursor-captured))))
+    (blank)
     (= resolved-cursor-style next)
     (= resolved-cursor-captured captured)
     (if native
@@ -2943,8 +3037,10 @@
     (param event KeyPressEvent)
     (param target (? Box))
     (return-if (if (or (not target) (!= (. target $focus-mode) (. FocusMode press)))))
+    (blank)
     (call (. event cancel))
     (return-if (if (. event is-repeat)))
+    (blank)
     (call release-key-press)
     (= key-pressed-box target)
     (= (. target is-pressed) true)
@@ -2954,6 +3050,7 @@
   (fn-do _ release-key-press _
     (let box key-pressed-box)
     (return-if (if (not box)))
+    (blank)
     (= key-pressed-box null)
     (= (. box is-pressed) false)
     (= (. box is-press-within) false)
@@ -2961,6 +3058,7 @@
   (fn-do _ update-hover _
     (param hit (? PointerHitPath))
     (return-if (if drag-session))
+    (blank)
     (let target (?. hit target))
     (return-if (if (== target hovered-box)))
     (blank)
@@ -2996,6 +3094,7 @@
     (param value Bool)
     (param path (? PointerHitPath))
     (return-if (if (not path)))
+    (blank)
     (for (in frame (. path frames))
       (let box (call (of gc-object-from-pointer Box) (. frame owner)))
       (let next (and value (. box is-effectively-enabled)))
@@ -3009,6 +3108,7 @@
     (param path (? PointerHitPath))
     (param retained (? PointerHitPath) (= null))
     (return-if (if (not path)))
+    (blank)
     (for (in frame (. path frames))
       (if (not (call hover-path-holds (. frame owner) retained))
         (let box (call (of gc-object-from-pointer Box) (. frame owner)))
@@ -3028,6 +3128,7 @@
     (param point Point)
     (param hit (? PointerHitPath))
     (return-if (if (not hit)))
+    (blank)
     (for (in frame (. hit frames))
       (let box (call (of gc-object-from-pointer Box) (. frame owner)))
       (let axis (call (. box scroll-indicator-axis-at) point))
@@ -3038,8 +3139,10 @@
     (param event PointerDownEvent)
     (param hit (? PointerHitPath))
     (return-if false (if (!= (. event button) (. PointerButton primary))))
+    (blank)
     (let indicator (call scroll-indicator-hit (. event root-point) hit))
     (return-if false (if (not indicator)))
+    (blank)
     (let owner (. indicator owner))
     (let path (call (. (call (. owner event-path)) at-point) (. event root-point)))
     (call update-hover path)
@@ -3147,6 +3250,7 @@
   (fn-do _ extend-scroll-hover-hold _
     (= scroll-hover-deadline (call Deadline gui-scroll-hover-hold))
     (return-if (if is-scroll-hover-settling))
+    (blank)
     (= is-scroll-hover-settling true)
     (do-new
       (call settle-scroll-hover-hold)
@@ -3162,6 +3266,7 @@
     )
     (= is-scroll-hover-settling false)
     (return-if (if (or (not scroll-hover-owner) is-closed)))
+    (blank)
     (call release-scroll-hover-hold)
     (= is-hover-refresh-pending true)
     (call settle-pointer-dispatch)
@@ -3230,13 +3335,16 @@
   )
   (fn-do _ prepare-pointer-dispatch _
     (return-if false (if is-closed))
+    (blank)
     (call settle-pointer-dispatch)
     (return (not is-closed))
   )
   (fn-do _ settle-pointer-dispatch _
     (return-if (if is-closed))
+    (blank)
     (catch (call (. markup-root markup-batch-queue checkpoint)))
     (return-if (if is-closed))
+    (blank)
     (call settle-popup-focus)
     (call settle-pending-focus)
     (if needs-layout
@@ -3337,6 +3445,7 @@
     (param event PointerUpEvent)
     (let moved (> (call (. press-origin distance) (. event root-point)) 4))
     (return-if (if (not moved)))
+    (blank)
     (for (in popup popups)
       (if (and (. popup opened-by-press) (call (. hit target is-within) popup))
         (let click (call ClickEvent (. event data) (. event button) 1))
@@ -3379,6 +3488,7 @@
     (param target (? Box))
     (let owner (call hover-candidate-owner target))
     (return-if (if (== (as owner (? Pointer)) (as hover-owner (? Pointer)))))
+    (blank)
     (= hover-owner owner)
     (if owner
       (let popup (!! (call find-child-popup owner true)))
@@ -3426,8 +3536,10 @@
       )
     )
     (return-if (if (== (as next (? Pointer)) (as modal-popup (? Pointer)))))
+    (blank)
     (= modal-popup next)
     (return-if (if (not next)))
+    (blank)
     (if (and focused-box (not (call (. focused-box is-within) next)))
       (call clear-focus-state false)
     )
@@ -3576,6 +3688,7 @@
     (param output-color-space Pointer)
     (let fills (call LiveFillState false null null))
     (return-if fills (if (or (== (. popups length) 0) (not native))))
+    (blank)
     (let scale display-scale)
     (let zoom effective-zoom)
     (for (in popup popups)
@@ -3620,6 +3733,7 @@
   (fn-do _ apply-native-position _
     (param requested Point)
     (return-if (if (not native)))
+    (blank)
     (call C:brixGuiWindowSetPosition native (. requested x) (. requested y))
     (call accept-native-position)
   )

@@ -38,6 +38,7 @@
   (let start (call (. text find) login-shell-marker))
   (let end (call (. text find-reverse) login-shell-marker))
   (throw (call Error "The login shell printed no environment") (if (or (== start null) (== end null) (<= end start))))
+  (blank)
   (let variables (call (of Map String String)))
   (for (in entry (call (. ([] text (..< (+ start (. login-shell-marker length)) end)) split) "\x00"))
     (let split (call (. entry find) "="))
@@ -58,6 +59,7 @@
   (fn-do + start _
     (use lock)
     (return-if (if is-pending))
+    (blank)
     (= is-pending true)
     (do-new
       (inline (call adopt))
@@ -70,6 +72,7 @@
   (fn-do _ enroll (? Semaphore)
     (use lock)
     (return-if null (if (not is-pending)))
+    (blank)
     (let waiter (call Semaphore))
     (+= waiters waiter)
     (return waiter)
@@ -115,6 +118,7 @@
   (fn-do _ watch _
     (call (. login-shell-timeout wait))
     (return-if (if is-settled))
+    (blank)
     (= is-timed-out true)
     (call (. process kill-tree))
   )

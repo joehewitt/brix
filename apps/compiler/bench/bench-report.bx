@@ -300,6 +300,7 @@
     )
   )
   (return-if last-path (if (== (. info save-name) last-name)))
+  (blank)
   (let named-path (call bench-saved-path root (. info save-name)))
   (let named
     (call bench-report
@@ -316,6 +317,7 @@
     )
   )
   (throw (call Error (str "Benchmark report already exists: " (. info save-name) ".json")) (if (. (call Path named-path 0) exists)))
+  (blank)
   (let file
     (call File
       (block
@@ -346,6 +348,7 @@
     )
     (if (not lock)
       (throw (call Error (str "Timed out waiting for the benchmark report lock " lock-path)) (if (>= (- (call monotonic-time-nanoseconds) started) bench-lock-limit)))
+      (blank)
       (call (. bench-lock-poll wait))
     )
   )
@@ -369,6 +372,7 @@
   (let runs (list BenchSavedRun))
   (let directory (call Path (str root "/" bench-results-path) 0))
   (return-if runs (if (not (. directory exists))))
+  (blank)
   (let names (list String))
   (for (in entry (. directory entries))
     (if (and (== (. entry kind) (. PathKind file)) (call (. entry name ends-with) ".json"))
@@ -430,6 +434,7 @@
   (let last-path (call bench-saved-path root (call bench-saved-name bench-last-run-name profile)))
   (let report (call bench-read-json last-path))
   (throw (call Error (str "No last run of " profile " to save")) (if (not report)))
+  (blank)
   (let fields (call bench-fields-of report))
   (let results (list JSON))
   (for (in entry (?? (call bench-items ([] fields "retainedResults")) (call (of List JSON))))
@@ -505,6 +510,7 @@
   (let unsaved (list String))
   (let directory (call Path (str root "/" bench-results-path) 0))
   (return-if unsaved (if (not (. directory exists))))
+  (blank)
   (let prefix (str bench-last-run-name "-"))
   (for (in entry (. directory entries))
     (if (or (!= (. entry kind) (. PathKind file)) (not (call (. entry name starts-with) prefix)) (not is-json))
@@ -543,6 +549,7 @@
   (param report (? JSON))
   (let records (map String BenchRecord))
   (return-if records (if (not report)))
+  (blank)
   (for (in key (call (of List String) "retainedResults" "results"))
     (for (in item (?? (call bench-items (call bench-field key report)) (call (of List JSON))))
       (let id (call bench-string (call bench-field "id" item)))
@@ -632,6 +639,7 @@
   (param key String)
   (param value (? JSON))
   (return-if null (if (not value)))
+  (blank)
   (match value
     (case (: fields (map String JSON))
       (return ([] fields key))
@@ -645,6 +653,7 @@
 (fn-do + bench-items (? (list JSON))
   (param value (? JSON))
   (return-if null (if (not value)))
+  (blank)
   (match value
     (case (: items (list JSON))
       (return items)
@@ -658,6 +667,7 @@
 (fn-do + bench-string String
   (param value (? JSON))
   (return-if "" (if (not value)))
+  (blank)
   (match value
     (case (: text String)
       (return text)
@@ -934,6 +944,7 @@
 (fn-do _ bench-is-object Bool
   (param value (? JSON))
   (return-if false (if (not value)))
+  (blank)
   (match value
     (case (: fields (map String JSON))
       (return true)
@@ -1012,6 +1023,7 @@
   (param arguments (list String))
   (let child (catch? (call Process "git" (. ProcessStderr discard) arguments root)))
   (return-if null (if (not child)))
+  (blank)
   (let chunk ([] Byte bench-read-size))
   (let output "")
   (while true
@@ -1036,6 +1048,7 @@
   (param path String)
   (let found (call Path path 0))
   (return-if null (if (not (. found exists))))
+  (blank)
   (let text (catch? (call read-file-text found)))
   (return-if null (if (not text)))
   (return (catch? (call parse-json text)))

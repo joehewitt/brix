@@ -49,6 +49,7 @@
     )
   )
   (throw (call Error "BRIX_SANITIZER is supported only for Apple targets") (if (and (. variant sanitizer) (!= (. target object-format) .macho))))
+  (blank)
   (let build-path (call (. variant build-path) (call target-build-path target platform)))
   (if (!= (. target name) (. (call host-target) name))
     (call build-runtime target build-path)
@@ -101,6 +102,7 @@
   (let status (?? (call (. process wait) null) 1))
   (call (. process close))
   (throw (call Error (str "Linking failed with status " status "\n" output)) (if (!= status 0)))
+  (blank)
   (if record-path
     (call write-file-atomically (call Path record-path) (call to-json (call link-record (. plan arguments))))
   )
@@ -216,6 +218,7 @@
     (+= names key)
   )
   (throw (call Error (str "BRIX_GC_MODE must be one of " (call (. ", " join) names))) (if (not mode)))
+  (blank)
   (let bench (call environment-flag "BRIX_BENCH_RUNTIME"))
   (let benchmark-only (only-if ([] (as mode (map String JSON)) "benchmarkOnly") (if (is mode (map String JSON)))))
   (throw (call Error (str "BRIX_GC_MODE=" name " is benchmark-only; set BRIX_BENCH_RUNTIME=1")) (if (and benchmark-only (is benchmark-only Bool) (as benchmark-only Bool) (not bench))))
@@ -228,10 +231,12 @@
   ; directory, or none when it is empty, `off` or `none`.
   (let value (. (call (. (?? (call env "BRIX_SANITIZER") "") trim)) lowercased))
   (return-if null (if (or (== value "") (== value "off") (== value "none"))))
+  (blank)
   (let sanitizers (call config-member config "sanitizers"))
   (let names (list String))
   (for (in (tuple name sanitizer) (as sanitizers (map String JSON)))
     (return-if sanitizer (if (or (== name value) (== (call config-optional-string sanitizer "buildDirectory") value))))
+    (blank)
     (+= names name)
   )
   (throw (call Error (str "BRIX_SANITIZER must be off, none or one of " (call (. ", " join) names))))
@@ -256,6 +261,7 @@
   (param variant RuntimeVariant)
   ; The runtime library of the variant's sanitizer, where the toolchain's C compiler keeps it.
   (return-if null (if (not (. variant sanitizer))))
+  (blank)
   (let name (call config-string (. variant sanitizer) "library"))
   (let compiler (call config-string (call config-member config "toolchain") "cCompiler"))
   (let process (call Process "/usr/bin/xcrun" compiler (str "-print-file-name=" name)))
@@ -451,6 +457,7 @@
     (if (not ([] required name))
       (let component ([] components name))
       (throw (call Error (str "The runtime build config's " required-by " requires unknown " name)) (if (not component)))
+      (blank)
       (if (and (!= (. target name) (. (call host-target) name)) (not builds-component))
         (throw
           (call Error

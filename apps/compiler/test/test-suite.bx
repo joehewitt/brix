@@ -88,6 +88,7 @@
     )
   )
   (throw (call Error "No Testometer-selected tests were provided") (if (not ids)))
+  (blank)
   (call emit-json (call run-start-json ids))
   (for (in id ids)
     (call emit-json (call test-start-json id))
@@ -137,6 +138,7 @@
   (param variables (map String String))
   (let given (call env "BRIX_TEST_COMPILER"))
   (return-if (. (call Path given) normalized) (if given))
+  (blank)
   (let builder
     (call Process
       (block
@@ -158,6 +160,7 @@
 (fn-do _ remove-scratch _
   (param scratch (? String))
   (return-if (if (not scratch)))
+  (blank)
   (let remover (call Process "/bin/rm" (list "-rf" scratch)))
   (call (. remover wait) null)
   (call (. remover close))
@@ -263,11 +266,13 @@
     (while true
       (let pending (list String) (case-each (in id batch (when (not ([] completed id))))))
       (return-if (if (not pending)))
+      (blank)
       (+= attempts 1)
       (let started (map String Bool))
       (let ended (call attempt pending (str "batch-" index "-" attempts) started))
       (let unfinished (list String) (case-each (in id pending (when (not ([] completed id))))))
       (return-if (if (not unfinished)))
+      (blank)
       (let begun (list String) (case-each (in id unfinished (when ([] started id)))))
       (let stranded (if-expr begun ([] begun 0) ([] unfinished 0)))
       (= ([] completed stranded) true)
@@ -317,6 +322,7 @@
     (param line String)
     (param started (map String Bool))
     (return-if (if (not (call (. line trim)))))
+    (blank)
     (let decoded (catch (call JSON line)))
     (if (is-not decoded (map String JSON))
       (<- stderr (str "Ignoring invalid runner output: " line "\n"))
@@ -329,8 +335,10 @@
       (= ([] started id) true)
     )
     (return-if (if (!= kind "testResult")))
+    (blank)
     (let status (call event-field fields "status"))
     (return-if (if (or (not ([] selected id)) ([] completed id) (not (has suite-statuses status)))))
+    (blank)
     (= ([] completed id) true)
     (= ([] counts status) (+ (!! ([] counts status)) 1))
     (call write-line line)

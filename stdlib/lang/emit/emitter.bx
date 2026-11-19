@@ -714,6 +714,7 @@
   ; touch are joined. Where one list is empty, the other is the result.
   (return-if right (if (== (. left length) 0)))
   (return-if left (if (== (. right length) 0)))
+  (blank)
   (let merged (list ItemRange))
   (let at-left Size 0)
   (let at-right Size 0)
@@ -2381,6 +2382,7 @@
     ; Where the statements of the program's main end, before its cleanups run: the call of `end-main`
     ; of core that the type pass recorded at the main's node.
     (return-if (if (not (call (. program runs-main) (. function module)))))
+    (blank)
     (let fact (call (. facts first-call) (. unit reading) (. tree root)))
     (if (!= fact no-fact)
       (call call-instance (. ([] (. facts calls) fact) callee) (. tree root) (. pending length))
@@ -7526,6 +7528,7 @@
     ; and the line and the column of the node it is raised at. One raised at no node, in a function
     ; the compiler makes, is given no place.
     (throw (call Panic "A panic is raised where no function raises it") (if (== raiser no-function)))
+    (blank)
     (let path (. ([] (. program modules) (. unit source-module)) relative-path))
     (let line U64)
     (let column U64)
@@ -7602,6 +7605,7 @@
     (if (== (. tables message-raiser) no-function)
       (let panic (call compiler-panic id message))
       (return-if (if (== panic (call make-operand .operand-void 0))))
+      (blank)
       (call raise panic id)
       (= in-zone was-free)
       (return)
@@ -7637,6 +7641,7 @@
     ; collector never sees leaves that zone for the call.
     (let helper (. tables source-attacher))
     (throw (call Panic "A panic is raised where no function gives it its source") (if (== helper no-function)))
+    (blank)
     (let path (. ([] (. program modules) (. unit source-module)) relative-path))
     (let mark (. pending length))
     (+= pending panic)
@@ -7738,6 +7743,7 @@
     (let object ([] (. layouts objects) (. types panic-type)))
     (let field (call (. layouts field) object (+ object-header-fields (. report source-slot))))
     (throw (call Panic "The source of a panic is not an optional struct") (if (not (call (. layouts is-struct) (. field layout)))))
+    (blank)
     (let inner (call (. layouts field) (. field layout) 0))
     (let flag (call (. layouts field) (. field layout) 1))
     (let source (call address panic (. field offset) (. field layout) 0))
@@ -10066,6 +10072,7 @@
     (let flag (call memo-flag-of owner property))
     (let live (. instances live))
     (return-if (if (or (== flag (. U32 max)) (== (. live memo-settle) no-instance))))
+    (blank)
     (let dirty (call (. ir reserve-block)))
     (let clean (call (. ir reserve-block)))
     (call branch
@@ -14999,12 +15006,15 @@
     (param from TypeId)
     (param to TypeId)
     (return-if (if (or (not (call holds-items from)) (not (call holds-items to)))))
+    (blank)
     (let from-item (call viewed-item from))
     (let to-item (call viewed-item to))
     (return-if (if (== from-item to-item)))
+    (blank)
     (let from-size (. ([] (. tables layouts rows) (call layout-of from-item site)) size))
     (let to-size (. ([] (. tables layouts rows) (call layout-of to-item site)) size))
     (return-if (if (== from-size to-size)))
+    (blank)
     (if (and (not (. function may-panic)) (not in-landing))
       (call refuse .refused-conversion site)
       (return)
@@ -22047,6 +22057,7 @@
     ; an instance of its own (`enter-unit`), where a read cannot give the constructor's properties
     ; their values.
     (return-if (if (or (not (. filling storing)) (== (. filling count) 0))))
+    (blank)
     (let read (call (. tables first-read) unit-id))
     (while (!= read no-fact)
       (let found (call property-read (. filling type) read))
@@ -22695,6 +22706,7 @@
       )
     )
     (throw (call Panic "A called instance is not in the emitted set") (if (== target-id no-function)))
+    (blank)
     (let target ([] (. tables functions) target-id))
     (let signature ([] (. instances signatures) callee))
     (let raising (!= (. signature errors count) 0))

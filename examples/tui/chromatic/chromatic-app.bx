@@ -588,12 +588,14 @@
   )
   (fn-do _ request-preview _
     (return-if (if (or (not running) (not playing) (!= pending "") help frame-pending)))
+    (blank)
     (= frame-pending true)
     (call request-animation-frame advance-preview)
   )
   (fn-do _ advance-preview _
     (= frame-pending false)
     (return-if (if (or (not running) (not playing) (!= pending "") help)))
+    (blank)
     (let now (call monotonic-time-nanoseconds))
     (+= play-time (/ (as (- now frame-time) Float) 1000000000))
     (= frame-time now)
@@ -634,6 +636,7 @@
     (= stroke-saved false)
     (let pixel (call (. drawing-canvas pixel-at) point))
     (return-if (if (not pixel)))
+    (blank)
     (= cursor-x (. pixel x))
     (= cursor-y (. pixel y))
     (if (and (== tool 3) (not erase))
@@ -642,6 +645,7 @@
       (return)
     )
     (return-if (if (not (call editable-layer))))
+    (blank)
     (= stroke-color (if-expr (or erase (== tool 1)) 0 ink))
     (if (and (== tool 2) (not erase))
       (let index (+ (* layer cel-size) (* cursor-y sprite-width) cursor-x))
@@ -661,6 +665,7 @@
   (fn-do _ drag-stroke _
     (param point Point)
     (return-if (if (not drawing)))
+    (blank)
     (let pixel (call (. drawing-canvas pixel-at) point))
     (if pixel
       (= cursor-x (. pixel x))
@@ -689,6 +694,7 @@
     (param y Int)
     (let index (+ (* layer cel-size) (* y sprite-width) x))
     (return-if (if (== ([] (. ([] (. document frames) selected) pixels) index) stroke-color)))
+    (blank)
     (if (not stroke-saved)
       (call checkpoint)
       (= stroke-saved true)
@@ -728,12 +734,14 @@
   (fn-do _ undo _
     (= drawing false)
     (return-if (if (not (. history can-undo))))
+    (blank)
     (call (. history undo))
     (= notice "Undid the last edit. Y redoes it.")
   )
   (fn-do _ redo _
     (= drawing false)
     (return-if (if (not (. history can-redo))))
+    (blank)
     (call (. history redo))
     (= notice "Redid the edit.")
   )
@@ -789,6 +797,7 @@
   (fn-do _ clear-layer _
     (= drawing false)
     (return-if (if (not (call editable-layer))))
+    (blank)
     (call checkpoint)
     (for (in index (..< (* layer cel-size) (* (+ layer 1) cel-size)))
       (= ([] (. ([] (. document frames) selected) pixels) index) 0)
@@ -813,6 +822,7 @@
     (= drawing false)
     (let next (call max 1 (call min 24 (+ (. document fps) delta))))
     (return-if (if (== next (. document fps))))
+    (blank)
     (call checkpoint)
     (= (. document fps) next)
     (= play-time 0)
@@ -887,6 +897,7 @@
   (fn-do _ resolve-pending _
     (param keep Bool)
     (return-if (if (and keep (not (call save)))))
+    (blank)
     (let action pending)
     (= pending "")
     (call focus-studio)

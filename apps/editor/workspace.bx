@@ -153,6 +153,7 @@
   (fn-do + activate _
     (param document EditorDocument)
     (return-if (if (== (?. active id) (. document id))))
+    (blank)
     (= active document)
     (call follow-active false)
     (+= revision 1)
@@ -161,6 +162,7 @@
   (fn-do + step _
     (param offset Int)
     (return-if (if (== (. documents length) 0)))
+    (blank)
     (let current (call index-of active))
     (let next (% (+ current offset (. documents length)) (. documents length)))
     (call activate ([] documents next))
@@ -203,8 +205,10 @@
   (fn-do + restore _
     (let saved (call (. state read) workspace-key workspace-version))
     (return-if (if (not saved)))
+    (blank)
     (let fields (catch? (call (. (call JSONReader workspace-key saved) object))))
     (return-if (if (not fields)))
+    (blank)
     (= is-restoring true)
     (let folder-text (catch? (call (. ([] fields "folder") string))))
     (if folder-text
@@ -241,6 +245,7 @@
   )
   (fn-do + persist _
     (return-if (if is-restoring))
+    (blank)
     (let open (call (of List JSON) (in (as (str (. each path)) JSON) documents)))
     (let folder-text (? String) (only-if (str folder) (if folder)))
     (let active-text (? String) (only-if (str (. active path)) (if active)))
@@ -283,6 +288,7 @@
   (fn-do _ index-of Index
     (param document (? EditorDocument))
     (return-if 0 (if (not document)))
+    (blank)
     (for (in index (..< 0 (. documents length)))
       (return-if index (if (== (. ([] documents index) id) (. document id))))
     )
@@ -291,8 +297,10 @@
   (fn-do _ restore-recents _
     (let saved (call (. state read) recents-key recents-version))
     (return-if (if (not saved)))
+    (blank)
     (let items (catch? (call (. (call JSONReader recents-key saved) items))))
     (return-if (if (not items)))
+    (blank)
     (let keys (list String))
     (for (in item items)
       (let text (catch? (call (. item string))))

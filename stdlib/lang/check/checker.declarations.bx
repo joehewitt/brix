@@ -728,6 +728,7 @@
     (param decl DeclId)
     (param property PropertyDecl)
     (return-if (if (not (call check-keyed-name property))))
+    (blank)
     (call check-annotations property)
     (call check-property decl property)
     (if (and (!= (. property owner) 0) (. property name))
@@ -1067,6 +1068,7 @@
     (let facets (. program facets))
     (let found (call (. facets index-of) module (. event owner)))
     (return-if (if (or (not found) (!= ([] (. facets states) found) .facet-bound))))
+    (blank)
     (let index found)
     (let owner (call (. types plain-class) ([] (. facets owner-modules) index) ([] (. facets owner-decls) index)))
     (call check-event-types event owner)
@@ -1185,6 +1187,7 @@
     (let facets (. program facets))
     (let found (call (. facets index-of) module decl))
     (return-if (if (not found)))
+    (blank)
     (let index found)
     (let name (. (!! (. facet facet)) text))
     (let owner (?? (?. (call (. types type-syntax-name) tree (. facet receiver)) text) "its owner"))
@@ -1200,6 +1203,7 @@
     )
     (call check-facet-shape facet name)
     (return-if (if (!= state .facet-bound)))
+    (blank)
     (call check-facet-interfaces decl facet name)
     (let owner-ref (call DeclRef ([] (. facets owner-modules) index) ([] (. facets owner-decls) index)))
     (let owner-type (call (. types plain-class) (. owner-ref module) (. owner-ref decl)))
@@ -1231,6 +1235,7 @@
     ; to give a property the facet stores a new value (`overrides-facet`).
     (let facets (. program facets))
     (return-if (if (or (== (. facets count) 0) (== (. class base) 0))))
+    (blank)
     (let env (call (. types class-env) module decl))
     (let level (? TypeId) (call (. types evaluate-type) module tree (. class base) env))
     (call (. types env-release) env)
@@ -1278,6 +1283,7 @@
     (match? decl
       (case (call .decl-function fn)
         (return-if false (if (or (. fn is-static) (not (. fn name)) (not (call is-overridable-kind (. fn kind))))))
+        (blank)
         (for (in member (call (. target members-named) members (. fn name)))
           (match? ([] (. target decls) member)
             (case (call .decl-function other)
@@ -1288,6 +1294,7 @@
       )
       (case (call .decl-property property)
         (return-if false (if (or (== (. property value) 0) (not (. property name)))))
+        (blank)
         (for (in member (call (. target members-named) members (. property name)))
           (match? ([] (. target decls) member)
             (case (call .decl-property other)
@@ -1306,6 +1313,7 @@
     ; An interface a facet names that names nothing is reported (`missing-type`), and so is a class, a
     ; struct or a tuple, which a facet, part of its class, is not built on.
     (return-if (if (== (. facet interfaces count) 0)))
+    (blank)
     (let env (call holder-env (call DeclRef module decl)))
     (for (in interface ([] (. ([] (. program modules) module) syntax-pool) (. facet interfaces)))
       (if (not (call report-missing-type interface env))
@@ -1390,6 +1398,7 @@
     ; Whether a facet's property of a type written may start with no value: an optional type, or one
     ; that names nothing, which is reported where it is written.
     (return-if false (if (== written 0)))
+    (blank)
     (call (. types clear-fault))
     (let made (call (. types evaluate-type) module tree written (. frame env)))
     (call (. types clear-fault))
@@ -1482,6 +1491,7 @@
       (let base (call (. types evaluate-type) module tree (. class base) env))
       (call (. types env-release) env)
       (return-if (if missing))
+      (blank)
       (= illegal (and (!= base invalid-type) (call is-illegal-base (call (. types intrinsic-of) base))))
     )
     (if illegal
@@ -1852,6 +1862,7 @@
     (param property PropertyDecl)
     (let name (. property name))
     (return-if true (if (or (not name) (== (call (. name text find) ".") null))))
+    (blank)
     (if (!= (. property owner) 0)
       (let mark (. scratch types mark))
       (let owner (call (. types class-pattern-with-args) module (. property owner) mark))

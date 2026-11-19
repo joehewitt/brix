@@ -124,6 +124,7 @@
   )
   (fn-do + run _
     (return-if (if (not is-active)))
+    (blank)
     (let callback action)
     (if callback
       (call callback
@@ -141,6 +142,7 @@
   (fn-do + press _
     (param event KeyPressEvent)
     (return-if (if (and (. event is-repeat) (not repeat))))
+    (blank)
     (call run)
   )
 )
@@ -188,11 +190,13 @@
       (return)
     )
     (return-if (if (and (. event is-repeat) (not repeat))))
+    (blank)
     (call (?. command run))
   )
   (fn-do + release _
     (param event KeyReleaseEvent)
     (return-if (if (or (not tap-deadline) (!= (. event native-key-code) armed-native-key-code))))
+    (blank)
     (let is-tap (not (. tap-deadline has-passed)))
     (= tap-deadline null)
     (if (and is-tap is-active)
@@ -248,6 +252,7 @@
   (fn-do + press _
     (param event KeyPressEvent)
     (return-if (if (. event is-repeat)))
+    (blank)
     (if (== activation (. KeyModeActivation persistent))
       (call (. mode set) value)
       (else
@@ -262,6 +267,7 @@
       (return)
     )
     (return-if (if (. event is-repeat)))
+    (blank)
     (<- key-pressed-shared (. event native-key-code))
   )
   (fn-do + release _
@@ -274,6 +280,7 @@
   (fn-do + update-modifiers _
     (param modifiers PointerModifiers)
     (return-if (if (or (== activation (. KeyModeActivation persistent)) (not (call (. key is-modifier-only))))))
+    (blank)
     (if (call (. key matches-modifiers) modifiers)
       (<- modifiers-matched true)
       (else
@@ -351,8 +358,10 @@
   (param event KeyPressEvent)
   (let matches (call matching-key-bindings bindings event))
   (return-if false (if (== (. matches length) 0)))
+  (blank)
   (call (. event cancel))
   (return-if true (if (call key-binding-parts-conflict matches)))
+  (blank)
   (let enabled (call (of List KeyBinding) (in each matches (when (. each is-active)))))
   (for (in binding enabled)
     (if (> (. enabled length) 1)
@@ -446,6 +455,7 @@
 (fn-do _ key-binding-parts-conflict _
   (param bindings (list KeyBinding))
   (return-if false (if (< (. bindings length) 2)))
+  (blank)
   (let holds 0)
   (let taps 0)
   (for (in binding bindings)

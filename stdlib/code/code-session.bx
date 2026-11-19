@@ -207,11 +207,13 @@
   )
   (fn-do + undo Bool
     (return-if false (if (not (. history can-undo))))
+    (blank)
     (call (. history undo))
     (return true)
   )
   (fn-do + redo Bool
     (return-if false (if (not (. history can-redo))))
+    (blank)
     (call (. history redo))
     (return true)
   )
@@ -220,6 +222,7 @@
     (param replaces-before Size (= 0))
     (param replaces-length Size (= 0))
     (return-if (if (and (== (. typed size) 0) (== replaces-length 0))))
+    (blank)
     (let start selection-start)
     (let end selection-end)
     (if (and (> replaces-before 0) (not has-selection))
@@ -288,6 +291,7 @@
   (fn-do + toggle-comment _
     (let marker comment-marker)
     (return-if (if (not marker)))
+    (blank)
     (let first (call (. text line-at) selection-start))
     (let last (call last-selected-line))
     (let block-start (call (. text line-start) first))
@@ -296,6 +300,7 @@
     (let lines (call (of List String) (call (. original split) "\n")))
     (let changed (call (. "\n" join) (call code-toggled-comments lines marker)))
     (return-if (if (== changed original)))
+    (blank)
     (let keeps-selection has-selection)
     (let old-caret caret)
     (let marker-at (+ block-start (call code-indent-size ([] lines 0))))
@@ -321,6 +326,7 @@
     (let lines (call (. (call (. text text-in) block-start block-end) split) "\n"))
     (let changed (call (. "\n" join) (in (call outdented-line each) lines)))
     (return-if (if (== changed (call (. text text-in) block-start block-end))))
+    (blank)
     (let keeps-selection has-selection)
     (call edit block-start block-end changed "Outdent")
     (if keeps-selection
@@ -334,6 +340,7 @@
       (return)
     )
     (return-if (if (== caret 0)))
+    (blank)
     (let line-start (call (. text line-start) (call (. text line-at) caret)))
     (let prefix (call (. text text-in) line-start caret))
     (if (and (> (. prefix size) 0) (!= indent-unit "\t") (call is-all-spaces prefix))
@@ -350,6 +357,7 @@
       (return)
     )
     (return-if (if (>= caret (. text length))))
+    (blank)
     (call edit caret (call (. text next-char) caret) "" "Delete" true)
   )
   (fn-do + delete-word-backward _
@@ -407,6 +415,7 @@
     (param texts (list String))
     (param title _ (= "Replace"))
     (return-if (if (== (. starts length) 0)))
+    (blank)
     (let low ([] starts 0))
     (let parts (list String))
     (let last low)
@@ -577,8 +586,10 @@
       (= index (call (. text previous-char) index))
     )
     (return-if index (if (== index 0)))
+    (blank)
     (let kind (call char-class (call (. text previous-char) index)))
     (return-if (call (. text previous-char) index) (if (== kind (. CodeCharClass newline))))
+    (blank)
     (while (and (> index 0) (== (call char-class (call (. text previous-char) index)) kind))
       (= index (call (. text previous-char) index))
     )
@@ -591,8 +602,10 @@
       (= index (call (. text next-char) index))
     )
     (return-if index (if (>= index (. text length))))
+    (blank)
     (let kind (call char-class index))
     (return-if (call (. text next-char) index) (if (== kind (. CodeCharClass newline))))
+    (blank)
     (while (and (< index (. text length)) (== (call char-class index) kind))
       (= index (call (. text next-char) index))
     )
@@ -607,6 +620,7 @@
     (param last Size)
     (let active document)
     (return-if (call (of List SyntaxFold)) (if (not active)))
+    (blank)
     (if (or (!= fold-revision revision) (< first fold-first) (> last fold-last))
       (= fold-first (if-expr (> first code-window-before) (- first code-window-before) 0))
       (= fold-last (+ last code-window-after))
@@ -635,6 +649,7 @@
       )
     )
     (return-if false (if (not found)))
+    (blank)
     (call (. folds collapse) found)
     (call cover)
     (<- updated revision)
@@ -642,6 +657,7 @@
   )
   (fn-do + unfold Bool
     (return-if false (if (not (call (. folds unfold) (call (. text line-at) caret)))))
+    (blank)
     (<- updated revision)
     (return true)
   )
@@ -652,6 +668,7 @@
       (else
         (let found (call fold-at line))
         (return-if false (if (not found)))
+        (blank)
         (call (. folds collapse) found)
         (call cover)
       )
@@ -662,6 +679,7 @@
   (fn-do + fold-all _
     (let active document)
     (return-if (if (not active)))
+    (blank)
     (call (. folds fold-all) (call (. active folds) (. text bytes) (. text length)))
     (call cover)
     (<- updated revision)
@@ -777,6 +795,7 @@
     (param budget _ (= code-edit-parse-budget))
     (let active document)
     (return-if (if (or (not active) (. active is-parsing))))
+    (blank)
     (if (call (. active parse) (. text bytes) (. text length) budget)
       (= has-parse-error (. active has-error))
       (else-if (. active is-parsing)
@@ -795,6 +814,7 @@
     (call (. done await))
     (let edited (call (. active finish-parse)))
     (return-if (if (not document)))
+    (blank)
     (= has-parse-error (. active has-error))
     (+= revision 1)
     (if edited
@@ -806,6 +826,7 @@
     ; Starts a task that marks the lines that differ from the baseline, unless one runs already: it
     ; goes on until the marks match the last edit.
     (return-if (if (and marker (not (. marker is-finished)))))
+    (blank)
     (= marker
       (do-new
         (inline (call mark-changes))
@@ -959,6 +980,7 @@
   (fn-do _ outdented-line String
     (param line String)
     (return-if ([] line (... 1)) (if (call (. line starts-with) "\t")))
+    (blank)
     (let count Size 0)
     (for (in char line)
       (if (or (!= char (char " ")) (>= count (. indent-unit size)))
@@ -1072,6 +1094,7 @@
           (return true)
         )
         (return-if false (if (or (. inserted size) (. it inserted size) (not (. removed size)) (not (. it removed size)))))
+        (blank)
         (if (== (+ (. it start) (. it removed size)) start)
           (= start (. it start))
           (= removed (str (. it removed) removed))

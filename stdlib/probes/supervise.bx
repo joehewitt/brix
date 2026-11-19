@@ -177,6 +177,7 @@
       (<- stderr (str "warning: " trace-error "\n"))
     )
     (return-if (if (not (. (call Path (!! trace-path)) is-file))))
+    (blank)
     (<- stderr (str "trace: " (!! trace-path) "\n"))
     (<- stderr "query: brix probes summary · log · agg --field F · durations · tree · timeline · outliers (brix probes --help)\n")
   )
@@ -184,10 +185,12 @@
     (param limit Seconds)
     (call (. limit wait))
     (return-if (if is-finished))
+    (blank)
     (= timed-out true)
     (call (?. child terminate))
     (call (. grace-period wait))
     (return-if (if is-finished))
+    (blank)
     (call (?. child kill))
   )
   (fn-do + finish _
@@ -231,6 +234,7 @@
     )
   )
   (return-if null (if (== (. number length) 0)))
+  (blank)
   (let dots 0)
   (for (in char number)
     (if (== char '.')
@@ -262,6 +266,7 @@
     )
   )
   (return-if (if (< (. traces length) kept-traces)))
+  (blank)
   (let ordered
     (block
       (call sort traces (:using (=> (a b) (if-expr (< (call trace-stamp a) (call trace-stamp b)) .lesser .greater))))
@@ -299,6 +304,7 @@
 (fn-do _ absolute String
   (param path String)
   (return-if path (if (or (== path "") (call (. path starts-with) "/"))))
+  (blank)
   (let resolved
     (scope (. (call Path path) resolved)
       (on-error (: error Error)
@@ -315,6 +321,7 @@
   (param code Int)
   (let trace (call absolute (?? (. run trace-path) "")))
   (return-if (if (or (== trace "") (not (. (call Path trace) is-file)))))
+  (blank)
   (let kept (call trace-sidecar trace "probes.json"))
   (let record
     (call (of Map String JSON)

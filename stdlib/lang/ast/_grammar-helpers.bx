@@ -834,6 +834,7 @@
   (param tree ASTBuilder)
   (param child SyntaxId)
   (throw (call Panic "ASTBuilder child pool exceeds U32 capacity") (if (>= (. tree children length) (. U32 max))))
+  (blank)
   (call (. tree children append) child)
 )
 
@@ -1487,6 +1488,7 @@
   (throw (call BrixSyntaxError location "@rollback is only supported on grammar functions") (if (call has-annotation annotations "rollback")))
   (throw (call BrixSyntaxError location "@live is not supported on getters") (if (call has-annotation annotations "live")))
   (throw (call BrixSyntaxError location "@no-return is not supported on getters") (if (call has-annotation annotations "no-return")))
+  (blank)
   (let node
     (call ASTFunction
       (block
@@ -1663,6 +1665,7 @@
   (param variants (of ImmutableArray ArgumentVariant))
   (param body (? SyntaxId))
   (return-if null (if (not body)))
+  (blank)
   (let replacement SyntaxId body)
   (for (in variant variants)
     (match? variant
@@ -1910,6 +1913,7 @@
   (param arm SyntaxId)
   (param is-optional Bool)
   (return-if arm (if (not is-optional)))
+  (blank)
   (let alternative
     (match ([] (. tree nodes) arm)
       (case (call .node-structure-match row)
@@ -1984,6 +1988,7 @@
       )
     )
   )
+  (blank)
   (lazy defaulted
     (paragraph
       "\"match?\" differs from \"match\" only where no arm is taken, and this default arm is taken wherever no arm before it is; write \"match\""
@@ -2033,6 +2038,7 @@
         )
       )
       (throw (call BrixSyntaxError loc "Stream match has more than one helper" source (. tree source-path)) (if helper))
+      (blank)
       (lazy source (. tree source))
       (if (!= offset 0)
         (throw
@@ -2055,6 +2061,7 @@
   )
   (if helper
     (throw (call BrixSyntaxError loc "with helper requires grammar arms" (. tree source) source-path) (if (not has-stream-match)))
+    (blank)
     (lazy source-path (. tree source-path))
   )
   (let skipped U32 (if-expr helper 1 0))
@@ -2403,6 +2410,7 @@
   (param tags (? (of ImmutableArray SyntaxId)))
   (param body (? SyntaxId))
   (return-if (call (. tree syntax-or-invalid) body) (if (not tags)))
+  (blank)
   (let bindings tags)
   (match? ([] (. tree nodes) type)
     (case (call .node-type-identifier named)
@@ -2652,6 +2660,7 @@
       )
       (default
         (throw (call BrixSyntaxError (call (. tree location) arg) "Redundant block") (if body))
+        (blank)
         (= body arg)
       )
     )
@@ -3187,6 +3196,7 @@
   (blank)
   (if mixed
     (throw (call BrixSyntaxError mixed-end "Cannot mix sequence and map items in one bracket pattern"))
+    (blank)
     (lazy mixed-end (call exclusive-end-location (call (. tree location) mixed)))
   )
   (blank)
@@ -3211,6 +3221,7 @@
     (if (call (. tree is-type-remainder) pattern)
       (if found
         (throw (call BrixSyntaxError pattern-end "Pattern may contain only one remainder"))
+        (blank)
         (lazy pattern-end (call exclusive-end-location (call (. tree location) pattern)))
       )
       (= found true)
@@ -3283,6 +3294,7 @@
       )
     )
     (throw (call BrixSyntaxError loc (str "Conflicting do task scheduling annotation '" (. name text) "'")) (if (and found (!= scheduling requested))))
+    (blank)
     (= scheduling requested)
     (= found true)
   )
@@ -3398,6 +3410,7 @@
     (let effect (call compilation-effect-named (. name text)))
     (throw (call BrixSyntaxError loc (str "Unknown compilation effect '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
     (throw (call BrixSyntaxError loc (str "Conflicting compilation effect '" (. name text) "'")) (if (call effects-conflict mask effect)))
+    (blank)
     (= mask (/or/ mask effect))
   )
   (return (call normalize-compilation-effects mask))
@@ -3414,12 +3427,14 @@
       (continue)
     )
     (throw (call BrixSyntaxError loc "'@door' is only for a function") (if (call (. name text starts-with) "door:")))
+    (blank)
     (if (call (. name text starts-with) "without:")
       (continue)
     )
     (let effect (call compilation-effect-named (. name text)))
     (throw (call BrixSyntaxError loc (str "Unknown do annotation '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
     (throw (call BrixSyntaxError loc (str "Conflicting do annotation '" (. name text) "'")) (if (call effects-conflict effects effect)))
+    (blank)
     (= effects (/or/ effects effect))
   )
   (return (call DoAnnotationMasks (call normalize-compilation-effects effects) features))
@@ -3495,6 +3510,7 @@
   ; The annotations of a conversion, which is no door and bans no effect.
   (for (in name names)
     (throw (call BrixSyntaxError loc "A conversion cannot be a door") (if (call (. name text starts-with) "door:")))
+    (blank)
     (if (call (. name text starts-with) "without:")
       (throw
         (call BrixSyntaxError
@@ -3539,6 +3555,7 @@
   (for (in name names)
     (if (call (. name text starts-with) "door:")
       (throw (call BrixSyntaxError loc "A function is the door of one effect") (if door))
+      (blank)
       (= door (call (. tree atom) ([] (. name text) (... (. "door:" length)))))
     )
   )
@@ -3555,8 +3572,10 @@
   ; and for any other name a ban of the effect it names, which the checker looks up. In a header
   ; module `gc` and `blocking` are the labels of a C function, and no other name is known.
   (return-if annotations (if (not sections)))
+  (blank)
   (let names (. sections without))
   (return-if annotations (if (== (. names length) 0)))
+  (blank)
   (let native (call (. tree source-path ends-with) ".h"))
   (let joined (call (of scratch-array Atom) tree (+ (. annotations length) (. names length))))
   (let filled Size 0)
@@ -3568,9 +3587,11 @@
     (let text (. name text))
     (if (== text "cancel")
       (throw (call BrixSyntaxError loc "'without cancel' is only for a do block") (if (not is-block)))
+      (blank)
       (continue)
     )
     (throw (call BrixSyntaxError loc "'without blocking' is only for a C function") (if (and (== text "blocking") (not native))))
+    (blank)
     (let meant
       (match text
         (case= "heap"
@@ -3597,6 +3618,7 @@
       )
     )
     (throw (call BrixSyntaxError loc (str "Unknown name '" text "' after without")) (if (== (. meant length) 0)))
+    (blank)
     (for (in index (..< 0 filled))
       (throw (call BrixSyntaxError loc (str "'" text "' is named twice")) (if (== (. ([] joined index) text) meant)))
     )
@@ -3682,6 +3704,7 @@
   (param body (? SyntaxId))
   ; A function's body inside the bindings of the `with` section on its header.
   (return-if body (if (not sections)))
+  (blank)
   (let bindings (. sections bindings))
   (return-if body (if (== (. bindings length) 0)))
   (throw (call BrixSyntaxError loc "A 'with' section needs a do function") (if (not is-imperative)))
@@ -4186,6 +4209,7 @@
     )
     (blank)
     (return-if null (if (call is-error-transformer-declaration body catchers)))
+    (blank)
     (let joined (call auto-join body right))
     (return-if null (if (not joined)))
     (return (call append (call ASTCatchExpression ([] (. nodes loc) left) joined raw catchers)))
@@ -4773,6 +4797,7 @@
           (let loc (call exclusive-end-location (. row loc)))
           (let message "Multiple fallbacks in one state transition group")
           (throw (call BrixSyntaxError loc message source source-path) (if found))
+          (blank)
           (= found true)
         )
       )

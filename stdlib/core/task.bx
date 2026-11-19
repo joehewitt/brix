@@ -67,6 +67,7 @@
     ; Suspends the active task until this task ends. A task that waits for itself panics, since it
     ; could never wake.
     (throw (call Panic "A task cannot wait for itself") (if (== handle (call C:brixGetActiveTaskHandle))))
+    (blank)
     (let canceled (if-expr record (call (. record wait)) (call C:brixWaitForTask handle)))
     (call check-task-cancelation canceled)
   )
@@ -85,6 +86,7 @@
     ; Ends the task, as `use` does where its block ends: cancels it where it still runs, then waits
     ; for it.
     (return-if (if is-finished))
+    (blank)
     (call cancel)
     (call wait)
   )
@@ -261,6 +263,7 @@
   (prop _ waiters _ (= (call (of List U64))))
   (fn-do + await (? Value)
     (return-if value (if is-finished))
+    (blank)
     (let task (call Task))
     (+= waiters (. task handle))
     (while (not is-finished)
@@ -386,6 +389,7 @@
   )
   (fn-do + run _
     (return-if (if has-run))
+    (blank)
     (= has-run true)
     (call action
       (block

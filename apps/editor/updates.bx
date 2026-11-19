@@ -47,6 +47,7 @@
   )
   (fn-do + start _
     (return-if (if (not version)))
+    (blank)
     (do-new
       (call watch)
     )
@@ -59,11 +60,13 @@
   (fn-do + download _
     (let shown available)
     (return-if (if (not shown)))
+    (blank)
     (let ignored (call open-url (. shown page)))
   )
   (fn-do + dismiss _
     (let shown available)
     (return-if (if (not shown)))
+    (blank)
     (= available null)
     (let fields
       (call (of Map String JSON)
@@ -121,6 +124,7 @@
   (fn-do _ dismissed (? String)
     (let saved (call (. state read) updates-key updates-version))
     (return-if null (if (not saved)))
+    (blank)
     (let fields (catch? (call (. (call JSONReader updates-key saved) object))))
     (return-if null (if (not fields)))
     (return (catch? (call (. ([] fields "dismissed") string))))
@@ -151,6 +155,7 @@
   (let response (call http-get (call URL updates-url)))
   (return-if null (if (== (. response status) (. HTTPStatus not-found))))
   (throw (call Error (str "brix-lang.com answered " (. response status))) (if (!= (. response status) (. HTTPStatus ok))))
+  (blank)
   (let fields (call (. (call JSONReader "latest.json" (call parse-json (. response text))) object)))
   (let minimum (catch? (call (. ([] fields "minimumSystem") string))))
   (return (call EditorRelease (call (. ([] fields "version") string)) (call (. ([] fields "page") string)) minimum))
@@ -159,6 +164,7 @@
 (fn-do _ editor-version (? String)
   (let executable (catch? (call executable-path)))
   (return-if null (if (not executable)))
+  (blank)
   (let contents (?. (. executable parent) parent))
   (return-if null (if (not contents)))
   (return (call plist-string (/ contents "Info.plist") "CFBundleShortVersionString"))
@@ -176,6 +182,7 @@
 (fn-do _ editor-runs-on Bool
   (param minimum (? String))
   (return-if true (if (not minimum)))
+  (blank)
   (let system
     (call plist-string
       (block
@@ -201,6 +208,7 @@
   (param version String)
   (let pattern (catch? (call Regex "^(\\d{4})\\.(\\d{2})\\.(\\d{2})-(\\d+)")))
   (return-if (call (of List Int)) (if (not pattern)))
+  (blank)
   (let found (catch? (call (. pattern find) version)))
   (return-if (call (of List Int)) (if (or (not found) (!= (. found value) version))))
   (return (call (of List Int) (in (call Int (?? (call (. found group) each) "0")) (list 1 2 3 4))))
@@ -210,6 +218,7 @@
   (param text String)
   (let pattern (catch? (call Regex "^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?")))
   (return-if (call (of List Int)) (if (not pattern)))
+  (blank)
   (let found (catch? (call (. pattern find) text)))
   (return-if (call (of List Int)) (if (not found)))
   (return (call (of List Int) (in (call Int (?? (call (. found group) each) "0")) (list 1 2 3))))
@@ -220,8 +229,10 @@
   (param key String)
   (let text (catch? (call read-file-text path)))
   (return-if null (if (not text)))
+  (blank)
   (let pattern (catch? (call Regex (str "<key>" (call regex-escape key) "</key>\\s*<string>([^<]*)</string>"))))
   (return-if null (if (not pattern)))
+  (blank)
   (let found (catch? (call (. pattern find) text)))
   (return-if null (if (not found)))
   (return (call (. found group) 1))

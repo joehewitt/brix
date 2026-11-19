@@ -220,6 +220,7 @@
     ; Waits for the process to end and gives its exit status with the resources it used. Where the
     ; process was already waited for, it gives what that wait collected.
     (return-if reaped-usage (if is-reaped))
+    (blank)
     (if (call C:brixSuspendActiveTaskUntilProcExit pid null)
       (call check-task-cancelation (. (call Task) is-cancel-in-force))
       (return null)
@@ -230,9 +231,11 @@
   )
   (fn-do _ collect I32
     (return-if 0 (if is-reaped))
+    (blank)
     (let usage ([] ProcessUsage 1))
     (let error (call C:brixReapProcess pid usage))
     (return-if error (if (!= error 0)))
+    (blank)
     (let reaped ([] usage 0))
     (= status (if-expr (!= (. reaped signal) 0) (+ signaled-status-base (. reaped signal)) (. reaped exit-code)))
     (= reaped-usage reaped)
@@ -250,6 +253,7 @@
     ; cancellation held off, so that it is reaped however the task that started it ends. A cleanup
     ; calls it; where the process was already waited for, it does nothing.
     (return-if (if is-reaped))
+    (blank)
     (call kill)
     (do (without cancel)
       (do
@@ -259,6 +263,7 @@
   )
   (fn-do + terminate-group _
     (return-if (if (not leads-group)))
+    (blank)
     (call C:kill (- pid) C:SIGTERM)
   )
   (fn-do + kill-tree _
@@ -293,6 +298,7 @@
   (fn-do _ send-signal _
     (param number I32)
     (return-if (if is-reaped))
+    (blank)
     (call C:kill pid number)
   )
   (fn-expr + begin-using _
@@ -343,6 +349,7 @@
   (param descriptors (list I32) (= (call (of List I32))))
   (let ends ([] I32 2))
   (throw (call IOError (str "Unable to create a socket for " name)) (if (not (call C:brixSocketPair ends))))
+  (blank)
   (let passed (list I32))
   (+= passed ([] ends 1))
   (++= passed descriptors)
@@ -396,6 +403,7 @@
       )
     )
     (return-if (call (of List Int)) (if (<= count 0)))
+    (blank)
     (if (< count capacity)
       (let listed (list Int))
       (for (in index (..< 0 count))

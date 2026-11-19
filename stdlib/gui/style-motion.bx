@@ -78,6 +78,7 @@
   (fn-do + watch-mounts _
     (let found (call motion-style))
     (return-if (if (not found)))
+    (blank)
     (for (in name (list "animation" "enter-space" "match"))
       (let offset (call slot-named found name))
       (if offset
@@ -94,6 +95,7 @@
     (param info StyleInfo)
     (let found (call motion-style))
     (return-if (. U64 max) (if (not found)))
+    (blank)
     (let mask U64)
     (for (in property (. info properties))
       (if (call watches found info property)
@@ -169,6 +171,7 @@
     (param start Duration)
     (let now (?? (?. (. owner frame-clock) now) start))
     (return-if (if (<= start now)))
+    (blank)
     (for (in play plays)
       (if (and (. play is-entrance) (== (as (. play owner) Pointer) (as owner Pointer)))
         (= (. play delay) (- start now))
@@ -234,6 +237,7 @@
     (let code (/or/ (/lshift/ (as (. info style-index) U64) 32) (as (. property offset) U64)))
     (let known ([] keys code))
     (return-if known (if known))
+    (blank)
     (let key (call slot-named motion (str "motion." (. property name))))
     (let group
       (scope (only-if (call slot-named motion "motion.transform") (if in-transform-group))
@@ -269,8 +273,10 @@
     (let node (as owner MarkupElement))
     (let found (call running node info offset))
     (return-if found (if found))
+    (blank)
     (let property (call (. info property-at) offset))
     (return-if null (if (not property)))
+    (blank)
     (let settled (call style-read-settled node info offset))
     (call style-watch-changes info offset)
     (let made
@@ -294,6 +300,7 @@
   (fn-do + forget _
     (param owner StyleMotionOwner)
     (return-if (if (and (== (. runs length) 0) (== (. plays length) 0) (== (. held length) 0))))
+    (blank)
     (for (in play (call (of List KeyframeRun) held))
       (if (== (as (. play owner) Pointer) (as owner Pointer))
         (-= held play)
@@ -437,6 +444,7 @@
     (let started (call MotionChannel from style-motion-precision))
     (call (. started retarget) target motion begins)
     (return-if (if (not (. started is-moving))))
+    (blank)
     (let sample (if-expr ends-none (. change old-bits) (. change bits)))
     (let moving
       (scope (?? run (call StyleMotionRun this node owner (. change info) (. change offset) property presenter))
@@ -493,6 +501,7 @@
     (param shown (list F64))
     (let given values)
     (return-if (if (not given)))
+    (blank)
     (let from (?? component 0))
     (for (in index (..< 0 (. given length)))
       (let place (+ from index))
@@ -556,14 +565,17 @@
     )
     (let settled (call style-read-settled node info offset))
     (return-if true (if (call style-motion-vector-into into property (. settled bits) (. settled none))))
+    (blank)
     (let vector (?? (call style-motion-none-vector property (. settled bits)) blank))
     (return-if false (if (not vector)))
+    (blank)
     (++= into vector)
     (return true)
   )
   (fn-do + adopt _
     (param sample (? StyleObjectHolder))
     (return-if (if (not sample)))
+    (blank)
     (call (. presenter adopt) sample)
     (= blank (?? blank (call (. sample motion-none-vector))))
   )
@@ -571,6 +583,7 @@
     (param layer StyleMotionLayer)
     (let whole based)
     (return-if null (if (not (call fill-base whole))))
+    (blank)
     (let length (if-expr (!= (. layer component) null) 1 (. whole length)))
     (call (. opened clear))
     (match (. layer mode)
@@ -587,6 +600,7 @@
       (default
         (let part (. layer component))
         (return-if whole (if (or (== part null) (>= part (. whole length)))))
+        (blank)
         (+= opened ([] whole part))
       )
     )
@@ -595,6 +609,7 @@
   (fn-do + shown (? (list F64))
     (let shown (call base))
     (return-if null (if (not shown)))
+    (blank)
     (for (in layer layers)
       (call (. layer apply) shown)
     )
@@ -603,6 +618,7 @@
   (fn-do + present _
     (param now (? Duration) (= null))
     (return-if (if is-stopped))
+    (blank)
     (if now
       (call (?. channel update) now)
     )
@@ -675,6 +691,7 @@
   )
   (fn-do + stop _
     (return-if (if is-stopped))
+    (blank)
     (call end)
     (call (?. (. owner frame-clock) cancel) this)
   )
@@ -686,6 +703,7 @@
   (fn-do + advance Bool
     (param tick FrameTick)
     (return-if false (if is-stopped))
+    (blank)
     (call present (. tick now))
     (let moving channel)
     (if (and moving (not (. moving is-moving)))
@@ -704,6 +722,7 @@
   )
   (fn-do + finish _
     (return-if (if is-stopped))
+    (blank)
     (= channel null)
     (if (== (. layers length) 0)
       (call end)
@@ -754,6 +773,7 @@
       (return)
     )
     (return-if (if (and is-styled (call (. owner drive-timeline) this))))
+    (blank)
     (let start (. owner motion-start))
     (if (and start (> start (. clock now)))
       (= delay (- start (. clock now)))
@@ -767,6 +787,7 @@
   (fn-do + scrub _
     (param progress F64)
     (return-if (if is-done))
+    (blank)
     (= is-scrubbed true)
     (let total (call iterations))
     (let count (if-expr total (as total F64) 1.0))
@@ -775,17 +796,20 @@
   )
   (fn-do + wait _
     (return-if (if is-done))
+    (blank)
     (let done (?? ended (call (of Completion Bool))))
     (= ended done)
     (call (. done await))
   )
   (fn-do + cancel _
     (return-if (if is-done))
+    (blank)
     (call (?. (. owner frame-clock) cancel) this)
     (call complete (?. (. owner frame-clock) now))
   )
   (fn-do + ease-back _
     (return-if (if is-done))
+    (blank)
     (= is-done true)
     (call (?. (. owner frame-clock) cancel) this)
     (call ease-out)
@@ -888,6 +912,7 @@
     (param tick FrameTick)
     (return-if false (if is-done))
     (return-if true (if (call step (if-expr (> (. tick elapsed) delay) (- (. tick elapsed) delay) 0ns) (. tick now))))
+    (blank)
     (if (. owner is-leaving)
       (= is-done true)
       (call (. host hold) this)
@@ -899,6 +924,7 @@
   )
   (fn-do + finish _
     (return-if (if is-done))
+    (blank)
     (call complete (?. (. owner frame-clock) now))
   )
 )

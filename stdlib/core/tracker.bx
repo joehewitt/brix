@@ -116,6 +116,7 @@
     (param constructed-subscribers Pointer)
     (param constructed-owner Pointer)
     (return-if (if (or (!= owner constructed-subscribers) (!= (as subscribers Pointer) constructed-subscribers))))
+    (blank)
     (= owner constructed-owner)
   )
   (fn-do + attach _
@@ -124,6 +125,7 @@
     (let action-id (. action tracker-id))
     (if action-id
       (throw (call Panic "Property tracker is already attached to this action") (if (== subscription-action action-id)))
+      (blank)
       (if additional-subscriptions
         (for (in attached additional-subscriptions)
           (throw (call Panic "Property tracker is already attached to this action") (if (== (. attached action) action-id)))
@@ -133,6 +135,7 @@
     (blank)
     (let handle (call property-subscriber-register owner action))
     (throw (call Panic "Unable to register property subscription") (if (not handle)))
+    (blank)
     (if (not action-id)
       (= action-id handle)
       (= (. action tracker-id) action-id)
@@ -159,6 +162,7 @@
     (blank)
     (let action-id (. action tracker-id))
     (return-if (if (not action-id)))
+    (blank)
     (if (== subscription-action action-id)
       (let handle subscription)
       (let slot subscriber-slot)
@@ -211,6 +215,7 @@
     (param action LiveAction)
     (let handle (call property-subscriber-register collection action))
     (throw (call Panic "Unable to register collection subscription") (if (not handle)))
+    (blank)
     (let action-id (. action tracker-id))
     (if (not action-id)
       (= action-id handle)
@@ -222,6 +227,7 @@
     (param action LiveAction)
     (let action-id (. action tracker-id))
     (return-if (if (not action-id)))
+    (blank)
     (let index Index 0)
     (while (< index (. subscriptions length))
       (let subscription ([] subscriptions index))
@@ -360,8 +366,10 @@
   )
   (fn-do + dispatch-first _
     (return-if (if dispatches-first))
+    (blank)
     (= dispatches-first true)
     (return-if (if is-detached))
+    (blank)
     (for (in tracker trackers)
       (if (is tracker PropertyTracker)
         (call (. tracker detach) this)
@@ -371,6 +379,7 @@
   )
   (fn-do + this _
     (return-if (if is-closed))
+    (blank)
     (probe-count markup.action.dispatches)
     (= is-definite true)
     (call schedule)
@@ -378,6 +387,7 @@
   (fn-do + notify-maybe _
     (param memo MemoAction)
     (return-if (if is-closed))
+    (blank)
     (if (not maybe-from)
       (= maybe-from (call (of List MemoAction)))
     )
@@ -427,6 +437,7 @@
   )
   (fn-do + run-now _
     (return-if (if is-closed))
+    (blank)
     (call refresh-trackers)
     (probe-count markup.action.immediate-runs)
   )
@@ -437,6 +448,7 @@
   )
   (fn-do + detach-trackers _
     (return-if (if is-detached))
+    (blank)
     (= is-detached true)
     (for (in tracker trackers)
       (call (. tracker detach) this)
@@ -453,6 +465,7 @@
   (fn-do _ settles-changed Bool
     (let found maybe-from)
     (return-if false (if (not found)))
+    (blank)
     (let memos found)
     (for (in memo memos)
       (call (. memo settle))
@@ -581,12 +594,15 @@
   )
   (fn-do + mark _
     (return-if (if is-closed))
+    (blank)
     (let found (call (of gc-object-side-payload (of List PropertySubscriber)) owner property-subscribers-lane))
     (let linked (call linked-generation found))
     (return-if (if (and is-dirty (== linked-at linked))))
+    (blank)
     (= ([] owner flag-offset) 1)
     (= linked-at linked)
     (return-if (if (not found)))
+    (blank)
     (let subscribers found)
     (let batch (call live-batch-enter))
     (finally
@@ -596,8 +612,10 @@
   )
   (fn-do + settle _
     (return-if (if (not is-dirty)))
+    (blank)
     (= ([] owner flag-offset) 0)
     (return-if (if is-closed))
+    (blank)
     (call refresh-trackers)
   )
 )
@@ -628,6 +646,7 @@
     (let index Index 0)
     (while (< index (. queue length))
       (throw (call Panic "Live actions kept changing what they read and never settled") (if (>= index live-batch-run-limit)))
+      (blank)
       (let action ([] queue index))
       (+= index 1)
       (if action
@@ -656,12 +675,15 @@
   (param name String)
   (let found (call (of gc-object-side-payload (of List PropertySubscriber)) owner property-subscribers-lane))
   (return-if (if (not found)))
+  (blank)
   (let subscribers found)
   (return-if (if (not (. subscribers length))))
+  (blank)
   (let slot (. ([] subscribers 0) next))
   (while slot
     (let subscriber ([] subscribers slot))
     (return-if true (if (and (. subscriber handle) (== (. subscriber name) name))))
+    (blank)
     (= slot (. subscriber next))
   )
   (return false)
@@ -728,6 +750,7 @@
 (fn-do + track-active-dependency _
   (param target Pointer)
   (return-if (if (not tracker-action-next)))
+  (blank)
   (call track-collection-dependency (!! tracker-action-previous) (!! tracker-action-next) target)
 )
 
@@ -737,6 +760,7 @@
   (param subscribers (list PropertySubscriber))
   (param owner Pointer)
   (return-if (if (not tracker-action-next)))
+  (blank)
   (let previous (!! tracker-action-previous))
   (let next (!! tracker-action-next))
   (do
@@ -820,6 +844,7 @@
 (fn-do + (of live-state State) (? State)
   (constraint is State Tracker)
   (return-if null (if (or (not tracker-action-previous) (not tracker-action-next))))
+  (blank)
   (let previous (!! tracker-action-previous))
   (let next (!! tracker-action-next))
   (for (in tracker previous)
@@ -834,6 +859,7 @@
 (fn-do + keep-live-state _
   (param state Tracker)
   (throw (call Panic "Only a live function keeps a live state") (if (not tracker-action-next)))
+  (blank)
   (+= (!! tracker-action-next) state)
 )
 
@@ -896,6 +922,7 @@
   (probe-count markup.property.dispatches)
   (probe-count markup.property.snapshot-allocations 0)
   (return-if (if (not subscribers)))
+  (blank)
   (let batch (call live-batch-enter))
   (finally
     (call (. batch leave))
@@ -929,6 +956,7 @@
   (param action LiveAction)
   (let subscription (call property-subscriber-register (as object Pointer) action))
   (throw (call Panic "Unable to register weak property dependency subscription") (if (not subscription)))
+  (blank)
   (do
     (inline (call property-subscriber-link (. object property-subscribers) name subscription))
   )
@@ -963,6 +991,7 @@
   )
   (fn-do + close _
     (return-if (if (not observer)))
+    (blank)
     (call unobserve-collection-pointer collection observer)
     (= observer null)
     (do
@@ -1005,6 +1034,7 @@
   (let next-free (. sentinel free))
   (let generation (+ (. sentinel handle) 1))
   (throw (call Panic "Property subscriber generation overflow") (if (not generation)))
+  (blank)
   (let slot Index 0)
   (if (and (. sentinel free) (not (. sentinel slot)))
     (= slot (. sentinel free))

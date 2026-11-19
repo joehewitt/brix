@@ -351,6 +351,7 @@
   )
   (fn-do + (index-delete this (param range (of Range Index))) _
     (throw (call Panic "Only increments of 1 are currently supported") (if (and (!= (. range increment) 1) (!= (. range increment) -1))))
+    (blank)
     (let low (if-expr (> (. range start) (. range end)) (. range end) (. range start)))
     (let high (if-expr (> (. range start) (. range end)) (. range start) (. range end)))
     (let count (if-expr (. range is-through) (+ (- high low) 1) (- high low)))
@@ -400,6 +401,7 @@
     )
     (let count (. to-insert length))
     (return-if (if (not count)))
+    (blank)
     (if (> (+ size count) (. items size))
       (call grow (+ size count))
     )
@@ -428,6 +430,7 @@
   )
   (fn-do + pop _
     (throw (call OutOfBoundsError "Can't pop the last item of an empty list") (if (== size 0)))
+    (blank)
     (-= size 1)
     (let item ([] (. items data) size))
     (call vacate-raw size 1)
@@ -445,6 +448,7 @@
       (call notify-collection-remove this 0)
     )
     (return item)
+    (blank)
     ; ?! OutOfBoundsError("Can't pop the first item of an empty list")
     ;     if size == 0
   )
@@ -471,6 +475,7 @@
     (param increment Increment (= 1))
     (param start-index Index (= 0))
     (return-if (if (== increment 0)))
+    (blank)
     (if (< increment 0)
       (let index (- start-index increment))
       (let old-size size)
@@ -532,6 +537,7 @@
   (fn-do _ slice-raw This @inline
     (param normal (of Range Index))
     (throw (call OutOfBoundsError (str "Range out of bounds (" out-index " / " size ")")) (if (and (== (. normal increment) 1) (> (. normal end) size))))
+    (blank)
     (let list (call This context 0))
     (= (. list items) ([] items normal))
     (= (. list size) (. normal length))
@@ -544,6 +550,7 @@
   (fn-do _ append-raw _ @inline
     (param item Item)
     (throw (call Panic "List size overflow") (if (== size (. Size max))))
+    (blank)
     (if (== size (. items size))
       (call grow (+ size 1))
     )
@@ -579,6 +586,7 @@
       (call clamp-shared-raw index)
     )
     (return-if (if (or (. Item is-number) (< (. Item size) 8) shares-storage (<= count 0))))
+    (blank)
     (if (and (== (. Item size) 8) (== count 1))
       (= ([] (as (+ (. items data) index) (of CPointer U64)) 0) 0)
       (else
