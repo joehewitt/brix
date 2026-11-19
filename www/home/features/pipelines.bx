@@ -1,18 +1,28 @@
 ; name: Pipelines
 ; category: basics
 ; size: large
-; summary: Stages keep the items that pass, change each one or tap it as it goes by, and the compiler fuses them into a single loop.
+; summary: A pipeline runs any stream, stored or still arriving, through stages that read each item as `each` instead of taking a lambda, where a grammar or any library function can be a stage, and a pipeline read where it is written compiles into one loop.
 ; examples: basics/pipelines/whole-program.bx, basics/pipelines/library-functions.bx, basics/pipelines/top-words.bx
-(import /stream/aggregate)
+(import /core/patterns)
+(import /stream/sort)
 
 (main
-  (print (call big-total (list 12 40 7 33 25)))
+  (spread "yeast,3\nflour,12\nvanilla,1\nbutter,4\n")
+  (pipe ~> \item)
+  (pipe ?> (< (. each count) 5))
+  (pipe *> (. each name))
+  (pipe |> sort)
+  (pipe *> (str "reorder " each))
+  (pipe |> print-all)
 )
 
-(fn-expr + big-total Int
-  (param prices (list Int))
-  prices
-  (pipe ?> (> each 20))
-  (pipe *> (* each 2))
-  (pipe |> sum)
+(type + Item (is Tuple)
+  (prop + name String)
+  (prop + count Int)
+)
+
+(fn-expr + item Item (over: Char)
+  (~ (seq (: name (+ (seq (! ",") .))) "," (: count (of \num Int)) \nl)
+    (call Item name count)
+  )
 )

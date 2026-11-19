@@ -27,4 +27,15 @@
   ; A comprehension is a stream as well, so it can go straight into `sum`.
   (print (str "money out: " (- (call sum (in each amounts (when (< each 0)))))))
   (print (str "smallest to largest: " (call (. ", " join) (call sort amounts))))
+  (blank)
+  ; None of these functions has a second, asynchronous copy. Here the same entries
+  ; arrive one at a time from another task, and `scan` and `max` take the channel
+  ; as they took the list.
+  (let arriving (channel Int))
+  (do-new
+    (<-* arriving amounts)
+    (call (. arriving close))
+  )
+  (let highest (call max (call scan 500 arriving (:using (=> (balance amount) (+ balance amount))))))
+  (print (str "highest balance as the entries arrived: " highest))
 )
