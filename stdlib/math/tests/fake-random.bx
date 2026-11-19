@@ -1,0 +1,57 @@
+(import /crypto/random)
+(import /math)
+(import /math/fake-random)
+(import /test)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Random Draws"))
+  (call (. cases run) draw-tests)
+  (= cases (call (. cases then) "Fake Random Bytes" byte-tests))
+  (= cases (call (. cases then) "Fake Random Bindings" binding-tests))
+  (return cases)
+)
+
+(fn-do + draw-tests TestCase
+  (param t TestCase)
+  (let seeded (call Random 7))
+  (do-with random (call FakeRandom 7)
+    (call (. t expect) "a seed is the next draw of Random with the fake's seed" (call (. seeded draw)) (call random-seed))
+    (call (. t expect) "random draws what Random draws" (call (. seeded random)) (call random))
+    (call (. t expect) "a range draws what Random draws" (call (. seeded random) 1 100) (call random 1 100))
+  )
+  (return t)
+)
+
+(fn-do + byte-tests TestCase
+  (param t TestCase)
+  (let first ([] Byte))
+  (let second ([] Byte))
+  (do-with random (call FakeRandom 3)
+    (= first (call random-bytes 12))
+  )
+  (do-with random (call FakeRandom 3)
+    (= second (call random-bytes 12))
+  )
+  (call (. t expect) "bytes come in the size asked for" 12 (. first length))
+  (call (. t expect) "the same seed gives the same bytes" (as first Hex) (as second Hex))
+  (return t)
+)
+
+(fn-do + binding-tests TestCase
+  (param t TestCase)
+  (let inside 0u)
+  (do-with random (call FakeRandom)
+    (= inside (call random-seed))
+  )
+  (let again 0u)
+  (do-with random (call FakeRandom)
+    (= again (call random-seed))
+  )
+  (call (. t expect) "a fake with the default seed draws the same each time" inside again)
+  (call (. t expect) "the real door draws apart from the fake" true (!= (call random-seed) inside))
+  (return t)
+)

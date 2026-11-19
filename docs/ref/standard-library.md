@@ -103,7 +103,12 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 
 - `/math`: `π`, angles in radians and degrees (`rad`, `deg`, `°`), `abs`, `round`, `floor`,
   `sqrt`, trigonometry, `random`, `min`, `max` and `clamp`. `Random` is a generator of its own:
-  `(call Random 42u)` gives the same numbers on every run, and `split` makes another from it.
+  `(call Random 42u)` gives the same numbers on every run, `split` makes another from it, and
+  `draw` gives its next raw `U64`. The `random` effect's doors are every draw from the system:
+  `random-seed`, the draws `random` makes, and `random-bytes` in `/crypto`. `entropy-bytes`
+  gives bytes drawn through `random-seed`.
+- `/math/fake-random`: `FakeRandom`, a fake for `random` that draws what `Random` does from its
+  seed, so the same seed gives the same draws.
 - `/math/easing`: `Easing` and `CubicBezier`.
 - `/math/motion`: motions that move a value over time: `spring`, `ease-in-out`, `linear`, `steps`,
   `decay` and `keyframes`.

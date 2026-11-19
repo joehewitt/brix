@@ -13,6 +13,12 @@
 (prop _ random-first-multiplier U64 (= 0xbf58476d1ce4e5b9))
 (prop _ random-second-multiplier U64 (= 0x94d049bb133111eb))
 
+(effect + random
+  (claim C:getentropy)
+  (claim C:getrandom)
+  (claim C:RAND_bytes)
+)
+
 (type + Radians (alias rad) (is F64))
 
 (type + Degrees (alias ° deg) (is 0.017453292519943295rad))
@@ -140,13 +146,31 @@
   (call C:atan2 y x)
 )
 
-(fn-do _ random-seed U64
+(fn-do + random-seed U64 (door random)
   (let seed ([] U64 1))
-  (call C:getentropy seed 8)
+  (call C:getentropy seed 8
+    (block
+      (throw (call Panic "The system's random source failed") (if (!= it 0)))
+    )
+  )
   (return ([] seed 0))
 )
 
-(fn-do _ next-random U64
+(fn-do + entropy-bytes ([] Byte)
+  (param size Size)
+  (let bytes ([] Byte size))
+  (let draw 0u)
+  (for (in index (..< 0 size))
+    (if (== (% index 8) 0)
+      (= draw (call random-seed))
+    )
+    (= ([] bytes index) (as (/and/ draw 0xff) Byte))
+    (= draw (/zrshift/ draw 8))
+  )
+  (return bytes)
+)
+
+(fn-do _ next-random U64 (door random)
   (+= random-state random-increment)
   (return (call random-mix random-state))
 )
@@ -209,7 +233,7 @@
   (fn-do + split Random
     (return (call Random (call draw)))
   )
-  (fn-do _ draw U64
+  (fn-do + draw U64
     (+= state random-increment)
     (return (call random-mix state))
   )

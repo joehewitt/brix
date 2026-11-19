@@ -1081,3 +1081,8 @@ ring
   was given. `freeze` advances instead of stopping the thread.
 - **Handles.** A wait for a handle with a deadline ends when the handle is ready, or as a timeout
   when `advance` reaches the deadline.
+
+The standard library declares `random` in `/math`. Every draw from the system goes through its
+doors: `random-seed`, which also seeds `Random()`, the draws of `random` and `random(min, max)`,
+and `random-bytes` in `/crypto`. A `Random` made from a seed draws without them. `FakeRandom`, in
+`/math/fake-random`, is a fake for `random` that draws what `Random` does from its seed.

@@ -1,0 +1,28 @@
+(import ./math)
+
+(type + FakeRandom
+  (prop _ source Random)
+  (fn-do + This _
+    (param seed U64 (= 1))
+    (= source (call Random seed))
+  )
+  (fn-do + random-seed U64
+    (return (call (. source draw)))
+  )
+  (fn-do + next-random U64
+    (return (call (. source draw)))
+  )
+  (fn-do + random-bytes ([] Byte)
+    (param size Size)
+    (let bytes ([] Byte size))
+    (let draw 0u)
+    (for (in index (..< 0 size))
+      (if (== (% index 8) 0)
+        (= draw (call (. source draw)))
+      )
+      (= ([] bytes index) (as (/and/ draw 0xff) Byte))
+      (= draw (/zrshift/ draw 8))
+    )
+    (return bytes)
+  )
+)
