@@ -663,8 +663,9 @@ for each stage, holding the stage's operator and value.
   level deep: given a list of lists, it gives the lists.
 - **Feeds that make a list.** Feeds written as the value of a local, assignment, `return` or
   function body whose type is a list make that list, each item converted to its item type.
-  Elsewhere, as a call's argument, they start a stream; `(call List (block (item …)))`{.brix}
-  makes a list of them that is typed as a list literal is, `List` rows in rows.
+  Elsewhere, as a call's argument, they start a stream;
+  `(call List (block (item a) (item b)))`{.brix} makes a list of them that is typed as a list
+  literal is, `List` rows in rows.
 - **Stage bodies.** A stage's value can be a `block` with rows of its own, and lazy bindings
   written under a stage are worked out for each item. To read an outer item inside an inner stage,
   bind it to a name in a lazy binding first, since the inner `each` hides it.
