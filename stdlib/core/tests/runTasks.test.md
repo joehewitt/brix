@@ -4665,3 +4665,50 @@ cancelled: true
 runs up to its first wait
 cancelled: true
 ```
+
+### A generator a task reads sees the global `do with` bound where the task was started.
+
+```brix
+(main
+  (call run)
+)
+
+(fn-do + run _
+  (do-with level 5
+    (let s (call Session (call Provider)))
+    (call (. s send))
+    (call (. (!! (. s task)) wait))
+  )
+)
+
+(prop + level Int @stack)
+
+(type + Provider
+  (fn-do + stream (stream Int)
+    (yield level)
+    (yield (+ level 1))
+  )
+)
+
+(type + Session
+  (prop + provider Provider)
+  (prop + task (? Task))
+  (fn-do + This _
+    (param provider Provider)
+  )
+  (fn-do + send _
+    (= task
+      (do-new
+        (for (in each (call (. provider stream)))
+          (print each)
+        )
+      )
+    )
+  )
+)
+```
+
+```output
+5
+6
+```

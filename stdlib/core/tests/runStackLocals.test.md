@@ -435,7 +435,7 @@
 (task, 30)
 ```
 
-### A spawned task's slot set for a call that panics is put back as it was before the call.
+### A spawned task's slot set for a call that panics keeps the task's binding afterwards.
 
 ```brix
 (prop + depth _ @stack (= 1))
@@ -479,7 +479,7 @@
 
 ```output
 boom sees 7
-after true derived 1
+after true derived 7
 ```
 
 ### A lambda that yields reads the state it holds, not the binding open where it is iterated.

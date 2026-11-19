@@ -108,7 +108,8 @@
   (fn-do _ gather-needs _
     ; Records the globals each function reads outside its own bindings of them, itself or through
     ; the functions it calls outside one. Calling a nested function reads nothing: it holds what
-    ; it captured. Each function found to read one hands it on to the calls of it once.
+    ; it captured. Each function found to read one hands it on to the calls of it once, and so
+    ; does a method to the interface member or base method a call may reach it through.
     (for (in read (. facts stack-reads))
       (if (not (call binds (. read instance) (. read syntax) (. read module) (. read decl)))
         (call need (. read instance) (. read module) (. read decl))
@@ -129,6 +130,17 @@
           (call need (. fact instance) module decl)
         )
         (= call ([] call-links call))
+      )
+      (let answering ([] readers (- next 1)))
+      (for (in slot (. facts witness-slots))
+        (if (and (== (. slot callee) answering) (!= (. slot proto) no-instance))
+          (call need (. slot proto) module decl)
+        )
+      )
+      (for (in fact (. facts overrides))
+        (if (and (== (. fact override) answering) (!= (. fact base) no-instance))
+          (call need (. fact base) module decl)
+        )
       )
     )
     (for (in position (..< 0 (. readers length)))

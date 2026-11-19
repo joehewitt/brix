@@ -1107,3 +1107,127 @@ done
 10
 1
 ```
+
+### A generator a task reads reaches the fake bound where the task was started
+
+```brix
+(main
+  (call run)
+)
+
+(fn-do + run _ (with world (call Stub 5))
+  (let s (call Session (call Provider)))
+  (call (. s send))
+  (call (. (!! (. s task)) wait))
+)
+
+(type + Provider
+  (fn-do + stream (stream Int)
+    (yield (call roll))
+    (yield (call roll))
+  )
+)
+
+(type + Session
+  (prop + provider Provider)
+  (prop + task (? Task))
+  (fn-do + This _
+    (param provider Provider)
+  )
+  (fn-do + send _
+    (= task
+      (do-new
+        (for (in each (call (. provider stream)))
+          (print each)
+        )
+      )
+    )
+  )
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (prop + base Int)
+  (fn-do + This _
+    (param base Int)
+  )
+  (fn-do + roll Int
+    (return base)
+  )
+)
+```
+
+```output
+5
+5
+```
+
+### A generator a task reads through an overriding method reaches the fake bound where the task was started
+
+```brix
+(main
+  (call run)
+)
+
+(fn-do + run _ (with world (call Stub 5))
+  (let s (call Session (as (call Dice) Provider)))
+  (call (. s send))
+  (call (. (!! (. s task)) wait))
+)
+
+(type + Provider
+  (fn-do + stream (stream Int)
+    (yield 0)
+  )
+)
+
+(type + Dice (is Provider)
+  (fn-do + stream (stream Int)
+    (yield (call roll))
+    (yield (call roll))
+  )
+)
+
+(type + Session
+  (prop + provider Provider)
+  (prop + task (? Task))
+  (fn-do + This _
+    (param provider Provider)
+  )
+  (fn-do + send _
+    (= task
+      (do-new
+        (for (in each (call (. provider stream)))
+          (print each)
+        )
+      )
+    )
+  )
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (prop + base Int)
+  (fn-do + This _
+    (param base Int)
+  )
+  (fn-do + roll Int
+    (return base)
+  )
+)
+```
+
+```output
+5
+5
+```

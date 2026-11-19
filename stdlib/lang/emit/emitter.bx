@@ -22772,7 +22772,8 @@
     ; Before the body of a spawned task, a lambda or a comprehension calls a function that reads
     ; globals `do with` binds outside its bindings of them, each slot no binding around the call
     ; holds is kept, and set to the state the body holds, as TypeScript does. The local each is
-    ; kept in, or none. As a read of one, a call in a cleanup a landing pad runs is refused where a
+    ; kept in, or none. A spawned task's slot is its own, so it stays set after the call, for a
+    ; generator the call made to read when it runs. As a read of one, a call in a cleanup a landing pad runs is refused where a
     ; `do with` after the cleanup binds it. A nested function called holds what it captured, and is
     ; given nothing, as TypeScript gives a closure nothing.
     (let saved (list LocalId))
@@ -22807,7 +22808,7 @@
           )
         )
       )
-      (+= saved local)
+      (+= saved (if-expr (== (. function kind) .task-body) no-local local))
     )
     (return saved)
   )
@@ -22843,6 +22844,9 @@
     (lazy uncaught-panic (and checked (not (. function may-panic)) (not in-landing)))
     (let returned (if-expr raising (. signature result) (. signature returns)))
     (let returns (call layout-of returned syntax))
+    (if (== (. function kind) .task-body)
+      (call prepare-stacks callee syntax)
+    )
     (let layout (. tables layouts interface-layout))
     (let table (call load ([] pending mark) (. (call (. tables layouts field) layout 1) offset) pointer-layout syntax))
     (let place (* (+ witness-header-slots ([] (. tables slots) callee)) table-slot-size))
@@ -23077,7 +23081,9 @@
     ; caller too. An `exact` call is of the callee itself, and so is one whose slot no table
     ; holds, as no object of a class that has it is ever made for the call to run on. One that
     ; raises errors answers what a function that raises returns, as each function a table holds
-    ; in its slot does, which the caller takes apart.
+    ; in its slot does, which the caller takes apart. A spawned task's body sets the slots of the
+    ; globals `do with` binds that the callee or a method in its slot reads, as for a call of
+    ; one instance, and keeps them set.
     (let nothing (call make-operand .operand-void 0))
     (if (or exact (not (call (. tables is-overridden) callee)) (and unslotted has-function))
       (return (call call-instance callee syntax mark))
@@ -23106,6 +23112,9 @@
     )
     (let returns (call layout-of returned syntax))
     (call (. ir depend) .callee-function target-id (if-expr raises may-panic-dependency 0u32))
+    (if (== (. function kind) .task-body)
+      (call prepare-stacks callee syntax)
+    )
     (let table (call load ([] pending mark) 0 pointer-layout syntax))
     (let method (call load table (+ table-header-size (* slot table-slot-size)) pointer-layout syntax))
     (let enters (call is-free callee))
