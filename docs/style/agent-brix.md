@@ -51,7 +51,7 @@ Each form below is listed as its signature, the kinds it is, and what it means.
 - A function value, `(=> …)`, has a value body unless `:do` marks it as steps.
 - Code that runs when the file runs goes inside `(main …)`.
 
-```
+```brix
 (fn-expr + ratio Float (?! ZeroHeight)
   (param shape Shape)
   (before
