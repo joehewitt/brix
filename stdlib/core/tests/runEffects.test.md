@@ -861,24 +861,27 @@ Exception: cannot reach a door of 'adder-world' under 'without adder-world': run
 0
 ```
 
-### A function that reaches a door cannot become a function value under a binding of its effect
+### A named function made a value under a binding reads the fake bound where it is called
 
-```brix compile-error
-(import /JaCore/tests.h)
-(blank)
-
+```brix
 (main
-  (print (call run))
+  (let kept (as twice Mapper))
+  (do-with adder-world (call Multiplier)
+    (print (call apply twice))
+    (= kept twice)
+  )
+  (print (call kept 3))
+  (print (call apply kept))
 )
 
-(effect + adder-world
-  (claim C:ctest5)
-)
+(type + Mapper (is (fn-type I32 (param a I32))))
+
+(effect + adder-world)
 
 (fn-do + add I32 (door adder-world)
   (param a I32)
   (param b I32)
-  (return (call C:ctest5 a b))
+  (return (+ a b))
 )
 
 (fn-do + twice I32
@@ -895,24 +898,61 @@ Exception: cannot reach a door of 'adder-world' under 'without adder-world': run
 )
 
 (fn-do + apply I32
-  (param f (of Mapper I32 I32))
+  (param f Mapper)
   (return (call f 3))
-)
-
-(fn-do + run I32
-  (let got (as 0 I32))
-  (do-with adder-world (call Multiplier)
-    (= got (call apply twice))
-  )
-  (return got)
 )
 ```
 
 ```output
-Exception: The fake bound to 'adder-world' cannot be read through a function value: twice → add
-<no file:40>
-        (= got (call apply twice))
-                           ^^^^^
+9
+6
+6
+```
+
+### A function that reaches a door becomes a C callback under a binding of its effect
+
+```brix
+(main
+  (do-with world (call Stub)
+    (call install)
+  )
+  (call fire)
+)
+
+(type + Callback (is (c-fn-type Void (param n I32))))
+
+(prop _ native Pointer)
+
+(fn-do + install _
+  (= native (as (as callback Callback) Pointer))
+  (call callback 0)
+)
+
+(fn-do + fire _
+  (call callback 1)
+)
+
+(fn-do + callback _
+  (param n I32)
+  (print (call roll))
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (return 1)
+  )
+)
+```
+
+```output
+1
+10
 ```
 
 ### A fake stays bound to its effect where the code under the binding only reads String values of the module, written, made lazily, or copied into a local

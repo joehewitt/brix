@@ -1032,11 +1032,11 @@ gives:
   was called. A ban outside a binding lets the fake's doors through and still bans the real doors
   its methods reach.
 - **Tasks and function values.** A task started under a binding keeps it, and so does a closure
-  made under it. A function that reaches a door cannot become a function value under a binding of
-  the door's effect, as one that reads a `@stack` property with no value of its own cannot. A named
-  function made a value outside every binding is compiled outside them: in a program that binds
-  the effect anywhere, its doors read at each call the fake the running task has bound, and call
-  that fake's method, or panic where it has none. A closure made outside a binding reads what was
+  made under it. A named function made a value, under a binding or outside every one, is compiled
+  outside them all: in a program that binds the effect anywhere, its doors read at each call the
+  fake the running task has bound, and call that fake's method, or panic where it has none. So a
+  function given as a callback under a binding reaches the fake while the binding is open and the
+  real doors once it ends. A closure made outside a binding reads what was
   bound where it was made, as it keeps a `@stack` property's value. In a program that never binds
   an effect, a call of one of its doors costs what a call of the door's body does. A program can
   bind fakes of at most 255 classes to one effect.
