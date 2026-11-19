@@ -87,8 +87,9 @@
   (fn-do + windows _ :get
     (let window first-window)
     (while window
+      (let next (. window next-window))
       (yield window)
-      (= window (. window next-window))
+      (= window (if-expr (== (. window app) this) (. window next-window) next))
     )
   )
   (fn-do + (infix this += (param window Window)) _
@@ -106,6 +107,7 @@
   )
   (fn-do + remove-window _
     (param window Window)
+    (return-if (if (!= (. window app) this)))
     (let before (. window previous-window))
     (let after (. window next-window))
     (if before
@@ -120,6 +122,9 @@
     (if (== (as last-window Pointer) (as window Pointer))
       (= last-window before)
     )
+    (= (. window previous-window) null)
+    (= (. window next-window) null)
+    (= (. window app) null)
   )
   (fn-do + (infix this += (param status-item StatusItem)) _
     (= (. status-item app) this)
@@ -150,7 +155,6 @@
     (match? child
       (case (: window Window)
         (call remove-window window)
-        (= (. window app) null)
       )
       (case (: status-item StatusItem)
         (-= status-items status-item)
@@ -191,12 +195,17 @@
     (return-if (if (or has-run (not native))))
     (call run)
   )
+  (fn-do _ window-snapshot (list Window)
+    (let snapshot (list Window))
+    (++= snapshot windows)
+    (return snapshot)
+  )
   (fn-do _ end-process _
     (call request-process-termination 0)
   )
   (fn-do + quit _
     (= is-quitting true)
-    (for (in window windows)
+    (for (in window (call window-snapshot))
       (if (not (call (. window request-close)))
         (= is-quitting false)
         (return)
@@ -208,7 +217,7 @@
     (call C:brixGuiAppStop (!! native))
   )
   (fn-do + close _
-    (for (in window windows)
+    (for (in window (call window-snapshot))
       (call (. window close))
     )
     (for (in status-item status-items)
