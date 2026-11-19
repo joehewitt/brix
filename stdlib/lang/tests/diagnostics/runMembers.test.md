@@ -394,3 +394,40 @@ Exception: Property "n" is read from Box?, which may be null; unwrap it first wi
       (print (str (. box n)))
                   ^^^^^^^^^
 ```
+
+### a number with no suffix that the cases of a union take as different types
+
+```brix crash
+(main
+  (let item Item (call (. Item left) (call Left 10)))
+  (print (call (. item scaled) 2))
+)
+
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + scaled Float
+    (param by Float)
+    (* (as value Float) by)
+  )
+)
+
+(type + Right (is Tuple)
+  (prop + value Float)
+  (fn-expr + scaled Float
+    (param by Int)
+    (* value by)
+  )
+)
+
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
+```
+
+```output
+Exception: Union cases take this literal as different types: F64 for case 'left' and I64 for case 'right'; write "2i32"
+<no file:4>
+      (print (call (. item scaled) 2))
+                                   ^
+```

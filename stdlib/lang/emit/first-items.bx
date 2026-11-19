@@ -1,0 +1,593 @@
+(import /lang/ast/ast)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/ast-queries)
+(import /lang/ast/module)
+(import /lang/ast/program)
+(import /lang/check/binding)
+(import /lang/check/facts)
+(import /lang/check/instances)
+(import /lang/check/pattern-helper)
+
+(prop + no-probe U64 (= (. U64 max)))
+(prop + any-item U64 (= 0x10ffff))
+
+(type + ItemRange (is Tuple)
+  ; The items of a stream from `first` to `last`, both included, as numbers.
+  (blank)
+  (prop + first U64)
+  (prop + last U64)
+)
+
+(fn-do + merged-ranges (list ItemRange)
+  (param left (list ItemRange))
+  (param right (list ItemRange))
+  ; The ranges of two lists, each in order and apart, in order and apart: those that overlap or
+  ; touch are joined. Where one list is empty, the other is the result.
+  (return-if right (if (== (. left length) 0)))
+  (return-if left (if (== (. right length) 0)))
+  (blank)
+  (let merged (list ItemRange))
+  (let at-left Size 0)
+  (let at-right Size 0)
+  (while (or (< at-left (. left length)) (< at-right (. right length)))
+    (let from-left
+      (scope (or (>= at-right (. right length)) (and (< at-left (. left length)) left-before))
+        (lazy left-before (not (call range-after ([] left at-left) ([] right at-right))))
+      )
+    )
+    (let range (if-expr from-left ([] left at-left) ([] right at-right)))
+    (if from-left
+      (+= at-left 1)
+      (else
+        (+= at-right 1)
+      )
+    )
+    (if (and (!= (. merged length) 0) (<= (. range first) (+ (. ([] merged (- (. merged length) 1)) last) 1)))
+      (if (> (. range last) (. ([] merged (- (. merged length) 1)) last))
+        (= ([] merged (- (. merged length) 1)) (call ItemRange (. ([] merged (- (. merged length) 1)) first) (. range last)))
+      )
+      (continue)
+    )
+    (+= merged range)
+  )
+  (return merged)
+)
+
+(fn-expr + range-after Bool
+  (param range ItemRange)
+  (param other ItemRange)
+  ; Whether a range sorts after another: it starts later, or as early and ends later.
+  (or (> (. range first) (. other first)) (and (== (. range first) (. other first)) (> (. range last) (. other last))))
+)
+
+(fn-do + ranges-meet Bool
+  (param left (list ItemRange))
+  (param right (list ItemRange))
+  ; Whether two lists of ranges, each in order and apart, share an item.
+  (let at-left Size 0)
+  (let at-right Size 0)
+  (while (and (< at-left (. left length)) (< at-right (. right length)))
+    (if (< (. ([] left at-left) last) (. ([] right at-right) first))
+      (+= at-left 1)
+      (else-if (< (. ([] right at-right) last) (. ([] left at-left) first))
+        (+= at-right 1)
+      )
+      (else
+        (return true)
+      )
+    )
+  )
+  (return false)
+)
+
+(fn-do + single-range (list ItemRange)
+  (param first U64)
+  (param last U64)
+  ; A list of one range.
+  (let ranges (list ItemRange))
+  (+= ranges (call ItemRange first last))
+  (return ranges)
+)
+
+(type + FirstItems (is Tuple)
+  ; What the reference knows of the items a part of a grammar may start with, as it
+  ; judges which alternatives of a choice to skip: whether it knows them, whether the part may
+  ; pass where it reads none, and the ranges they lie in, in order and apart; and how far past
+  ; where the part is tried it counts the part as read where it is skipped, `no-probe` where it
+  ; does not know.
+  (blank)
+  (prop + known Bool)
+  (prop + nullable Bool)
+  (prop + ranges (list ItemRange))
+  (prop + probe U64)
+)
+
+(fn-expr + guards Bool
+  (param first FirstItems)
+  ; Whether the reference skips an alternative that starts so where the item at the cursor is
+  ; not one it may start with: where it knows them, there are some, and it must read one.
+  (and (. first known) (not (. first nullable)) (!= (. first ranges length) 0))
+)
+
+(type _ FoundFirst (is Tuple)
+  ; The first items found for a call, the key of the call and the instance that reads it, and
+  ; whether they depend on where the pattern is read.
+  (blank)
+  (prop + items FirstItems)
+  (prop + key U64)
+  (prop + owner InstanceId)
+  (prop + contextual Bool)
+)
+
+(type _ JudgedCall (is Tuple)
+  ; A call of a rule being judged: its key and the instance that reads it.
+  (blank)
+  (prop + key U64)
+  (prop + owner InstanceId)
+)
+
+(type + RuleTarget (is Tuple)
+  ; The pattern of a rule a call names, the module whose syntax it is, and the instance whose
+  ; facts and binding are read for it.
+  (blank)
+  (prop + module ModuleId)
+  (prop + owner InstanceId)
+  (prop + pattern SyntaxId)
+)
+
+(type _ RuleFirst (is Tuple)
+  ; What the pattern of a rule may start with for an instance that reads it, and the next kept
+  ; for another instance of the same pattern.
+  (blank)
+  (prop + owner InstanceId)
+  (prop + found FirstItems)
+  (prop + next U32)
+)
+
+(type + FirstItemTable
+  ; What the pattern of each rule may start with for each instance that reads it, where it was
+  ; judged with no cut, which the reference shares among all the patterns it emits.
+  ; `ProgramTables` fills it before any walk, and nothing changes it after.
+  (blank)
+  (prop _ heads (of Map U64 U32))
+  (prop _ kept (list RuleFirst))
+  (fn-do + find (? FirstItems)
+    (param target RuleTarget)
+    ; What the pattern of a rule was judged to start with for the instance that reads it, where
+    ; it was judged with no cut.
+    (let place (?? ([] heads (call plan-key (. target module) (. target pattern))) (. U32 max)))
+    (while (!= place (. U32 max))
+      (let rule ([] kept place))
+      (if (== (. rule owner) (. target owner))
+        (return (. rule found))
+      )
+      (= place (. rule next))
+    )
+    (return null)
+  )
+  (fn-do + keep _
+    (param target RuleTarget)
+    (param found FirstItems)
+    ; Keeps what the pattern of a rule starts with for the instance that reads it.
+    (let key (call plan-key (. target module) (. target pattern)))
+    (+= kept (call RuleFirst (. target owner) found (?? ([] heads key) (. U32 max))))
+    (= ([] heads key) (as (- (. kept length) 1) U32))
+  )
+)
+
+(fn-do + choice-arms _
+  (param syntax AST)
+  (param id SyntaxId)
+  (param arms (list SyntaxId))
+  ; The alternatives of a choice, in the order written, those of a choice among them included.
+  (match? ([] (. syntax nodes) id)
+    (case (call .node-stream-or row)
+      (call choice-arms syntax (. row left) arms)
+      (call choice-arms syntax (. row right) arms)
+      (return)
+    )
+  )
+  (+= arms id)
+)
+
+(type + FirstItemJudge
+  ; Judges which items the parts of a grammar may start with, as the reference does before it
+  ; emits a pattern (`plan-choices`), and keeps for each choice met what each of its alternatives
+  ; may start with (`plan-firsts`, found through `plan-start`). It keeps the calls of rules it
+  ; judged since the pattern it plans began, each with the instance that reads it (`first-calls`,
+  ; `found-firsts`), those it is judging (`first-resolving`), and the stacks the choices among them grow and give back, all emptied as
+  ; each walk begins (`empty`). What the pattern of a rule starts with where it was judged with no
+  ; cut it reads from `table`, and, where it `keeps`, adds to it (`judge-rule`).
+  (blank)
+  (prop + plan-firsts (list FirstItems))
+  (prop _ choice-plans (of Map U64 U32))
+  (prop _ first-calls (of Map U64 U32))
+  (prop _ found-firsts (list FoundFirst))
+  (prop _ no-ranges (list ItemRange))
+  (prop _ choice-arm-stack (list SyntaxId))
+  (prop _ choice-first-stack (list FirstItems))
+  (prop _ choice-range-stack (list ItemRange))
+  (prop _ first-resolving (list JudgedCall))
+  (prop _ table FirstItemTable)
+  (prop _ keeps Bool)
+  (prop _ first-cuts U64 (= 0))
+  (prop _ program Program)
+  (prop _ instances Instances)
+  (prop _ facts Facts)
+  (prop _ bindings Bindings)
+  (fn-do + This _
+    (param program Program)
+    (param instances Instances)
+    (param facts Facts)
+    (param bindings Bindings)
+    (param table FirstItemTable)
+    (param keeps Bool)
+  )
+  (fn-do + empty _
+    ; Empties what a walk judged.
+    (if (!= (. first-calls length) 0)
+      (call (. first-calls clear))
+    )
+    (call (. found-firsts clear))
+    (call (. no-ranges clear))
+    (call (. choice-arm-stack clear))
+    (call (. choice-first-stack clear))
+    (call (. choice-range-stack clear))
+    (call (. first-resolving clear))
+    (if (!= (. choice-plans length) 0)
+      (call (. choice-plans clear))
+    )
+    (call (. plan-firsts clear))
+  )
+  (fn-do + plan-choices _
+    (param module ModuleId)
+    (param owner InstanceId)
+    (param root SyntaxId)
+    ; Judges, as the reference does before it emits a pattern, which items each part of the
+    ; pattern rooted at `root` in `module` may start with, read for `owner`, reading the patterns
+    ; of the rules it calls as far as they reach, and keeps for each choice of the pattern what
+    ; each of its alternatives may start with.
+    (if (!= (. found-firsts length) 0)
+      (call (. found-firsts clear))
+    )
+    (call first-items module owner root true)
+  )
+  (fn-do + judge-rule _
+    (param target RuleTarget)
+    ; Judges what the pattern of a rule may start with for the instance that reads it, from no
+    ; call judged, and keeps it where no call met in judging it was cut.
+    (if (call (. table find) target)
+      (return)
+    )
+    (call empty)
+    (let prior first-cuts)
+    (let found (call first-items (. target module) (. target owner) (. target pattern) false))
+    (if (== first-cuts prior)
+      (call (. table keep) target found)
+    )
+  )
+  (fn-expr + plan-start U32
+    (param module ModuleId)
+    (param id SyntaxId)
+    ; Where what the alternatives of a choice may start with is kept, or `U32.max` where it is not.
+    (?? ([] choice-plans (call plan-key module id)) (. U32 max))
+  )
+  (fn-do _ first-items FirstItems
+    (param module ModuleId)
+    (param owner InstanceId)
+    (param id SyntaxId)
+    (param planning Bool)
+    ; What the reference knows of the items a part of a grammar may start with, as it
+    ; lowers the part and judges it. Text starts with its first character and probes its length;
+    ; a range, any item, or a repeat that scans for one, starts with what it matches and probes
+    ; one item. A sequence starts as its parts do up to the first that must read an item, and
+    ; probes as that one does. Alternatives start as any of theirs does and probe the farthest,
+    ; where each probe is known. A repeat or an optional part starts and probes as its part does,
+    ; and may read none where it may pass none; a lookahead may read none, starts with what is not
+    ; known, and probes as its part does. A call starts and probes as the pattern of the rule it
+    ; calls does. A test of an item, of its type, or of a value matched, starts with what is not
+    ; known and probes what is not known. With `planning`, keeps what the alternatives of each
+    ; choice met may start with.
+    (let syntax (. ([] (. program modules) module) tree))
+    (let none no-ranges)
+    (match? ([] (. syntax nodes) id)
+      (case (call .node-stream-string row)
+        (let count (. row text length))
+        (if (== count 0)
+          (return (call FirstItems true true none 0))
+        )
+        (let point (as ([] (. row text) 0) U64))
+        (return (call FirstItems true false (call single-range point point) (as count U64)))
+      )
+      (case .node-stream-any
+        (return (call FirstItems true false (call single-range 0 any-item) 1))
+      )
+      (case (call .node-stream-char-range row)
+        (return
+          (call FirstItems
+            (block
+              (arg true)
+              (arg false)
+              (arg (call single-range (call (. syntax stream-bound) (. row first)) (call (. syntax stream-bound) (. row last))))
+              (arg 1)
+            )
+          )
+        )
+      )
+      (case (call .node-stream-transform row)
+        (if (== (. row pattern) 0)
+          (return (call FirstItems true true none 0))
+        )
+        (return (call first-items module owner (. row pattern) planning))
+      )
+      (case (call .node-stream-panic row)
+        (return (call first-items module owner (. row pattern) planning))
+      )
+      (case (call .node-stream-capture row)
+        (return (call first-items module owner (. row pattern) planning))
+      )
+      (case (call .node-stream-and row)
+        (let left (call first-items module owner (. row left) planning))
+        (let right (call first-items module owner (. row right) planning))
+        (if (not (. left nullable))
+          (return left)
+        )
+        (return
+          (call FirstItems
+            (block
+              (arg (and (. left known) (. right known)))
+              (arg (. right nullable))
+              (arg (call merged-ranges (. left ranges) (. right ranges)))
+              (arg (. right probe))
+            )
+          )
+        )
+      )
+      (case .node-stream-or
+        (return (call first-choice module owner id planning))
+      )
+      (case (call .node-stream-unary row)
+        (let optional (!= (. row op) .one-or-more-op))
+        (if (and repeats (call is-scanned syntax (. row operand)))
+          (return (call FirstItems true optional (call scanned-ranges syntax (. row operand)) 1))
+        )
+        (lazy repeats (or (== (. row op) .zero-or-more-op) (== (. row op) .one-or-more-op)))
+        (let inner (call first-items module owner (. row operand) planning))
+        (if (or (== (. row op) .positive-lookahead-op) (== (. row op) .negative-lookahead-op))
+          (return (call FirstItems false true none (. inner probe)))
+        )
+        (return (call FirstItems (. inner known) optional (. inner ranges) (. inner probe)))
+      )
+      (case (call .node-stream-length row)
+        (let inner (call first-items module owner (. row operand) planning))
+        (let least (if-expr (call (. syntax literal-bound) (. row min)) (call (. syntax stream-bound) (. row min)) 0))
+        (return (call FirstItems (. inner known) (== least 0) (. inner ranges) (. inner probe)))
+      )
+      (case .node-stream-call
+        (return (call call-first-items module owner id))
+      )
+    )
+    (return (call FirstItems false false none no-probe))
+  )
+  (fn-do _ first-choice FirstItems
+    (param module ModuleId)
+    (param owner InstanceId)
+    (param id SyntaxId)
+    (param planning Bool)
+    ; What the reference knows of the items a choice may start with, from what each of its
+    ; alternatives may; with `planning`, keeps that of each. The alternatives, what each starts
+    ; with, and the ranges they start with joined so far are kept on stacks that the choices among
+    ; them grow and give back as they are judged.
+    (let arms (. choice-arm-stack length))
+    (call choice-arms (. ([] (. program modules) module) tree) id choice-arm-stack)
+    (let end (. choice-arm-stack length))
+    (let firsts (. choice-first-stack length))
+    (let joined (. choice-range-stack length))
+    (let known true)
+    (let nullable false)
+    (let probe U64)
+    (for (in position (..< arms end))
+      (let found (call first-items module owner ([] choice-arm-stack position) planning))
+      (if planning
+        (+= choice-first-stack found)
+      )
+      (= known (and known (. found known)))
+      (= nullable (or nullable (. found nullable)))
+      (call join-ranges joined (. found ranges))
+      (if (or (== probe no-probe) (== (. found probe) no-probe))
+        (= probe no-probe)
+        (else-if (> (. found probe) probe)
+          (= probe (. found probe))
+        )
+      )
+    )
+    (if planning
+      (= ([] choice-plans (call plan-key module id)) (as (. plan-firsts length) U32))
+      (for (in position (..< firsts (. choice-first-stack length)))
+        (+= plan-firsts ([] choice-first-stack position))
+      )
+      (call (. choice-first-stack remove) firsts (- (. choice-first-stack length) firsts))
+    )
+    (call (. choice-arm-stack remove) arms (- end arms))
+    (let ranges no-ranges)
+    (if (> (. choice-range-stack length) joined)
+      (let taken (list ItemRange))
+      (for (in position (..< joined (. choice-range-stack length)))
+        (+= taken ([] choice-range-stack position))
+      )
+      (call (. choice-range-stack remove) joined (- (. choice-range-stack length) joined))
+      (= ranges taken)
+    )
+    (return (call FirstItems known nullable ranges probe))
+  )
+  (fn-do _ join-ranges _
+    (param base Size)
+    (param ranges (list ItemRange))
+    ; Joins ranges, in order and apart, into those a choice has joined so far on the range stack
+    ; from `base`, as `merged-ranges` does: they stay in order and apart.
+    (return-if (if (== (. ranges length) 0)))
+    (blank)
+    (let top (. choice-range-stack length))
+    (let at-left base)
+    (let at-right Size 0)
+    (while (or (< at-left top) (< at-right (. ranges length)))
+      (let from-left
+        (scope (or (>= at-right (. ranges length)) (and (< at-left top) left-before))
+          (lazy left-before (not (call range-after ([] choice-range-stack at-left) ([] ranges at-right))))
+        )
+      )
+      (let range (if-expr from-left ([] choice-range-stack at-left) ([] ranges at-right)))
+      (if from-left
+        (+= at-left 1)
+        (else
+          (+= at-right 1)
+        )
+      )
+      (if (!= (. choice-range-stack length) top)
+        (let last (- (. choice-range-stack length) 1))
+        (if (<= (. range first) (+ (. ([] choice-range-stack last) last) 1))
+          (if (> (. range last) (. ([] choice-range-stack last) last))
+            (= ([] choice-range-stack last) (call ItemRange (. ([] choice-range-stack last) first) (. range last)))
+          )
+          (continue)
+        )
+      )
+      (+= choice-range-stack range)
+    )
+    (let count (- (. choice-range-stack length) top))
+    (for (in offset (..< 0 count))
+      (= ([] choice-range-stack (+ base offset)) ([] choice-range-stack (+ top offset)))
+    )
+    (call (. choice-range-stack remove) (+ base count) (- top base))
+  )
+  (fn-do _ scanned-ranges (list ItemRange)
+    (param syntax AST)
+    (param id SyntaxId)
+    ; The ranges of the items a part the reference scans for may match, in order and apart.
+    (let none no-ranges)
+    (match? ([] (. syntax nodes) id)
+      (case (call .node-stream-string row)
+        (let point (as ([] (. row text) 0) U64))
+        (return (call single-range point point))
+      )
+      (case .node-stream-any
+        (return (call single-range 0 any-item))
+      )
+      (case (call .node-stream-char-range row)
+        (return (call single-range (call (. syntax stream-bound) (. row first)) (call (. syntax stream-bound) (. row last))))
+      )
+      (case (call .node-stream-or row)
+        (return (call merged-ranges (call scanned-ranges syntax (. row left)) (call scanned-ranges syntax (. row right))))
+      )
+      (case (call .node-stream-transform row)
+        (return (call scanned-ranges syntax (. row pattern)))
+      )
+    )
+    (return none)
+  )
+  (fn-do _ call-first-items FirstItems
+    (param module ModuleId)
+    (param owner InstanceId)
+    (param id SyntaxId)
+    ; What the reference knows of the items a call of a rule may start with: what the pattern of
+    ; the rule does, judged once for each call met and instance that reads it, from where the
+    ; pattern is emitted. A call met again for the same instance while its rule is being judged
+    ; starts with what is not known, as one whose rule is not found does, and cuts the judging of
+    ; the calls around it. A rule `table` holds is read from
+    ; it, as the reference shares it among all patterns; one judged here with no cut is added to it
+    ; where the judge `keeps`.
+    (let key (call plan-key module id))
+    (let kept (?? ([] first-calls key) (. U32 max)))
+    (if (and (< (as kept Size) (. found-firsts length)) (== (. ([] found-firsts kept) key) key) (== (. ([] found-firsts kept) owner) owner))
+      (if (. ([] found-firsts kept) contextual)
+        (+= first-cuts 1)
+      )
+      (return (. ([] found-firsts kept) items))
+    )
+    (let none no-ranges)
+    (if (call is-resolving key owner)
+      (+= first-cuts 1)
+      (return (call FirstItems false false none no-probe))
+    )
+    (let found (call FirstItems false false none no-probe))
+    (let contextual false)
+    (let target (call rule-target module owner id))
+    (if (!= (. target pattern) 0)
+      (let shared (call (. table find) target))
+      (if shared
+        (= found shared)
+        (else
+          (let prior-cuts first-cuts)
+          (+= first-resolving (call JudgedCall key owner))
+          (= found (call first-items (. target module) (. target owner) (. target pattern) false))
+          (call (. first-resolving pop))
+          (= contextual (!= first-cuts prior-cuts))
+          (if (and keeps (not contextual))
+            (call (. table keep) target found)
+          )
+        )
+      )
+    )
+    (= ([] first-calls key) (as (. found-firsts length) U32))
+    (+= found-firsts (call FoundFirst found key owner contextual))
+    (return found)
+  )
+  (fn-do _ is-resolving Bool
+    (param key U64)
+    (param owner InstanceId)
+    ; Whether a call is being judged for an instance around the call met.
+    (for (in judged first-resolving)
+      (if (and (== (. judged key) key) (== (. judged owner) owner))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + rule-target RuleTarget
+    (param module ModuleId)
+    (param owner InstanceId)
+    (param id SyntaxId)
+    ; The pattern of the rule a call names, as the reference finds it, with the module that
+    ; declares it and the instance that reads it: a local rule's, as the binder resolved the call,
+    ; or that of a rule a module declares, as the type pass resolved it. No pattern where neither
+    ; is found.
+    (let syntax (. ([] (. program modules) module) tree))
+    (if (== owner no-instance)
+      (return (call RuleTarget module owner 0))
+    )
+    (let binding (. ([] (. instances rows) owner) binding))
+    (if (!= binding no-binding)
+      (let resolution (call (. bindings resolution-of) binding id))
+      (if (== (. resolution kind) .resolve-slot)
+        (let row ([] (. bindings slots) (. resolution slot)))
+        (if (== (. row kind) .slot-lazy)
+          (match? ([] (. syntax nodes) (. row group))
+            (case (call .node-declare declaration)
+              (match? ([] (. syntax nodes) (. declaration right))
+                (case (call .node-stream-match rule)
+                  (return (call RuleTarget module owner (. rule pattern)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (let fact (call (. facts own-call) owner id))
+    (if (!= fact no-fact)
+      (let callee (. ([] (. facts calls) fact) callee))
+      (if (!= callee no-instance)
+        (let home (. ([] (. instances rows) callee) module))
+        (let matched (call rule-match program home (. ([] (. instances rows) callee) decl)))
+        (if (!= matched 0)
+          (match? ([] (. ([] (. program modules) home) tree nodes) matched)
+            (case (call .node-stream-match rule)
+              (return (call RuleTarget home callee (. rule pattern)))
+            )
+          )
+        )
+      )
+    )
+    (return (call RuleTarget module owner 0))
+  )
+)

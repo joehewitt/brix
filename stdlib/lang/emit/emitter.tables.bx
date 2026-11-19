@@ -84,21 +84,19 @@
 )
 
 (type _ Tables (facet-of FunctionEmitter)
-  (fn-expr _ proven-table U32
+  (fn-do _ proven-table U32
     (param id SyntaxId)
-    (case? (or (!= (call (. facts plan-of) (. unit reading) id) .plan-table) (== constant no-fact))
-      (. U32 max)
+    (if (!= (call (. facts plan-of) (. unit reading) id) .plan-table)
+      (return (. U32 max))
     )
-    (case? (!= (as (as (/and/ bits 4294967295) U32) TableOp) (. TableOp proven-row))
-      (. U32 max)
+    (let found (call (. facts table-of) (. unit reading) id))
+    (if (not found)
+      (return (. U32 max))
     )
-    (default
-      (call proven-loop (as (/rshift/ bits 32) SyntaxId))
+    (if (!= (. found op) (. TableOp proven-row))
+      (return (. U32 max))
     )
-    (where
-      (lazy constant (call (. facts constant-of) (. unit reading) id))
-      (lazy bits (. ([] (. facts constants) constant) bits))
-    )
+    (return (call proven-loop (. found loop)))
   )
   (fn-do _ proven-field Operand
     (param id SyntaxId)
@@ -1742,20 +1740,17 @@
   (fn-do + table-op TableOp
     (param id SyntaxId)
     ; The operation the type pass planned at a node of a table.
-    (let constant (call (. facts constant-of) (. unit reading) id))
-    (if (== constant no-fact)
+    (let found (call (. facts table-op-of) (. unit reading) id))
+    (if (not found)
       (call refuse .refused-expression id)
       (return (. TableOp table-row))
     )
-    (return (as (as (/and/ (. ([] (. facts constants) constant) bits) 4294967295) U32) TableOp))
+    (return found)
   )
   (fn-expr _ table-slot U32
     (param id SyntaxId)
     ; The place in the row's layout of the field a table's node reads or writes.
-    (if-expr (== constant no-fact) 0 (as (/rshift/ (. ([] (. facts constants) constant) bits) 32) U32))
-    (where
-      (lazy constant (call (. facts constant-of) (. unit reading) id))
-    )
+    (call (. facts table-slot-of) (. unit reading) id)
   )
   (fn-do _ header-word Operand
     (param site SyntaxId)
@@ -3869,8 +3864,8 @@
     ; builder's header, where every copy of the builder reads them.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
-    (let constant (call (. facts constant-of) (. unit reading) id))
-    (if (or (== fact no-fact) (== constant no-fact))
+    (let traces (call (. facts traces-of) (. unit reading) id))
+    (if (or (== fact no-fact) (== traces null))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
@@ -3901,7 +3896,7 @@
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let traced (!= (. ([] (. facts constants) constant) bits) 0))
+    (let traced (?? traces false))
     (let state (call builder-state id (. builder operand) layout))
     (let held (call num-cast id (. state identity) u64-layout pointer-layout))
     (let current (call BuilderItems (call load held 0 u64-layout id) (call load held 8 u64-layout id)))

@@ -13,6 +13,7 @@
 (import ./emitter.styles)
 (import ./emitter.tables)
 (import ./emitter.tasks)
+(import ./first-items)
 (import ./layouts)
 (import ./program-tables)
 (import ./receiver-stability)
@@ -60,9 +61,7 @@
 (prop _ no-place U32 (= (. U32 max)))
 (prop _ no-hops U32 (= (. U32 max)))
 (prop _ unsourced SyntaxId (= (. U32 max)))
-(prop _ no-probe U64 (= (. U64 max)))
 (prop _ probe-data-type-count _ (= 16))
-(prop _ any-item U64 (= 0x10ffff))
 
 (type _ PartOp (is U32)
   ; What the part of a machine merged with others does for a case where another calls it
@@ -518,15 +517,6 @@
   (prop + local LocalId)
 )
 
-(type _ FoundFirst (is Tuple)
-  ; The first items found for a pattern, the key they were found under, and whether they depend on
-  ; where the pattern is read.
-  (blank)
-  (prop + items FirstItems)
-  (prop + key U64)
-  (prop + contextual Bool)
-)
-
 (type _ Pin (is Tuple)
   ; A value evaluated before the code that reads it: the expression it is the value of, the
   ; value and its type. Every reading of the expression while the pin is held gives the value.
@@ -700,113 +690,6 @@
   (prop + context LocalId)
 )
 
-(type _ ItemRange (is Tuple)
-  ; The items of a stream from `first` to `last`, both included, as numbers.
-  (blank)
-  (prop + first U64)
-  (prop + last U64)
-)
-
-(fn-do _ merged-ranges (list ItemRange)
-  (param left (list ItemRange))
-  (param right (list ItemRange))
-  ; The ranges of two lists, each in order and apart, in order and apart: those that overlap or
-  ; touch are joined. Where one list is empty, the other is the result.
-  (return-if right (if (== (. left length) 0)))
-  (return-if left (if (== (. right length) 0)))
-  (blank)
-  (let merged (list ItemRange))
-  (let at-left Size 0)
-  (let at-right Size 0)
-  (while (or (< at-left (. left length)) (< at-right (. right length)))
-    (let from-left
-      (scope (or (>= at-right (. right length)) (and (< at-left (. left length)) left-before))
-        (lazy left-before (not (call range-after ([] left at-left) ([] right at-right))))
-      )
-    )
-    (let range (if-expr from-left ([] left at-left) ([] right at-right)))
-    (if from-left
-      (+= at-left 1)
-      (else
-        (+= at-right 1)
-      )
-    )
-    (if (and (!= (. merged length) 0) (<= (. range first) (+ (. ([] merged (- (. merged length) 1)) last) 1)))
-      (if (> (. range last) (. ([] merged (- (. merged length) 1)) last))
-        (= ([] merged (- (. merged length) 1)) (call ItemRange (. ([] merged (- (. merged length) 1)) first) (. range last)))
-      )
-      (continue)
-    )
-    (+= merged range)
-  )
-  (return merged)
-)
-
-(fn-expr _ range-after Bool
-  (param range ItemRange)
-  (param other ItemRange)
-  ; Whether a range sorts after another: it starts later, or as early and ends later.
-  (or (> (. range first) (. other first)) (and (== (. range first) (. other first)) (> (. range last) (. other last))))
-)
-
-(fn-do _ ranges-meet Bool
-  (param left (list ItemRange))
-  (param right (list ItemRange))
-  ; Whether two lists of ranges, each in order and apart, share an item.
-  (let at-left Size 0)
-  (let at-right Size 0)
-  (while (and (< at-left (. left length)) (< at-right (. right length)))
-    (if (< (. ([] left at-left) last) (. ([] right at-right) first))
-      (+= at-left 1)
-      (else-if (< (. ([] right at-right) last) (. ([] left at-left) first))
-        (+= at-right 1)
-      )
-      (else
-        (return true)
-      )
-    )
-  )
-  (return false)
-)
-
-(fn-do _ single-range (list ItemRange)
-  (param first U64)
-  (param last U64)
-  ; A list of one range.
-  (let ranges (list ItemRange))
-  (+= ranges (call ItemRange first last))
-  (return ranges)
-)
-
-(type _ FirstItems (is Tuple)
-  ; What the reference knows of the items a part of a grammar may start with, as it
-  ; judges which alternatives of a choice to skip: whether it knows them, whether the part may
-  ; pass where it reads none, and the ranges they lie in, in order and apart; and how far past
-  ; where the part is tried it counts the part as read where it is skipped, `no-probe` where it
-  ; does not know.
-  (blank)
-  (prop + known Bool)
-  (prop + nullable Bool)
-  (prop + ranges (list ItemRange))
-  (prop + probe U64)
-)
-
-(fn-expr _ guards Bool
-  (param first FirstItems)
-  ; Whether the reference skips an alternative that starts so where the item at the cursor is
-  ; not one it may start with: where it knows them, there are some, and it must read one.
-  (and (. first known) (not (. first nullable)) (!= (. first ranges length) 0))
-)
-
-(type _ SharedFirst (is Tuple)
-  ; What the pattern of a rule may start with for the instance that reads it, judged where no
-  ; call met in judging it was cut, which the reference shares among all the patterns it emits;
-  ; and the next one kept for another instance of the same pattern.
-  (blank)
-  (prop + owner InstanceId)
-  (prop + found FirstItems)
-  (prop + next U32)
-)
 
 (type _ CaseCursor (is Tuple)
   ; A name a pattern bound to the case of a row of a table of unions: the row, its type, the
@@ -944,18 +827,17 @@
 (type + Emitter
   ; Builds the IR of each function a worker takes into `ir`, each with a `FunctionEmitter` of its
   ; own, and says whether the last was refused (`refusal`) or built as a bridge (`bridged`). It keeps
-  ; what lasts from one function to the next: `type-values`, the types whose values the functions name;
-  ; the first sets of the patterns they share (`shared-first-heads`); and what the code of the
-  ; functions a bridged member calls does to storage, which `probe` builds in `probe-storage`: `scans`
-  ; holds what was found for the functions of `scanned`. `lists` are the collections each walker
-  ; fills, emptied as each walk begins.
+  ; what lasts from one function to the next: `type-values`, the types whose values the functions
+  ; name; and what the code of the functions a bridged member calls does to storage, which `probe`
+  ; builds in `probe-storage`: `scans` holds what was found for the functions of `scanned`. `lists`
+  ; are the collections each walker fills, and `firsts` judges the first items of the patterns it
+  ; emits, both emptied as each walk begins.
   (blank)
   (prop + ir IRFunction)
   (prop + refusal Refusal)
   (prop + bridged Bool)
   (prop + type-values (list TypeId))
-  (prop _ shared-first-heads (of Map U64 U32))
-  (prop _ shared-firsts (list SharedFirst))
+  (prop _ firsts FirstItemJudge)
   (prop _ probe (? Emitter) (= null))
   (prop _ probe-storage (? Arena) (= null))
   (prop _ scanned (list U32))
@@ -977,6 +859,7 @@
     (param bindings Bindings)
     (param storage Arena)
     (lazy ir (call IRFunction storage))
+    (lazy firsts (call FirstItemJudge program instances facts bindings (. tables rule-firsts) false))
   )
   (fn-expr + begin-using _
     this
@@ -1104,6 +987,7 @@
     ; Builds a function's IR with a walker of its own, and notes whether it was refused.
     (probe-count emit.walks)
     (call (. lists empty))
+    (call (. firsts empty))
     (let walker (call FunctionEmitter this unshared bridged fusing fused-read))
     (= refusal (call Refusal))
     (call (. walker emit-function) id
@@ -1131,15 +1015,6 @@
   (prop + borrows (list Borrow))
   (prop + collector-args (list String))
   (prop + lent (list LentCollector))
-  (prop + first-calls (of Map U64 U32))
-  (prop + found-firsts (list FoundFirst))
-  (prop + no-ranges (list ItemRange))
-  (prop + choice-arm-stack (list SyntaxId))
-  (prop + choice-first-stack (list FirstItems))
-  (prop + choice-range-stack (list ItemRange))
-  (prop + first-resolving (list U64))
-  (prop + choice-plans (of Map U64 U32))
-  (prop + plan-firsts (list FirstItems))
   (prop + case-cursors (list CaseCursor))
   (prop + case-gathers (list CaseGather))
   (prop + proven-tables (list ProvenTable))
@@ -1204,19 +1079,6 @@
     (call (. borrows clear))
     (call (. collector-args clear))
     (call (. lent clear))
-    (if (!= (. first-calls length) 0)
-      (call (. first-calls clear))
-    )
-    (call (. found-firsts clear))
-    (call (. no-ranges clear))
-    (call (. choice-arm-stack clear))
-    (call (. choice-first-stack clear))
-    (call (. choice-range-stack clear))
-    (call (. first-resolving clear))
-    (if (!= (. choice-plans length) 0)
-      (call (. choice-plans clear))
-    )
-    (call (. plan-firsts clear))
     (call (. case-cursors clear))
     (call (. case-gathers clear))
     (call (. proven-tables clear))
@@ -1389,16 +1251,7 @@
   (prop _ collector-args (list String))
   (prop _ lent (list LentCollector))
   (prop _ lent-first U32 (= (. U32 max)))
-  (prop _ first-calls (of Map U64 U32))
-  (prop _ found-firsts (list FoundFirst))
-  (prop _ no-ranges (list ItemRange))
-  (prop _ choice-arm-stack (list SyntaxId))
-  (prop _ choice-first-stack (list FirstItems))
-  (prop _ choice-range-stack (list ItemRange))
-  (prop _ first-resolving (list U64))
-  (prop _ shared-first-heads (of Map U64 U32))
-  (prop _ shared-firsts (list SharedFirst))
-  (prop _ choice-plans (of Map U64 U32))
+  (prop _ firsts FirstItemJudge)
   (prop _ plan-firsts (list FirstItems))
   (prop _ streaming _ (= (call Streaming)))
   (prop _ case-cursors (list CaseCursor))
@@ -1542,8 +1395,7 @@
     (lazy storage (. emitter storage))
     (lazy ir (. emitter ir))
     (lazy type-values (. emitter type-values))
-    (lazy shared-first-heads (. emitter shared-first-heads))
-    (lazy shared-firsts (. emitter shared-firsts))
+    (lazy firsts (. emitter firsts))
     (lazy pins (. emitter lists pins))
     (lazy writes (. emitter lists writes))
     (lazy bound (. emitter lists bound))
@@ -1552,15 +1404,7 @@
     (lazy borrows (. emitter lists borrows))
     (lazy collector-args (. emitter lists collector-args))
     (lazy lent (. emitter lists lent))
-    (lazy first-calls (. emitter lists first-calls))
-    (lazy found-firsts (. emitter lists found-firsts))
-    (lazy no-ranges (. emitter lists no-ranges))
-    (lazy choice-arm-stack (. emitter lists choice-arm-stack))
-    (lazy choice-first-stack (. emitter lists choice-first-stack))
-    (lazy choice-range-stack (. emitter lists choice-range-stack))
-    (lazy first-resolving (. emitter lists first-resolving))
-    (lazy choice-plans (. emitter lists choice-plans))
-    (lazy plan-firsts (. emitter lists plan-firsts))
+    (lazy plan-firsts (. emitter firsts plan-firsts))
     (lazy case-cursors (. emitter lists case-cursors))
     (lazy case-gathers (. emitter lists case-gathers))
     (lazy proven-tables (. emitter lists proven-tables))
@@ -2384,7 +2228,7 @@
     ; of core that the type pass recorded at the main's node.
     (return-if (if (not (call (. program runs-main) (. function module)))))
     (blank)
-    (let fact (call (. facts first-call) (. unit reading) (. tree root)))
+    (let fact (call (. facts answer-call) (. unit reading) (. tree root) .role-answer))
     (if (!= fact no-fact)
       (call call-instance (. ([] (. facts calls) fact) callee) (. tree root) (. pending length))
     )
@@ -2620,16 +2464,15 @@
   (fn-do _ emit-use Typed
     (param id SyntaxId)
     (param expr SyntaxId)
-    ; `use`: the subject is evaluated, and its `begin-using`, the first call the type pass recorded
-    ; at the node, gives the value, or the subject itself where it only closes (`only-closes`). The
-    ; object is then kept in the node's cell of the block being emitted, whose cleanup ends it where
-    ; the block is left, by any way out. A subject written `use?` that holds nothing is used by
-    ; nothing, and gives the optional that holds nothing; one that holds a value, or that the flow
-    ; knows does, gives what `begin-using` gives, or itself, as an optional.
+    ; `use`: the subject is evaluated, and its `begin-using` gives the value, or the subject itself
+    ; where it only closes. The object is then kept in the node's cell of the block being emitted,
+    ; whose cleanup ends it where the block is left, by any way out. A subject written `use?` that
+    ; holds nothing is used by nothing, and gives the optional that holds nothing; one that holds a
+    ; value, or that the flow knows does, gives what `begin-using` gives, or itself, as an optional.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
-    (let begins (call (. facts first-call) (. unit reading) id))
-    (if (or (not (call can-use true)) (== begins no-fact))
+    (let begins (call (. facts call-in-role) (. unit reading) id .role-begin))
+    (if (or (not (call can-use true)) (== (call (. facts call-in-role) (. unit reading) id .role-end) no-fact))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
@@ -2656,7 +2499,7 @@
     (let object-type (. subject type))
     (let cell (call use-cell id object-type))
     (let used subject)
-    (if (not (call only-closes begins))
+    (if (!= begins no-fact)
       (let called (call call-protocol id begins (. subject operand) object-type nothing))
       (= used (call Typed (. called operand) (. ([] (. instances signatures) (. ([] (. facts calls) begins) callee)) returns)))
     )
@@ -2677,8 +2520,8 @@
     ; `do use`: the subject is evaluated, and its `begin-using`, where it has one, called and what
     ; it gives dropped. The body runs in a block of its own, which ends the use of the subject where
     ; it is left, by any way out. A subject written `use?` that holds nothing runs nothing.
-    (let begins (call (. facts first-call) (. unit reading) id))
-    (if (or (not (call can-use false)) (== begins no-fact))
+    (let begins (call (. facts call-in-role) (. unit reading) id .role-begin))
+    (if (or (not (call can-use false)) (== (call (. facts call-in-role) (. unit reading) id .role-end) no-fact))
       (call refuse .refused-statement id)
       (return)
     )
@@ -2695,7 +2538,7 @@
     )
     (let type (. object type))
     (let cell (call UseCell no-local (call (. ir add-local) (call layout-of type id)) type))
-    (if (not (call only-closes begins))
+    (if (!= begins no-fact)
       (call call-protocol id begins (. object operand) type (call make-operand .operand-void 0))
     )
     (call store-local (. cell held) (. object operand) id)
@@ -2710,12 +2553,6 @@
       (call jump done)
       (call (. ir start-block) done)
     )
-  )
-  (fn-expr _ only-closes Bool
-    (param begins FactId)
-    ; Whether a `use` closes what it uses, which has no `begin-using`: the type pass recorded only
-    ; its `close` at the node.
-    (== (. ([] (. facts calls) begins) next) no-fact)
   )
   (fn-do _ emit-forwarder _
     (param forward SwapForward)
@@ -4445,11 +4282,11 @@
     (if (== type (. types string-type))
       (return (call Typed (call make-operand .operand-constant (call (. ir add-string) "")) type))
     )
-    (let fact (if-expr (== annotation 0) no-fact (call (. facts first-call) (. unit reading) annotation)))
+    (let fact (if-expr (== annotation 0) no-fact (call (. facts answer-call) (. unit reading) annotation .role-answer)))
     (if (and (== fact no-fact) (call (. tables layouts is-union) layout))
       (return (call first-case type layout id))
     )
-    (if (or (== fact no-fact) (!= (. ([] (. facts calls) fact) next) no-fact) other-form)
+    (if (or (== fact no-fact) (not (call holds-only annotation (list fact))) other-form)
       (call refuse .refused-statement id)
       (return (call Typed nothing no-type))
     )
@@ -4563,17 +4400,16 @@
       (return)
     )
     (let made (call emit-expression rhs))
+    (let held (call Typed (call apart made rhs (and (!= object 0) (not (call is-inert object)))) (. made type)))
+    (let wanted (call (. instances argument-type) callee 0))
     (let converted
-      (call convert
-        (block
-          (arg rhs)
-          (arg .reason-argument)
-          (arg (call Typed (call apart made rhs (and (!= object 0) (not (call is-inert object)))) (. made type)))
-        )
+      (if-expr (== (call (. facts plan-of) (. unit reading) lhs) .plan-forward)
+        (call convert-to rhs .reason-argument held wanted)
+        (call convert rhs .reason-argument held)
       )
     )
     (let value (. converted operand))
-    (if (!= (. converted type) (call (. instances argument-type) callee 0))
+    (if (!= (. converted type) wanted)
       (call refuse .refused-conversion rhs)
       (return)
     )
@@ -4646,7 +4482,7 @@
     (param id SyntaxId)
     ; Whether an index names a stored field of its object, by the constant the type pass
     ; recorded. One a function answers gives a value of its own, which names no storage.
-    (and (!= (call indexed-field id) no-fact) (== (call own-call id) no-fact) (!= (call (. facts plan-of) (. unit reading) id) .plan-item))
+    (and (!= (call indexed-field id) (. U32 max)) (== (call own-call id) no-fact) (!= (call (. facts plan-of) (. unit reading) id) .plan-item))
   )
   (fn-do _ places-item Bool
     (param id SyntaxId)
@@ -6463,7 +6299,7 @@
     (let fact (call (. facts first-call) (. unit reading) site))
     (while (!= fact no-fact)
       (let row ([] (. facts calls) fact))
-      (if (and (== (. row form) form) (== (. row is-swapped) is-right))
+      (if (and (== (. row form) form) (== (. row is-swapped) is-right) (== (. row role) .role-answer))
         (return fact)
       )
       (= fact (. row next))
@@ -6482,26 +6318,7 @@
   (fn-expr _ own-call FactId
     (param id SyntaxId)
     ; The call a node makes for its own value, as the instance being read records it.
-    (call call-in (. unit reading) id)
-  )
-  (fn-do _ call-in FactId
-    (param owner InstanceId)
-    (param id SyntaxId)
-    ; The call a node makes for its own value, as an instance records it: the one recorded at it
-    ; that is not the test of a value as a condition. No fact when there is none, or more than one.
-    (let found no-fact)
-    (let fact (call (. facts first-call) owner id))
-    (while (!= fact no-fact)
-      (let row ([] (. facts calls) fact))
-      (if (call answers-node (. row form))
-        (if (!= found no-fact)
-          (return no-fact)
-        )
-        (= found fact)
-      )
-      (= fact (. row next))
-    )
-    (return found)
+    (call (. facts own-call) (. unit reading) id)
   )
   (fn-do _ emit-print _
     (param id SyntaxId)
@@ -10493,8 +10310,8 @@
       )
     )
     (let slot (call channel-slot id))
-    (let made (call stream-call id .call-constructor))
-    (let write (call stream-call id .call-method))
+    (let made (call call-at id .call-constructor))
+    (let write (call (. facts call-in-role) (. unit reading) id .role-write))
     (if (or (== code no-function) (== slot no-slot) (== made no-fact) (== write no-fact))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -10523,20 +10340,6 @@
       )
     )
     (return (call Typed (. channel operand) type))
-  )
-  (fn-do _ stream-call FactId (?! Refused)
-    (param id SyntaxId)
-    (param form CallForm)
-    ; The call of a form the type pass recorded at a stream of a value as it changes: the constructor
-    ; of its channel, or its `<-write`.
-    (let fact (call (. facts first-call) (. unit reading) id))
-    (while (!= fact no-fact)
-      (if (== (. ([] (. facts calls) fact) form) form)
-        (return fact)
-      )
-      (= fact (. ([] (. facts calls) fact) next))
-    )
-    (return no-fact)
   )
   (fn-do _ decl-name (? Atom)
     (param module ModuleId)
@@ -11245,7 +11048,7 @@
         (case (call .decl-property property)
           (if (== row no-storage)
             (if (and (!= (. property value) 0) (== kind .global-eager))
-              (call emit-expression (. property value))
+              (call emit-global-expression (. property value) (. property syntax))
             )
             (else-if (or (!= (. property value) 0) (== kind .global-eager))
               (let kept ([] (. tables storage) row))
@@ -11280,7 +11083,7 @@
     (let made no-fact)
     (let fact (call (. facts first-call) (. unit reading) (. case syntax)))
     (while (!= fact no-fact)
-      (if (== (. ([] (. facts calls) fact) form) .call-constructor)
+      (if (and (== (. ([] (. facts calls) fact) form) .call-constructor) (== (. ([] (. facts calls) fact) role) .role-answer))
         (= made fact)
       )
       (= fact (. ([] (. facts calls) fact) next))
@@ -11339,14 +11142,13 @@
     ; A value of an enum named: read from where the module that declares it keeps it, which made
     ; it as it started.
     (let nothing (call make-operand .operand-void 0))
-    (let constant (call (. facts constant-of) (. unit reading) id))
-    (if (== constant no-fact)
+    (let found (call (. facts enum-of) (. unit reading) id))
+    (if (not found)
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let bits (. ([] (. facts constants) constant) bits))
-    (let module ModuleId (as (/ bits 4294967296) U32))
-    (let decl DeclId (as (% bits 4294967296) U32))
+    (let module (. found module))
+    (let decl (. found decl))
     (if (or (>= module (. program modules length)) (>= decl (. ([] (. program modules) module) decls length)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -11515,7 +11317,7 @@
         (lazy instance-module (. ([] (. instances rows) (. unit instance)) module))
       )
     )
-    (let views (call (. facts first-call) (. unit reading) (. row syntax)))
+    (let views (call (. facts call-in-role) (. unit reading) (. row syntax) .role-view))
     (call match-direct
       (block
         (arg (. row syntax))
@@ -11527,7 +11329,7 @@
         (arg (. row buffer))
         (arg 1)
         (arg views)
-        (arg (call next-call views))
+        (arg (call (. facts call-in-role) (. unit reading) (. row syntax) .role-extend))
         (arg (. row syntax))
       )
     )
@@ -11907,13 +11709,13 @@
       (if (call (. types is-optional) (. kept type))
         (return (call absent-argument (. property syntax) (. kept type)))
       )
-      (let fact (call (. facts first-call) (. unit reading) (. property syntax)))
+      (let fact (call (. facts answer-call) (. unit reading) (. property syntax) .role-answer))
       (if (and (!= fact no-fact) (!= (. ([] (. instances signatures) (. ([] (. facts calls) fact) callee)) args count) 0))
         (call refuse .refused-type (. property syntax))
         (return (call Typed (call make-operand .operand-void 0) no-type))
       )
       (if (and (call is-aggregate (. kept type)) (not (call (. types is-plain-tuple) (. kept type))))
-        (let constructs (and (!= fact no-fact) (== (. ([] (. facts calls) fact) next) no-fact)))
+        (let constructs (and (!= fact no-fact) (call holds-only (. property syntax) (list fact))))
         (if (and constructs (== (. ([] (. facts calls) fact) form) .call-this-constructor))
           (return
             (call emit-fact-call
@@ -11949,7 +11751,7 @@
       )
       (return (call default-value (. property syntax) (. kept type) (. kept layout) (. property syntax)))
     )
-    (let value (call emit-expression (. property value)))
+    (let value (call emit-global-expression (. property value) (. property syntax)))
     (for (in site (list (. property syntax) (. property value)))
       (let fact (call (. facts first-conversion) (. unit reading) site))
       (while (and (!= fact no-fact) (!= (. value type) (. kept type)))
@@ -11964,6 +11766,17 @@
       (call refuse .refused-conversion (. property syntax))
     )
     (return value)
+  )
+  (fn-do _ emit-global-expression Typed
+    (param value SyntaxId)
+    (param property SyntaxId)
+    (let main (. unit reading))
+    (let run (only-if (call enter-unit main) (if (call holds-global-locals main value property))))
+    (let emitted (call emit-expression value))
+    (if run
+      (call leave-unit run)
+    )
+    (return emitted)
   )
   (fn-do _ store-global _
     (param kept GlobalStorage)
@@ -13099,12 +12912,12 @@
     ; of the call it made.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
-    (let fact (call (. facts constant-of) (. unit reading) id))
-    (if (or (!= (call (. facts plan-of) (. unit reading) id) .plan-handled) (== fact no-fact))
+    (let handled (call (. facts handled-of) (. unit reading) id))
+    (if (or (!= (call (. facts plan-of) (. unit reading) id) .plan-handled) (== handled null))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let leaving (. ([] (. facts constants) fact) bits))
+    (let leaving (?? handled 0))
     (let raw (call emit-expression body))
     (let answer (call take-zone-answer))
     (let zoned in-zone)
@@ -13603,12 +13416,12 @@
     (param id SyntaxId)
     ; The type a number is written as: its node's, or with a unit whose class has a constructor
     ; the type of what the constructor takes, which the type pass recorded as a call at the node.
-    (let call (call answering (call (. facts first-call) (. unit reading) id)))
+    (let call (call (. facts answer-call) (. unit reading) id .role-answer))
     (if (== call no-fact)
       (return (call (. facts node-type) (. unit reading) id))
     )
     (let row ([] (. facts calls) call))
-    (let called (and (!= (. row callee) no-instance) (not (. row is-partial)) (== (. row next) no-fact)))
+    (let called (and (!= (. row callee) no-instance) (not (. row is-partial)) (call holds-only id (list call))))
     (let constructs (or (== (. row form) .call-constructor) (== (. row form) .call-this-constructor)))
     (if (or (not called) (not constructs) (!= (. ([] (. instances signatures) (. row callee)) args count) 1))
       (call refuse .refused-expression id)
@@ -13622,7 +13435,7 @@
     (param type TypeId)
     ; A number as its literal gives it: the number itself, or with a unit whose class has a
     ; constructor what the constructor returns for the number.
-    (let call (call answering (call (. facts first-call) (. unit reading) id)))
+    (let call (call (. facts answer-call) (. unit reading) id .role-answer))
     (if (== call no-fact)
       (return (call Typed number type))
     )
@@ -14210,7 +14023,7 @@
     (let made no-fact)
     (let fact (call (. facts first-call) (. unit reading) site))
     (while (!= fact no-fact)
-      (if (== (. ([] (. facts calls) fact) form) .call-enum-default)
+      (if (and (== (. ([] (. facts calls) fact) form) .call-enum-default) (== (. ([] (. facts calls) fact) role) .role-answer))
         (= made fact)
       )
       (= fact (. ([] (. facts calls) fact) next))
@@ -14690,15 +14503,14 @@
     ; constructor, the construction the type pass recorded at the node.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
-    (let constant (call (. facts constant-of) (. unit reading) id))
+    (let index (call (. facts case-of) (. unit reading) id))
     (let held (call emit-whole object))
     (let layout (call layout-of (. held type) id))
     (let given (call layout-of type id))
-    (if (or (== constant no-fact) (not (call (. tables layouts is-union) layout)))
+    (if (or (== index (. U32 max)) (not (call (. tables layouts is-union) layout)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. ([] (. tables layouts rows) layout) cases count))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -14745,36 +14557,6 @@
     )
     (call refuse .refused-expression object)
     (return (call Typed (call make-operand .operand-void 0) no-type))
-  )
-  (fn-do _ answer-count U32
-    (param id SyntaxId)
-    ; How many of the calls recorded at a node answer for its value.
-    (let count U32)
-    (let fact (call (. facts first-call) (. unit reading) id))
-    (while (!= fact no-fact)
-      (if (call answers-node (. ([] (. facts calls) fact) form))
-        (+= count 1)
-      )
-      (= fact (. ([] (. facts calls) fact) next))
-    )
-    (return count)
-  )
-  (fn-do _ nth-answer FactId
-    (param id SyntaxId)
-    (param position U32)
-    ; The call recorded at a node that answers for its value, by its place among those that do.
-    (let left position)
-    (let fact (call (. facts first-call) (. unit reading) id))
-    (while (!= fact no-fact)
-      (if (call answers-node (. ([] (. facts calls) fact) form))
-        (if (== left 0)
-          (return fact)
-        )
-        (-= left 1)
-      )
-      (= fact (. ([] (. facts calls) fact) next))
-    )
-    (return no-fact)
   )
   (fn-do _ emit-forward Typed
     (param id SyntaxId)
@@ -14910,7 +14692,7 @@
     ; node for that type, as one side of a join does.
     (let nothing (call make-operand .operand-void 0))
     (let count (. ([] (. tables layouts rows) layout) cases count))
-    (let answered (call answer-count id))
+    (let answered (call (. facts role-count) (. unit reading) id .role-case))
     (if (or (== count 0) (and (!= answered 0) (!= answered count)) unnamed-call)
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -14938,7 +14720,7 @@
       (if (== answered 0)
         (= answer (call load-property id inside (. field type) (!! name) true))
         (else
-          (let fact ([] (. facts calls) (call nth-answer id index)))
+          (let fact ([] (. facts calls) (call (. facts nth-in-role) (. unit reading) id .role-case index)))
           (= answer (call emit-fact-call id fact object operands 0 0 (call case-answer fact)))
         )
       )
@@ -14999,10 +14781,10 @@
     ; A setter of a union as each case answers it, with the union held and the value pinned: the
     ; setter the type pass recorded for the case the union holds, which it records in the order
     ; of the cases, is called on what the union holds with the value.
-    (let count-answered (call answer-count lhs))
+    (let count-answered (call (. facts role-count) (. unit reading) lhs .role-case))
     (let joined (call (. ir reserve-block)))
     (for (in index (..< 0 count-answered))
-      (let fact ([] (. facts calls) (call nth-answer lhs index)))
+      (let fact ([] (. facts calls) (call (. facts nth-in-role) (. unit reading) lhs .role-case index)))
       (if (!= (. fact form) .call-setter)
         (call refuse .refused-statement id)
         (break)
@@ -15038,13 +14820,12 @@
     ; notes.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
-    (let constant (call (. facts constant-of) (. unit reading) id))
+    (let index (call (. facts case-of) (. unit reading) id))
     (let layout (call layout-of type id))
-    (if (or (== constant no-fact) (not (call (. tables layouts is-union) layout)))
+    (if (or (== index (. U32 max)) (not (call (. tables layouts is-union) layout)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. ([] (. tables layouts rows) layout) cases count))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -16044,7 +15825,7 @@
           (return (call table-get id (. unit self) owner))
         )
         (if (== (call (. facts plan-of) (. unit reading) id) .plan-field)
-          (return (call placed-field id (. unit self) owner (call (. facts constant-of) (. unit reading) id)))
+          (return (call placed-field id (. unit self) owner (call (. facts place-of) (. unit reading) id)))
         )
         (if (== (call (. facts plan-of) (. unit reading) id) .plan-through)
           (let held (call read-through id (call Typed (. unit self) owner) (call (. facts through-of) (. unit reading) id)))
@@ -16400,7 +16181,7 @@
     ; An object a case holds is read as a class it derives from, or as one derived from its own
     ; that a test the flow passed found it to be of.
     (let nothing (call make-operand .operand-void 0))
-    (let constant (call (. facts constant-of) (. unit reading) id))
+    (let index (call (. facts case-of) (. unit reading) id))
     (let whole value)
     (let union held)
     (if (call (. types is-optional) held)
@@ -16409,16 +16190,22 @@
       (= union (. inner type))
     )
     (let layout (call layout-of union id))
-    (if (or (== constant no-fact) (not (call (. tables layouts is-union) layout)))
+    (if (or (== index (. U32 max)) (not (call (. tables layouts is-union) layout)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. ([] (. tables layouts rows) layout) cases count))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
     (let field (call (. tables layouts case-field) layout index))
+    (let inner (call (. facts inner-case-of) (. unit reading) id))
+    (if (!= inner (. U32 max))
+      (return (call read-inner-case id (call Typed (call take whole field id) (. field type)) inner type))
+    )
+    (if (call holds (. field type) type)
+      (return (call payload id (call Typed (call take whole field id) (. field type))))
+    )
     (let lined
       (scope (and (call (. tables is-class) (. field type)) (call (. tables is-class) type) related)
         (lazy related (or (call descends (. field type) type) (call descends type (. field type))))
@@ -16429,6 +16216,28 @@
       (return (call Typed nothing no-type))
     )
     (return (call Typed (call take whole field id) type))
+  )
+  (fn-do _ read-inner-case Typed
+    (param id SyntaxId)
+    (param value Typed)
+    (param index U32)
+    (param type TypeId)
+    (let nothing (call make-operand .operand-void 0))
+    (let union value)
+    (if (call (. types is-optional) (. value type))
+      (= union (call payload id value))
+    )
+    (let layout (call layout-of (. union type) id))
+    (if (or (not (call (. tables layouts is-union) layout)) (>= index (. ([] (. tables layouts rows) layout) cases count)))
+      (call refuse .refused-expression id)
+      (return (call Typed nothing no-type))
+    )
+    (let field (call (. tables layouts case-field) layout index))
+    (if (!= (. field type) type)
+      (call refuse .refused-expression id)
+      (return (call Typed nothing no-type))
+    )
+    (return (call Typed (call take (. union operand) field id) type))
   )
   (fn-do _ evaluated-before Bool
     (param flag LocalId)
@@ -16956,7 +16765,7 @@
     ; no fact where none was.
     (let fact (call (. facts first-call) (. unit reading) written))
     (while (!= fact no-fact)
-      (if (== (. ([] (. facts calls) fact) form) .call-operator)
+      (if (and (== (. ([] (. facts calls) fact) form) .call-operator) (== (. ([] (. facts calls) fact) role) .role-answer))
         (return fact)
       )
       (= fact (. ([] (. facts calls) fact) next))
@@ -17120,13 +16929,12 @@
     ; Whether an object is of a class or of one derived from it, or with `negated` whether it
     ; is not. The class is the constant the type pass recorded at the node.
     (let nothing (call make-operand .operand-void 0))
-    (let fact (call (. facts constant-of) (. unit reading) id))
+    (let target (call (. facts type-detail-of) (. unit reading) id))
     (let value (call emit-expression lhs))
-    (if (or (== fact no-fact) (not (call (. tables is-class) (. value type))))
+    (if (or (== target no-type) (not (call (. tables is-class) (. value type))))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (let target (as (. ([] (. facts constants) fact) bits) TypeId))
     (if (not (call (. tables is-class) target))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -17443,7 +17251,7 @@
     (let joined (call (. ir reserve-block)))
     (= field-call (call (. facts first-call) (. unit reading) id))
     (= field-site rhs)
-    (call skip-truths)
+    (call next-field)
     (call compare-parts id (. left operand) left-type (. right operand) right-type differ)
     (if (!= field-call no-fact)
       (call refuse .refused-expression id)
@@ -17482,7 +17290,7 @@
     )
     (let right (call emit-expression rhs))
     (= field-call (call (. facts first-call) (. unit reading) id))
-    (call skip-truths)
+    (call next-field)
     (let equal (call compare-interfaces id (. left operand) (. right operand)))
     (if (!= field-call no-fact)
       (call refuse .refused-expression id)
@@ -17530,7 +17338,7 @@
     )
     (let getter (. ([] (. facts calls) field-call) callee))
     (= field-call (. ([] (. facts calls) field-call) next))
-    (call skip-truths)
+    (call next-field)
     (if (or (== getter no-instance) (== ([] (. tables instance-functions) getter) no-function))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -17604,15 +17412,8 @@
     )
     (return no-fact)
   )
-  (fn-do _ skip-truths _
-    ; Moves on to the next call recorded for a field: the calls that test the node's own value
-    ; as a condition are not for fields.
-    (while (!= field-call no-fact)
-      (if (call answers-node (. ([] (. facts calls) field-call) form))
-        (return)
-      )
-      (= field-call (. ([] (. facts calls) field-call) next))
-    )
+  (fn-do _ next-field _
+    (= field-call (call (. facts role-call) field-call .role-field))
   )
   (fn-do _ compare-parts _
     (param id SyntaxId)
@@ -17735,7 +17536,7 @@
         (call refuse .refused-conversion id)
       )
       (= field-call (. ([] (. facts calls) field-call) next))
-      (call skip-truths)
+      (call next-field)
       (else-if (and (== (. held type) (. given type)) (call compares-by-machine types (. held type)))
         (if (== (. held layout) void-layout)
           (return)
@@ -17904,10 +17705,7 @@
   (fn-expr _ view-slot U32
     (param id SyntaxId)
     ; The place in the item's layout of the field the type pass planned a view to read at a node.
-    (if-expr (!= constant no-fact) (as (. ([] (. facts constants) constant) bits) U32) (. U32 max))
-    (where
-      (lazy constant (call (. facts constant-of) (. unit reading) id))
-    )
+    (call (. facts place-of) (. unit reading) id)
   )
   (fn-do _ item-field LayoutField
     (param id SyntaxId)
@@ -17979,7 +17777,7 @@
       (return (call Typed nothing no-type))
     )
     (let layout (call layout-of held id))
-    (if (and (== (call view-shape type) shape) (!= (call call-at id .call-view-range) no-fact))
+    (if (and (== (call view-shape type) shape) (call holds-form id .call-view-range))
       (let range (call emit-expression index))
       (let range-type (. range type))
       (return (call slice-view id base held (. range operand) range-type object type))
@@ -18933,11 +18731,8 @@
     ; `assigns` to that place: there the function is given the place itself.
     (let nothing (call make-operand .operand-void 0))
     (let pair (or (== plan .plan-neither-call) (== plan .plan-not-or-call)))
-    (let fact (call answering (call (. facts first-call) (. unit reading) id)))
-    (let second no-fact)
-    (if (!= fact no-fact)
-      (= second (call answering (. ([] (. facts calls) fact) next)))
-    )
+    (let fact (call (. facts answer-call) (. unit reading) id .role-answer))
+    (let second (call (. facts answer-call) (. unit reading) id .role-equal))
     (if (or (== fact no-fact) (!= (!= second no-fact) pair))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -18994,19 +18789,6 @@
       (return (call Typed nothing no-type))
     )
     (return answer)
-  )
-  (fn-do _ answering FactId
-    (param fact FactId)
-    ; The first call from one on that answers for a node's value: the calls that test a value as
-    ; a condition are passed over.
-    (let found fact)
-    (while (!= found no-fact)
-      (if (call answers-node (. ([] (. facts calls) found) form))
-        (return found)
-      )
-      (= found (. ([] (. facts calls) found) next))
-    )
-    (return no-fact)
   )
   (fn-do _ call-operator Typed
     (param id SyntaxId)
@@ -19100,9 +18882,16 @@
     )
     (return (call SharedArm arm start (- kept start) carried carried-type))
   )
-  (fn-expr _ next-call FactId
-    (param fact FactId)
-    (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) next) no-fact)
+  (fn-do _ holds-only Bool
+    (param site SyntaxId)
+    (param found (list FactId))
+    (let count U32)
+    (for (in fact found)
+      (if (!= fact no-fact)
+        (+= count 1)
+      )
+    )
+    (return (== (call (. facts call-count) (. unit reading) site) count))
   )
   (fn-expr _ may-grow Bool
     (param stream-type TypeId)
@@ -19196,7 +18985,6 @@
         (let named (. bound length))
         (let it-slot (call arm-slot-of id .slot-it))
         (let located (call location-fact id))
-        (let first (call (. facts first-call) (. unit reading) id))
         (let spans-it (call (. facts spanning-it) (. unit reading) id))
         (if (!= spans-it no-type)
           (let span (call source-span run id from finish spans-it))
@@ -19213,7 +19001,7 @@
               (call bind-it it-slot given given-type id)
             )
           )
-          (else-if (or (and (!= first no-fact) (!= first located)) (!= (call material-at id .material-text) (. U32 max)))
+          (else-if (or (not (call holds-only id (list located))) (!= (call material-at id .material-text) (. U32 max)))
             (let text (call stream-text run id from finish))
             (let text-type (. text type))
             (if (== it-slot no-slot)
@@ -19305,7 +19093,7 @@
       )
       (return (call coded-call run id coded result cursor failed))
     )
-    (if (and (== pattern 0) (not mapped) (!= (call next-call (call (. facts first-call) (. unit reading) id)) no-fact))
+    (if (and (== pattern 0) (not mapped) (!= (call (. facts call-in-role) (. unit reading) id .role-commit) no-fact))
       (return (call boundary-call run id result cursor failed))
     )
     (if (and (== pattern 0) (not mapped))
@@ -19702,12 +19490,23 @@
   (fn-do _ call-at FactId
     (param site SyntaxId)
     (param form CallForm)
-    ; The first call of a form that the type pass recorded at a node, or none.
+    ; The call of a form in no other role that the type pass recorded at a node, or none.
     (let fact (call (. facts first-call) (. unit reading) site))
-    (while (and (!= fact no-fact) (!= (. ([] (. facts calls) fact) form) form))
+    (while (and (!= fact no-fact) (or (!= (. ([] (. facts calls) fact) form) form) (!= (. ([] (. facts calls) fact) role) .role-answer)))
       (= fact (. ([] (. facts calls) fact) next))
     )
     (return fact)
+  )
+  (fn-do _ holds-form Bool
+    (param site SyntaxId)
+    (param form CallForm)
+    (let fact (call (. facts first-call) (. unit reading) site))
+    (while (!= fact no-fact)
+      (return-if true (if (== (. ([] (. facts calls) fact) form) form)))
+      (blank)
+      (= fact (. ([] (. facts calls) fact) next))
+    )
+    (return false)
   )
   (fn-do _ close-joins Operand
     (param joined IRBlockId)
@@ -20231,6 +20030,55 @@
     )
     (return result)
   )
+  (fn-do _ convert-to Typed
+    (param site SyntaxId)
+    (param reason ConversionReason)
+    (param value Typed)
+    (param wanted TypeId)
+    (if (== (. value type) wanted)
+      (return value)
+    )
+    (let start (call (. facts first-conversion) (. unit reading) site))
+    (while (!= start no-fact)
+      (let last (call chain-end start reason (. value type) wanted))
+      (if (!= last no-fact)
+        (let result value)
+        (let fact start)
+        (while (!= fact (. ([] (. facts conversions) last) next))
+          (let row ([] (. facts conversions) fact))
+          (if (== (. row reason) reason)
+            (= result (call convert-one site row result))
+          )
+          (= fact (. row next))
+        )
+        (return result)
+      )
+      (= start (. ([] (. facts conversions) start) next))
+    )
+    (return (call convert site reason value))
+  )
+  (fn-do _ chain-end FactId
+    (param start FactId)
+    (param reason ConversionReason)
+    (param from TypeId)
+    (param wanted TypeId)
+    (let reached from)
+    (let fact start)
+    (while (!= fact no-fact)
+      (let row ([] (. facts conversions) fact))
+      (if (== (. row reason) reason)
+        (if (!= (. row from) reached)
+          (return no-fact)
+        )
+        (= reached (. row to))
+        (if (== reached wanted)
+          (return fact)
+        )
+      )
+      (= fact (. row next))
+    )
+    (return no-fact)
+  )
   (fn-do _ emit-relation Typed
     (param id SyntaxId)
     (param plan OperatorPlan)
@@ -20246,8 +20094,8 @@
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
     (if (== plan .plan-relation)
-      (let constant (call (. facts constant-of) (. unit reading) id))
-      (if (or (== constant no-fact) (not (. ([] (. facts constants) constant) text)))
+      (let shown (call (. facts relation-of) (. unit reading) id))
+      (if (not shown)
         (call refuse .refused-expression id)
         (return (call Typed nothing no-type))
       )
@@ -20258,7 +20106,7 @@
       (return
         (call Typed
           (block
-            (arg (call make-operand .operand-constant (call (. ir add-string) (. (!! (. ([] (. facts constants) constant) text)) text))))
+            (arg (call make-operand .operand-constant (call (. ir add-string) (. shown text))))
             (arg type)
           )
         )
@@ -20376,7 +20224,7 @@
     )
     (if (== (call (. facts plan-of) (. unit reading) id) .plan-field)
       (let held (call emit-object object))
-      (return (call placed-field id (. held operand) (. held type) (call (. facts constant-of) (. unit reading) id)))
+      (return (call placed-field id (. held operand) (. held type) (call (. facts place-of) (. unit reading) id)))
     )
     (if (== planned .plan-through)
       (let whole (call emit-expression object))
@@ -20615,7 +20463,7 @@
     ; A field read by a constant index, which the type pass recorded.
     (let nothing (call make-operand .operand-void 0))
     (let place (call indexed-field id))
-    (if (== place no-fact)
+    (if (== place (. U32 max))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
@@ -20683,7 +20531,7 @@
     (let item-layout (call layout-of item id))
     (let data (call part receiver layout 0 id))
     (let data-layout (call layout-of (. data type) id))
-    (let proven (!= (call (. facts constant-of) (. unit reading) id) no-fact))
+    (let proven (call (. facts is-proven) (. unit reading) id))
     (let size
       (block
         (case? proven
@@ -20841,13 +20689,15 @@
     (let fact (call (. facts first-call) (. unit reading) id))
     (while (!= fact no-fact)
       (let row ([] (. facts calls) fact))
-      (if (== (. row form) .call-list-make)
-        (= makes fact)
-        (else-if (== (. row form) .call-list-reserve)
-          (= reserves (. row callee))
-        )
-        (else-if (== (. row form) .call-list-data)
-          (= reads (. row callee))
+      (if (== (. row role) .role-answer)
+        (if (== (. row form) .call-list-make)
+          (= makes fact)
+          (else-if (== (. row form) .call-list-reserve)
+            (= reserves (. row callee))
+          )
+          (else-if (== (. row form) .call-list-data)
+            (= reads (. row callee))
+          )
         )
       )
       (= fact (. row next))
@@ -21004,12 +20854,11 @@
     (param id SyntaxId)
     (param base Operand)
     (param owner TypeId)
-    (param place FactId)
-    ; The stored field of a tuple or struct that a constant of the type pass names by its place.
+    (param position U32)
+    ; The stored field of a tuple or struct that the type pass names by its place.
     ; The read has the field's own type, which is the node's.
     (let nothing (call make-operand .operand-void 0))
     (let layout (call layout-of owner id))
-    (let position (as (. ([] (. facts constants) place) bits) U32))
     (if (or (not (call (. tables layouts is-struct) layout)) (>= position (. ([] (. tables layouts rows) layout) fields count)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -21021,11 +20870,11 @@
     )
     (return (call Typed (call take base (call (. tables layouts field) layout position) id) type))
   )
-  (fn-expr _ indexed-field FactId
+  (fn-expr _ indexed-field U32
     (param id SyntaxId)
-    ; The constant that says which stored field an index names, or none. The node of an index
-    ; assigned with an operator keeps the constant under the operator's own plan.
-    (if-expr (and (!= plan .plan-field) (!= plan .plan-builtin)) no-fact (call (. facts constant-of) (. unit reading) id))
+    ; The place of the stored field an index names, or none. The node of an index assigned with
+    ; an operator keeps the place under the operator's own plan.
+    (if-expr (and (!= plan .plan-field) (!= plan .plan-builtin)) (. U32 max) (call (. facts place-of) (. unit reading) id))
     (where
       (lazy plan (call (. facts plan-of) (. unit reading) id))
     )
@@ -21043,13 +20892,14 @@
       (return (. (call emit-expression expr) operand))
     )
     (let nothing (call make-operand .operand-void 0))
-    (let fact (call (. facts first-call) (. unit reading) id))
     (let value nothing)
     (let object expr)
     (let mark (. pins length))
     (for (in position (..< 0 (. items count)))
+      (let fact (call (. facts nth-in-role) (. unit reading) id .role-with position))
       (if (== fact no-fact)
         (call refuse .refused-expression id)
+        (break)
       )
       (let row ([] (. facts calls) fact))
       (if (and (> (. items count) 1) (or (!= (. row fills count) 1) (!= (as ([] (. facts call-fills) (. row fills start)) U32) 0)))
@@ -21078,7 +20928,6 @@
       (call unpin mark)
       (call pin id value (. called type))
       (= object id)
-      (= fact (call next-call fact))
     )
     (call unpin mark)
     (return value)
@@ -21150,19 +20999,18 @@
     ; A constant the type pass worked out: the number or the text its fact holds, as a value of
     ; the node's type.
     (let nothing (call make-operand .operand-void 0))
-    (let fact (call (. facts constant-of) (. unit reading) id))
+    (let row (call (. facts value-of) (. unit reading) id))
     (let type (call (. facts node-type) (. unit reading) id))
-    (if (== fact no-fact)
+    (if (not row)
       (call refuse .refused-expression id)
       (return nothing)
     )
-    (let row ([] (. facts constants) fact))
     (if (. row text)
       (if (!= type (. types string-type))
         (call refuse .refused-type id)
         (return nothing)
       )
-      (return (call make-operand .operand-constant (call (. ir add-string) (. (!! (. row text)) text))))
+      (return (call make-operand .operand-constant (call (. ir add-string) (. (. row text) text))))
     )
     (let layout (call layout-of type id))
     (if (and (. row is-float) (call is-float layout))
@@ -22354,6 +22202,28 @@
     (if (!= ([] (. tables environments) unit-id) no-layout)
       (return false)
     )
+    (return (call declares-locals unit-id value property))
+  )
+  (fn-do _ holds-global-locals Bool
+    (param main InstanceId)
+    (param value SyntaxId)
+    (param property SyntaxId)
+    (let binding (. ([] (. instances rows) main) binding))
+    (if (== binding no-binding)
+      (return false)
+    )
+    (let bound (call (. bindings window-of) binding property))
+    (for (in slot (..< (. bound start) (+ (. bound start) (. bound count))))
+      (if (!= ([] (. tables slot-homes) slot) no-scope)
+        (return false)
+      )
+    )
+    (return (call declares-locals main value property))
+  )
+  (fn-do _ declares-locals Bool
+    (param unit-id InstanceId)
+    (param value SyntaxId)
+    (param property SyntaxId)
     (let binding (. ([] (. instances rows) unit-id) binding))
     (if (== binding no-binding)
       (return false)
@@ -22365,7 +22235,7 @@
       (let scoped (. ([] (. bindings scopes) (. row scope)) syntax))
       (let tracked (and (== (. row kind) .slot-lazy) (!= (/and/ (. row flags) (. SlotFlag slot-tracked)) 0)))
       (let apart (and (== (. row kind) .slot-lazy) (not (call (. bindings lazy-reads-once) slot))))
-      (if (and (or (== (. row kind) .slot-local) tracked apart) (<= start scoped) (<= scoped value))
+      (if (and (or (== (. row kind) .slot-local) (== (. row kind) .slot-pattern) tracked apart) (<= start scoped) (<= scoped value))
         (return true)
       )
       (if (and (== (. row kind) .slot-loop-state) (<= start (. row syntax)) (<= (. row syntax) value))
@@ -22400,7 +22270,7 @@
         (return no-fact)
       )
       (let made (call (. facts first-call) unit-id (. default site)))
-      (while (and (!= made no-fact) (!= (. ([] (. facts calls) made) form) .call-this-constructor))
+      (while (and (!= made no-fact) (or (!= (. ([] (. facts calls) made) form) .call-this-constructor) (!= (. ([] (. facts calls) made) role) .role-answer)))
         (= made (. ([] (. facts calls) made) next))
       )
       (return made)

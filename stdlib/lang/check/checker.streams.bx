@@ -1006,7 +1006,7 @@
       (if (== collector invalid-type)
         (return false)
       )
-      (if (!= (. (call (. calls protocol-call) collector (call (. program store-atom) "grow") name) answer) (call grown-items collector))
+      (if (!= (. (call (. calls protocol-call) collector (call (. program store-atom) "grow") name (:role (. CallRole role-grow))) answer) (call grown-items collector))
         (return false)
       )
       (= item (call class-over (. types immutable-array-decl) item))
@@ -1599,7 +1599,7 @@
     (if (== constructs no-instance)
       (return false)
     )
-    (call (. facts record-call) instance id constructs .call-constructor (. scratch no-fills) false)
+    (call (. facts record-call) instance id constructs .call-constructor (. scratch no-fills) false (:role (. CallRole role-stream)))
     (return (call record-stream-view id stream item texts))
   )
   (fn-do _ record-stream-view Bool
@@ -1612,7 +1612,7 @@
     ; characters where it is `encoded` and else its `pattern-view`, its `pattern-commit`, and its
     ; `pattern-extend`, which a stream that may give more input is asked where the pattern reads
     ; past the end of its buffer.
-    (let view (call (. calls protocol-getter) stream (call view-name encoded) id))
+    (let view (call (. calls protocol-getter) stream (call view-name encoded) id .role-view))
     (if (not (call (. types is-optional) view))
       (return false)
     )
@@ -1620,13 +1620,13 @@
     (if (and encoded (!= (call class-arg types buffer 0) (call (. types type-row) .uint8)))
       (return false)
     )
-    (if (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-commit") id (. types index-type) false (. types index-type)) answer) invalid-type)
+    (if (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-commit") id (. types index-type) false (. types index-type) (:role (. CallRole role-commit))) answer) invalid-type)
       (return false)
     )
     (= stream-view (= (. stream-view buffer) buffer))
     (= stream-view (= (. stream-view type) stream))
     (= stream-view (= (. stream-view item) item))
-    (return (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-extend") id) answer) (. types bool-type)))
+    (return (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-extend") id (:role (. CallRole role-extend))) answer) (. types bool-type)))
   )
   (fn-do + record-growth Bool
     (param stream TypeId)
@@ -1636,10 +1636,10 @@
     ; stream that may give more input where the pattern reads past the end of its buffer, in order:
     ; the stream's view of its buffer, as `view-name` names it for a function that is `encoded`,
     ; which gives the buffer it then holds, and its `pattern-extend`.
-    (if (not (call (. types is-optional) (call (. calls protocol-getter) stream (call view-name encoded) id)))
+    (if (not (call (. types is-optional) (call (. calls protocol-getter) stream (call view-name encoded) id .role-view)))
       (return false)
     )
-    (return (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-extend") id) answer) (. types bool-type)))
+    (return (== (. (call (. calls protocol-call) stream (call (. program store-atom) "pattern-extend") id (:role (. CallRole role-extend))) answer) (. types bool-type)))
   )
   (fn-do _ stream-arm-type TypeId
     (param id SyntaxId)
@@ -1843,6 +1843,7 @@
           (arg (call (. program store-atom) "slice-string"))
           (arg id)
           (:restricted (not unmade))
+          (:role (. CallRole role-text))
         )
       )
     )
@@ -4103,7 +4104,7 @@
     ; Types the `location` an arm of a grammar declares where its expression reads it: a
     ; `MatchLocation` where the arm has a pattern, and else a `TokenLocation`. The call that
     ; answers where in the input a cursor lies, the stream's `pattern-location-at`, is recorded at
-    ; the arm, after any other, as the reference makes it there before the expression runs. Only
+    ; the arm, as the reference makes it there before the expression runs. Only
     ; the stream a match makes, and the one a rule a module declares is given, are known here.
     (let slot (call arm-slot arm .slot-location))
     (if (or (== slot no-slot) (not (call reads-slot body slot)))
@@ -4113,7 +4114,7 @@
     (if (or (== (. stream-view type) no-type) (== type invalid-type))
       (return false)
     )
-    (if (!= (. (call (. calls protocol-call) (. stream-view type) (call (. program store-atom) "pattern-location-at") arm (. types index-type)) answer) (. types token-location-type))
+    (if (!= (. (call (. calls protocol-call) (. stream-view type) (call (. program store-atom) "pattern-location-at") arm (. types index-type) (:role (. CallRole role-location))) answer) (. types token-location-type))
       (return false)
     )
     (call (. frame assign) slot type)
@@ -5028,16 +5029,16 @@
       (call decline id)
       (return invalid-type)
     )
-    (if (!= (call (. calls protocol-getter) (. types string-type) (call (. program store-atom) "validated-length") id) (. types size-type))
+    (if (!= (call (. calls protocol-getter) (. types string-type) (call (. program store-atom) "validated-length") id .role-length) (. types size-type))
       (call decline id)
       (return invalid-type)
     )
     (if (call encoded)
-      (if (!= (call (. calls protocol-getter) (. types string-type) (call (. program store-atom) "size") id) (. types size-type))
+      (if (!= (call (. calls protocol-getter) (. types string-type) (call (. program store-atom) "size") id .role-size) (. types size-type))
         (call decline id)
         (return invalid-type)
       )
-      (else-if (== (. (call (. calls protocol-call) (. types string-type) (call (. program store-atom) "next-iterator") id (. types size-type)) answer) invalid-type)
+      (else-if (== (. (call (. calls protocol-call) (. types string-type) (call (. program store-atom) "next-iterator") id (. types size-type) (:role (. CallRole role-step))) answer) invalid-type)
         (call decline id)
         (return invalid-type)
       )
@@ -5092,7 +5093,7 @@
       )
     )
     (let collector (if-expr valued (call collector-over item) invalid-type))
-    (if (or (== collector invalid-type) (!= (. (call (. calls protocol-call) collector (call (. program store-atom) "grow") id) answer) (call grown-items collector)))
+    (if (or (== collector invalid-type) (!= (. (call (. calls protocol-call) collector (call (. program store-atom) "grow") id (:role (. CallRole role-grow))) answer) (call grown-items collector)))
       (call decline id)
       (return invalid-type)
     )
@@ -6742,7 +6743,7 @@
       (call decline id)
       (return invalid-type)
     )
-    (let view (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id))
+    (let view (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id .role-view))
     (if (not (call (. types is-optional) view))
       (call decline id)
       (return invalid-type)
@@ -6773,7 +6774,7 @@
     (param id SyntaxId)
     ; Records at a part of a grammar the stream's `pattern-commit` of the cursor where the
     ; part begins, which the reference makes there before it calls a function that is no rule.
-    (return (!= (. (call (. calls protocol-call) (. stream-view type) (call (. program store-atom) "pattern-commit") id (. types index-type) false (. types index-type)) answer) invalid-type))
+    (return (!= (. (call (. calls protocol-call) (. stream-view type) (call (. program store-atom) "pattern-commit") id (. types index-type) false (. types index-type) (:role (. CallRole role-commit))) answer) invalid-type))
   )
   (fn-do + rule-of SyntaxId
     (param call SyntaxId)
@@ -6859,7 +6860,7 @@
         (return false)
       )
     )
-    (if (or (not (call record-commit id)) (not (call (. types is-optional) (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id))))
+    (if (or (not (call record-commit id)) (not (call (. types is-optional) (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id .role-view))))
       (call decline id)
       (return false)
     )
@@ -6963,7 +6964,7 @@
     (if (== given invalid-type)
       (return invalid-type)
     )
-    (let view (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id))
+    (let view (call (. calls protocol-getter) (. stream-view type) (call view-name (call encoded)) id .role-view))
     (if (not (call (. types is-optional) view))
       (call decline id)
       (return invalid-type)

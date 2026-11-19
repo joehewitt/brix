@@ -899,6 +899,40 @@ same true false
 20
 ```
 
+### A case named by its symbol alone, given as a named argument, is a case of the parameter's enum.
+
+```brix
+(main
+  (print (call pick 1 (:role .second)))
+  (print (call (. (call Holder) pick) 1 (:role .second)))
+)
+
+(type + Role (is U8)
+  (variant first (= 0))
+  (variant second (= 1))
+)
+
+(fn-do + pick Int
+  (param value Int)
+  (param skipped Bool (= false))
+  (param role Role (= .first))
+  (return (+ value (as role Int)))
+)
+
+(type + Holder
+  (fn-do + pick Int
+    (param value Int)
+    (param role Role (= .first))
+    (return (+ value (as role Int)))
+  )
+)
+```
+
+```output
+2
+2
+```
+
 ### A choice between cases named by their symbols alone, given for a parameter whose enum has both cases, is a choice of that enum's cases, though an enum the module declares has cases of the names too.
 
 ```brix

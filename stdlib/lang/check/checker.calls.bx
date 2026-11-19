@@ -1043,13 +1043,14 @@
     (param right SyntaxId)
     (param rhs TypeId)
     (param exchanged Bool)
+    (param role CallRole (= .role-answer))
     ; Calls the operator one operand declares for the other, which for equality may be either
     ; operand, and gives no type when neither declares it. `exchanged` says the operands arrive
     ; in the reverse of their order in the source, so the call notes when its receiver is the
     ; operator's right operand.
     (let token (call (. program store-atom) (str op)))
     (if (call (. calls has-operator) lhs token rhs)
-      (let result (call (. calls operator-call) id lhs token right rhs))
+      (let result (call (. calls operator-call) id lhs token right rhs (:role role)))
       (if (and exchanged (!= result invalid-type))
         (call (. facts mark-swapped) instance id)
       )
@@ -1057,7 +1058,7 @@
     )
     (let either (or (== op .equals-op) (== op .not-equals-op)))
     (if (and either (call (. calls has-operator) rhs token lhs))
-      (let result (call (. calls operator-call) id rhs token left lhs))
+      (let result (call (. calls operator-call) id rhs token left lhs (:role role)))
       (if (and (not exchanged) (!= result invalid-type))
         (call (. facts mark-swapped) instance id)
       )

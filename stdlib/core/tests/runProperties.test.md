@@ -159,6 +159,37 @@ Exception: Property not supported
       ^^^^^^^^^^^^^^^^^^
 ```
 
+### A property's value can bind names with a pattern, in the class that declares it and in a class that inherits it.
+
+```brix
+(main
+  (print (. (call Base) stem))
+  (let thing (call Thing))
+  (print (. thing stem))
+  (print (. thing head))
+  (print (. thing pair))
+  (print (. thing suffix))
+)
+
+(type + Base
+  (prop + stem String (= (match "notes.txt" (case (all ...name ".txt") name) (default "none"))))
+  (prop + head Int (= (match (list 4 5 6) (case (list first ...rest) (+ first (. rest length))) (default 0))))
+)
+
+(type + Thing (is Base)
+  (prop + pair Int (= (match (tuple 2 3) (case (tuple a b) (* a b)) (default 0))))
+  (prop + suffix String (= (match "key=value" (case (all "key=" ...rest) (str rest "!")) (default "none"))))
+)
+```
+
+```output
+notes
+notes
+6
+6
+value!
+```
+
 ## Constructor assignments
 
 ```brix
@@ -2072,6 +2103,50 @@ say 30
 43
 2
 7
+```
+
+### The value of a property binds the names its patterns capture.
+
+```brix
+(main
+  (let box (call Box))
+  (print (. box size))
+  (print (. box name))
+)
+
+(type + Box
+  (prop + size Int
+    (=
+      (match (call maybe)
+        (case (: n Int)
+          (+ n 1)
+        )
+        (default
+          0
+        )
+      )
+    )
+  )
+  (prop + name String
+    (=
+      (match "name:ada\n"
+        (~ (seq "name:" (: found (+ (chars "a-z"))) "\n")
+          found
+        )
+        (default
+          "none"
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + maybe (? Int) 5)
+```
+
+```output
+6
+ada
 ```
 
 ### A constructor argument is converted to the type of the property it fills.

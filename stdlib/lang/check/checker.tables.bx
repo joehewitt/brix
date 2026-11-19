@@ -113,7 +113,7 @@
     (if (== slot (. U32 max))
       (call (. facts set-plan) instance id .plan-view)
       (else
-        (call (. facts set-constant) instance id (call ConstantFact slot 0.0 null false) .plan-view)
+        (call (. facts set-place) instance id slot .plan-view)
       )
     )
     (call (. instances mark-may-panic) instance)
@@ -125,8 +125,7 @@
     ; A node the compiler answers for a table or a view of one, as TypeScript intercepts it before
     ; any method, which may raise the panics of a table: the operation, and the place in the row's
     ; layout of the field it reads or writes.
-    (let bits (/or/ (as op U64) (/lshift/ (as slot U64) 32)))
-    (call (. facts set-constant) instance id (call ConstantFact bits 0.0 null false) .plan-table)
+    (call (. facts set-table) instance id op slot 0)
     (call (. instances mark-may-panic) instance)
   )
   (fn-do + plan-builder _
@@ -146,8 +145,7 @@
       (return)
     )
     (let plan (if-expr appends (. OperatorPlan plan-builder-append) (. OperatorPlan plan-builder-reserve)))
-    (let traces U64 (if-expr (call (. calls arena-traces) item) 1 0))
-    (call (. facts set-constant) instance id (call ConstantFact traces 0.0 null false) plan)
+    (call (. facts set-traces) instance id (call (. calls arena-traces) item) plan)
     (call (. instances mark-may-panic) instance)
   )
   (fn-do + note-span-range _

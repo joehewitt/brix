@@ -174,16 +174,6 @@
       (and (== (. relation kind) .relation-up-cast) (!= (call (. types facet-of-type) (. relation from)) null))
     )
   )
-  (fn-expr + converts-value Bool
-    (param kind RelationKind)
-    ; Whether a relation converts a value by a function, as no endpoint of an event is converted.
-    (case? (or (== kind .relation-converter) (== kind .relation-common-converter))
-      true
-    )
-    (default
-      (or (== kind .relation-string-cast) (== kind .relation-fromverter))
-    )
-  )
   (fn-do + answer-of TypeId
     (param relation Relation)
     ; What a converter declared to give one of several types gives: the alternative its body
@@ -391,9 +381,10 @@
     (param value SyntaxId (= 0))
     ; Records how a value converts where it is used. An optional or a union becomes text as `as-text`
     ; says, but a declaration with a type is a pattern, and there it unwraps. `value` is the node of the
-    ; value where the caller has one. A closure or a binding that becomes a value of a function type is
-    ; recorded with the instance it runs as one. An event's endpoint a converter would convert is
-    ; reported instead, as `misused-endpoint` says.
+    ; value where the caller has one. A pattern that takes the text a case of a union holds as it is
+    ; has no parts, as it converts no other case. A closure or a binding that becomes a value of a
+    ; function type is recorded with the instance it runs as one. An event's endpoint a converter would
+    ; convert is reported instead, as `misused-endpoint` says.
     (if (and host (call converts-value (. found kind)) (call (. host misused-endpoint) (if-expr (!= value 0) value syntax)))
       (return)
     )
@@ -464,7 +455,7 @@
     )
     (= part-site (. ([] (. facts conversions) id) syntax))
     (= part-value (if-expr tests 0 value))
-    (let parts (call record-parts relation reason))
+    (let parts (if-expr (and tests (call takes-case-text relation)) no-fact (call record-parts relation reason)))
     (= part-value 0)
     (if (!= parts no-fact)
       (= (. ([] (. facts conversions) id) parts) parts)
@@ -478,6 +469,15 @@
     )
     (if (and (== (. relation kind) .relation-converter) (!= callee no-instance) (call converts-virtually (. relation from)))
       (call (. instances mark-may-panic) (. frame instance))
+    )
+  )
+  (fn-expr _ takes-case-text Bool
+    (param relation Relation)
+    (and union-text picked (== (. ([] (call (. types cases-of) (. relation from)) (. relation case-index)) type) (. types string-type)))
+    (where
+      (lazy union-text (and (== (. relation kind) .relation-unwrap-cast) (== (. relation to) (. types string-type)) from-union))
+      (lazy from-union (== (call (. types intrinsic-of) (. relation from)) .union))
+      (lazy picked (!= (. relation case-index) (. U32 max)))
     )
   )
   (fn-expr _ converts-virtually Bool
@@ -1003,11 +1003,13 @@
     (param syntax SyntaxId)
     (param relation Relation)
     (param guard U32)
+    (param within TypeId (= no-type))
     ; Records at a type named as a pattern how a value it is given becomes that type, for the
     ; case of a union the guard numbers, or for the value itself with no guard.
     (let row FactId (as (. facts conversions length) FactId))
     (call record-conversion syntax relation .reason-pattern)
     (= (. ([] (. facts conversions) row) guard) guard)
+    (= (. ([] (. facts conversions) row) within) within)
   )
   (fn-do + parts-of FactId
     (param relation Relation)

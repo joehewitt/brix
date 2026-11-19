@@ -216,7 +216,7 @@
     (call keep-state slot made row loop)
     (call keep-state (+ slot 1) (. source length) (. types size-type) loop)
     (let kind (call intrinsic type))
-    (if (and (!= (call (. facts constant-of) (. unit reading) loop) no-fact) (or (== kind .table) (== kind .table-span)))
+    (if (and (call (. facts is-proven) (. unit reading) loop) (or (== kind .table) (== kind .table-span)))
       (let named (call loop-name-slot loop))
       (if (!= named no-slot)
         (+= proven-items (call ProvenItem loop named (. source columns)))
@@ -235,9 +235,8 @@
     ; with no metadata, and, where the indices are not resolved again on each pass, with the
     ; indices where they lie; then the count of indices. A loop TypeScript leaves to the
     ; selection's own iteration is refused.
-    (let constant (call (. facts constant-of) (. unit reading) loop))
-    (let reads (if-expr (!= constant no-fact) (. ([] (. facts constants) constant) bits) 2u64))
-    (if (== reads 2)
+    (let reads (call (. facts selection-reads-of) (. unit reading) loop))
+    (if (== reads .reads-by-selection)
       (call refuse .refused-statement loop)
       (return)
     )
@@ -258,7 +257,7 @@
     (for (in position (..< 2 (. ([] (. tables layouts rows) table-layout) fields count)))
       (call put-word loop kept-table table-layout position (call integer .machine-u64 0) u64-layout)
     )
-    (if (== reads 0)
+    (if (== reads .reads-once)
       (let kept-span (call address made (. (call (. tables layouts field) layout 1) offset) span-layout loop))
       (call put-word loop kept-span span-layout 0 (. resolved data) u64-layout)
       (call put-word loop kept-span span-layout 1 (call integer .machine-u64 0) u64-layout)
@@ -689,12 +688,13 @@
     )
     (if (call is-index-loop-plan plan)
       (let length (call Typed nothing no-type))
-      (if (== (. ([] (. facts calls) begins) form) .call-getter)
+      (let measures (call (. facts group-call) begins .role-length))
+      (if (!= measures no-fact)
         (= length
           (call call-protocol
             (block
               (arg loop)
-              (arg begins)
+              (arg measures)
               (arg (. (call container-of loop container slot) operand))
               (arg type)
               (arg nothing)
@@ -702,7 +702,7 @@
           )
         )
         (else
-          (= length (call array-length loop (. (call container-of loop container slot) operand) type))
+          (= length (call array-length loop (. (call container-of loop container slot) operand) type (call (. facts loop-length-of) (. unit reading) loop)))
         )
       )
       (if (!= (. length type) (. types size-type))
@@ -714,7 +714,8 @@
       (return)
     )
     (if (call is-cursor-loop-plan plan)
-      (if (!= (. ([] (. facts calls) begins) form) .call-getter)
+      (let starts (call (. facts group-call) begins .role-start))
+      (if (== starts no-fact)
         (call refuse .refused-statement loop)
         (return)
       )
@@ -722,7 +723,7 @@
         (call call-protocol
           (block
             (arg loop)
-            (arg begins)
+            (arg starts)
             (arg (. (call container-of loop container slot) operand))
             (arg type)
             (arg nothing)
@@ -732,12 +733,12 @@
       (call keep-state (+ slot 1) (. started operand) (. started type) loop)
       (return)
     )
-    (let reads (. ([] (. facts calls) begins) next))
-    (if (or (== reads no-fact) (== (. ([] (. facts calls) reads) next) no-fact))
+    (let begun (call (. facts group-call) begins .role-begin))
+    (if (or (== begun no-fact) (== (call (. facts group-call) begins .role-read) no-fact) (== (call (. facts group-call) begins .role-end) no-fact))
       (call refuse .refused-statement loop)
       (return)
     )
-    (call call-protocol loop begins (. (call state slot loop) operand) type nothing)
+    (call call-protocol loop begun (. (call state slot loop) operand) type nothing)
   )
   (fn-do + read-items Typed
     (param loop SyntaxId)
@@ -770,7 +771,7 @@
     )
     (let inside (call (. ir reserve-block)))
     (if (call is-index-loop-plan plan)
-      (let reads (if-expr (== (. ([] (. facts calls) begins) form) .call-getter) (. ([] (. facts calls) begins) next) begins))
+      (let reads (call (. facts group-call) begins .role-item))
       (call branch
         (block
           (arg (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)))
@@ -800,7 +801,7 @@
     (if (call is-cursor-loop-plan plan)
       (let offset (call slot-offset (+ slot 1) loop))
       (let cursor (call (. facts slot-type) (. unit instance) offset))
-      (let steps (. ([] (. facts calls) begins) next))
+      (let steps (call (. facts group-call) begins .role-step))
       (let stepped
         (call call-protocol
           (block
@@ -832,7 +833,7 @@
           (call call-protocol
             (block
               (arg place)
-              (arg (. ([] (. facts calls) begins) next))
+              (arg (call (. facts group-call) begins .role-read))
               (arg (. (call state slot loop) operand))
               (arg type)
               (arg nothing)
@@ -868,10 +869,10 @@
     (let pattern (call (. tree step-pattern) loop))
     (let result (if-expr (!= pattern 0) (call (. facts node-type) (. unit reading) pattern) no-type))
     (let made (call stream-maker loop))
-    (let viewed (if-expr (!= made no-fact) (call next-call made) (call (. facts first-call) (. unit reading) loop)))
-    (let commits (call next-call viewed))
-    (let extends (call next-call commits))
-    (let asks (call next-call extends))
+    (let viewed (call (. facts call-in-role) (. unit reading) loop .role-view))
+    (let commits (call (. facts call-in-role) (. unit reading) loop .role-commit))
+    (let extends (call (. facts call-in-role) (. unit reading) loop .role-extend))
+    (let asks (call (. facts call-in-role) (. unit reading) loop .role-ask))
     (if (or (== result no-type) (== result invalid-type) (== asks no-fact))
       (call refuse .refused-statement loop)
       (return (call Typed nothing no-type))
@@ -907,10 +908,7 @@
     (param site SyntaxId)
     ; The call the type pass recorded at a grammar or a loop's header that makes the
     ; stream it reads its subject through; none where the subject is a stream already.
-    (if-expr (and (!= first no-fact) (== (. ([] (. facts calls) first) form) .call-constructor)) first no-fact)
-    (where
-      (lazy first (call (. facts first-call) (. unit reading) site))
-    )
+    (call (. facts call-in-role) (. unit reading) site .role-stream)
   )
   (fn-do _ read-row Typed
     (param loop SyntaxId)
@@ -1105,16 +1103,15 @@
     (param loop SyntaxId)
     (param array Operand)
     (param type TypeId)
-    ; The length of an array a loop counts through: the field of it that the constant fact at
-    ; the loop names.
+    (param position U32)
+    ; The length of an array a loop or a pattern counts through: the field of it at `position`,
+    ; which the type pass recorded at the node.
     (let nothing (call make-operand .operand-void 0))
-    (let place (call (. facts constant-of) (. unit reading) loop))
     (let layout (call layout-of type loop))
-    (if (or (== place no-fact) (not (call (. tables layouts is-struct) layout)))
+    (if (or (== position (. U32 max)) (not (call (. tables layouts is-struct) layout)))
       (call refuse .refused-statement loop)
       (return (call Typed nothing no-type))
     )
-    (let position (as (. ([] (. facts constants) place) bits) U32))
     (if (>= position (. ([] (. tables layouts rows) layout) fields count))
       (call refuse .refused-statement loop)
       (return (call Typed nothing no-type))
@@ -1146,12 +1143,12 @@
     (let held (call state slot loop))
     (let type (. held type))
     (let begins (call protocol-calls loop))
-    (let reads (if-expr (== begins no-fact) no-fact (. ([] (. facts calls) begins) next)))
-    (if (== reads no-fact)
+    (let ends (call (. facts group-call) begins .role-end))
+    (if (== ends no-fact)
       (call refuse .refused-statement loop)
       (return)
     )
-    (call call-protocol loop (. ([] (. facts calls) reads) next) (. held operand) type (call make-operand .operand-void 0))
+    (call call-protocol loop ends (. held operand) type (call make-operand .operand-void 0))
     (for (in back (..< 0 (. stream-loops length)))
       (let position (- (. stream-loops length) 1 back))
       (if (== ([] stream-loops position) loop)
@@ -1183,7 +1180,7 @@
     (let counted
       (scope (and (!= body 0) (not stepping) (not (call is-signed layout)) range-plan constant-bound)
         (lazy range-plan (== (call (. facts plan-of) (. unit reading) loop) .plan-range-loop))
-        (lazy constant-bound (!= (call (. facts constant-of) (. unit reading) loop) no-fact))
+        (lazy constant-bound (call (. facts is-proven) (. unit reading) loop))
       )
     )
     (let end

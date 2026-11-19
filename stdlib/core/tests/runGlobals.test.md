@@ -1049,6 +1049,134 @@ Exception: Name "statement-local" not found
                       ^^^^^^^^^^^^^^^
 ```
 
+### The value of a global binds the names its patterns capture and the locals its blocks declare, eager or lazy, read or not, beside statements whose function captures their own local.
+
+```brix
+(prop + value Int
+  (=
+    (match (call maybe)
+      (case (: n Int)
+        (+ n 1)
+      )
+      (default
+        0
+      )
+    )
+  )
+)
+
+(prop + name String
+  (=
+    (match "name:ada\n"
+      (~ (seq "name:" (: found (+ (chars "a-z"))) "\n")
+        found
+      )
+      (default
+        "none"
+      )
+    )
+  )
+)
+
+(prop + next Int
+  (=
+    (block
+      (let n 5)
+      (+ n 1)
+    )
+  )
+)
+
+(prop + later Int
+  (:=
+    (match (call maybe)
+      (case (: n Int)
+        (* n 2)
+      )
+      (default
+        0
+      )
+    )
+  )
+)
+
+(prop _ unread Int
+  (=
+    (match (call maybe)
+      (case (: n Int)
+        (do (print (str "unread " n)))
+        n
+      )
+      (default
+        0
+      )
+    )
+  )
+)
+
+(main
+  (let base 10)
+  (let add (=> (x) (+ x base)))
+  (print (call add value))
+  (print name)
+  (print next)
+  (print later)
+)
+
+(fn-expr + maybe (? Int) 5)
+```
+
+```output
+unread 5
+16
+ada
+6
+10
+```
+
+### The values of the globals of a module that runs no code of its own bind the names they capture and declare.
+
+```brix
+(import ./lib/values)
+(blank)
+
+(main
+  (print value)
+  (print later)
+)
+```
+
+```brix file=lib/values.bx
+(prop + value Int
+  (=
+    (match (call maybe)
+      (case (: n Int)
+        (+ n 1)
+      )
+      (default
+        0
+      )
+    )
+  )
+)
+
+(prop + later Int
+  (:=
+    (block
+      (let n 5)
+      (* n 2)
+    )
+  )
+)
+
+(fn-expr _ maybe (? Int) 5)
+```
+
+```output
+6
+10
+```
+
 ### A global of a function type holds a function written as its value, and is assigned another.
 
 ```brix

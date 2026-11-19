@@ -508,6 +508,10 @@
       (lazy narrowed (call (. scratch narrowed-since) narrow-start (call slot-key slot)))
     )
   )
+  (fn-expr + declared-of TypeId
+    (param slot SlotId)
+    (if-expr (and outer (call is-captured slot)) (call (. outer declared-of) slot) (call known slot))
+  )
   (fn-expr + key-type TypeId
     (param key NarrowingKey)
     (case? (!= slot no-slot)
@@ -748,20 +752,19 @@
     (param start Size)
     ; Whether a conversion recorded since `start` may be a call in the reference: any but one that
     ; takes a value as what it is, as a class it derives from or an optional of it, or as a
-    ; number, a truth value or a pointer, which the reference makes in place, and one that takes
-    ; a function named as a C function's, whose value is the address of its code. The
-    ; conversions of other functions typed meanwhile are not this one's.
+    ; number, a truth value or a pointer, which the reference makes in place, one that takes
+    ; a function named as a C function's, whose value is the address of its code, and one a
+    ; pattern tests a value by that runs no function. The conversions of other functions typed
+    ; meanwhile are not this one's.
     (let position (call (. facts latest-conversion-of) instance))
     (while (and (!= position no-fact) (>= (as position Size) start))
       (let fact ([] (. facts conversions) position))
       (let kind (. fact kind))
-      (let casts
-        (scope (and (== kind .relation-side-cast) runs-code)
-          (lazy runs-code (or (. fact casts) (!= (. fact callee) no-instance) (!= (. fact runs) no-instance)))
-        )
-      )
+      (let runs-code (or (. fact casts) (!= (. fact callee) no-instance) (!= (. fact runs) no-instance)))
+      (let casts (and (== kind .relation-side-cast) runs-code))
+      (let tests (and (== (. fact reason) .reason-pattern) (not runs-code) (not (call converts-value kind))))
       (let in-place
-        (scope (or plain (== kind .relation-wrap-cast) (and (== kind .relation-side-cast) (not casts)))
+        (scope (or plain tests (== kind .relation-wrap-cast) (and (== kind .relation-side-cast) (not casts)))
           (lazy plain (or (== kind .relation-same) (== kind .relation-equal) (== kind .relation-up-cast)))
         )
       )

@@ -14,8 +14,6 @@
 (blank)
 (type-line + FactId (is U32))
 (prop + no-fact FactId (= (. U32 max)))
-(prop + plan-bits U8 (= 127))
-(prop + plain-bit U8 (= 128))
 
 (type + CallForm (is U32)
   ; How a call is made. `call-truth` is the call of the function that says a value is empty,
@@ -99,6 +97,39 @@
   )
 )
 
+(type + CallRole (is U8)
+  (variant role-answer (= 0))
+  (variant role-length (= 1))
+  (variant role-item (= 2))
+  (variant role-start (= 3))
+  (variant role-step (= 4))
+  (variant role-begin (= 5))
+  (variant role-read (= 6))
+  (variant role-end (= 7))
+  (variant role-write (= 8))
+  (variant role-equal (= 9))
+  (variant role-case (= 10))
+  (variant role-field (= 11))
+  (variant role-store (= 12))
+  (variant role-prefix (= 13))
+  (variant role-suffix (= 14))
+  (variant role-rest (= 15))
+  (variant role-stream (= 16))
+  (variant role-view (= 17))
+  (variant role-commit (= 18))
+  (variant role-extend (= 19))
+  (variant role-ask (= 20))
+  (variant role-release (= 21))
+  (variant role-mark (= 22))
+  (variant role-record (= 23))
+  (variant role-text (= 24))
+  (variant role-size (= 25))
+  (variant role-grow (= 26))
+  (variant role-location (= 27))
+  (variant role-with (= 28))
+  (variant role-subscribe (= 29))
+)
+
 (type + CallFact (is Struct)
   (prop + instance InstanceId)
   (prop + syntax SyntaxId)
@@ -110,6 +141,8 @@
   (prop + is-swapped Bool)
   (prop + through (of RowRange U32))
   (prop + next FactId (= no-fact))
+  (prop + role CallRole (= .role-answer))
+  (prop + starts-protocol Bool)
 )
 
 (type + PairFact (is Struct)
@@ -147,6 +180,17 @@
   (variant chain-tested (= 0))
   (variant chain-plain (= 1))
   (variant chain-absent (= 2))
+)
+
+(type + SelectionReads (is U8)
+  (variant reads-once (= 0))
+  (variant reads-each-pass (= 1))
+  (variant reads-by-selection (= 2))
+)
+
+(type + SwitchForm (is U8)
+  (variant switch-cases (= 1))
+  (variant switch-numbers (= 2))
 )
 
 (type + ChainFact (is Struct)
@@ -373,7 +417,8 @@
   ;   nothing panics. An optional given to the pattern is tested for a value first and
   ;   converted as what it holds, where no row starts at the optional itself. A union is
   ;   converted whole where a row starts at the union, and else case by case: `guard` is the
-  ;   number of the case a row converts what is held of.
+  ;   number of the case a row converts what is held of. A case that is a union is matched by its
+  ;   own cases where its row has no kind: their rows are `within` it.
   ; - `reason-literal-return`: a text written in source that a function returns, into the type
   ;   the function declares: a function of that type converts it, or it is held as a case of a
   ;   union. The reference makes this cast without recording it.
@@ -497,6 +542,7 @@
   (prop + runs InstanceId (= no-instance))
   (prop + asked TypeId (= no-type))
   (prop + casts Bool)
+  (prop + within TypeId (= no-type))
 )
 
 (type + OperatorPlan (is U8)
@@ -522,7 +568,7 @@
   ;   integers itself.
   ; - `plan-index-loop`: the node is the header of a loop that counts through the indexes of
   ;   its container. The calls recorded at the node are the getter of its length and then its
-  ;   `[]`. An array has no getter recorded: a constant fact names the field that is its
+  ;   `[]`. An array has no getter recorded: the node's detail names the field that is its
   ;   length.
   ; - `plan-cursor-loop`: the node is the header of a loop that steps a cursor through its
   ;   container. The calls recorded at the node are the getter of the state it starts at and
@@ -537,28 +583,28 @@
   ;   found once, checked where the table grows, and each item is the row at the next index; an
   ;   index span's length is read once, and each item is read as `s[i]` reads it. No call is
   ;   recorded. The loop keeps the first row, the selection or the index span, and the count of
-  ;   items, then the count read; a selection's constant tells how it reads its indices.
+  ;   items, then the count read; a selection's detail tells how it reads its indices.
   ; - `plan-step`: the node calls a generator for its next item: the code the value holds is
   ;   given the data it holds and answers the node's type, an optional of an item, which holds
   ;   nothing once the generator has finished.
   ; - `plan-index-place-loop`, `plan-cursor-place-loop`: as `plan-index-loop` and
   ;   `plan-cursor-loop`, over a tuple or a struct read from where it is kept. The reference
   ;   holds such a container by its address, so a function that does not yield reads it anew
-  ;   at each item and sees what the body stored there. The upper half of the constant fact
-  ;   at the node names the expression evaluated once, the object a property of which the
+  ;   at each item and sees what the body stored there. The base in the node's
+  ;   detail names the expression evaluated once, the object a property of which the
   ;   container is, or none; all its bits are set where the container has no shape so.
   ; - `plan-through`: the node reads a property its object stores in a property it delegates
-  ;   an interface to. A constant fact holds where the places of the properties read from the
+  ;   an interface to. The node's detail holds where the places of the properties read from the
   ;   object to reach the one that stores it are kept, in the order they are read.
   ; - `plan-pointer-add`: the node adds a count of items to a pointer.
   ; - `plan-count-leading-zeros`, `plan-f64-sqrt`, `plan-f64-abs`, `plan-f64-min`,
   ;   `plan-f64-max`: the node calls a function the compiler answers itself, which has no body.
-  ; - `plan-constant`: the node is a constant the type pass worked out, which a constant fact
-  ;   holds.
-  ; - `plan-field`: the node names a field of a tuple or struct by a constant index. A constant
-  ;   fact holds the field's place among those stored, which for an assignment may be the one
+  ; - `plan-constant`: the node is a constant the type pass worked out, which the node's
+  ;   detail holds.
+  ; - `plan-field`: the node names a field of a tuple or struct by a constant index. The node's
+  ;   detail holds the field's place among those stored, which for an assignment may be the one
   ;   past the last. A read of `size`, `length` or `data` of an array has the plan too: no
-  ;   getter is called, and the constant is the place of the stored field that holds the answer.
+  ;   getter is called, and the detail is the place of the stored field that holds the answer.
   ; - `plan-extend`: the node gives a tuple with one more field: those of its left operand, and
   ;   the value.
   ; - `plan-truncate`: the node gives a tuple of the first fields of its object, as many as the
@@ -579,8 +625,8 @@
   ; - `plan-identity`: the node compares two objects of one class, or two atoms, for equal or
   ;   for not equal: they are equal when they are one object, or one atom.
   ; - `plan-class-test`: the node tests whether an object is of a class or of one derived from
-  ;   it, or for `is not` whether it is not. A constant fact holds the class, as the bits of
-  ;   its type.
+  ;   it, or for `is not` whether it is not. The node's detail holds the type of the
+  ;   class.
   ; - `plan-alike`: the node compares two types given as values that are one type. Both are
   ;   evaluated; the answer is true for equal and false for not equal. Two that are not one
   ;   type have `plan-unlike`. The `==` the type of such values declares is recorded at the
@@ -626,8 +672,8 @@
   ; - `plan-builder-append`, `plan-builder-reserve`: the node calls `append` of an item or
   ;   `reserve` of a builder an arena backs, which the compiler answers where it is called, as
   ;   TypeScript does: the storage grows in the arena, with the panics of its growth, and its
-  ;   size and capacity are written behind the arena's header. The constant is 1 where the arena
-  ;   traces the builder's items, and else 0.
+  ;   size and capacity are written behind the arena's header. The detail says whether the arena
+  ;   traces the builder's items.
   ; - `plan-type-size`: the node reads the size of a type given as a value, which the type
   ;   pass worked out no constant for: the bytes a value of the type is held in.
   ; - `plan-type-name`, `plan-type-key`: the node reads the name or the key of a type given as
@@ -645,30 +691,32 @@
   ;   function that answers for an index the array does not hold, gives it.
   ; - `plan-described`: the node is a C call that allocates, resizes or copies the storage of
   ;   an array the collector owns, or one of an arena's own that reserves or copies storage for
-  ;   items the arena traces. A constant fact gives the type of the items. Where an item holds
+  ;   items the arena traces. The node's detail gives the type of the items. Where an item holds
   ;   pointers the collector follows, the call is of the function of the same name that also
   ;   takes what describes the storage, which polls.
   ; - `plan-store-untraced`: the node calls the function, which has no body, that stores an
   ;   item past a pointer into memory the collector does not own: the receiver is the pointer,
   ;   and the arguments are the item and its index. Nothing is checked, and the collector is
-  ;   told nothing. A constant fact is one where the item holds an object or a function, which
-  ;   an arena must be told of, and else zero.
+  ;   told nothing. The node's detail says whether the item holds an object or a function,
+  ;   which an arena must be told of.
   ; - `plan-relation`: the node asks a type for its relation to another, with `compare` or
   ;   `compare-unified`. The function called is never run. The relation is known where the
-  ;   program is compiled and nowhere else: a constant fact holds the text it is printed as.
+  ;   program is compiled and nowhere else: the node's detail holds the text it is printed as.
   ; - `plan-relation-cast`: the node asks a relation written at it to `cast` or to `unify` a
   ;   value. The function called is never run: the answer is the argument, converted as
   ;   recorded at it with `reason-relation`.
   ; - `plan-case`: the node names a case of the union its type is, by a symbol or after the
-  ;   type, alone or called. A constant fact holds the number of the case. Called with one
+  ;   type, alone or called. The node's detail holds the number of the case. Called with one
   ;   argument, the case holds that value, converted as recorded at it. Named alone, a case
   ;   with no value of its own holds its number.
   ; - `plan-case-fields`: the same, where the case holds a tuple or a struct and the call gives
   ;   its fields in their order, each converted as recorded at it.
   ; - `plan-case-read`: the node reads a name that holds a union, as the one case the name is
   ;   known to hold there, or as the case of a class that the classes of the others it may hold
-  ;   derive from, whose value lies where theirs do. A constant fact holds the number of the
-  ;   case, and the node's type is what the case holds.
+  ;   derive from, whose value lies where theirs do. The node's detail holds the number of the
+  ;   case, and the node's type is what the case holds, or the value of an optional it holds. Where
+  ;   the case holds a union, alone or in an optional, the detail holds the number of the case of it
+  ;   the node's type is too.
   ; - `plan-never`: the node is an arm of a match whose pattern can not match its subject.
   ;   Nothing of it is typed, and nothing of it is emitted. A pattern that names a case its
   ;   subject is no union of has the plan too: it is typed, and matches nothing. So has an
@@ -687,8 +735,8 @@
   ;   and has `plan-never` where it can not match the value.
   ; - `plan-enum-value`: the node names a value of an enum that is no union, or a case of a
   ;   union that is declared with a value, which the module that declares it makes as it
-  ;   starts. A constant fact holds the module in its high 32 bits and the declaration of the
-  ;   value in its low.
+  ;   starts. The node's detail holds the module and the declaration of the
+  ;   value.
   ; - `plan-raise`: the node raises an error that is no panic, which leaves the function there
   ;   in place of its value.
   ; - `plan-caught-cast`: the node is a cast out of a union written under `catch`. Where the
@@ -696,7 +744,7 @@
   ;   nothing panics.
   ; - `plan-fused`: the node returns a value that may be an error. An error it holds leaves the
   ;   function in its place, and the function returns the value alone.
-  ; - `plan-handled`: the node is an expression with handlers. A constant fact holds a bit for
+  ; - `plan-handled`: the node is an expression with handlers. The node's detail holds a bit for
   ;   each error the expression may give, in the order its type lists them, set where no
   ;   handler takes the error and it leaves the function.
   ; - `plan-reinterpret`: the node gives the value of its operand with its bits as they are, as
@@ -710,8 +758,8 @@
   ;   is the empty text for a case with none.
   ; - `plan-case-type`: the node reads `type` of a union, the key of the type of the case it
   ;   holds.
-  ; - `plan-case-value`: the node reads a union by the name of one of its cases. A constant
-  ;   fact holds the number of the case. Where the union holds that case the node gives what
+  ; - `plan-case-value`: the node reads a union by the name of one of its cases. The node's
+  ;   detail holds the number of the case. Where the union holds that case the node gives what
   ;   it holds, and where it holds another, the value a local of the case's type has when
   ;   nothing is written for it.
   ; - `plan-forward`: the node is a member of a union that each case answers with its own: a
@@ -723,7 +771,7 @@
   ;   it holds.
   ; - `plan-held`: the node is `==` or `!=` of operands of which one or both are optionals,
   ;   compared as what they hold, or of a union on the left, which may be an optional, with a
-  ;   value of the type one of its cases holds. A constant fact says how, as `held-of` reads
+  ;   value of the type one of its cases holds. The node's detail says how, as `held-of` reads
   ;   it. An optional that holds nothing equals nothing that holds a value, and a union that
   ;   holds another case than the one named equals no value. `!=` is the reverse of the whole.
   ; - `plan-list-member`: the node is `has`, `has not`, `is in` or `not in` of a list written in
@@ -736,9 +784,8 @@
   ;   `==` recorded at the list after those that make it.
   ; - `plan-list-pattern`: the node is a pattern of a list. Its subject is first what an
   ;   optional holds or the case of a union the conversions recorded at the node give. It tests
-  ;   the length of the subject, which the getter recorded at the node reads, or a constant
-  ;   fact names as the field of an array, or a constant of 2 says is the rows of a table or a
-  ;   span of one, read as TypeScript reads `t.length`. The read of each item is the first
+  ;   the length of the subject, which the getter recorded at the node reads, or the node's
+  ;   detail names as the field of an array, or says is the rows of a table or a span of one, read as TypeScript reads `t.length`. The read of each item is the first
   ;   call recorded at the item's pattern, or of a table the row at the index as `t[i]` reads
   ;   it. A rest with a name has the construction of its range recorded and then the read by
   ;   that range.
@@ -952,8 +999,8 @@
   ; getters `mark` and `capacity`. `t[ids]` selects rows by indices; `s[i]` and `s[a .. < b]` of
   ; an index span read an index and span some, and of a selection read a row and span some.
   ; `t.layout` is the text of how a table keeps its rows. The
-  ; node's constant holds the operation in its low half and the place of the field in the row's
-  ; layout in its high half.
+  ; node's detail holds the operation and the place of the field in the row's layout, or for
+  ; `proven-row` the loop that proves the row.
   (blank)
   (variant table-row (= 0))
   (variant table-field (= 1))
@@ -1048,6 +1095,98 @@
   (prop + float F64)
   (prop + text (? Atom))
   (prop + is-float Bool)
+)
+
+(type + NodePlan (is Struct)
+  (prop + plan OperatorPlan)
+  (prop + plain Bool)
+  (prop + detail FactId)
+)
+
+(type + PlanDetail (is Union)
+  (variant detail-value ValueDetail)
+  (variant detail-place PlaceDetail)
+  (variant detail-case CaseDetail)
+  (variant detail-switch SwitchDetail)
+  (variant detail-rows RowsDetail)
+  (variant detail-type TypeDetail)
+  (variant detail-enum EnumDetail)
+  (variant detail-relation RelationDetail)
+  (variant detail-held HeldDetail)
+  (variant detail-through ThroughDetail)
+  (variant detail-table TableDetail)
+  (variant detail-loop LoopDetail)
+  (variant detail-handled HandledDetail)
+  (variant detail-traces TracesDetail)
+  (variant detail-proven ProvenDetail)
+  (variant detail-selection SelectionDetail)
+)
+
+(type + ValueDetail (is Tuple)
+  (prop + value ConstantFact)
+)
+
+(type + PlaceDetail (is Tuple)
+  (prop + place U32)
+)
+
+(type + CaseDetail (is Tuple)
+  (prop + case U32)
+  (prop + inner U32)
+)
+
+(type + SwitchDetail (is Tuple)
+  (prop + form SwitchForm)
+)
+
+(type + RowsDetail (is Tuple)
+)
+
+(type + TypeDetail (is Tuple)
+  (prop + type TypeId)
+)
+
+(type + EnumDetail (is Tuple)
+  (prop + module ModuleId)
+  (prop + decl DeclId)
+)
+
+(type + RelationDetail (is Tuple)
+  (prop + shown Atom)
+)
+
+(type + HeldDetail (is Tuple)
+  (prop + held HeldPlan)
+)
+
+(type + ThroughDetail (is Tuple)
+  (prop + steps (of RowRange U32))
+)
+
+(type + TableDetail (is Tuple)
+  (prop + op TableOp)
+  (prop + slot U32)
+  (prop + loop SyntaxId)
+)
+
+(type + LoopDetail (is Tuple)
+  (prop + length U32)
+  (prop + base U32)
+)
+
+(type + HandledDetail (is Tuple)
+  (prop + leaving U64)
+)
+
+(type + TracesDetail (is Tuple)
+  (prop + traces Bool)
+)
+
+(type + ProvenDetail (is Tuple)
+)
+
+(type + SelectionDetail (is Tuple)
+  (prop + reads SelectionReads)
 )
 
 (type + HeldPlan (is Struct)
@@ -2640,6 +2779,7 @@
   (prop + call-ids (list FactId))
   (prop + conversion-ids (list FactId))
   (prop + force-ids (list FactId))
+  (prop + detail-ids (list FactId))
 )
 
 (type _ PeerSheets
@@ -2662,9 +2802,8 @@
   (prop + node-conversions (of List FactId ArenaBacking))
   (prop _ node-conversion-tails (of List FactId ArenaBacking))
   (prop + node-forces (of List FactId ArenaBacking))
-  (prop + node-plans (of List U8 ArenaBacking))
+  (prop + node-plans (of List NodePlan ArenaBacking))
   (prop + node-chains (of List ChainForm ArenaBacking))
-  (prop + node-constants (of List FactId ArenaBacking))
   (prop _ node-copies (? (of SyncBufferedChannel NodeCopy)))
   (prop _ node-copying (? TaskGroup))
   (prop + calls (of Table CallFact))
@@ -2673,7 +2812,7 @@
   (prop + step-callees (of List InstanceId ArenaBacking))
   (prop + conversions (of Table ConversionFact))
   (prop + conversion-parts (of Table ConversionFact))
-  (prop + constants (of Table ConstantFact))
+  (prop + details (of Table PlanDetail))
   (prop + pairs (of Table PairFact))
   (prop + forces (of Table ForceFact))
   (prop + relations (of Table RelationFact))
@@ -2923,16 +3062,15 @@
     (lazy node-conversions (call (of List FactId) arena))
     (lazy node-conversion-tails (call (of List FactId) arena))
     (lazy node-forces (call (of List FactId) arena))
-    (lazy node-plans (call (of List U8) arena))
+    (lazy node-plans (call (of List NodePlan) arena))
     (lazy node-chains (call (of List ChainForm) arena))
-    (lazy node-constants (call (of List FactId) arena))
     (lazy calls (call (of Table CallFact) arena 16))
     (lazy call-fills (call (of List ArgumentFill) arena))
     (lazy steps (call (of List U32) arena))
     (lazy step-callees (call (of List InstanceId) arena))
     (lazy conversions (call (of Table ConversionFact) arena 16))
     (lazy conversion-parts (call (of Table ConversionFact) arena 16))
-    (lazy constants (call (of Table ConstantFact) arena 16))
+    (lazy details (call (of Table PlanDetail) arena 16))
     (lazy pairs (call (of Table PairFact) arena 16))
     (lazy forces (call (of Table ForceFact) arena 16))
     (lazy relations (call (of Table RelationFact) arena 16))
@@ -3163,9 +3301,8 @@
       (+= node-conversions no-fact)
       (+= node-conversion-tails no-fact)
       (+= node-forces no-fact)
-      (+= node-plans (. OperatorPlan plan-none))
+      (+= node-plans (call NodePlan .plan-none false no-fact))
       (+= node-chains (. ChainForm chain-tested))
-      (+= node-constants no-fact)
     )
   )
   (fn-expr + node-slot (? Index)
@@ -3190,6 +3327,166 @@
     (if-expr slot ([] node-calls slot) no-fact)
     (where
       (lazy slot (call node-slot instance syntax))
+    )
+  )
+  (fn-expr + call-in-role FactId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param role CallRole)
+    (call role-call (call first-call instance syntax) role)
+  )
+  (fn-do + role-call FactId
+    (param from FactId)
+    (param role CallRole)
+    (let cursor from)
+    (while (!= cursor no-fact)
+      (return-if cursor (if (== (. ([] calls cursor) role) role)))
+      (blank)
+      (= cursor (. ([] calls cursor) next))
+    )
+    (return no-fact)
+  )
+  (fn-do + role-count U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param role CallRole)
+    (let count U32)
+    (let cursor (call first-call instance syntax))
+    (while (!= cursor no-fact)
+      (if (== (. ([] calls cursor) role) role)
+        (+= count 1)
+      )
+      (= cursor (. ([] calls cursor) next))
+    )
+    (return count)
+  )
+  (fn-do + check-roles _
+    (for (in slot (..< 0 (. node-calls length)))
+      (let cursor ([] node-calls slot))
+      (while (!= cursor no-fact)
+        (let one ([] calls cursor))
+        (let other (. one next))
+        (let grouped true)
+        (while (!= other no-fact)
+          (let two ([] calls other))
+          (= grouped (and grouped (not (. two starts-protocol))))
+          (throw (call Panic "A node holds two calls in one role") (if (call shares-role one two grouped)))
+          (blank)
+          (= other (. two next))
+        )
+        (= cursor (. one next))
+      )
+    )
+  )
+  (fn-expr _ shares-role Bool
+    (param one CallFact)
+    (param two CallFact)
+    (param grouped Bool)
+    (case? (!= (. one role) (. two role))
+      false
+    )
+    (case? (!= (. one role) .role-answer)
+      (and grouped (not (call holds-list (. one role))))
+    )
+    (default
+      (or answering (and (== (. one form) (. two form)) (not truths) (not listed)))
+    )
+    (where
+      (lazy answering (and (call answers-node (. one form)) (call answers-node (. two form))))
+      (lazy truths (and truth-form (!= (. one is-swapped) (. two is-swapped))))
+      (lazy truth-form (or (== (. one form) .call-truth) (== (. one form) .call-operand-truth)))
+      (lazy listed (or (== (. one form) .call-probe) (== (. one form) .call-probe-head) (== (. one form) .call-view-range)))
+    )
+  )
+  (fn-expr _ holds-list Bool
+    (param role CallRole)
+    (or (== role .role-case) (== role .role-field) (== role .role-grow) (== role .role-with))
+  )
+  (fn-do + group-call FactId
+    (param start FactId)
+    (param role CallRole)
+    (let cursor start)
+    (while (!= cursor no-fact)
+      (let row ([] calls cursor))
+      (return-if no-fact (if (and (!= cursor start) (. row starts-protocol))))
+      (blank)
+      (return-if cursor (if (== (. row role) role)))
+      (blank)
+      (= cursor (. row next))
+    )
+    (return no-fact)
+  )
+  (fn-do + answer-call FactId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param role CallRole)
+    (let cursor (call first-call instance syntax))
+    (while (!= cursor no-fact)
+      (let row ([] calls cursor))
+      (return-if cursor (if (and (== (. row role) role) (call answers-node (. row form)))))
+      (blank)
+      (= cursor (. row next))
+    )
+    (return no-fact)
+  )
+  (fn-do + own-call FactId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    ; The call a node makes for its own value, as an instance records it: the one recorded at it
+    ; that is not the test of a value as a condition. No fact when there is none, or more than one.
+    (let found no-fact)
+    (let fact (call first-call instance syntax))
+    (while (!= fact no-fact)
+      (let row ([] calls fact))
+      (if (call answers-node (. row form))
+        (if (!= found no-fact)
+          (return no-fact)
+        )
+        (= found fact)
+      )
+      (= fact (. row next))
+    )
+    (return found)
+  )
+  (fn-do + call-count U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let count U32)
+    (let cursor (call first-call instance syntax))
+    (while (!= cursor no-fact)
+      (+= count 1)
+      (= cursor (. ([] calls cursor) next))
+    )
+    (return count)
+  )
+  (fn-do + nth-in-role FactId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param role CallRole)
+    (param position U32)
+    (let left position)
+    (let cursor (call first-call instance syntax))
+    (while (!= cursor no-fact)
+      (if (== (. ([] calls cursor) role) role)
+        (return-if cursor (if (== left 0)))
+        (blank)
+        (-= left 1)
+      )
+      (= cursor (. ([] calls cursor) next))
+    )
+    (return no-fact)
+  )
+  (fn-do + name-roles-since _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param mark Size)
+    (param role CallRole)
+    (let cursor (call first-call instance syntax))
+    (while (!= cursor no-fact)
+      (if (and (>= (as cursor Size) mark) (call answers-node (. ([] calls cursor) form)))
+        (= (. ([] calls cursor) role) role)
+      )
+      (= cursor (. ([] calls cursor) next))
     )
   )
   (fn-expr + first-conversion FactId
@@ -3382,7 +3679,7 @@
     (param syntax SyntaxId)
     ; How a node is answered where its syntax does not say, or no plan for a node the type pass
     ; planned nothing for.
-    (if-expr slot (as (/and/ ([] node-plans slot) plan-bits) OperatorPlan) (. OperatorPlan plan-none))
+    (if-expr slot (. ([] node-plans slot) plan) (. OperatorPlan plan-none))
     (where
       (lazy slot (call node-slot instance syntax))
     )
@@ -3394,14 +3691,14 @@
     ; own is worked out where it is read. The note is kept beside the node's plan.
     (let slot (call node-slot instance syntax))
     (if slot
-      (= ([] node-plans slot) (/or/ ([] node-plans slot) plain-bit))
+      (= (. ([] node-plans slot) plain) true)
     )
   )
   (fn-expr + is-plain Bool
     (param instance InstanceId)
     (param syntax SyntaxId)
     ; Whether the type pass said of a name or a member read that reading it evaluates nothing.
-    (if-expr slot (!= (/and/ ([] node-plans slot) plain-bit) 0) false)
+    (if-expr slot (. ([] node-plans slot) plain) false)
     (where
       (lazy slot (call node-slot instance syntax))
     )
@@ -3431,16 +3728,346 @@
     (param plan OperatorPlan)
     (let slot (call node-slot instance syntax))
     (if slot
-      (= ([] node-plans slot) (/or/ (/and/ ([] node-plans slot) plain-bit) plan))
+      (= (. ([] node-plans slot) plan) plan)
     )
   )
-  (fn-expr + constant-of FactId
+  (fn-do + value-of (? ConstantFact)
     (param instance InstanceId)
     (param syntax SyntaxId)
-    ; The constant fact of a node planned as a constant, or none.
-    (if-expr slot ([] node-constants slot) no-fact)
+    ; The constant a node planned as one answers with, or none.
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-value row)
+        (return (. row value))
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-value _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param value ConstantFact)
+    ; Records the constant a node answers with, and plans the node as one.
+    (call set-detail instance syntax (call ValueDetail value) .plan-constant)
+  )
+  (fn-do + place-of U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if (. U32 max) (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-place row)
+        (return (. row place))
+      )
+    )
+    (return (. U32 max))
+  )
+  (fn-do + case-of U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if (. U32 max) (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-case row)
+        (return (. row case))
+      )
+    )
+    (return (. U32 max))
+  )
+  (fn-do + inner-case-of U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if (. U32 max) (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-case row)
+        (return (. row inner))
+      )
+    )
+    (return (. U32 max))
+  )
+  (fn-do + set-case _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param case U32)
+    (param plan OperatorPlan)
+    (param inner U32 (= (. U32 max)))
+    (call set-detail instance syntax (call CaseDetail case inner) plan)
+  )
+  (fn-do + switch-form-of (? SwitchForm)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-switch row)
+        (return (. row form))
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-switch _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param form SwitchForm)
+    (call set-detail instance syntax (call SwitchDetail form) .plan-switch)
+  )
+  (fn-do + type-detail-of TypeId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if no-type (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-type row)
+        (return (. row type))
+      )
+    )
+    (return no-type)
+  )
+  (fn-do + set-type-detail _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param type TypeId)
+    (param plan OperatorPlan)
+    (call set-detail instance syntax (call TypeDetail type) plan)
+  )
+  (fn-do + enum-of (? EnumDetail)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-enum row)
+        (return row)
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-enum _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param module ModuleId)
+    (param decl DeclId)
+    (call set-detail instance syntax (call EnumDetail module decl) .plan-enum-value)
+  )
+  (fn-do + relation-of (? Atom)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-relation row)
+        (return (. row shown))
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-relation _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param shown Atom)
+    (call set-detail instance syntax (call RelationDetail shown) .plan-relation)
+  )
+  (fn-do + table-of (? TableDetail)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-table row)
+        (return row)
+      )
+    )
+    (return null)
+  )
+  (fn-do + table-op-of (? TableOp)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let found (call table-of instance syntax))
+    (if (not found)
+      (return null)
+    )
+    (return (. found op))
+  )
+  (fn-do + table-slot-of U32
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let found (call table-of instance syntax))
+    (if (not found)
+      (return 0)
+    )
+    (return (. found slot))
+  )
+  (fn-do + set-table _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param op TableOp)
+    (param slot U32)
+    (param loop SyntaxId)
+    (call set-detail instance syntax (call TableDetail op slot loop) .plan-table)
+  )
+  (fn-do _ loop-detail (? LoopDetail)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-loop row)
+        (return row)
+      )
+    )
+    (return null)
+  )
+  (fn-do + loop-length-of U32
+    (param instance InstanceId)
+    (param loop SyntaxId)
+    (let found (call loop-detail instance loop))
+    (if (not found)
+      (return (. U32 max))
+    )
+    (return (. found length))
+  )
+  (fn-do + set-loop-length _
+    (param instance InstanceId)
+    (param loop SyntaxId)
+    (param length U32)
+    (param plan OperatorPlan)
+    (call set-detail instance loop (call LoopDetail length 0) plan)
+  )
+  (fn-do + handled-of (? U64)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-handled row)
+        (return (. row leaving))
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-handled _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param leaving U64)
+    (call set-detail instance syntax (call HandledDetail leaving) .plan-handled)
+  )
+  (fn-do + traces-of (? Bool)
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if null (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-traces row)
+        (return (. row traces))
+      )
+    )
+    (return null)
+  )
+  (fn-do + set-traces _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param traces Bool)
+    (param plan OperatorPlan)
+    (call set-detail instance syntax (call TracesDetail traces) plan)
+  )
+  (fn-do + is-proven Bool
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if false (if (== detail no-fact)))
+    (blank)
+    (return (is ([] details detail) .detail-proven))
+  )
+  (fn-do + set-proven _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param plan OperatorPlan)
+    (call set-detail instance syntax (call ProvenDetail) plan)
+  )
+  (fn-do + selection-reads-of SelectionReads
+    (param instance InstanceId)
+    (param loop SyntaxId)
+    (let detail (call detail-at instance loop))
+    (return-if .reads-by-selection (if (== detail no-fact)))
+    (blank)
+    (match? ([] details detail)
+      (case (call .detail-selection row)
+        (return (. row reads))
+      )
+    )
+    (return .reads-by-selection)
+  )
+  (fn-do + set-selection _
+    (param instance InstanceId)
+    (param loop SyntaxId)
+    (param reads SelectionReads)
+    (call set-detail instance loop (call SelectionDetail reads) .plan-table-loop)
+  )
+  (fn-expr _ detail-at FactId
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (if-expr slot (. ([] node-plans slot) detail) no-fact)
     (where
       (lazy slot (call node-slot instance syntax))
+    )
+  )
+  (fn-do + reads-rows Bool
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (let detail (call detail-at instance syntax))
+    (return-if false (if (== detail no-fact)))
+    (blank)
+    (return (is ([] details detail) .detail-rows))
+  )
+  (fn-do + set-rows _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param plan OperatorPlan)
+    (call set-detail instance syntax (call RowsDetail) plan)
+  )
+  (fn-do + set-place _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param place U32)
+    (param plan OperatorPlan)
+    (call set-detail instance syntax (call PlaceDetail place) plan)
+  )
+  (fn-do _ set-detail _
+    (param instance InstanceId)
+    (param syntax SyntaxId)
+    (param detail PlanDetail)
+    (param plan OperatorPlan)
+    (let slot (call node-slot instance syntax))
+    (if (not slot)
+      (return)
+    )
+    (call put-detail slot detail)
+    (= (. ([] node-plans slot) plan) plan)
+  )
+  (fn-do _ put-detail _
+    (param slot Index)
+    (param detail PlanDetail)
+    (let held (. ([] node-plans slot) detail))
+    (if (== held no-fact)
+      (= (. ([] node-plans slot) detail) (as (. details length) FactId))
+      (call (. details append) detail)
+      (else
+        (= ([] details held) detail)
+      )
     )
   )
   (fn-expr + answers-in-place Bool
@@ -3451,82 +4078,34 @@
     (case? (!= plan .plan-table)
       (call is-in-place-plan plan)
     )
-    (case? (== constant no-fact)
-      false
-    )
     (default
-      (or (== op .table-row) (== op .table-item) (== op .span-item) (== op .selection-row))
+      (or (== op (. TableOp table-row)) (== op (. TableOp table-item)) (== op (. TableOp span-item)) (== op (. TableOp selection-row)))
     )
     (where
       (lazy plan (call plan-of instance syntax))
-      (lazy constant (call constant-of instance syntax))
-      (lazy op (as (as (/and/ (. ([] constants constant) bits) 4294967295) U32) TableOp))
+      (lazy op (call table-op-of instance syntax))
     )
-  )
-  (fn-do + set-constant _
-    (param instance InstanceId)
-    (param syntax SyntaxId)
-    (param constant ConstantFact)
-    (param plan OperatorPlan (= .plan-constant))
-    ; Records the constant a node answers with, and plans the node as one, or as the field the
-    ; constant names.
-    (let slot (call node-slot instance syntax))
-    (if (not slot)
-      (return)
-    )
-    (if (== ([] node-constants slot) no-fact)
-      (= ([] node-constants slot) (as (. constants length) FactId))
-      (call (. constants append) constant)
-      (else
-        (= ([] constants ([] node-constants slot)) constant)
-      )
-    )
-    (= ([] node-plans slot) (/or/ (/and/ ([] node-plans slot) plain-bit) plan))
   )
   (fn-do + set-held _
     (param instance InstanceId)
     (param syntax SyntaxId)
     (param held HeldPlan)
-    ; Plans a node as the `==` of what its operands hold, with the constant that says how.
-    (let bits U64 (. held plan))
-    (if (. held left)
-      (+= bits 256)
-    )
-    (if (. held right)
-      (+= bits 512)
-    )
-    (if (. held alike)
-      (+= bits 1024)
-    )
-    (if (. held exchanged)
-      (+= bits 2048)
-    )
-    (if (!= (. held case-index) (. U32 max))
-      (let number U64 (. held case-index))
-      (+= bits (* (+ number 1) 4096))
-    )
-    (call set-constant instance syntax (call ConstantFact bits 0.0 null false) .plan-held)
+    ; Plans a node as the `==` of what its operands hold, with the detail that says how.
+    (call set-detail instance syntax (call HeldDetail held) .plan-held)
   )
-  (fn-expr + held-of HeldPlan
+  (fn-do + held-of HeldPlan
     (param instance InstanceId)
     (param syntax SyntaxId)
     ; How a node planned with `plan-held` compares what its operands hold.
-    (call HeldPlan
-      (block
-        (arg (as plan OperatorPlan))
-        (arg (== (% (/ bits 256) 2) 1))
-        (arg (== (% (/ bits 512) 2) 1))
-        (arg (== (% (/ bits 1024) 2) 1))
-        (arg (== (% (/ bits 2048) 2) 1))
-        (arg index)
+    (let detail (call detail-at instance syntax))
+    (if (!= detail no-fact)
+      (match? ([] details detail)
+        (case (call .detail-held row)
+          (return (. row held))
+        )
       )
     )
-    (where
-      (lazy bits (. ([] constants (call constant-of instance syntax)) bits))
-      (lazy plan (as (% bits 256) U8))
-      (lazy cased (/ bits 4096))
-      (lazy index (if-expr (== cased 0) (. U32 max) (as (- cased 1) U32)))
-    )
+    (return (call HeldPlan .plan-none false false false false (. U32 max)))
   )
   (fn-do + instance-calls (list FactId)
     (param instance InstanceId)
@@ -5231,6 +5810,7 @@
     (param fills (of ImmutableArray U32 ArenaBacking))
     (param is-partial Bool)
     (param links Bool (= true))
+    (param role CallRole (= .role-answer))
     ; Keeps a call, among those of its node unless it is made apart from them, as a value a helper
     ; makes is: such a call is kept with those at no node of the instance's body, and found through
     ; the fact that names it.
@@ -5240,6 +5820,7 @@
     )
     (let range (call (of RowRange ArgumentFill) start (as (. fills length) U32)))
     (let fact (call CallFact instance syntax callee form range is-partial))
+    (= (. fact role) role)
     (let id FactId (as (. calls length) FactId))
     (call (. calls append) fact)
     (call chain-fact call-lasts call-priors instance id)
@@ -5271,20 +5852,18 @@
     (param plan OperatorPlan)
     (param base U32)
     ; Plans a loop over a container read where it is kept, with the expression evaluated once
-    ; beside what the node's constant already names.
-    (let kept U64)
-    (let found (call constant-of instance loop))
-    (if (!= found no-fact)
-      (= kept (% (. ([] constants found) bits) 4294967296))
-    )
-    (let high U64 base)
-    (call set-constant instance loop (call ConstantFact (+ kept (* high 4294967296)) 0.0 null false) plan)
+    ; beside the length the loop's detail already names.
+    (call set-detail instance loop (call LoopDetail (call loop-length-of instance loop) base) plan)
   )
-  (fn-expr + loop-base U32
+  (fn-do + loop-base U32
     (param instance InstanceId)
     (param loop SyntaxId)
     ; The expression a loop planned over a place evaluates once, none, or all bits set.
-    (as (/ (. ([] constants (call constant-of instance loop)) bits) 4294967296) U32)
+    (let found (call loop-detail instance loop))
+    (if (not found)
+      (return 0)
+    )
+    (return (. found base))
   )
   (fn-do + mark-replacing _
     (param instance InstanceId)
@@ -5373,7 +5952,12 @@
     (for (in position (..< mark (. calls length)))
       (let call ([] calls position))
       (if (and (== (. call instance) instance) (== (. call syntax) site))
+        (let prior (?? ([] protocol-starts slot) no-fact))
+        (if (!= prior no-fact)
+          (= (. ([] calls prior) starts-protocol) false)
+        )
         (= ([] protocol-starts slot) (as position U32))
+        (= (. ([] calls position) starts-protocol) true)
         (return)
       )
     )
@@ -5452,21 +6036,22 @@
     (param getters (list InstanceId))
     ; Plans a node as a read through the properties its object delegates to, and keeps their
     ; places and the getters that answer them.
-    (let kept (call keep-steps places getters))
-    (let start U64 (. kept start))
-    (let count U64 (. kept count))
-    (let bits (+ start (* count 4294967296)))
-    (call set-constant instance syntax (call ConstantFact bits 0.0 null false) .plan-through)
+    (call set-detail instance syntax (call ThroughDetail (call keep-steps places getters)) .plan-through)
   )
-  (fn-expr + through-of (of RowRange U32)
+  (fn-do + through-of (of RowRange U32)
     (param instance InstanceId)
     (param syntax SyntaxId)
     ; The properties a node planned with `plan-through` reads from its object, in the order
     ; they are read.
-    (call (of RowRange U32) (as (% bits 4294967296) U32) (as (/ bits 4294967296) U32))
-    (where
-      (lazy bits (. ([] constants (call constant-of instance syntax)) bits))
+    (let detail (call detail-at instance syntax))
+    (if (!= detail no-fact)
+      (match? ([] details detail)
+        (case (call .detail-through row)
+          (return (. row steps))
+        )
+      )
     )
+    (return (call (of RowRange U32)))
   )
   (fn-do + replay-call _
     (param fact CallFact)
@@ -5476,6 +6061,8 @@
     (call chain-fact call-lasts call-priors instance id)
     (= (. ([] calls id) is-swapped) (. fact is-swapped))
     (= (. ([] calls id) through) (. fact through))
+    (= (. ([] calls id) role) (. fact role))
+    (= (. ([] calls id) starts-protocol) (. fact starts-protocol))
     (call link-call instance (. fact syntax) id)
   )
   (fn-do + replay-calls _
@@ -5693,15 +6280,16 @@
       (if (!= ([] node-types slot) no-type)
         (call set-node-type into syntax ([] node-types slot))
       )
-      (if (!= (/and/ ([] node-plans slot) plan-bits) (. OperatorPlan plan-none))
-        (call set-plan into syntax (as (/and/ ([] node-plans slot) plan-bits) OperatorPlan))
+      (let moved ([] node-plans slot))
+      (if (!= (. moved plan) (. OperatorPlan plan-none))
+        (call set-plan into syntax (. moved plan))
       )
-      (if (!= (/and/ ([] node-plans slot) plain-bit) 0)
+      (if (. moved plain)
         (call mark-plain into syntax)
       )
       (let target (call node-slot into syntax))
-      (if (and target (!= ([] node-constants slot) no-fact))
-        (= ([] node-constants target) ([] node-constants slot))
+      (if (and target (!= (. moved detail) no-fact))
+        (= (. ([] node-plans target) detail) (. moved detail))
       )
       (if (and target (!= ([] node-chains slot) .chain-tested))
         (= ([] node-chains target) ([] node-chains slot))
@@ -6441,6 +7029,10 @@
   (fn-do + retire _
     (param retired (list Bool))
     (param dead InstanceId)
+    (call forget-latest call-lasts retired)
+    (call forget-latest loose-call-lasts retired)
+    (call forget-latest conversion-lasts retired)
+    (call forget-latest fill-lasts retired)
     (for (in position (..< 0 (. calls length)))
       (if (call held-by retired (. ([] calls position) instance))
         (= (. ([] calls position) instance) dead)
@@ -6586,11 +7178,13 @@
     )
     (for (in position (..< 0 (. forwards length)))
       (if (call held-by retired (. ([] forwards position) instance))
+        (call (. forward-keys forget) position)
         (= (. ([] forwards position) instance) dead)
       )
     )
     (for (in position (..< 0 (. const-arrays length)))
       (if (call held-by retired (. ([] const-arrays position) instance))
+        (call (. const-array-keys forget) position)
         (= (. ([] const-arrays position) instance) dead)
       )
     )
@@ -7531,6 +8125,15 @@
     (param instance InstanceId)
     (and (< (as instance Size) (. retired length)) ([] retired instance))
   )
+  (fn-do _ forget-latest _
+    (param lasts (of List U32 ArenaBacking))
+    (param retired (list Bool))
+    (for (in place (..< 0 (. lasts length)))
+      (if (call held-by retired (as place InstanceId))
+        (= ([] lasts place) 0)
+      )
+    )
+  )
   (fn-do + replace-machines (? String)
     (param retired (list Bool))
     (param machine-count Size)
@@ -7924,6 +8527,7 @@
     (= (. moved callee) (call (. ids instance) (. fact callee)))
     (= (. moved runs) (call (. ids instance) (. fact runs)))
     (= (. moved asked) (call (. ids type) (. fact asked)))
+    (= (. moved within) (call (. ids type) (. fact within)))
     (= (. moved parts) (call absorb-parts peer ids (. fact parts)))
     (return moved)
   )
@@ -8074,6 +8678,10 @@
     (blank)
     (let first U32 (as (. node-types length) U32))
     (let ranges (list (of RowRange U32)))
+    (let detail-ids (list FactId))
+    (for (in _ (..< 0 (. peer details length)))
+      (+= detail-ids no-fact)
+    )
     (let peer-rows (. peer instances rows))
     (for (in id (..< 0 (. peer-rows length)))
       (if (not (call (. ids owns) (as id InstanceId)))
@@ -8101,21 +8709,15 @@
       (+= ranges (call (of RowRange U32) (. row node-start) (. row subtree count)))
       (for (in source (..< (. row node-start) (+ (. row node-start) (. row subtree count))))
         (+= node-types (call (. ids type) ([] (. peer node-types) source)))
-        (let constant ([] (. peer node-constants) source))
-        (if (== constant no-fact)
-          (+= node-constants no-fact)
-          (else
-            (+= node-constants (as (. constants length) FactId))
-            (call (. constants append)
-              (block
-                (arg (call absorb-constant peer ids ([] (. peer constants) constant) ([] (. peer node-plans) source)))
-              )
-            )
-          )
+        (let planned ([] (. peer node-plans) source))
+        (if (!= (. planned detail) no-fact)
+          (= ([] detail-ids (. planned detail)) (as (. details length) FactId))
+          (let taken ([] (. peer details) (. planned detail)))
+          (call (. details append) (call absorb-detail peer ids taken))
         )
       )
     )
-    (<- queue (call NodeCopy peer first ranges call-ids conversion-ids force-ids))
+    (<- queue (call NodeCopy peer first ranges call-ids conversion-ids force-ids detail-ids))
   )
   (fn-do + start-copying-nodes _
     (param pool Worker)
@@ -8130,7 +8732,6 @@
     (call (. node-forces reserve) room)
     (call (. node-plans reserve) room)
     (call (. node-chains reserve) room)
-    (call (. node-constants reserve) room)
     (let queue (of SyncBufferedChannel NodeCopy))
     (let group (call TaskGroup))
     (= node-copies queue)
@@ -8173,29 +8774,67 @@
         (+= node-conversions (call moved (. copy conversion-ids) ([] (. peer node-conversions) source)))
         (+= node-conversion-tails (call moved (. copy conversion-ids) ([] (. peer node-conversion-tails) source)))
         (+= node-forces (call moved (. copy force-ids) ([] (. peer node-forces) source)))
-        (+= node-plans ([] (. peer node-plans) source))
+        (let planned ([] (. peer node-plans) source))
+        (let detail (call moved (. copy detail-ids) (. planned detail)))
+        (+= node-plans (call NodePlan (. planned plan) (. planned plain) detail))
         (+= node-chains ([] (. peer node-chains) source))
       )
     )
   )
-  (fn-do _ absorb-constant ConstantFact
+  (fn-do _ absorb-detail PlanDetail
     (param peer Facts)
     (param ids PeerIds)
-    (param constant ConstantFact)
-    (param plan U8)
-    ; A node's constant as it is here: the type a C call that allocates is described by, the class
-    ; an `is` tests for, and the steps a read through a delegated property takes, are numbered here.
-    (let moved constant)
-    (let kind (as (/and/ plan plan-bits) OperatorPlan))
-    (if (or (== kind .plan-described) (== kind .plan-class-test))
-      (= (. moved bits) (as (call (. ids type) (as (. constant bits) TypeId)) U64))
-      (else-if (== kind .plan-through)
-        (let range (call (of RowRange U32) (as (% (. constant bits) 4294967296) U32) (as (/ (. constant bits) 4294967296) U32)))
-        (let kept (call absorb-steps peer ids range))
-        (= (. moved bits) (+ (as (. kept start) U64) (* (as (. kept count) U64) 4294967296)))
+    (param detail PlanDetail)
+    (match detail
+      (case .detail-value
+        (return detail)
+      )
+      (case .detail-place
+        (return detail)
+      )
+      (case .detail-case
+        (return detail)
+      )
+      (case .detail-switch
+        (return detail)
+      )
+      (case .detail-rows
+        (return detail)
+      )
+      (case (call .detail-type row)
+        (return (call TypeDetail (call (. ids type) (. row type))))
+      )
+      (case .detail-enum
+        (return detail)
+      )
+      (case .detail-relation
+        (return detail)
+      )
+      (case .detail-held
+        (return detail)
+      )
+      (case (call .detail-through row)
+        (return (call ThroughDetail (call absorb-steps peer ids (. row steps))))
+      )
+      (case .detail-table
+        (return detail)
+      )
+      (case .detail-loop
+        (return detail)
+      )
+      (case .detail-handled
+        (return detail)
+      )
+      (case .detail-traces
+        (return detail)
+      )
+      (case .detail-proven
+        (return detail)
+      )
+      (case .detail-selection
+        (return detail)
       )
     )
-    (return moved)
   )
   (fn-do _ absorb-owned _
     (param peer Facts)

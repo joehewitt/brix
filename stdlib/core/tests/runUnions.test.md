@@ -3008,6 +3008,136 @@ spot 5
 none
 ```
 
+### A pattern of a case of a union that an optional case holds matches where the optional holds that case
+
+```brix
+(main
+  (for (in mode (list 0 1 2 3))
+    (let made (catch (call make mode)))
+    (print (str (is made Circle) " " (is made Square) " " (is made Shape) " " (is made Error)))
+    (match made
+      (case (: circle Circle)
+        (print (str "circle " (. circle radius)))
+      )
+      (case (: square Square)
+        (print (str "square " (. square side)))
+      )
+      (case Error
+        (print "error")
+      )
+      (default
+        (print "none")
+      )
+    )
+  )
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+
+(fn-do + make (? Shape) (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if null (if (== mode 1)))
+  (return-if (call Circle 3) (if (== mode 2)))
+  (return (call Square 4))
+)
+```
+
+```output
+false false false true
+error
+false false false false
+none
+true false true false
+circle 3
+false true true false
+square 4
+```
+
+### A pattern of a type matches a case of a union held two unions down
+
+```brix
+(main
+  (let a Inner (call A 1))
+  (let b Inner (call B 2))
+  (let first Mid a)
+  (let second Mid b)
+  (let third Mid (call C 3))
+  (call show first)
+  (call show second)
+  (call show third)
+  (call show "x")
+)
+
+(type + A (is Tuple)
+  (prop + a Int)
+)
+
+(type + B (is Tuple)
+  (prop + b Int)
+)
+
+(type + C (is Tuple)
+  (prop + c Int)
+)
+
+(type + Inner (is Union)
+  (variant A)
+  (variant B)
+)
+
+(type + Mid (is Union)
+  (variant Inner)
+  (variant C)
+)
+
+(type + Outer (is Union)
+  (variant Mid)
+  (variant String)
+)
+
+(fn-do + show _
+  (param outer Outer)
+  (print (str (is outer A) " " (is outer B) " " (is outer C) " " (is outer Inner) " " (is outer String)))
+  (match outer
+    (case (: a A)
+      (print (str "a " (. a a)))
+    )
+    (case (: b B)
+      (print (str "b " (. b b)))
+    )
+    (case (: c C)
+      (print (str "c " (. c c)))
+    )
+    (case (: text String)
+      (print (str "text " text))
+    )
+  )
+)
+```
+
+```output
+true false false true false
+a 1
+false true false true false
+b 2
+false false true false false
+c 3
+false false false false true
+text x
+```
+
 ### A union answers `case`, `name`, `type` and the name of a case by itself, and the first value of a case it does not hold.
 
 ```brix
@@ -4689,6 +4819,106 @@ Lx
 ```output
 1 null
 1 list 1, 2
+```
+
+### A member a union forwards converts what it is given to what each case takes.
+
+```brix
+(main
+  (let n I32 4)
+  (let item Item (call (. Item left) (call Left 3)))
+  (print (call (. item scaled) n))
+  (= (. item label) n)
+  (= item (call (. Item right) (call Right 2.5)))
+  (print (call (. item scaled) n))
+  (= (. item label) n)
+)
+
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + scaled String
+    (param by (? Int))
+    (str "left " (* value (?? by 0)))
+  )
+  (fn-do + label _ :set (param given Int)
+    (print (str "left label " given))
+  )
+)
+
+(type + Right (is Tuple)
+  (prop + value Float)
+  (fn-expr + scaled String
+    (param by Float)
+    (str "right " (* value by))
+  )
+  (fn-do + label _ :set (param given Float)
+    (print (str "right label " given))
+  )
+)
+
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
+```
+
+```output
+left 12
+left label 4
+right 10
+right label 4
+```
+
+```brix
+(main
+  (let n U8 3)
+  (let job Job (call (. Job quick) (call Quick)))
+  (print (call run job n))
+  (= job (call (. Job slow) (call Slow false)))
+  (print (call run job n))
+  (= job (call (. Job slow) (call Slow true)))
+  (print (catch (call run job n)))
+)
+
+(fn-do + run Int (?! Failed)
+  (param job Job)
+  (param n U8)
+  (return (call (. job work) n))
+)
+
+(type + Failed (is Error))
+
+(type + Quick
+  (fn-do + work Int
+    (param n Int)
+    (return (+ n 1))
+  )
+)
+
+(type + Slow
+  (prop + fails Bool)
+  (fn-do + This _
+    (param fails _)
+  )
+  (fn-do + work Int (?! Failed)
+    (param n Float)
+    (if fails
+      (throw (call Failed))
+    )
+    (return (as (* n 10) Int))
+  )
+)
+
+(type + Job (is Union)
+  (variant quick Quick)
+  (variant slow Slow)
+)
+```
+
+```output
+4
+30
+
 ```
 
 ### A base class test on a union holding a subclass in its own case matches and narrows to the base.

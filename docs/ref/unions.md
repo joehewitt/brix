@@ -269,6 +269,11 @@ Class:core/number:I64
 - **`type`.** `(. value type)`{.brix} describes the type of the value the union holds.
 - **Arms.** An arm `(case (: n Int) value)`{.brix} is taken when the union holds an `Int`, and
   binds it. `(is value Int)`{.brix} tests for it.
+- **Cases that hold more.** A case may be an optional or another union. `(is value Circle)`{.brix}
+  on a union with a `Shape` case tests what that case holds, and failing it leaves the case, which
+  may hold a square, as failing `(is value Int)`{.brix} leaves a `(? Int)` case, which may hold
+  `null`. Passing it narrows the value to the circle, where no other case of `Shape` is a
+  `Circle` too.
 
 Named cases and type cases can be mixed. Named cases tell apart payloads of one type, such as two
 cases that each hold a `String`; type cases need no names when the types differ:
@@ -352,6 +357,10 @@ square: 4
 - **Every case must have it.** A member some case lacks is an error, such as `Union case
   'empty' has no payload for method 'area'`, or `Union case 'right' has no complete dispatch for
   method 'area'`.
+- **Arguments.** Each case converts what it is given as its own member takes it, so an `I32`
+  passed once becomes a `Float` for one case and an `Int` for another. A number written with no
+  suffix must be one type for every case: where the cases would take it as different types it is
+  an error that names a suffix each case converts, such as `2i32`.
 - **Results.** When the cases' members give different types, the result is a union of them.
 - **No stored properties.** A union declares no stored properties of its own.
 

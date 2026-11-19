@@ -96,12 +96,6 @@
       )
     )
   )
-  (fn-expr _ ending-call FactId
-    (param begins FactId)
-    ; The call that ends a `use`: `end-using`, the second the type pass recorded at the node, or
-    ; `close`, the only one, where the use only closes.
-    (if-expr (call only-closes begins) begins (. ([] (. facts calls) begins) next))
-  )
   (fn-do _ unbind-stack _
     (param id SyntaxId)
     (param cell UseCell)
@@ -387,12 +381,11 @@
   (fn-do _ end-use _
     (param id SyntaxId)
     (param cell UseCell)
-    ; Ends a use where a way out of its block runs it: `ending-call` is called on the object kept.
+    ; Ends a use where a way out of its block runs it, on the object kept.
     ; The object of a `use` is kept only where its flag says so, or its slot holds it, and is taken
     ; out first: a copy is made and the flag or the slot cleared, so a way out that runs it again
     ; ends nothing.
-    (let begins (call (. facts first-call) (. unit reading) id))
-    (let ends (if-expr (== begins no-fact) no-fact (call ending-call begins)))
+    (let ends (call (. facts call-in-role) (. unit reading) id .role-end))
     (if (== (. cell held) no-local)
       (call end-kept-use id ends (. cell type))
       (return)

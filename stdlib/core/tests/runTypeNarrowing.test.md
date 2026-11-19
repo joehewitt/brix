@@ -194,6 +194,258 @@ Brix
 [TypeInfo String]
 ```
 
+### A property of a union type narrows to the case an `is` test finds, by name or through `this`.
+
+```brix
+(main
+  (let circle Shape (call Circle 5))
+  (let holder (call Holder (call Circle 3) circle))
+  (print (call (. holder inside)))
+  (print (call (. holder after)))
+  (print (call (. holder explicit)))
+  (print (call (. holder through)))
+  (print (call (. (call Holder "abc" "x") after-false)))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+
+(type + Flat (is Union)
+  (variant Circle)
+  (variant String)
+)
+
+(type + Outer (is Union)
+  (variant Shape)
+  (variant String)
+)
+
+(type + Holder
+  (prop + held Flat)
+  (prop + outer Outer)
+  (fn-do + This _
+    (param held Flat)
+    (param outer Outer)
+  )
+  (fn-do + inside String
+    (if (is held Circle)
+      (return (str "inside " (. held radius)))
+    )
+    (return "other")
+  )
+  (fn-do + after String
+    (if (is held String)
+      (return "text")
+    )
+    (return (str "after " (. held radius)))
+  )
+  (fn-do + explicit String
+    (if (is (. this held) Circle)
+      (return (str "explicit " (. this held radius)))
+    )
+    (return "other")
+  )
+  (fn-do + through String
+    (if (is outer Circle)
+      (return (str "through " (. outer radius)))
+    )
+    (return "other")
+  )
+  (fn-do + after-false String
+    (if (is held Circle)
+      (return "circle")
+    )
+    (return (str "text " (. held length)))
+  )
+)
+```
+
+```output
+inside 3
+after 3
+explicit 3
+through 5
+text 3
+```
+
+### Later `is` tests of a property keep what earlier tests found, after a test for `null` too.
+
+```brix
+(main
+  (print (call describe (call File (call Square 4) null)))
+  (print (call describe (call File (call Circle 3) null)))
+  (print (call describe (call File "abc" null)))
+  (print (call kept (call File "abc" (call Circle 2))))
+  (print (call kept (call File "abc" (call Square 6))))
+  (print (call kept (call File "abc" "x")))
+  (print (call kept (call File "abc" null)))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Piece (is Union)
+  (variant Circle)
+  (variant Square)
+  (variant String)
+)
+
+(type + File
+  (prop + piece Piece)
+  (prop + extra (? Piece))
+  (fn-do + This _
+    (param piece _)
+    (param extra _)
+  )
+)
+
+(fn-do + describe String
+  (param file File)
+  (if (is (. file piece) Square)
+    (return (str "square " (. (as (. file piece) Square) side)))
+  )
+  (if (is (. file piece) Circle)
+    (return (str "circle " (. file piece radius)))
+  )
+  (return (str "text " (. file piece length)))
+)
+
+(fn-do + kept String
+  (param file File)
+  (if (== (. file extra) null)
+    (return "none")
+  )
+  (if (is (. file extra) String)
+    (return "text")
+  )
+  (if (is (. file extra) Circle)
+    (return (str "circle " (. file extra radius)))
+  )
+  (return (str "square " (. file extra side)))
+)
+```
+
+```output
+square 4
+circle 3
+text 3
+circle 2
+square 6
+text
+none
+```
+
+### A property tested for a case with `==` in an arm can be read after the arms.
+
+```brix
+(main
+  (print (call (. (call Flow (. Orientation horizontal)) cross) (call Box 3 4)))
+  (print (call (. (call Flow (. Orientation vertical)) cross) (call Box 3 4)))
+)
+
+(type + Orientation (is Union)
+  (variant horizontal)
+  (variant vertical)
+)
+
+(type + Box
+  (prop + width Int)
+  (prop + height Int)
+  (fn-do + This _
+    (param width _)
+    (param height _)
+  )
+  (fn-do + width-of Int
+    (return width)
+  )
+  (fn-do + height-of Int
+    (return height)
+  )
+)
+
+(type + Flow
+  (prop + orient Orientation)
+  (fn-do + This _
+    (param orient _)
+  )
+  (fn-do + cross Int
+    (param box Box)
+    (let along
+      (block
+        (case? (== orient (. Orientation horizontal))
+          (call (. box width-of))
+        )
+        (default
+          (call (. box height-of))
+        )
+      )
+    )
+    (return (+ along (if-expr (== orient (. Orientation horizontal)) 10 20)))
+  )
+)
+```
+
+```output
+13
+24
+```
+
+### A call after an `is` test of a property ends what the test found.
+
+```brix compile-error
+(main
+  (print (call (. (call Holder (call Circle 3)) describe)))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Flat (is Union)
+  (variant Circle)
+  (variant String)
+)
+
+(type + Holder
+  (prop + held Flat)
+  (fn-do + This _
+    (param held Flat)
+  )
+  (fn-do + touch _
+    (= held "changed")
+  )
+  (fn-do + describe String
+    (if (is held Circle)
+      (call touch)
+      (return (str (. held radius)))
+    )
+    (return "other")
+  )
+)
+```
+
+```output
+Exception: Union case #1 (String) has no complete dispatch for getter 'radius'
+<no file:26>
+          (return (str (. held radius)))
+                       ^^^^^^^^^^^^^^^
+```
+
 ### A property that takes the type of its value narrows as one written with its type.
 
 ```brix
@@ -712,6 +964,395 @@ done
 
 ```output
 20
+```
+
+### A caught optional is read as what it holds once tests rule out the error and null.
+
+```brix
+(main
+  (for (in mode (list 0 1 2))
+    (print (call describe mode))
+  )
+)
+
+(fn-do + describe String
+  (param mode Int)
+  (let found (catch (call lookup mode)))
+  (if (is found Error)
+    (return (. (as found Error) message))
+  )
+  (if (not found)
+    (return "none")
+  )
+  (return (str (+ found 1)))
+)
+
+(fn-do + lookup (? Int) (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if null (if (== mode 1)))
+  (return mode)
+)
+```
+
+```output
+failed
+none
+3
+```
+
+### A test for the type a caught optional holds reads it as that type, and leaves null and the error after it.
+
+```brix
+(main
+  (for (in mode (list 0 1 2))
+    (print (call describe mode))
+  )
+)
+
+(fn-do + describe String
+  (param mode Int)
+  (let found (catch (call lookup mode)))
+  (if (is found Int)
+    (return (str (+ found 1)))
+  )
+  (if (is found Error)
+    (return (. (as found Error) message))
+  )
+  (return "none")
+)
+
+(fn-do + lookup (? Int) (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if null (if (== mode 1)))
+  (return mode)
+)
+```
+
+```output
+failed
+none
+3
+```
+
+### Failing a test for the type a caught optional holds does not rule out null.
+
+```brix compile-error
+(main
+  (print (call describe 1))
+)
+
+(fn-do + describe String
+  (param mode Int)
+  (let found (catch (call lookup mode)))
+  (if (is found Int)
+    (return "int")
+  )
+  (return (. found message))
+)
+
+(fn-do + lookup (? Int) (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if null (if (== mode 1)))
+  (return mode)
+)
+```
+
+```output
+Exception: Union case #0 (I64?) has no complete dispatch for getter 'message'
+<no file:12>
+      (return (. found message))
+              ^^^^^^^^^^^^^^^^^
+```
+
+### Failing a test for a case of a union that is a case of another does not rule out the union's other cases.
+
+```brix compile-error
+(main
+  (let shape Shape (call Square 4))
+  (print (call describe shape))
+)
+
+(fn-do + describe String
+  (param pick Item)
+  (if (is pick Circle)
+    (return "circle")
+  )
+  (return (str (. pick length)))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+
+(type + Item (is Union)
+  (variant Shape)
+  (variant String)
+)
+```
+
+```output
+Exception: Union case #0 (Shape) has no complete dispatch for getter 'length'
+<no file:12>
+      (return (str (. pick length)))
+                   ^^^^^^^^^^^^^^^
+```
+
+### A test for a case of a union another union holds narrows the outer union straight to it.
+
+```brix
+(main
+  (let circle Shape (call Circle 3))
+  (let square Shape (call Square 4))
+  (print (call describe circle))
+  (print (call describe square))
+  (print (call describe "x"))
+  (print (call capture circle))
+  (print (call capture square))
+)
+
+(fn-do + describe String
+  (param item Item)
+  (if (is item Circle)
+    (return (str "circle " (. item radius)))
+  )
+  (if (is-not item Square)
+    (return "not square")
+  )
+  (return (str "square " (. item side)))
+)
+
+(fn-do + capture String
+  (param item Item)
+  (if (is item Circle)
+    (let read (=> () (str "captured " (. item radius))))
+    (return (call read))
+  )
+  (return "captured other")
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+
+(type + Item (is Union)
+  (variant Shape)
+  (variant String)
+)
+```
+
+```output
+circle 3
+square 4
+not square
+captured 3
+captured other
+```
+
+### Once a union is known to hold a case that is a union, a test for a case of that one narrows inside it.
+
+```brix
+(main
+  (for (in mode (list 0 1 2))
+    (print (call describe mode))
+  )
+)
+
+(fn-do + describe String
+  (param mode Int)
+  (let made (catch (call make mode)))
+  (if (is made Error)
+    (return (. (as made Error) message))
+  )
+  (if (is made Circle)
+    (return (str "circle " (. made radius)))
+  )
+  (return (str "square " (. made side)))
+)
+
+(fn-do + make Shape (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if (call Circle 3) (if (== mode 1)))
+  (return (call Square 4))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+```
+
+```output
+failed
+circle 3
+square 4
+```
+
+### A union an optional case holds is narrowed inside once tests rule out the error and null.
+
+```brix
+(main
+  (for (in mode (list 0 1 2 3))
+    (print (call describe mode))
+  )
+)
+
+(fn-do + describe String
+  (param mode Int)
+  (let made (catch (call make mode)))
+  (if (is made Error)
+    (return (. (as made Error) message))
+  )
+  (if (not made)
+    (return "none")
+  )
+  (if (is made Circle)
+    (return (str "circle " (. made radius)))
+  )
+  (return (str "square " (. made side)))
+)
+
+(fn-do + make (? Shape) (?! Error)
+  (param mode Int)
+  (throw (call Error "failed") (if (== mode 0)))
+  (return-if null (if (== mode 1)))
+  (return-if (call Circle 3) (if (== mode 2)))
+  (return (call Square 4))
+)
+
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
+
+(type + Square (is Tuple)
+  (prop + side Int)
+)
+
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
+```
+
+```output
+failed
+none
+circle 3
+square 4
+```
+
+### A test for a case held two unions down narrows to the case that holds it, not to a case the type converts to.
+
+```brix
+(main
+  (let a Inner (call A 1))
+  (let mid Mid a)
+  (print (call describe mid))
+  (print (call describe "x"))
+)
+
+(fn-do + describe String
+  (param outer Outer)
+  (if (is outer A)
+    (let held Mid outer)
+    (return (str "mid " (is held Inner)))
+  )
+  (return "other")
+)
+
+(type + A (is Tuple)
+  (prop + a Int)
+)
+
+(type + B (is Tuple)
+  (prop + b Int)
+)
+
+(type + Inner (is Union)
+  (variant A)
+  (variant B)
+)
+
+(type + Mid (is Union)
+  (variant Inner)
+  (variant Int)
+)
+
+(type + Outer (is Union)
+  (variant Mid)
+  (variant String)
+)
+```
+
+```output
+mid true
+other
+```
+
+### A test for a type two cases of the inner union hold does not narrow inside it.
+
+```brix compile-error
+(main
+  (let pair Pair (call (. Pair right) 5))
+  (print (call describe pair))
+)
+
+(fn-do + describe String
+  (param item Item)
+  (if (is item String)
+    (return "text")
+  )
+  (if (is item Int)
+    (return (str (+ item 1)))
+  )
+  (return "other")
+)
+
+(type + Pair (is Union)
+  (variant left Int)
+  (variant right Int)
+)
+
+(type + Item (is Union)
+  (variant Pair)
+  (variant String)
+)
+```
+
+```output
+Exception: Operator "+" is not defined for Pair and I64
+<no file:13>
+        (return (str (+ item 1)))
+                     ^^^^^^^^^^
 ```
 
 ### A union a closure captures and tests is read there as the case the test found.

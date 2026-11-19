@@ -327,7 +327,7 @@
           (call emit-item-answer lhs (. row object) (. row index) rhs)
           (return (call Assignment))
         )
-        (if (and (!= op .eq-op) reached (!= (call call-at lhs .call-operator) no-fact))
+        (if (and (!= op .eq-op) reached (call holds-form lhs .call-operator))
           (return (call emit-index-update lhs op (. row object) (. row index) rhs))
         )
         (return (call emit-field-assign id op lhs (. row object) rhs))
@@ -352,7 +352,7 @@
           (call emit-module-setter lhs rhs ([] (. facts calls) setter))
           (return (call Assignment))
         )
-        (if (and (!= op .eq-op) (!= (call call-at lhs .call-store-setter) no-fact))
+        (if (and (!= op .eq-op) (call holds-form lhs .call-store-setter))
           (return (call emit-setter-update id op lhs 0 rhs false))
         )
       )
@@ -592,7 +592,7 @@
       (call emit-forward-set id op lhs object rhs)
       (return (call Assignment))
     )
-    (if (and (!= op .eq-op) (!= (call call-at lhs .call-store-setter) no-fact))
+    (if (and (!= op .eq-op) (call holds-form lhs .call-store-setter))
       (return (call emit-setter-update id op lhs object rhs true))
     )
     (let owner (if-expr (== object 0) (. unit owner-type) (call held-type object)))
@@ -964,8 +964,8 @@
         (= value (call combine-builtin id increment lhs (. current operand) current-type rhs true))
       )
       (else
-        (let combined (call answering (call (. facts first-call) (. unit reading) id)))
-        (if (or (== combined no-fact) (!= (call answering (. ([] (. facts calls) combined) next)) no-fact))
+        (let combined (call (. facts answer-call) (. unit reading) id .role-answer))
+        (if (or (== combined no-fact) (not (call holds-only id (list combined))))
           (call refuse .refused-statement id)
           (return (call Assignment))
         )
@@ -1038,8 +1038,8 @@
     (match? ([] (. tree nodes) lhs)
       (case .node-index-expression
         (let place (call indexed-field lhs))
-        (if (!= place no-fact)
-          (return (as (. ([] (. facts constants) place) bits) U32))
+        (if (!= place (. U32 max))
+          (return place)
         )
       )
       (case (call .node-get-expression row)
@@ -1994,7 +1994,7 @@
     ; type pass planned it. The value is evaluated, and then the union, once each. Both are given
     ; to the function made for the member where a case may panic, and else each case is set in
     ; place.
-    (let count-answered (call answer-count lhs))
+    (let count-answered (call (. facts role-count) (. unit reading) lhs .role-case))
     (if (or (!= op .eq-op) (== object 0) (== count-answered 0) (call (. tables forward-unbuilt) (. unit reading) lhs))
       (call refuse .refused-statement id)
       (return)
@@ -2137,7 +2137,7 @@
     (let made (call emit-expression rhs))
     (let value (call apart made rhs (or (not (call is-inert object)) (not (call is-inert index)))))
     (let given (. made type))
-    (if (!= (call call-at lhs .call-view-range) no-fact)
+    (if (call holds-form lhs .call-view-range)
       (call copy-view-range lhs value given object index)
       (return (call Assignment))
     )
@@ -2256,13 +2256,13 @@
     ; function, which the type pass says an arena traces, is stored through the write barrier.
     (let nothing (call make-operand .operand-void 0))
     (let callee (. fact callee))
-    (let constant (call (. facts constant-of) (. unit reading) id))
-    (if (or (== callee no-instance) (== constant no-fact) out-of-order (!= (. operands count) 2))
+    (let traces (call (. facts traces-of) (. unit reading) id))
+    (if (or (== callee no-instance) (== traces null) out-of-order (!= (. operands count) 2))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
     (lazy out-of-order (not (call fills-in-order fact callee 2)))
-    (let traced (!= (. ([] (. facts constants) constant) bits) 0))
+    (let traced (?? traces false))
     (let written ([] (. tree children) operands))
     (let first (call (. tree argument-value) ([] written 0)))
     (let second (call (. tree argument-value) ([] written 1)))
@@ -2357,7 +2357,7 @@
     (let item-layout (call layout-of (. stored type) site))
     (let data (call part (. receiver operand) layout 0 site))
     (let data-layout (call layout-of (. data type) site))
-    (let proven (!= (call (. facts constant-of) (. unit reading) site) no-fact))
+    (let proven (call (. facts is-proven) (. unit reading) site))
     (let size
       (block
         (case? proven
@@ -2553,17 +2553,16 @@
     ; an object that names storage has a shape here, read once, and only where `[]=` stores in
     ; place: on an object, or on a value it does not answer anew. A key that changes nothing is read
     ; once too; another is evaluated again for the store where it can be.
-    (let read (call call-at site .call-operator))
-    (let store (call next-operator read))
+    (let read (call operator-in-role site .role-item))
+    (let store (call operator-in-role site .role-store))
     (let plan (call (. facts plan-of) (. unit reading) site))
     (let combined no-fact)
     (if (== plan .plan-call)
-      (= combined store)
-      (= store (call next-operator combined))
+      (= combined (call operator-in-role site .role-answer))
     )
     (let increment (call increment-base op))
     (let inert (call is-inert index))
-    (if (or (== store no-fact) (not increment) (== increment .concat-op) other-plan unrepeatable)
+    (if (or (== store no-fact) (== read no-fact) (not increment) (== increment .concat-op) other-plan unrepeatable)
       (call refuse .refused-statement site)
       (return (call Assignment))
     )
@@ -2647,14 +2646,17 @@
     (call call-method setter site mark)
     (return assignment)
   )
-  (fn-do _ next-operator FactId
-    (param fact FactId)
-    ; The call of an operator recorded at a node after the one given, or none.
-    (let next (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) next) no-fact))
-    (while (and (!= next no-fact) (!= (. ([] (. facts calls) next) form) .call-operator))
-      (= next (. ([] (. facts calls) next) next))
+  (fn-do _ operator-in-role FactId
+    (param site SyntaxId)
+    (param role CallRole)
+    (let found (call (. facts first-call) (. unit reading) site))
+    (while (!= found no-fact)
+      (let row ([] (. facts calls) found))
+      (return-if found (if (and (== (. row form) .call-operator) (== (. row role) role))))
+      (blank)
+      (= found (. row next))
     )
-    (return next)
+    (return no-fact)
   )
   (fn-do _ emit-item-answer _
     (param site SyntaxId)
@@ -2665,9 +2667,9 @@
     ; no struct or tuple: the item is read by the function that answers `[]`, the value is evaluated,
     ; and the function is called on the item with it, as the reference compiles it for an object.
     ; Nothing is stored.
-    (let read (call call-at site .call-operator))
-    (let answer (call next-operator read))
-    (if (== answer no-fact)
+    (let read (call operator-in-role site .role-item))
+    (let answer (call operator-in-role site .role-answer))
+    (if (or (== answer no-fact) (== read no-fact))
       (call refuse .refused-statement site)
       (return)
     )
@@ -2729,7 +2731,7 @@
     ; the item the index gave. No fact where the type pass recorded none.
     (let fact (call (. facts first-call) (. unit reading) id))
     (while (!= fact no-fact)
-      (if (== (. ([] (. facts calls) fact) form) .call-store-through)
+      (if (and (== (. ([] (. facts calls) fact) form) .call-store-through) (== (. ([] (. facts calls) fact) role) .role-answer))
         (return fact)
       )
       (= fact (. ([] (. facts calls) fact) next))

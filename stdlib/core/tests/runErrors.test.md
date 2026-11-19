@@ -2769,6 +2769,31 @@ Exception: A value that may be an error, as "catch" gives, has no truth; test it
                       ^^^^^^^
 ```
 
+### `not` denies no truth of what a raw catch holds, even one whose value is optional.
+
+```brix compile-error
+(main
+  (let found (catch (call lookup -1)))
+  (if (not found)
+    (print "none")
+  )
+)
+
+(fn-do + lookup (? Int) (?! IOError)
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return-if null (if (== value 0)))
+  (return value)
+)
+```
+
+```output
+Exception: A value that may be an error, as "catch" gives, has no truth; test it with "is Error", or take it apart with "match"
+<no file:4>
+      (if (not found)
+               ^^^^^
+```
+
 ### An error that leaves main is reported and ends the program.
 
 ```brix crash

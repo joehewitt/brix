@@ -22,6 +22,7 @@
 (prop _ unwrap-rank RelationRank (= 30))
 (prop _ converter-rank RelationRank (= 90))
 (prop _ final-rank RelationRank (= 140))
+(prop + deepest-case U32 (= 8))
 
 (fn-expr + relation-legal Bool
   (param relation Relation)
@@ -906,6 +907,29 @@
   )
   (fn-do + release _
     (call (. arena release))
+  )
+  (fn-do + reaches-case Bool
+    (param held TypeId)
+    (param target TypeId)
+    (param kind Specificity)
+    (param depth U32)
+    (param caller (? ModuleId) (= null))
+    (if (call holds-as (call compare-pattern held target caller) kind)
+      (return true)
+    )
+    (let inner (if-expr (call (. types is-optional) held) (call (. types optional-inner) held) held))
+    (if (and (!= inner held) (call holds-as (call compare-pattern inner target caller) kind))
+      (return true)
+    )
+    (if (or (>= depth deepest-case) (!= (call (. types intrinsic-of) inner) .union))
+      (return false)
+    )
+    (for (in fact (call (. types cases-of) inner))
+      (if (and (!= (. fact type) no-type) (!= (. fact type) invalid-type) (call reaches-case (. fact type) target kind (+ depth 1) caller))
+        (return true)
+      )
+    )
+    (return false)
   )
   (fn-expr + holds-as Bool
     (param relation Relation)

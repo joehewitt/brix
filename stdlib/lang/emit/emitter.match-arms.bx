@@ -616,7 +616,7 @@
     (param slot Operand)
     (let arms (list SyntaxId))
     (call gather-arms pattern arms)
-    (let cases (== (. ([] (. facts constants) (call (. facts constant-of) (. unit reading) pattern)) bits) 1))
+    (let cases (== (call (. facts switch-form-of) (. unit reading) pattern) (. SwitchForm switch-cases)))
     (let values (list U64))
     (let owners (list U32))
     (let fallback-arm SyntaxId 0)
@@ -850,8 +850,8 @@
     (let kind (call intrinsic (. step type)))
     (match? ([] (. tree nodes) (. step pattern))
       (case (call .node-type-case row)
-        (let constant (call (. facts constant-of) (. unit reading) (. step pattern)))
-        (if (or not-case-plan (!= kind .union) (== constant no-fact) machine-case)
+        (let index (call (. facts case-of) (. unit reading) (. step pattern)))
+        (if (or not-case-plan (!= kind .union) (== index (. U32 max)) machine-case)
           (return .head-none)
         )
         (lazy not-case-plan (!= (call (. facts plan-of) (. unit reading) (. step pattern)) .plan-case))
@@ -860,8 +860,7 @@
         (if (not (call (. tables layouts is-union) layout))
           (return .head-none)
         )
-        (let index (. ([] (. facts constants) constant) bits))
-        (if (>= index (as (. ([] (. tables layouts rows) layout) cases count) U64))
+        (if (>= (as index U64) (as (. ([] (. tables layouts rows) layout) cases count) U64))
           (return .head-none)
         )
         (if (!= (. row value) 0)
@@ -908,7 +907,7 @@
     (let values (list U64))
     (let owners (list U32))
     (for (in arm arms)
-      (let index (. ([] (. facts constants) (call (. facts constant-of) (. unit reading) (. ([] match-steps (. arm first)) pattern))) bits))
+      (let index (as (call (. facts case-of) (. unit reading) (. ([] match-steps (. arm first)) pattern)) U64))
       (let found (. U32 max))
       (for (in position (..< 0 (. values length)))
         (if (== ([] values position) index)
@@ -1359,7 +1358,7 @@
   )
   (fn-expr _ switch-case U64
     (param pattern SyntaxId)
-    (. ([] (. facts constants) (call (. facts constant-of) (. unit reading) pattern)) bits)
+    (as (call (. facts case-of) (. unit reading) pattern) U64)
   )
   (fn-do _ switch-subject Operand
     (param pattern SyntaxId)
@@ -1857,14 +1856,16 @@
     )
     (return (call match-cases pattern held failed))
   )
-  (fn-do _ match-cases Typed
+  (fn-do _ match-cases Typed (?! Refused)
     (param pattern SyntaxId)
     (param value Typed)
     (param failed IRBlockId)
+    (param within TypeId (= no-type))
     ; A union matched by its cases: each case the type pass recorded a conversion for is tested
     ; in turn, and what it holds is converted. An optional a case holds is tested for a value
-    ; first. A union that holds any other case does not match. A pattern that only tests passes
-    ; the union itself.
+    ; first. A case that is a union is matched by its own cases, whose rows are `within` it. A
+    ; union that holds any other case does not match. A pattern that only tests passes the union
+    ; itself.
     (let nothing (call make-operand .operand-void 0))
     (let union (. value type))
     (let layout (call layout-of (. value type) pattern))
@@ -1889,7 +1890,7 @@
     (while (!= fact no-fact)
       (let row ([] (. facts conversions) fact))
       (= fact (. row next))
-      (if (or (!= (. row reason) .reason-pattern) (== (. row guard) (. U32 max)))
+      (if (or (!= (. row reason) .reason-pattern) (== (. row guard) (. U32 max)) (!= (. row within) within))
         (continue)
       )
       (if (or (>= (. row guard) (. ([] (. tables layouts rows) layout) cases count)) (!= (. row to) target))
@@ -1907,7 +1908,11 @@
         (call pass-or-fail (. tested operand) failed)
         (= inner (call payload pattern inner))
       )
-      (let passed (call pass-leaf pattern row inner failed))
+      (let passed
+        (scope (if-expr descends (call match-cases pattern inner failed (. row from)) (call pass-leaf pattern row inner failed))
+          (lazy descends (and (== (. row kind) .relation-illegal) (== (. row from) (. inner type))))
+        )
+      )
       (if (. matching testing)
         (call jump joined)
         (else
@@ -2114,14 +2119,13 @@
     (if (or (== (call intrinsic union) .table-row) (== (call intrinsic union) .immutable-table-row))
       (return (call match-row-case pattern inner held failed))
     )
-    (let constant (call (. facts constant-of) (. unit reading) pattern))
+    (let index (call (. facts case-of) (. unit reading) pattern))
     (let layout (call layout-of union pattern))
-    (if (or (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== constant no-fact) not-union)
+    (if (or (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== index (. U32 max)) not-union)
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
     )
     (lazy not-union (not (call (. tables layouts is-union) layout)))
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. ([] (. tables layouts rows) layout) cases count))
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
@@ -2186,7 +2190,7 @@
       )
       (return (call Typed (call load-local refined-flag pattern) (. types bool-type)))
     )
-    (let constant (call (. facts constant-of) (. unit reading) pattern))
+    (let index (call (. facts case-of) (. unit reading) pattern))
     (let property (call decl-name (. machine module) (. machine decl)))
     (let machine-tree (. ([] (. program modules) (. machine module)) tree))
     (let cases
@@ -2196,15 +2200,15 @@
         )
       )
     )
-    (if (or (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== constant no-fact) (not property) past-cases)
+    (if (or (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== index (. U32 max)) (not property) past-cases)
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
     )
-    (lazy past-cases (>= (. ([] (. facts constants) constant) bits) (as (. cases length) U64)))
+    (lazy past-cases (>= (as index U64) (as (. cases length) U64)))
     (let name
       (call (. program store-atom) (str "(" (. property text) "-" state-text "-active)")
         (block
-          (lazy state-text (. (!! (call (. machine-tree state-name) ([] cases (as (. ([] (. facts constants) constant) bits) U32)))) text))
+          (lazy state-text (. (!! (call (. machine-tree state-name) ([] cases index))) text))
         )
       )
     )
@@ -2450,13 +2454,12 @@
     (let nothing (call make-operand .operand-void 0))
     (let type (. value type))
     (let place (call (. tables unions of) (call table-row-type type)))
-    (let constant (call (. facts constant-of) (. unit reading) pattern))
-    (if (or (== place (. U32 max)) (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== constant no-fact))
+    (let index (call (. facts case-of) (. unit reading) pattern))
+    (if (or (== place (. U32 max)) (!= (call (. facts plan-of) (. unit reading) pattern) .plan-case) (== index (. U32 max)))
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
     )
     (let union ([] (. tables unions layouts) place))
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. union cases count))
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
@@ -2634,7 +2637,7 @@
         )
       )
     )
-    (let measured (call call-at pattern .call-getter))
+    (let measured (call (. facts call-in-role) (. unit reading) pattern .role-length))
     (if (or (== rest 0) (== measured no-fact))
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
@@ -2646,8 +2649,10 @@
     )
     (let least (call integer .machine-u64 (as (+ (. prefix length) (. suffix length)) U64)))
     (call pass-or-fail (call compare pattern .compare-greater-equal (. length operand) least) failed)
-    (let fact (call call-at pattern .call-method))
+    (let role CallRole .role-prefix)
     (for (in text (list prefix suffix))
+      (let side role)
+      (= role .role-suffix)
       (if (== (. text length) 0)
         (continue)
       )
@@ -2655,7 +2660,7 @@
         (call read-part
           (block
             (arg pattern)
-            (arg fact)
+            (arg (call (. facts call-in-role) (. unit reading) pattern side))
             (arg (. value operand))
             (arg type)
             (arg (call make-operand .operand-constant (call (. ir add-string) text)))
@@ -2668,7 +2673,6 @@
         (return (call Typed nothing no-type))
       )
       (call pass-or-fail (. tested operand) failed)
-      (= fact (call next-call fact))
     )
     (if (not (. matching testing))
       (for (in part parts)
@@ -2829,7 +2833,7 @@
     (param views Bool)
     (param layout LayoutId)
     (let nothing (call make-operand .operand-void 0))
-    (let measured (call call-at pattern .call-getter))
+    (let measured (call (. facts call-in-role) (. unit reading) pattern .role-length))
     (let length (call Typed nothing no-type))
     (if views
       (= length (call view-length pattern subject type layout))
@@ -2837,7 +2841,7 @@
         (= length (call read-part pattern measured subject type nothing))
       )
       (else
-        (= length (call array-length pattern subject type))
+        (= length (call array-length pattern subject type (call (. facts place-of) (. unit reading) pattern)))
       )
     )
     (if (!= (. length type) (. types size-type))
@@ -2851,9 +2855,8 @@
     (param type TypeId)
     ; Whether the type pass planned a pattern of a list to read the rows of a table or a span of
     ; one, or the items of a view of a field's column, as TypeScript answers them.
-    (and (!= constant no-fact) (== (. ([] (. facts constants) constant) bits) 2) viewed)
+    (and (call (. facts reads-rows) (. unit reading) pattern) viewed)
     (where
-      (lazy constant (call (. facts constant-of) (. unit reading) pattern))
       (lazy kind (call intrinsic type))
       (lazy viewed (or (call is-row-source kind) (== kind .table-column) (== kind .immutable-table-column)))
     )
@@ -2911,7 +2914,7 @@
     (param failed IRBlockId)
     ; The rest of a pattern of a list, where it has a name: the range from `start` to `end` is
     ; made by the construction the type pass recorded at the rest, with a step of one, and the
-    ; subject is read by it with the call recorded after, or of the rows of a table, a span of one or
+    ; subject is read by it with the call in the rest's role, or of the rows of a table, a span of one or
     ; a view of a field's column, made their span or view as `t[a .. < b]` makes it. What it gives is
     ; matched by the name.
     (let name SyntaxId 0)
@@ -2924,8 +2927,8 @@
       (return)
     )
     (let made (call call-at remainder .call-constructor))
-    (let sliced (if-expr (== made no-fact) no-fact (. ([] (. facts calls) made) next)))
-    (if (or (== sliced no-fact) (== (. ([] (. facts calls) sliced) callee) no-instance))
+    (let sliced (call (. facts call-in-role) (. unit reading) remainder .role-rest))
+    (if (or (== made no-fact) (== sliced no-fact) (== (. ([] (. facts calls) sliced) callee) no-instance))
       (call refuse .refused-expression remainder)
       (return)
     )
@@ -3020,8 +3023,8 @@
     (param failed IRBlockId)
     ; The rest of a pattern of a map, where it has a name: an empty map of the subject's type is
     ; made by the construction the type pass recorded at the rest, each key matched, held with
-    ; what it holds from `mark` on, is stored in it by the call recorded next, and the rest is
-    ; what the last call recorded gives of the subject and that map. The name matches it.
+    ; what it holds from `mark` on, is stored in it by the call in the store's role, and the rest is
+    ; what the call in the rest's role gives of the subject and that map. The name matches it.
     (let name SyntaxId 0)
     (match? ([] (. tree nodes) remainder)
       (case (call .node-type-remainder row)
@@ -3029,9 +3032,9 @@
       )
     )
     (let made (call call-at remainder .call-constructor))
-    (let stored (if-expr (== made no-fact) no-fact (. ([] (. facts calls) made) next)))
-    (let taken (if-expr (== stored no-fact) no-fact (. ([] (. facts calls) stored) next)))
-    (if (== taken no-fact)
+    (let stored (call (. facts call-in-role) (. unit reading) remainder .role-store))
+    (let taken (call (. facts call-in-role) (. unit reading) remainder .role-rest))
+    (if (or (== made no-fact) (== stored no-fact) (== taken no-fact))
       (call refuse .refused-expression remainder)
       (return)
     )

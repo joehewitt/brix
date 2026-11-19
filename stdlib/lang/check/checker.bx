@@ -696,8 +696,7 @@
     )
     (let home (. (call class-ref types about) module))
     (call demand-body (call (. instances intern-initializer) home member about))
-    (let place (+ (* (as home U64) 4294967296) (as member U64)))
-    (call (. facts set-constant) instance site (call ConstantFact place 0.0 null false) .plan-enum-value)
+    (call (. facts set-enum) instance site home member)
   )
   (fn-do + note-symbol-choice _
     (param about TypeId)
@@ -1329,11 +1328,18 @@
     (param syntax SyntaxId)
     (param params (of ImmutableArray TypeId ArenaBacking))
     ; Types the default of an argument that declares no type on an instance that is never checked,
-    ; for a call to take the argument's type from.
+    ; for a call to take the argument's type from. A default the instance has typed already gives
+    ; the type it has, so its calls are not recorded twice.
     (let none (. scratch no-types))
     (let probe (call (. instances intern) owner decl receiver 0 no-instance params none false))
     (if (. instances last-inserted)
       (= (. ([] (. instances rows) probe) holds-default) true)
+      (else
+        (let known (call (. facts node-type) probe syntax))
+        (if (!= known no-type)
+          (return known)
+        )
+      )
     )
     (let checker (call checker-for session probe null true))
     (call (. checker prepare))
@@ -6835,7 +6841,7 @@
     )
     (if (!= number (. U32 max))
       (let plan (if-expr (> (. args count) 1) (. OperatorPlan plan-case-fields) (. OperatorPlan plan-case)))
-      (call (. facts set-constant) instance id (call ConstantFact number 0.0 null false) plan)
+      (call (. facts set-case) instance id number plan)
     )
     (return union)
   )
@@ -8979,10 +8985,8 @@
       (return false)
     )
     (for (in fact (call (. types cases-of) subject))
-      (if (and (!= (. fact type) no-type) (!= (. fact type) invalid-type))
-        (if (call (. relations holds-as) (call (. relations compare-pattern) (. fact type) target) kind)
-          (return true)
-        )
+      (if (and (!= (. fact type) no-type) (!= (. fact type) invalid-type) (call (. relations reaches-case) (. fact type) target kind 0 module))
+        (return true)
       )
     )
     (return false)
@@ -9128,7 +9132,8 @@
     ; among them a literal string or a nested function made, which the reference makes in place,
     ; a cast, whose conversion the frame sees, unless it is one under `catch` that gives an error
     ; where it fails, a `!` of what the flow knows holds a value, which the reference takes as it
-    ; is, `type-of`, arithmetic the reference makes in place, division too, a comparison it makes
+    ; is, `type-of`, arithmetic the reference makes in place, division too, an `is` of a type,
+    ; whose conversions the frame sees, a comparison it makes
     ; in place (`compares-in-place`), also of optionals whose flags it tests around such a
     ; comparison of what they hold, a read of a field of a tuple or a struct by a constant index,
     ; a read or a write of a style, which ends what is known of properties as a call does, a call
@@ -9192,6 +9197,9 @@
         (if (and (or (== (. row op) .is-op) (== (. row op) .is-not-op)) (is ([] (. tree nodes) (. row rhs)) .node-symbol))
           (return false)
         )
+        (if (and (call is-type-test (. row op)) (== (call (. facts plan-of) instance id) .plan-is) (call tests-type (. row rhs)))
+          (return false)
+        )
         (let branches
           (scope (or short-circuits (== (. row op) .if-op) (== (. row op) .else-op))
             (lazy short-circuits (or (== (. row op) .and-op) (== (. row op) .or-op) (== (. row op) .coalesce-op)))
@@ -9227,6 +9235,29 @@
       )
     )
     (return true)
+  )
+  (fn-expr _ tests-type Bool
+    (param pattern SyntaxId)
+    (match ([] (. tree nodes) pattern)
+      (case .node-symbol
+        false
+      )
+      (case .node-type-case
+        false
+      )
+      (case .node-type-list
+        false
+      )
+      (case .node-type-map
+        false
+      )
+      (case .node-type-and
+        false
+      )
+      (default
+        true
+      )
+    )
   )
   (fn-expr _ is-typed-name Bool
     (param pattern SyntaxId)
@@ -12088,9 +12119,9 @@
         (if (call (. types is-plain-tuple) receiver)
           (if (< wanted (. range count))
             (let held (as (. ([] (. types properties) (as (+ (. range start) wanted) Index)) slot) U64))
-            (call (. facts set-constant) instance id (call ConstantFact held 0 null false) .plan-field)
+            (call (. facts set-place) instance id (as held U32) .plan-field)
             (else-if (== wanted (. range count))
-              (call (. facts set-constant) instance id (call ConstantFact wanted 0 null false) .plan-field)
+              (call (. facts set-place) instance id (as wanted U32) .plan-field)
             )
           )
           (return)
@@ -12110,7 +12141,7 @@
           (= place (+ (as (. property slot) U64) 1))
         )
         (if (== position wanted)
-          (call (. facts set-constant) instance id (call ConstantFact place 0 null false) .plan-field)
+          (call (. facts set-place) instance id (as place U32) .plan-field)
         )
       )
     )
@@ -12408,7 +12439,7 @@
       )
     )
     (call (. types optional-of) subject)
-    (let used (call protocol-member subject "begin-using" id))
+    (let used (call protocol-member subject "begin-using" id .role-begin))
     (if (== used invalid-type)
       (if (== (call ending-member subject "close" id) invalid-type)
         (let shown (call type-short-name types subject))
@@ -12438,22 +12469,23 @@
     (param site SyntaxId)
     ; The method that ends a use, called as `protocol-member` calls one, whose errors leave the
     ; function.
-    (let result (call (. calls protocol-getter) receiver (call (. program store-atom) name) site))
+    (let result (call (. calls protocol-getter) receiver (call (. program store-atom) name) site .role-end))
     (if (!= result invalid-type)
       (return result)
     )
-    (return (. (call (. calls protocol-call) receiver (call (. program store-atom) name) site no-type true) answer))
+    (return (. (call (. calls protocol-call) receiver (call (. program store-atom) name) site no-type true (:role (. CallRole role-end))) answer))
   )
   (fn-do _ protocol-member TypeId
     (param receiver TypeId)
     (param name String)
     (param site SyntaxId)
+    (param role CallRole)
     (let atom (call (. program store-atom) name))
-    (let result (call (. calls protocol-getter) receiver atom site))
+    (let result (call (. calls protocol-getter) receiver atom site role))
     (if (!= result invalid-type)
       (return result)
     )
-    (return (. (call (. calls protocol-call) receiver atom site) answer))
+    (return (. (call (. calls protocol-call) receiver atom site (:role role)) answer))
   )
   (fn-do _ check-task-handlers _
     (param task SyntaxId)
@@ -12885,10 +12917,32 @@
     (for (in offset (..< 0 (. completion cases count)))
       (let fact ([] (. types cases) (+ (. completion cases start) offset)))
       (if (and (. fact name) (== (!! (. fact name)) name))
-        (call (. facts set-constant) instance site (call ConstantFact offset 0.0 null false) .plan-case)
+        (call (. facts set-case) instance site (as offset U32) .plan-case)
         (return)
       )
     )
+  )
+  (fn-do _ refuse-error-truth Bool
+    (param condition SyntaxId)
+    (param type TypeId)
+    (if (or (!= (call (. types intrinsic-of) type) .union) (call all (call (. types cases-of) type) (:where (not (call is-raised (. each type))))))
+      (return false)
+    )
+    (let advice "test it with \"is Error\", or take it apart with \"match\"")
+    (call (. frame diagnose)
+      (block
+        (arg condition)
+        (arg .stated)
+        (arg
+          (call (. program store-atom)
+            (block
+              (arg (str "A value that may be an error, as \"catch\" gives, has no truth; " advice))
+            )
+          )
+        )
+      )
+    )
+    (return true)
   )
   (fn-do _ note-truthiness _
     (param site SyntaxId)
@@ -12913,23 +12967,7 @@
       (call (. frame diagnose) site .illegal-operation negation type)
       (return)
     )
-    (if (and (== (call (. types intrinsic-of) type) .union) (not (call all (call (. types cases-of) type) (:where (not (call is-raised (. each type)))))))
-      (let advice "test it with \"is Error\", or take it apart with \"match\"")
-      (call (. frame diagnose)
-        (block
-          (arg condition)
-          (arg .stated)
-          (arg
-            (call (. program store-atom)
-              (block
-                (arg (str "A value that may be an error, as \"catch\" gives, has no truth; " advice))
-              )
-            )
-          )
-        )
-      )
-      (return)
-    )
+    (return-if (if (call refuse-error-truth condition type)))
     (let completion (call (. types completion-of) type))
     (if (== (. completion intrinsic) .interface)
       (let shown (call type-source types type))
@@ -14449,7 +14487,7 @@
     (let made (call (. calls demand-constructor) channel (. scratch types mark)))
     (let given (list TypeId))
     (+= given value)
-    (let write (. (call (. calls protocol-call) channel (call (. program store-atom) "<-write") id given true) fact))
+    (let write (. (call (. calls protocol-call) channel (call (. program store-atom) "<-write") id given true (:role (. CallRole role-write))) fact))
     (if (or (== made no-instance) (== write no-fact))
       (call decline id)
       (return invalid-type)
@@ -14708,14 +14746,24 @@
       (let bit (if-expr (< offset 64) (/lshift/ 1u64 offset) 0))
       (let base (and based (!= (/and/ held bit) 0) (== (. ([] (. types cases) (+ (. cases start) offset)) type) read)))
       (if (and (!= bit 0) (or (== held bit) base))
-        (call (. facts set-constant) instance id (call ConstantFact offset 0.0 null false) .plan-case-read)
+        (let inner (if-expr base (. U32 max) (call inner-case (. ([] (. types cases) (+ (. cases start) offset)) type) read)))
+        (call (. facts set-case) instance id (as offset U32) .plan-case-read inner)
         (return)
       )
     )
     (let lined (call (. narrowing line-case) cases held read))
     (if (and (!= held 0) (!= lined (. U32 max)))
-      (call (. facts set-constant) instance id (call ConstantFact lined 0.0 null false) .plan-case-read)
+      (call (. facts set-case) instance id lined .plan-case-read)
     )
+  )
+  (fn-do _ inner-case U32
+    (param held TypeId)
+    (param read TypeId)
+    (let union (if-expr (call (. types is-optional) held) (call (. types optional-inner) held) held))
+    (if (or (== union read) (!= (call (. types intrinsic-of) union) .union))
+      (return (. U32 max))
+    )
+    (return (call (. narrowing case-of-type) (. (call (. types completion-of) union) cases) read))
   )
   (fn-expr _ slot-frame Frame
     (param slot SlotId)
@@ -14882,7 +14930,7 @@
     (param id SyntaxId)
     (param value U64)
     ; Records an integer as the constant a node answers with.
-    (call (. facts set-constant) instance id (call ConstantFact value 0 null false))
+    (call (. facts set-value) instance id (call ConstantFact value 0 null false))
   )
   (fn-do _ note-limit _
     (param id SyntaxId)
@@ -14893,7 +14941,7 @@
     (let row ([] (. types completions) root))
     (if (call intrinsic-is-float (. row intrinsic))
       (let limit (if-expr (== (. row bit-size) 32) 3.402823466e+38 1.7976931348623157e+308))
-      (call (. facts set-constant) instance id (call ConstantFact 0 (if-expr is-max limit (- limit)) null true))
+      (call (. facts set-value) instance id (call ConstantFact 0 (if-expr is-max limit (- limit)) null true))
       (else-if (call is-integer-kind (. row intrinsic))
         (call note-integer id (call integer-limit (. row bit-size) (and (. row is-signed) (!= (. row bit-size) 1)) is-max))
       )
@@ -14949,7 +14997,7 @@
     )
     (let is-key (or (== (. name text) "key") (== (. name text) "concrete-key")))
     (let text (if-expr is-key (call type-key types about) (call type-short-name types about)))
-    (call (. facts set-constant) instance id (call ConstantFact 0 0 (call (. program store-atom) text) false))
+    (call (. facts set-value) instance id (call ConstantFact 0 0 (call (. program store-atom) text) false))
   )
   (fn-do _ note-type-flag _
     (param id SyntaxId)
@@ -15214,8 +15262,8 @@
         (return (call Found (call (. calls getter-call) id object-syntax receiver name capture)))
       )
       (if (== (. property storage-kind) .storage-getter)
-        (let place U64 (if-expr (== name (!! (. types data-atom))) 0 1))
-        (call (. facts set-constant) instance id (call ConstantFact place 0 null false) .plan-field)
+        (let place U32 (if-expr (== name (!! (. types data-atom))) 0 1))
+        (call (. facts set-place) instance id place .plan-field)
       )
       (if (and (== (. property storage-kind) .storage-lazy) (not assigns-plainly))
         (let caught (call note-lazy-read id property receiver name))
@@ -15287,6 +15335,7 @@
       )
       (if (== (call (. calls getter-gap) receiver name) null)
         (let results (list TypeId))
+        (let cased (. facts calls length))
         (for (in index (..< 0 (. (call (. types cases-of) receiver) length)))
           (let payload (. ([] (call (. types cases-of) receiver) index) type))
           (if (!= rows no-type)
@@ -15300,6 +15349,7 @@
             (+= results got)
           )
         )
+        (call (. facts name-roles-since) instance id cased .role-case)
         (call (. facts set-plan) instance id .plan-forward)
         (return (call Found (call (. calls forward-results) id results)))
       )
@@ -15528,14 +15578,7 @@
     (for (in index (..< 0 (. cases length)))
       (let fact ([] cases index))
       (if (and (. fact name) (== (!! (. fact name)) name))
-        (call (. facts set-constant)
-          (block
-            (arg instance)
-            (arg id)
-            (arg (call ConstantFact (as index U64) 0.0 null false))
-            (arg .plan-case-value)
-          )
-        )
+        (call (. facts set-case) instance id (as index U32) .plan-case-value)
         (call construct-value id (. fact type))
         (return (if-expr (!= (. fact type) no-type) (. fact type) (call (. types type-row) .uint8)))
       )
@@ -18029,7 +18072,7 @@
       (return false)
     )
     (if (< (. errors count) 64)
-      (call (. facts set-constant) instance id (call ConstantFact leaving 0.0 null false) .plan-handled)
+      (call (. facts set-handled) instance id leaving)
     )
     (return true)
   )
@@ -18214,7 +18257,7 @@
     (if (and (not same) (!= kind .relation-up-cast) (!= kind .relation-down-cast))
       (return)
     )
-    (call (. facts set-constant) instance id (call ConstantFact target 0 null false) .plan-class-test)
+    (call (. facts set-type-detail) instance id target .plan-class-test)
   )
   (fn-do _ infer-unprojected TypeId
     (param syntax SyntaxId)
@@ -18423,7 +18466,7 @@
   (fn-expr _ instance-relation Bool
     (param relation Relation)
     (param kind Specificity)
-    (and (call (. relations holds-as) relation kind) (not (call (. conversions converts-value) (. relation kind))))
+    (and (call (. relations holds-as) relation kind) (not (call converts-value (. relation kind))))
   )
   (fn-do _ plan-is-items _
     (param id SyntaxId)
@@ -18837,14 +18880,7 @@
     (if (== op .add-op)
       (let zipped (call zip-columns lhs rhs))
       (if (!= zipped no-type)
-        (call (. facts set-constant)
-          (block
-            (arg instance)
-            (arg id)
-            (arg (call ConstantFact (. TableOp table-zip) 0.0 null false))
-            (arg .plan-table)
-          )
-        )
+        (call (. facts set-table) instance id (. TableOp table-zip) 0 0)
         (return zipped)
       )
     )
@@ -18874,12 +18910,16 @@
         (return (. types bool-type))
       )
       (if (and equates plain (call compare-fields id lhs rhs right false))
+        (let fielded (. facts calls length))
         (call compare-fields id lhs rhs right true)
+        (call (. facts name-roles-since) instance id fielded .role-field)
         (call (. facts set-plan) instance id (if-expr (== op .equals-op) .plan-fields .plan-not-fields))
         (return (. types bool-type))
       )
       (if (and equates plain (== lhs rhs) (call compare-cases id lhs right false))
+        (let fielded (. facts calls length))
         (call compare-cases id lhs right true)
+        (call (. facts name-roles-since) instance id fielded .role-field)
         (call (. facts set-plan) instance id (if-expr (== op .equals-op) .plan-fields .plan-not-fields))
         (return (. types bool-type))
       )
@@ -19455,7 +19495,9 @@
       (call (. facts set-plan) instance id .plan-interface-unlike)
       (return)
     )
+    (let fielded (. facts calls length))
     (call require-interface-equality id left)
+    (call (. facts name-roles-since) instance id fielded .role-field)
     (call (. facts set-plan) instance id .plan-interface-equal)
   )
   (fn-do _ require-interface-equality _
@@ -19531,7 +19573,7 @@
         (return mirrored)
       )
       (if (!= mirrored no-type)
-        (let equal (call call-override id .equals-op left lhs right rhs exchanged))
+        (let equal (call call-override id .equals-op left lhs right rhs exchanged .role-equal))
         (if (!= equal no-type)
           (let strict (or (== op .less-than-op) (== op .greater-than-op)))
           (let plan
@@ -20019,6 +20061,7 @@
     )
     (if (== op .not-op)
       (call forget-carried operand-syntax)
+      (return-if invalid-type (if (call refuse-error-truth operand-syntax operand)))
       (let completion (call (. types completion-of) operand))
       (let declares (and (== (. completion intrinsic) .class) (not (. completion is-builtin))))
       (let valued (or (== (. completion intrinsic) .tuple) (== (. completion intrinsic) .struct)))
@@ -20493,7 +20536,9 @@
       (call (. scratch types push) (call infer item))
       (call (. scratch syntax push) item)
       (let arguments (call arguments-since shapes-start types-start syntax-start (. scratch no-types)))
+      (let mark (. facts calls length))
       (= left (call (. calls method-call) id object left with-atom arguments))
+      (call (. facts name-roles-since) instance id mark .role-with)
       (call (. scratch syntax rewind) syntax-start)
       (call (. scratch types rewind) types-start)
       (call (. scratch call-arguments rewind) shapes-start)

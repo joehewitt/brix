@@ -3,6 +3,7 @@
 (import ./emitter.loops)
 (import ./emitter.match-arms)
 (import ./emitter.tables)
+(import ./first-items)
 (import ./layouts)
 (import ./program-tables)
 (import ./receiver-stability)
@@ -86,14 +87,6 @@
   (prop + unread Bool)
 )
 
-(type _ RuleTarget (is Tuple)
-  ; The pattern of a rule a call names, the module whose syntax it is, and the instance whose
-  ; facts and binding are read for it.
-  (blank)
-  (prop + module ModuleId)
-  (prop + owner InstanceId)
-  (prop + pattern SyntaxId)
-)
 
 (type _ Streams (facet-of FunctionEmitter)
   (sees Cleanups)
@@ -101,7 +94,6 @@
   (sees MatchArms)
   (sees Tables)
   (prop _ scanning _ (= false))
-  (prop _ first-cuts U64 (= 0))
   (prop _ deferred-part U64 (= (. U64 max)))
   (prop _ adapting FunctionId (= no-function))
   (fn-do _ pattern-value Typed
@@ -226,11 +218,10 @@
         (= streaming (= (. streaming pattern-helper-type) (. kept type)))
       )
     )
-    (let first (call (. facts first-call) (. unit reading) matched))
     (let made (call stream-maker matched))
-    (let viewed (if-expr (!= made no-fact) (call next-call made) first))
-    (let commits (call next-call viewed))
-    (let extends (call next-call commits))
+    (let viewed (call (. facts call-in-role) (. unit reading) matched .role-view))
+    (let commits (call (. facts call-in-role) (. unit reading) matched .role-commit))
+    (let extends (call (. facts call-in-role) (. unit reading) matched .role-extend))
     (if (== commits no-fact)
       (call refuse .refused-expression matched)
       (return (call Typed nothing no-type))
@@ -342,16 +333,11 @@
     (let captured (call (. types optional-inner) type))
     (let layout (call layout-of type id))
     (let captured-layout (call layout-of captured id))
-    (let viewed (call (. facts first-call) (. unit reading) id))
-    (let commits (call next-call viewed))
-    (let extends (call next-call commits))
-    (let counted (call next-call extends))
-    (let counts
-      (scope (and (!= counted no-fact) probe-metric (== (call next-call counted) no-fact))
-        (lazy probe-metric (== (. ([] (. facts calls) counted) form) .call-probe-metric))
-      )
-    )
-    (if (or (== commits no-fact) (and (!= counted no-fact) (not counts)) not-capture-result)
+    (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
+    (let commits (call (. facts call-in-role) (. unit reading) id .role-commit))
+    (let extends (call (. facts call-in-role) (. unit reading) id .role-extend))
+    (let counted (call call-at id .call-probe-metric))
+    (if (or (== commits no-fact) (not (call holds-only id (list viewed commits extends counted))) not-capture-result)
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
@@ -397,7 +383,7 @@
       (call refuse .refused-type id)
     )
     (lazy other-buffer (!= (. items-field layout) (. run buffer-layout)))
-    (let number (if-expr counts (call (. tables probe-number) (. unit reading) id) 0))
+    (let number (if-expr (!= counted no-fact) (call (. tables probe-number) (. unit reading) id) 0))
     (if (!= number 0)
       (let start (. pending length))
       (+= pending (call integer .machine-u16 number))
@@ -1051,10 +1037,7 @@
     (if (!= (call material-at site .material-text) (. U32 max))
       (return false)
     )
-    (let fact (call (. facts first-call) (. unit reading) site))
-    (if (is ([] (. tree nodes) site) .node-stream-equality)
-      (= fact (call next-call (call next-call fact)))
-    )
+    (let fact (call (. facts call-in-role) (. unit reading) site .role-text))
     (if (or (== fact no-fact) (== (. ([] (. facts calls) fact) callee) no-instance))
       (return false)
     )
@@ -1483,7 +1466,7 @@
       (lazy row ([] (. facts calls) fact))
       (lazy callee (. row callee))
       (lazy signature ([] (. instances signatures) callee))
-      (lazy target (call rule-target (. unit source-module) (. unit reading) id))
+      (lazy target (call (. firsts rule-target) (. unit source-module) (. unit reading) id))
       (lazy buffer (call rule-buffer callee))
     )
   )
@@ -1872,8 +1855,8 @@
     ; once more. So the first call here, outside the rule's own function, ends that run's hold on
     ; the rule; one made while another rule is being run, or in a function made of a rule or an
     ; action, is refused, since what the reference forgets there is not followed.
-    (let commit (call (. facts first-call) (. unit reading) id))
-    (let viewed (call next-call commit))
+    (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
+    (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
     (let place (call (. facts local-rule-of) (. unit reading) rule))
     (let answered (if-expr (!= place (. U32 max)) (. ([] (. facts local-rules) place) adapted) no-type))
     (let target ([] (. tables functions) adapter))
@@ -1881,7 +1864,7 @@
       (call refuse .refused-expression id)
       (return (call bare-part cursor))
     )
-    (lazy unviewed (or (== commit no-fact) (== viewed no-fact) (!= (call next-call viewed) no-fact)))
+    (lazy unviewed (or (== commit no-fact) (== viewed no-fact) (not (call holds-only id (list commit viewed)))))
     (lazy other-rule-stream (!= (. run stream-type) (. ([] (. facts local-rules) place) stream)))
     (let own (and (== (. function kind) .lazy-rule) (== (. function place) rule)))
     (if (and (not own) (== (call (. adapted find) rule) null))
@@ -1997,10 +1980,10 @@
     (if (!= (. ([] (. instances signatures) (. unit instance)) errors count) 0)
       (call return-results (. local relayed) rule)
     )
-    (let viewed (call (. facts first-call) (. unit reading) matched))
-    (let commits (call next-call viewed))
-    (let extends (call next-call commits))
-    (if (or (== commits no-fact) (!= (call next-call extends) no-fact))
+    (let viewed (call (. facts call-in-role) (. unit reading) matched .role-view))
+    (let commits (call (. facts call-in-role) (. unit reading) matched .role-commit))
+    (let extends (call (. facts call-in-role) (. unit reading) matched .role-extend))
+    (if (or (== commits no-fact) (not (call holds-only matched (list viewed commits extends))))
       (call refuse .refused-function rule)
       (return)
     )
@@ -2083,9 +2066,9 @@
     ; pattern takes what it gave as `boundary-answer` says. The reference's function holds the
     ; names the code reads; here the code runs where it is called, where they are. A rule whose
     ; code calls it is refused.
-    (let commit (call (. facts first-call) (. unit reading) id))
-    (let viewed (call next-call commit))
-    (if (or (== commit no-fact) (== viewed no-fact) (!= (call next-call viewed) no-fact) coded-already)
+    (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
+    (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
+    (if (or (== commit no-fact) (== viewed no-fact) (not (call holds-only id (list commit viewed))) coded-already)
       (call refuse .refused-expression id)
       (return (call bare-part cursor))
     )
@@ -2127,16 +2110,16 @@
     ; stream stands; where it gave none, the call fails. The rest of the attempt reads the buffer
     ; it read before, as the reference's does.
     (let nothing (call make-operand .operand-void 0))
-    (let fact (call (. facts first-call) (. unit reading) id))
-    (let commit (call next-call fact))
-    (let viewed (call next-call commit))
+    (let fact (call (. facts answer-call) (. unit reading) id .role-answer))
+    (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
+    (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
     (let written (call (of RowRange SyntaxId)))
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-call row)
         (= written (. row args))
       )
     )
-    (if (or (== fact no-fact) (== commit no-fact) (== viewed no-fact) (!= (call next-call viewed) no-fact))
+    (if (or (== fact no-fact) (== commit no-fact) (== viewed no-fact) (not (call holds-only id (list fact commit viewed))))
       (call refuse .refused-expression id)
       (return (call bare-part cursor))
     )
@@ -2580,11 +2563,8 @@
     (param owner InstanceId)
     (param site SyntaxId)
     ; The collector an instance keeps the list of a name it accumulates in, by the call the type
-    ; pass recorded at the name that grows it, after the one that makes its text where it has one.
-    (let fact (call (. facts first-call) owner site))
-    (if (and (!= fact no-fact) (!= (call (. facts plan-of) owner site) .plan-stream-value))
-      (= fact (. ([] (. facts calls) fact) next))
-    )
+    ; pass recorded at the name that grows it.
+    (let fact (call (. facts call-in-role) owner site .role-grow))
     (if (or (== fact no-fact) (== (. ([] (. facts calls) fact) callee) no-instance))
       (return no-type)
     )
@@ -2804,20 +2784,16 @@
     (param held U32)
     (param site SyntaxId)
     ; Keeps the list each repeat around a name keeps, from the innermost out, as the calls the type pass
-    ; recorded at the name after the one that makes its text, if it has one, say: a collector of the
-    ; text or of the item, then of the lists the repeat inside it made. Each list is the type of an item
-    ; of the next, and the outermost is the name's type.
+    ; recorded at the name that grow them say: a collector of the text or of the item, then of the lists
+    ; the repeat inside it made. Each list is the type of an item of the next, and the outermost is the
+    ; name's type.
     (let capture ([] stream-captures held))
     (if (== (. capture listed) 0)
       (return)
     )
     (let growers (list FactId))
-    (let fact (call (. facts first-call) (. unit reading) (. capture site)))
-    (let valued (== (call (. facts plan-of) (. unit reading) (. capture site)) .plan-stream-value))
     (for (in level (..< 0 (. capture listed)))
-      (if (or (!= level 0) (not valued))
-        (= fact (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) next) no-fact))
-      )
+      (let fact (call (. facts nth-in-role) (. unit reading) (. capture site) .role-grow level))
       (if (or (== fact no-fact) (== (. ([] (. facts calls) fact) callee) no-instance))
         (call refuse .refused-expression site)
         (return)
@@ -3943,9 +3919,9 @@
     (param cursor Operand)
     (param failed IRBlockId)
     ; Text a pattern matches item by item that a value gives as the pattern runs. Its length is
-    ; read, checked, by the first call the type pass recorded at the part, and where the input
+    ; read, checked, by the call the type pass recorded at the part for it, and where the input
     ; ends first the pattern read as far as the whole text. Its characters are then read in turn by
-    ; the second, from where the last ended, and compared with the items from the cursor: where
+    ; its step, from where the last ended, and compared with the items from the cursor: where
     ; one differs the pattern read as far as that item. Either way the text failed where it began.
     ; Where it passes it read as far as the end of the text. Where the buffer is UTF-8 the text is
     ; matched by its bytes, as `stream-dynamic-bytes` says.
@@ -3953,8 +3929,8 @@
       (return (call stream-dynamic-bytes run id value cursor failed))
     )
     (let nothing (call make-operand .operand-void 0))
-    (let measures (call (. facts first-call) (. unit reading) id))
-    (let reads (call next-call measures))
+    (let measures (call (. facts call-in-role) (. unit reading) id .role-length))
+    (let reads (call (. facts call-in-role) (. unit reading) id .role-step))
     (if (== reads no-fact)
       (call refuse .refused-expression id)
       (return cursor)
@@ -4046,13 +4022,13 @@
     (param cursor Operand)
     (param failed IRBlockId)
     ; Text a value gives as the pattern runs, matched byte by byte of its UTF-8 where the buffer
-    ; holds a String's: it is read checked by the first call the type pass recorded at the part,
-    ; and its count of bytes by the second. Where the input ends first, the pattern read as far as
+    ; holds a String's: it is read checked by the call the type pass recorded at the part for its
+    ; length, and its count of bytes by its size. Where the input ends first, the pattern read as far as
     ; the whole text; where a byte differs, as far as that byte. Either way the text failed where
     ; it began. Where it passes it read as far as the end of the text.
     (let nothing (call make-operand .operand-void 0))
-    (let checks (call (. facts first-call) (. unit reading) id))
-    (let measures (call next-call checks))
+    (let checks (call (. facts call-in-role) (. unit reading) id .role-length))
+    (let measures (call (. facts call-in-role) (. unit reading) id .role-size))
     (if (== measures no-fact)
       (call refuse .refused-expression id)
       (return cursor)
@@ -4181,13 +4157,12 @@
     ; pass recorded: where the item holds the case, the part gives what the case holds, or the item
     ; where the type pass typed the part as the items. It reads as far as the item, there or not.
     (let type (call (. facts node-type) (. unit reading) id))
-    (let constant (call (. facts constant-of) (. unit reading) id))
+    (let index (call (. facts case-of) (. unit reading) id))
     (let layout (call read-layout run id))
-    (if (or (== constant no-fact) (call encodes run) (not (call (. tables layouts is-union) layout)))
+    (if (or (== index (. U32 max)) (call encodes run) (not (call (. tables layouts is-union) layout)))
       (call refuse .refused-type id)
       (return (call bare-part cursor))
     )
-    (let index (as (. ([] (. facts constants) constant) bits) U32))
     (if (>= index (. ([] (. tables layouts rows) layout) cases count))
       (call refuse .refused-type id)
       (return (call bare-part cursor))
@@ -4236,25 +4211,24 @@
       (call refuse .refused-type id)
       (return (call bare-part cursor))
     )
-    (let first (call (. facts first-call) (. unit reading) id))
-    (let commits (and (!= first no-fact) (== (. ([] (. facts calls) first) form) .call-method)))
-    (if (and (!= first no-fact) (not commits))
-      (if (!= (call next-call first) no-fact)
+    (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
+    (if (!= (call (. facts answer-call) (. unit reading) id .role-answer) no-fact)
+      (if (!= commit no-fact)
         (return (call boundary-call run id type cursor failed))
       )
       (return (call rule-call run id type cursor failed))
     )
     (let item-type (if-expr (call encodes run) (call (. types type-row) .char) (call class-arg types (. run buffer-type) 0)))
     (let never (and (!= item-type type) (call intrinsic-is-numeric (call (. types intrinsic-of) item-type))))
-    (if (or (not commits) calls-next (and (not never) (!= (call layout-of item-type id) (call read-layout run id))))
+    (if (or (== commit no-fact) calls-next (and (not never) (!= (call layout-of item-type id) (call read-layout run id))))
       (call refuse .refused-type id)
       (return (call bare-part cursor))
     )
-    (lazy calls-next (!= (call next-call first) no-fact))
+    (lazy calls-next (not (call holds-only id (list commit))))
     (call call-protocol
       (block
         (arg id)
-        (arg first)
+        (arg commit)
         (arg (. run stream))
         (arg (. run stream-type))
         (arg cursor)
@@ -4736,361 +4710,16 @@
   (fn-do + plan-choices _
     (param root SyntaxId)
     ; Judges, as the reference does before it emits a pattern, which items each part of the
-    ; pattern rooted at `root` may start with, reading the patterns of the rules it calls as far as
-    ; they reach, and keeps for each choice of the pattern what each of its alternatives may start
-    ; with.
-    (if (!= (. found-firsts length) 0)
-      (call (. found-firsts clear))
-    )
-    (call first-items (. unit source-module) (. unit reading) root true)
+    ; pattern rooted at `root` may start with, and keeps for each choice of the pattern what each
+    ; of its alternatives may start with.
+    (call (. firsts plan-choices) (. unit source-module) (. unit reading) root)
   )
   (fn-expr _ plan-start U32
     (param id SyntaxId)
     ; Where what the alternatives of a choice may start with is kept, or `U32.max` where it is not.
-    (?? ([] choice-plans (call plan-key (. unit source-module) id)) (. U32 max))
+    (call (. firsts plan-start) (. unit source-module) id)
   )
-  (fn-do _ first-items FirstItems
-    (param module ModuleId)
-    (param owner InstanceId)
-    (param id SyntaxId)
-    (param planning Bool)
-    ; What the reference knows of the items a part of a grammar may start with, as it
-    ; lowers the part and judges it. Text starts with its first character and probes its length;
-    ; a range, any item, or a repeat that scans for one, starts with what it matches and probes
-    ; one item. A sequence starts as its parts do up to the first that must read an item, and
-    ; probes as that one does. Alternatives start as any of theirs does and probe the farthest,
-    ; where each probe is known. A repeat or an optional part starts and probes as its part does,
-    ; and may read none where it may pass none; a lookahead may read none, starts with what is not
-    ; known, and probes as its part does. A call starts and probes as the pattern of the rule it
-    ; calls does. A test of an item, of its type, or of a value matched, starts with what is not
-    ; known and probes what is not known. With `planning`, keeps what the alternatives of each
-    ; choice met may start with.
-    (let syntax (. ([] (. program modules) module) tree))
-    (let none no-ranges)
-    (match? ([] (. syntax nodes) id)
-      (case (call .node-stream-string row)
-        (let count (. row text length))
-        (if (== count 0)
-          (return (call FirstItems true true none 0))
-        )
-        (let point (as ([] (. row text) 0) U64))
-        (return (call FirstItems true false (call single-range point point) (as count U64)))
-      )
-      (case .node-stream-any
-        (return (call FirstItems true false (call single-range 0 any-item) 1))
-      )
-      (case (call .node-stream-char-range row)
-        (return
-          (call FirstItems
-            (block
-              (arg true)
-              (arg false)
-              (arg (call single-range (call (. syntax stream-bound) (. row first)) (call (. syntax stream-bound) (. row last))))
-              (arg 1)
-            )
-          )
-        )
-      )
-      (case (call .node-stream-transform row)
-        (if (== (. row pattern) 0)
-          (return (call FirstItems true true none 0))
-        )
-        (return (call first-items module owner (. row pattern) planning))
-      )
-      (case (call .node-stream-panic row)
-        (return (call first-items module owner (. row pattern) planning))
-      )
-      (case (call .node-stream-capture row)
-        (return (call first-items module owner (. row pattern) planning))
-      )
-      (case (call .node-stream-and row)
-        (let left (call first-items module owner (. row left) planning))
-        (let right (call first-items module owner (. row right) planning))
-        (if (not (. left nullable))
-          (return left)
-        )
-        (return
-          (call FirstItems
-            (block
-              (arg (and (. left known) (. right known)))
-              (arg (. right nullable))
-              (arg (call merged-ranges (. left ranges) (. right ranges)))
-              (arg (. right probe))
-            )
-          )
-        )
-      )
-      (case .node-stream-or
-        (return (call first-choice module owner id planning))
-      )
-      (case (call .node-stream-unary row)
-        (let optional (!= (. row op) .one-or-more-op))
-        (if (and repeats (call is-scanned syntax (. row operand)))
-          (return (call FirstItems true optional (call scanned-ranges syntax (. row operand)) 1))
-        )
-        (lazy repeats (or (== (. row op) .zero-or-more-op) (== (. row op) .one-or-more-op)))
-        (let inner (call first-items module owner (. row operand) planning))
-        (if (or (== (. row op) .positive-lookahead-op) (== (. row op) .negative-lookahead-op))
-          (return (call FirstItems false true none (. inner probe)))
-        )
-        (return (call FirstItems (. inner known) optional (. inner ranges) (. inner probe)))
-      )
-      (case (call .node-stream-length row)
-        (let inner (call first-items module owner (. row operand) planning))
-        (let least (if-expr (call (. syntax literal-bound) (. row min)) (call (. syntax stream-bound) (. row min)) 0))
-        (return (call FirstItems (. inner known) (== least 0) (. inner ranges) (. inner probe)))
-      )
-      (case .node-stream-call
-        (return (call call-first-items module owner id))
-      )
-    )
-    (return (call FirstItems false false none no-probe))
-  )
-  (fn-do _ first-choice FirstItems
-    (param module ModuleId)
-    (param owner InstanceId)
-    (param id SyntaxId)
-    (param planning Bool)
-    ; What the reference knows of the items a choice may start with, from what each of its
-    ; alternatives may; with `planning`, keeps that of each. The alternatives, what each starts
-    ; with, and the ranges they start with joined so far are kept on stacks that the choices among
-    ; them grow and give back as they are judged.
-    (let arms (. choice-arm-stack length))
-    (call choice-arms (. ([] (. program modules) module) tree) id choice-arm-stack)
-    (let end (. choice-arm-stack length))
-    (let firsts (. choice-first-stack length))
-    (let joined (. choice-range-stack length))
-    (let known true)
-    (let nullable false)
-    (let probe U64)
-    (for (in position (..< arms end))
-      (let found (call first-items module owner ([] choice-arm-stack position) planning))
-      (if planning
-        (+= choice-first-stack found)
-      )
-      (= known (and known (. found known)))
-      (= nullable (or nullable (. found nullable)))
-      (call join-ranges joined (. found ranges))
-      (if (or (== probe no-probe) (== (. found probe) no-probe))
-        (= probe no-probe)
-        (else-if (> (. found probe) probe)
-          (= probe (. found probe))
-        )
-      )
-    )
-    (if planning
-      (= ([] choice-plans (call plan-key module id)) (as (. plan-firsts length) U32))
-      (for (in position (..< firsts (. choice-first-stack length)))
-        (+= plan-firsts ([] choice-first-stack position))
-      )
-      (call (. choice-first-stack remove) firsts (- (. choice-first-stack length) firsts))
-    )
-    (call (. choice-arm-stack remove) arms (- end arms))
-    (let ranges no-ranges)
-    (if (> (. choice-range-stack length) joined)
-      (let taken (list ItemRange))
-      (for (in position (..< joined (. choice-range-stack length)))
-        (+= taken ([] choice-range-stack position))
-      )
-      (call (. choice-range-stack remove) joined (- (. choice-range-stack length) joined))
-      (= ranges taken)
-    )
-    (return (call FirstItems known nullable ranges probe))
-  )
-  (fn-do _ join-ranges _
-    (param base Size)
-    (param ranges (list ItemRange))
-    ; Joins ranges, in order and apart, into those a choice has joined so far on the range stack
-    ; from `base`, as `merged-ranges` does: they stay in order and apart.
-    (return-if (if (== (. ranges length) 0)))
-    (blank)
-    (let top (. choice-range-stack length))
-    (let at-left base)
-    (let at-right Size 0)
-    (while (or (< at-left top) (< at-right (. ranges length)))
-      (let from-left
-        (scope (or (>= at-right (. ranges length)) (and (< at-left top) left-before))
-          (lazy left-before (not (call range-after ([] choice-range-stack at-left) ([] ranges at-right))))
-        )
-      )
-      (let range (if-expr from-left ([] choice-range-stack at-left) ([] ranges at-right)))
-      (if from-left
-        (+= at-left 1)
-        (else
-          (+= at-right 1)
-        )
-      )
-      (if (!= (. choice-range-stack length) top)
-        (let last (- (. choice-range-stack length) 1))
-        (if (<= (. range first) (+ (. ([] choice-range-stack last) last) 1))
-          (if (> (. range last) (. ([] choice-range-stack last) last))
-            (= ([] choice-range-stack last) (call ItemRange (. ([] choice-range-stack last) first) (. range last)))
-          )
-          (continue)
-        )
-      )
-      (+= choice-range-stack range)
-    )
-    (let count (- (. choice-range-stack length) top))
-    (for (in offset (..< 0 count))
-      (= ([] choice-range-stack (+ base offset)) ([] choice-range-stack (+ top offset)))
-    )
-    (call (. choice-range-stack remove) (+ base count) (- top base))
-  )
-  (fn-do _ scanned-ranges (list ItemRange)
-    (param syntax AST)
-    (param id SyntaxId)
-    ; The ranges of the items a part the reference scans for may match, in order and apart.
-    (let none no-ranges)
-    (match? ([] (. syntax nodes) id)
-      (case (call .node-stream-string row)
-        (let point (as ([] (. row text) 0) U64))
-        (return (call single-range point point))
-      )
-      (case .node-stream-any
-        (return (call single-range 0 any-item))
-      )
-      (case (call .node-stream-char-range row)
-        (return (call single-range (call (. syntax stream-bound) (. row first)) (call (. syntax stream-bound) (. row last))))
-      )
-      (case (call .node-stream-or row)
-        (return (call merged-ranges (call scanned-ranges syntax (. row left)) (call scanned-ranges syntax (. row right))))
-      )
-      (case (call .node-stream-transform row)
-        (return (call scanned-ranges syntax (. row pattern)))
-      )
-    )
-    (return none)
-  )
-  (fn-do _ choice-arms _
-    (param syntax AST)
-    (param id SyntaxId)
-    (param arms (list SyntaxId))
-    ; The alternatives of a choice, in the order written, those of a choice among them included.
-    (match? ([] (. syntax nodes) id)
-      (case (call .node-stream-or row)
-        (call choice-arms syntax (. row left) arms)
-        (call choice-arms syntax (. row right) arms)
-        (return)
-      )
-    )
-    (+= arms id)
-  )
-  (fn-do _ call-first-items FirstItems
-    (param module ModuleId)
-    (param owner InstanceId)
-    (param id SyntaxId)
-    ; What the reference knows of the items a call of a rule may start with: what the pattern of
-    ; the rule does, judged once for each call met from where the pattern is emitted. A call met
-    ; again while its rule is being judged starts with what is not known, as one whose rule is not
-    ; found does, and cuts the judging of the calls around it. A rule judged with no cut is judged
-    ; once for all patterns, as the reference shares it.
-    (let key (call plan-key module id))
-    (let kept (?? ([] first-calls key) (. U32 max)))
-    (if (and (< (as kept Size) (. found-firsts length)) (== (. ([] found-firsts kept) key) key))
-      (if (. ([] found-firsts kept) contextual)
-        (+= first-cuts 1)
-      )
-      (return (. ([] found-firsts kept) items))
-    )
-    (let none no-ranges)
-    (if (!= (call (. first-resolving find) key) null)
-      (+= first-cuts 1)
-      (return (call FirstItems false false none no-probe))
-    )
-    (let found (call FirstItems false false none no-probe))
-    (let contextual false)
-    (let target (call rule-target module owner id))
-    (if (!= (. target pattern) 0)
-      (let shared (call shared-first target))
-      (if shared
-        (= found shared)
-        (else
-          (let prior-cuts first-cuts)
-          (+= first-resolving key)
-          (= found (call first-items (. target module) (. target owner) (. target pattern) false))
-          (call (. first-resolving pop))
-          (= contextual (!= first-cuts prior-cuts))
-          (if (not contextual)
-            (call share-first target found)
-          )
-        )
-      )
-    )
-    (= ([] first-calls key) (as (. found-firsts length) U32))
-    (+= found-firsts (call FoundFirst found key contextual))
-    (return found)
-  )
-  (fn-do _ shared-first (? FirstItems)
-    (param target RuleTarget)
-    ; What the pattern of a rule was judged to start with for the instance that reads it, where it
-    ; was judged with no cut.
-    (let place (?? ([] shared-first-heads (call plan-key (. target module) (. target pattern))) (. U32 max)))
-    (while (!= place (. U32 max))
-      (let shared ([] shared-firsts place))
-      (if (== (. shared owner) (. target owner))
-        (return (. shared found))
-      )
-      (= place (. shared next))
-    )
-    (return null)
-  )
-  (fn-do _ share-first _
-    (param target RuleTarget)
-    (param found FirstItems)
-    ; Keeps what the pattern of a rule starts with for the instance that reads it, for every
-    ; pattern emitted after.
-    (let key (call plan-key (. target module) (. target pattern)))
-    (+= shared-firsts (call SharedFirst (. target owner) found (?? ([] shared-first-heads key) (. U32 max))))
-    (= ([] shared-first-heads key) (as (- (. shared-firsts length) 1) U32))
-  )
-  (fn-do _ rule-target RuleTarget
-    (param module ModuleId)
-    (param owner InstanceId)
-    (param id SyntaxId)
-    ; The pattern of the rule a call names, as the reference finds it, with the module that
-    ; declares it and the instance that reads it: a local rule's, as the binder resolved the call,
-    ; or that of a rule a module declares, as the type pass resolved it. No pattern where neither
-    ; is found.
-    (let syntax (. ([] (. program modules) module) tree))
-    (if (== owner no-instance)
-      (return (call RuleTarget module owner 0))
-    )
-    (let binding (. ([] (. instances rows) owner) binding))
-    (if (!= binding no-binding)
-      (let resolution (call (. bindings resolution-of) binding id))
-      (if (== (. resolution kind) .resolve-slot)
-        (let row ([] (. bindings slots) (. resolution slot)))
-        (if (== (. row kind) .slot-lazy)
-          (match? ([] (. syntax nodes) (. row group))
-            (case (call .node-declare declaration)
-              (match? ([] (. syntax nodes) (. declaration right))
-                (case (call .node-stream-match rule)
-                  (return (call RuleTarget module owner (. rule pattern)))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-    (let fact (call call-in owner id))
-    (if (!= fact no-fact)
-      (let callee (. ([] (. facts calls) fact) callee))
-      (if (!= callee no-instance)
-        (let home (. ([] (. instances rows) callee) module))
-        (let matched (call rule-match program home (. ([] (. instances rows) callee) decl)))
-        (if (!= matched 0)
-          (match? ([] (. ([] (. program modules) home) tree nodes) matched)
-            (case (call .node-stream-match rule)
-              (return (call RuleTarget home callee (. rule pattern)))
-            )
-          )
-        )
-      )
-    )
-    (return (call RuleTarget module owner 0))
-  )
+
   (fn-do _ stream-repeat StreamPart
     (param run StreamRun)
     (param id SyntaxId)
@@ -5362,7 +4991,7 @@
       (return null)
     )
     (let list (call (. facts node-type) (. unit reading) id))
-    (let fact (call (. facts first-call) (. unit reading) id))
+    (let fact (call (. facts call-in-role) (. unit reading) id .role-grow))
     (let callee (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) callee) no-instance))
     (if (== callee no-instance)
       (call refuse .refused-expression id)
@@ -6027,17 +5656,14 @@
     (param ending Operand)
     ; The text a part of a pattern matched: the part of the stream's buffer between two cursors,
     ; as an array that shares the buffer's items, made text by the call the type pass recorded
-    ; where the text is given, after the two that read text a value gives where the part is one;
-    ; or where a helper makes it, what its materializer makes of the buffer and the cursors.
+    ; where the text is given; or where a helper makes it, what its materializer makes of the
+    ; buffer and the cursors.
     (let nothing (call make-operand .operand-void 0))
     (let made (call material-at site .material-text))
     (if (!= made (. U32 max))
       (return (call material-capture run site made begun ending))
     )
-    (let fact (call (. facts first-call) (. unit reading) site))
-    (if (is ([] (. tree nodes) site) .node-stream-equality)
-      (= fact (call next-call (call next-call fact)))
-    )
+    (let fact (call (. facts call-in-role) (. unit reading) site .role-text))
     (if (== fact no-fact)
       (call refuse .refused-expression site)
       (return (call Typed nothing no-type))
@@ -6583,16 +6209,13 @@
   (fn-do + location-fact FactId
     (param arm SyntaxId)
     ; The call the type pass recorded at an arm of a grammar whose expression reads
-    ; `location`, after any other there: the one that answers where in the input a cursor lies.
-    (let fact (call (. facts first-call) (. unit reading) arm))
-    (while (!= fact no-fact)
-      (let callee (. ([] (. facts calls) fact) callee))
-      (if (and (== (. ([] (. facts calls) fact) next) no-fact) (!= callee no-instance) gives-location)
-        (return fact)
-      )
-      (lazy gives-location (== (. ([] (. instances signatures) callee) returns) (. types token-location-type)))
-      (= fact (. ([] (. facts calls) fact) next))
+    ; `location`: the one that answers where in the input a cursor lies.
+    (let fact (call (. facts call-in-role) (. unit reading) arm .role-location))
+    (let callee (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) callee) no-instance))
+    (if (and (!= callee no-instance) gives-location)
+      (return fact)
     )
+    (lazy gives-location (== (. ([] (. instances signatures) callee) returns) (. types token-location-type)))
     (return no-fact)
   )
   (fn-do + bind-location _
@@ -6805,7 +6428,7 @@
         (return)
       )
       (+= inlining rule)
-      (let viewed (call (. facts first-call) (. unit reading) matched))
+      (let viewed (call (. facts call-in-role) (. unit reading) matched .role-view))
       (call match-direct
         (block
           (arg rule)
@@ -6817,7 +6440,7 @@
           (arg (. local buffer))
           (arg 1)
           (arg viewed)
-          (arg (call next-call (call next-call viewed)))
+          (arg (call (. facts call-in-role) (. unit reading) matched .role-extend))
         )
       )
       (call stop-inlining rule)
@@ -6861,7 +6484,7 @@
         )
       )
     )
-    (let views (call (. facts first-call) (. unit reading) ruled))
+    (let views (call (. facts call-in-role) (. unit reading) ruled .role-view))
     (call match-direct
       (block
         (arg rule)
@@ -6873,7 +6496,7 @@
         (arg buffer-type)
         (arg first)
         (arg views)
-        (arg (call next-call views))
+        (arg (call (. facts call-in-role) (. unit reading) ruled .role-extend))
         (arg ruled)
         (arg (or (== (. function kind) .mapped-rule) (not (call (. tables reads-rule) (. unit instance) rule))))
         (arg (call observes-literals tree facts (. unit reading) pattern))
