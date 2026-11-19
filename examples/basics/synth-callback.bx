@@ -1,0 +1,63 @@
+; Restrictions: an audio device asks for its next block of samples every few
+; milliseconds, and a pause while it waits is a click. `render` is declared
+; `(without gc)`, so the compiler proves that it, and everything it calls, never
+; allocates or stops for the collector: printing `level` inside it would stop the
+; build at the text the print makes. The voice and its buffer are made once,
+; before the first block. A loop stands in for the device here, striking two
+; notes and drawing how loud each 10ms block came out.
+(import /math)
+(blank)
+
+(main
+  (let voice (call Voice 48000))
+  (let block ([] F32 480))
+  (for (in index (..< 0 16))
+    (if (== index 0)
+      (call (. voice strike) 440)
+    )
+    (if (== index 8)
+      (call (. voice strike) 660)
+    )
+    (call (. voice render) block)
+    (print (str (* index 10) "ms\t" (* "█" (as (* (call peak block) 40) Int))))
+  )
+)
+
+(type + Voice
+  (prop + rate Float)
+  (prop + pitch Float (= 0))
+  (prop + phase Float (= 0))
+  (prop + level Float (= 0))
+  (prop + fade Float (= 0.9996))
+  (fn-do + This _
+    (param rate _)
+  )
+  (fn-do + strike _
+    (param hz Float)
+    (= pitch hz)
+    (= level 1)
+  )
+  (fn-do + render _ (without gc)
+    (param out ([] F32))
+    (let step (/ pitch rate))
+    (for (in index (..< 0 (. out length)))
+      (= ([] out index) (as (* (call sin (* phase 360°)) level) F32))
+      (+= phase step)
+      (if (>= phase 1)
+        (-= phase 1)
+      )
+      (*= level fade)
+    )
+  )
+)
+
+(fn-do + peak Float
+  (param samples ([] F32))
+  (let loudest Float 0)
+  (for (in sample samples)
+    (if (> (call abs sample) loudest)
+      (= loudest (call abs sample))
+    )
+  )
+  (return loudest)
+)

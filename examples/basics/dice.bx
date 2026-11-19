@@ -1,0 +1,103 @@
+; Effects and doors: an effect is one kind of contact with the world outside the
+; program. `dice` claims the C function that draws a random number, so `roll`,
+; its door, is the only function that may call it. `hand-name` is declared
+; `(without dice)`, so a roll anywhere below it stops the build with the path to
+; it, as in `hand-name (without dice) → throw-hand → (call roll)`. `do-with`
+; puts loaded dice in place of real ones for the code under it. The first hand
+; uses real dice, so it changes from run to run.
+(import /stdlib.h)
+(blank)
+
+(main
+  (print (str "real    " (call shown (call throw-hand))))
+  (for (in faces (call loaded))
+    (do-with dice (call LoadedDice faces)
+      (print (str "loaded  " (call shown (call throw-hand))))
+    )
+  )
+)
+
+(effect + dice
+  (claim C:arc4random_uniform)
+)
+
+(fn-do + roll Int (door dice)
+  (return (+ (as (call C:arc4random_uniform 6) Int) 1))
+)
+
+(fn-do + throw-hand (list Int)
+  (let hand (call (of List Int)))
+  (for (in (..< 0 5))
+    (+= hand (call roll))
+  )
+  (return hand)
+)
+
+(fn-expr + loaded (list (list Int))
+  (item (list 6 6 6 6 6))
+  (item (list 2 5 2 5 5))
+  (item (list 3 1 4 5 2))
+  (item (list 4 4 1 6 2))
+)
+
+(type + LoadedDice
+  (prop + faces (list Int))
+  (prop _ thrown Index (= 0))
+  (fn-do + This _
+    (param faces _)
+  )
+  (fn-do + roll Int
+    (let face ([] faces (% thrown (. faces length))))
+    (+= thrown 1)
+    (return face)
+  )
+)
+
+(fn-expr + shown String
+  (param hand (list Int))
+  (str (call (. " " join) (in (str each) hand)) "  " (call hand-name hand))
+)
+
+(fn-do + hand-name String (without dice)
+  (param hand (list Int))
+  (let tallies ([] Int 7))
+  (for (in face hand)
+    (+= ([] tallies face) 1)
+  )
+  (let most 0)
+  (let pairs 0)
+  (for (in tally tallies)
+    (if (> tally most)
+      (= most tally)
+    )
+    (if (== tally 2)
+      (+= pairs 1)
+    )
+  )
+  (let straight (or (== ([] tallies 1) 0) (== ([] tallies 6) 0)))
+  (return
+    (match most
+      (case= 5
+        "five of a kind"
+      )
+      (case= 4
+        "four of a kind"
+      )
+      (case? (and (== most 3) (== pairs 1))
+        "full house"
+      )
+      (case= 3
+        "three of a kind"
+      )
+      (case= 2
+        (if-expr (== pairs 2) "two pairs" "a pair")
+      )
+      (case? straight
+        "a straight"
+      )
+      (default
+        "nothing"
+      )
+    )
+  )
+)

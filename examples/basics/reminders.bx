@@ -1,0 +1,62 @@
+; Effects: every read of the clock and every wait for a time goes through a
+; door of the `time` effect. `do-with` binds a fake clock to it, so a day of
+; reminders, hours apart, runs at once and prints the same times on every run.
+; The tasks started under the binding wait on the fake clock too.
+(import /time)
+(import /time/fake-clock)
+(blank)
+
+(main
+  (let started (call clock))
+  (let fake (call FakeClock))
+  (do-with time fake
+    (let tasks
+      (list
+        (call remind 7.5hours "water the plants")
+        (call focus 9hours 3)
+        (call remind 12.5hours "lunch with Ada")
+        (call remind 18hours "call home")
+      )
+    )
+    (call (. fake advance) 24hours)
+    (for (in task tasks)
+      (call (. task wait))
+    )
+    (print (str "the fake clock reads " (. (call now) readable)))
+  )
+  (print (str "the real clock moved less than a second: " (< (- (call clock) started) 1second)))
+)
+
+(fn-do + remind Task
+  (param at Duration)
+  (param text String)
+  (return
+    (do-new
+      (call (. at wait))
+      (call say text)
+    )
+  )
+)
+
+(fn-do + focus Task
+  (param at Duration)
+  (param rounds Int)
+  (return
+    (do-new
+      (call (. at wait))
+      (for (in round (.. 1 rounds))
+        (call say (str "focus, round " round))
+        (call (. 25minutes wait))
+        (call say "short break")
+        (call (. 5minutes wait))
+      )
+      (call say "back to email")
+    )
+  )
+)
+
+(fn-do + say _
+  (param text String)
+  (let at (call now))
+  (print (str (call (. (. at hour) pad) 2) ":" (call (. (. at minute) pad) 2) "  " text))
+)
